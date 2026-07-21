@@ -1,11 +1,17 @@
 package com.daycare.api.service
 
 import com.daycare.api.domain.InvitationStatus
+import com.daycare.api.domain.InstitutionCapability
+import com.daycare.api.domain.InstitutionType
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.TenantSubscriptionStatus
 import com.daycare.api.persistence.InvitationRepository
 import com.daycare.api.persistence.Membership
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.OrganizationRepository
+import com.daycare.api.persistence.PlatformAdministrator
+import com.daycare.api.persistence.PlatformAdministratorRepository
+import com.daycare.api.persistence.TenantSubscriptionRepository
 import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.UserProfileRepository
 import org.springframework.security.access.AccessDeniedException
@@ -40,31 +46,62 @@ class IdentityService(
     }
 }
 
-data class AccessScope(val user: UserProfile, val membership: Membership)
+data class AccessScope(val user: UserProfile, val membership: Membership, val institutionTypes: Set<InstitutionType>, val capabilities: Set<InstitutionCapability>)
 
 @Service
 class AccessService(
     private val identityService: IdentityService,
     private val memberships: MembershipRepository,
     private val organizations: OrganizationRepository,
+    private val platformAccess: PlatformAccessService,
+    private val subscriptions: TenantSubscriptionRepository,
+    private val organizationCapabilities: OrganizationCapabilitiesService,
 ) {
     @Transactional
     fun currentUser(jwt: Jwt): CurrentUserResponse {
         val user = identityService.sync(jwt)
-        return CurrentUserResponse(user.id, user.displayName, memberships.findAllByUserId(user.id).map { membership ->
+        return CurrentUserResponse(user.id, user.displayName, platformAccess.isPlatformAdmin(user), memberships.findAllByUserId(user.id).map { membership ->
             val name = organizations.findById(membership.organizationId).map { it.name }.orElse("Unknown organization")
-            MembershipResponse(membership.organizationId, name, membership.role, membership.branchId, membership.classroomId)
+            val capabilities = organizationCapabilities.forOrganization(membership.organizationId)
+            MembershipResponse(membership.organizationId, name, membership.role, membership.branchId, membership.classroomId, capabilities.types, capabilities.capabilities)
         })
     }
 
     @Transactional
-    fun require(jwt: Jwt, organizationId: UUID, allowedRoles: Set<Role>): AccessScope {
+    fun require(jwt: Jwt, organizationId: UUID, allowedRoles: Set<Role>, requiredCapability: InstitutionCapability? = null): AccessScope {
         val user = identityService.sync(jwt)
         val membership = memberships.findAllByUserIdAndOrganizationId(user.id, organizationId).firstOrNull { it.role in allowedRoles }
             ?: throw AccessDeniedException("You do not have permission for this organization")
-        return AccessScope(user, membership)
+        val subscription = subscriptions.findByOrganizationId(organizationId)
+        if (subscription != null) {
+            if (subscription.status == TenantSubscriptionStatus.TRIAL && subscription.trialEndsAt?.isBefore(java.time.LocalDate.now()) == true) subscription.status = TenantSubscriptionStatus.PENDING_PAYMENT
+            if (subscription.status !in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL)) throw AccessDeniedException("Tenant subscription is not active")
+        }
+        val capabilities = organizationCapabilities.forOrganization(organizationId)
+        if (requiredCapability != null && requiredCapability !in capabilities.capabilities) throw AccessDeniedException("This feature is not enabled for the institution")
+        return AccessScope(user, membership, capabilities.types, capabilities.capabilities)
     }
 }
 
-data class MembershipResponse(val organizationId: UUID, val organizationName: String, val role: Role, val branchId: UUID?, val classroomId: UUID?)
-data class CurrentUserResponse(val id: UUID, val displayName: String, val memberships: List<MembershipResponse>)
+@Service
+class PlatformAccessService(
+    private val identityService: IdentityService,
+    private val administrators: PlatformAdministratorRepository,
+    @org.springframework.beans.factory.annotation.Value("\${daycare.platform-admin-emails:}") private val bootstrapEmails: String,
+) {
+    @Transactional
+    fun requirePlatformAdmin(jwt: Jwt): UserProfile {
+        val user = identityService.sync(jwt)
+        if (!isPlatformAdmin(user)) throw AccessDeniedException("You do not have platform administrator access")
+        return user
+    }
+
+    fun isPlatformAdmin(user: UserProfile): Boolean {
+        val configuredEmails = bootstrapEmails.split(',').map { it.trim() }.filter { it.isNotBlank() }.map { it.lowercase() }.toSet()
+        if (user.email?.lowercase() in configuredEmails && !administrators.existsById(user.id)) administrators.save(PlatformAdministrator(userId = user.id))
+        return administrators.existsById(user.id)
+    }
+}
+
+data class MembershipResponse(val organizationId: UUID, val organizationName: String, val role: Role, val branchId: UUID?, val classroomId: UUID?, val institutionTypes: Set<InstitutionType>, val capabilities: Set<InstitutionCapability>)
+data class CurrentUserResponse(val id: UUID, val displayName: String, val isPlatformAdmin: Boolean, val memberships: List<MembershipResponse>)

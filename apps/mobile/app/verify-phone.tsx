@@ -1,25 +1,51 @@
 import { useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { router } from "expo-router";
-import { AppText, Button, Screen, spacing } from "@daycare/ui";
-import { strings } from "@/i18n/strings";
+import { AppText, BackButton, Button, colors, radius, Screen, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export default function VerifyPhoneScreen() {
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [code, setCode] = useState("");
+  const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { verifyPhoneCode } = useAuth();
+  const [codeSent, setCodeSent] = useState(false);
+  const { sendPhoneCode, verifyPhoneCode } = useAuth();
+  const { t } = useI18n();
+  const sendCode = async () => {
+    try {
+      setSending(true);
+      await sendPhoneCode(phoneNumber.trim());
+      setCodeSent(true);
+    } catch (error) {
+      Alert.alert(t("auth.otpUnavailable"), error instanceof Error ? error.message : t("auth.useEmail"));
+    } finally {
+      setSending(false);
+    }
+  };
   const submit = async () => {
     try { setLoading(true); await verifyPhoneCode(code); router.replace("/"); }
-    catch (error) { Alert.alert("Kode tidak valid", error instanceof Error ? error.message : "Silakan coba lagi."); }
+    catch (error) { Alert.alert(t("auth.invalidCode"), error instanceof Error ? error.message : t("auth.tryAgain")); }
     finally { setLoading(false); }
   };
-  return <Screen><View style={styles.container}>
-    <AppText variant="title">{strings.verifyCode}</AppText>
-    <AppText tone="muted">Masukkan kode SMS yang dikirimkan. Kode aktif disimpan aman selama sesi ini.</AppText>
-    <TextInput style={styles.input} value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} />
-    <Button loading={loading} onPress={submit}>{strings.verifyCode}</Button>
-    <Button variant="ghost" onPress={() => router.back()}>Kembali</Button>
+  return <Screen title={t("auth.verifyCode")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.container}>
+    <AppText tone="muted">{t(codeSent ? "auth.otpDescription" : "auth.phoneDescription")}</AppText>
+    <TextInput
+      style={styles.input}
+      placeholder="+628..."
+      keyboardType="phone-pad"
+      autoCapitalize="none"
+      value={phoneNumber}
+      onChangeText={setPhoneNumber}
+      editable={!codeSent}
+    />
+    {!codeSent && <Button loading={sending} disabled={!phoneNumber.trim()} onPress={() => void sendCode()}>{t("auth.sendCode")}</Button>}
+    {codeSent && <>
+      <TextInput style={styles.input} value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} placeholder={t("auth.otpCode")} />
+      <Button loading={loading} disabled={!code.trim()} onPress={() => void submit()}>{t("auth.verifyCode")}</Button>
+      <Button variant="secondary" loading={sending} onPress={() => void sendCode()}>{t("auth.resendCode")}</Button>
+    </>}
   </View></Screen>;
 }
-const styles = StyleSheet.create({ container: { width: "100%", maxWidth: 420, alignSelf: "center", gap: spacing.md, paddingTop: 72 }, input: { minHeight: 48, borderWidth: 1, borderColor: "#D0D5DD", borderRadius: 12, paddingHorizontal: 12, backgroundColor: "#FFF" } });
+const styles = StyleSheet.create({ container: { width: "100%", maxWidth: 420, alignSelf: "center", gap: spacing.md, paddingTop: 72 }, input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 12, backgroundColor: colors.surface } });

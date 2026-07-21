@@ -1,0 +1,95 @@
+package com.daycare.api.service
+
+import com.daycare.api.domain.Role
+import com.daycare.api.domain.ChildCareRole
+import com.daycare.api.persistence.ChildProgram
+import com.daycare.api.persistence.ChildProgramRepository
+import com.daycare.api.persistence.ChildRepository
+import com.daycare.api.persistence.ChildStaffAssignment
+import com.daycare.api.persistence.ChildStaffAssignmentRepository
+import com.daycare.api.persistence.MembershipRepository
+import com.daycare.api.persistence.UserProfileRepository
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
+import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
+import java.util.UUID
+
+data class UpdateChildRequest(@field:NotBlank @field:Size(max = 100) val firstName: String, @field:Size(max = 100) val lastName: String?, val dateOfBirth: LocalDate)
+data class CreateChildProgramRequest(@field:NotBlank @field:Size(max = 120) val name: String, @field:Size(max = 2_000) val description: String?)
+data class AssignChildStaffRequest(val userId: UUID, val assignmentRole: ChildCareRole)
+data class ChildProgramResponse(val id: UUID, val name: String, val description: String)
+data class ChildStaffAssignmentResponse(val id: UUID, val userId: UUID, val displayName: String, val email: String?, val assignmentRole: String)
+data class ChildProfileResponse(val child: ChildResponse, val programs: List<ChildProgramResponse>, val staffAssignments: List<ChildStaffAssignmentResponse>)
+
+@Service
+class ChildManagementService(
+    private val access: AccessService,
+    private val children: ChildRepository,
+    private val programs: ChildProgramRepository,
+    private val assignments: ChildStaffAssignmentRepository,
+    private val memberships: MembershipRepository,
+    private val users: UserProfileRepository,
+) {
+    @Transactional(readOnly = true)
+    fun profile(jwt: Jwt, organizationId: UUID, childId: UUID): ChildProfileResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val child = child(childId, organizationId)
+        return ChildProfileResponse(childResponse(child), programResponses(organizationId, child.id), assignmentResponses(organizationId, child.id))
+    }
+
+    @Transactional
+    fun update(jwt: Jwt, organizationId: UUID, childId: UUID, request: UpdateChildRequest): ChildResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val child = child(childId, organizationId)
+        child.firstName = request.firstName.trim()
+        child.lastName = request.lastName?.trim()?.ifBlank { null }
+        child.dateOfBirth = request.dateOfBirth
+        return childResponse(child)
+    }
+
+    @Transactional
+    fun addProgram(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreateChildProgramRequest): ChildProgramResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        child(childId, organizationId)
+        val saved = programs.save(ChildProgram(organizationId = organizationId, childId = childId, name = request.name.trim(), description = request.description?.trim().orEmpty()))
+        return ChildProgramResponse(saved.id, saved.name, saved.description)
+    }
+
+    @Transactional
+    fun removeProgram(jwt: Jwt, organizationId: UUID, childId: UUID, programId: UUID) {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        child(childId, organizationId)
+        val program = programs.findById(programId).orElseThrow { IllegalArgumentException("Child program was not found") }
+        require(program.organizationId == organizationId && program.childId == childId) { "Child program belongs to a different child" }
+        programs.delete(program)
+    }
+
+    @Transactional
+    fun assignStaff(jwt: Jwt, organizationId: UUID, childId: UUID, request: AssignChildStaffRequest): ChildStaffAssignmentResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        child(childId, organizationId)
+        val staffMembership = memberships.findAllByUserIdAndOrganizationId(request.userId, organizationId).firstOrNull { it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }
+            ?: throw IllegalArgumentException("Only active Staff Admin or Staff users can be assigned to a child")
+        require(!assignments.existsByChildIdAndUserId(childId, request.userId)) { "Staff member is already assigned to this child" }
+        val staff = users.findById(staffMembership.userId).orElseThrow { IllegalArgumentException("Tenant user was not found") }
+        val saved = assignments.save(ChildStaffAssignment(organizationId = organizationId, childId = childId, userId = staff.id, assignmentRole = request.assignmentRole.name))
+        return ChildStaffAssignmentResponse(saved.id, staff.id, staff.displayName, staff.email, saved.assignmentRole)
+    }
+
+    @Transactional
+    fun unassignStaff(jwt: Jwt, organizationId: UUID, childId: UUID, assignmentId: UUID) {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        child(childId, organizationId)
+        val assignment = assignments.findById(assignmentId).orElseThrow { IllegalArgumentException("Child staff assignment was not found") }
+        require(assignment.organizationId == organizationId && assignment.childId == childId) { "Child staff assignment belongs to a different child" }
+        assignments.delete(assignment)
+    }
+
+    private fun child(childId: UUID, organizationId: UUID) = children.findById(childId).orElseThrow { IllegalArgumentException("Child was not found") }.also { require(it.organizationId == organizationId) { "Child belongs to a different organization" } }
+    private fun childResponse(child: com.daycare.api.persistence.Child) = ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.dateOfBirth)
+    private fun programResponses(organizationId: UUID, childId: UUID) = programs.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId).map { ChildProgramResponse(it.id, it.name, it.description) }
+    private fun assignmentResponses(organizationId: UUID, childId: UUID) = assignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId).mapNotNull { assignment -> users.findById(assignment.userId).map { user -> ChildStaffAssignmentResponse(assignment.id, user.id, user.displayName, user.email, assignment.assignmentRole) }.orElse(null) }
+}

@@ -2,6 +2,7 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.AttendanceAction
 import com.daycare.api.domain.AttendanceMethod
+import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AttendanceRecord
 import com.daycare.api.persistence.AttendanceRepository
@@ -43,7 +44,7 @@ class AttendanceService(
 
     @Transactional
     fun record(jwt: Jwt, organizationId: UUID, childId: UUID, command: AttendanceCommand): AttendanceResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.ADMIN, Role.STAFF))
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF))
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         if (command.method == AttendanceMethod.QR) qr.verify(child.id, command.qrToken ?: throw IllegalArgumentException("QR token is required"))
         val timezone = branches.findById(child.branchId).orElseThrow { IllegalArgumentException("Child branch was not found") }.timezone
@@ -58,7 +59,7 @@ class AttendanceService(
             }
             AttendanceAction.CHECK_OUT -> current?.takeIf { it.checkedInAt != null && it.checkedOutAt == null } ?: throw AttendanceConflict("Child must be checked in before check-out")
         }
-        if (command.action == AttendanceAction.CHECK_IN) bookingEligibility.consumeCheckIn(organizationId, child.id, operationalDate)
+        if (command.action == AttendanceAction.CHECK_IN && InstitutionCapability.DAYCARE_OPERATIONS in scope.capabilities) bookingEligibility.consumeCheckIn(organizationId, child.id, operationalDate)
         if (command.action == AttendanceAction.CHECK_IN) { record.checkedInAt = now; record.checkInMethod = command.method.name }
         else { record.checkedOutAt = now; record.checkOutMethod = command.method.name }
         val saved = attendance.save(record)

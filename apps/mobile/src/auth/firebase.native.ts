@@ -28,6 +28,19 @@ export const firebaseAuth: AuthGateway = {
     const confirmation = await auth().signInWithPhoneNumber(phoneNumber);
     return { confirmation: async (code) => { await confirmation.confirm(code); } };
   },
+  async updateDisplayName(displayName) {
+    const currentUser = auth().currentUser;
+    if (!currentUser) throw new Error("Tidak ada akun Firebase yang sedang masuk.");
+    await currentUser.updateProfile({ displayName });
+    const user = toUser(auth().currentUser);
+    if (!user) throw new Error("Profil Firebase tidak dapat diperbarui.");
+    return user;
+  },
+  async changePassword(newPassword) {
+    const currentUser = auth().currentUser;
+    if (!currentUser) throw new Error("Tidak ada akun Firebase yang sedang masuk.");
+    await currentUser.updatePassword(newPassword);
+  },
   signOut: () => auth().signOut(),
-  async getIdToken() { return auth().currentUser?.getIdToken() ?? null; },
+  async getIdToken(forceRefresh = false) { return auth().currentUser?.getIdToken(forceRefresh) ?? null; },
 };

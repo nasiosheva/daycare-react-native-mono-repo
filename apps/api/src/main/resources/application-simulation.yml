@@ -12,4 +12,6 @@ spring:
         jwt:
           issuer-uri: ${SIMULATION_FIREBASE_ISSUER_URI:${FIREBASE_ISSUER_URI}}
 daycare:
+  simulation-seed-enabled: true
+  firebase-service-account-json: ${SIMULATION_FIREBASE_SERVICE_ACCOUNT_JSON:${FIREBASE_SERVICE_ACCOUNT_JSON:}}
   qr-signing-secret: ${SIMULATION_QR_SIGNING_SECRET:simulation-secret-must-be-replaced-with-at-least-32-characters}

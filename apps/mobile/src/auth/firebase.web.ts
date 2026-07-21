@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth, GoogleAuthProvider, onAuthStateChanged, RecaptchaVerifier, signInWithEmailAndPassword, signInWithPhoneNumber, signInWithPopup, signOut, type User } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, onAuthStateChanged, RecaptchaVerifier, signInWithEmailAndPassword, signInWithPhoneNumber, signInWithPopup, signOut, updatePassword, updateProfile, type User } from "firebase/auth";
 import { env } from "@/config/env";
 import type { AuthGateway, AuthUser } from "./types";
 
@@ -24,6 +24,19 @@ export const firebaseAuth: AuthGateway = {
     const confirmation = await signInWithPhoneNumber(auth, phoneNumber, verifier);
     return { confirmation: async (code) => { await confirmation.confirm(code); verifier.clear(); } };
   },
+  async updateDisplayName(displayName) {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("Tidak ada akun Firebase yang sedang masuk.");
+    await updateProfile(currentUser, { displayName });
+    const user = toUser(auth.currentUser);
+    if (!user) throw new Error("Profil Firebase tidak dapat diperbarui.");
+    return user;
+  },
+  async changePassword(newPassword) {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("Tidak ada akun Firebase yang sedang masuk.");
+    await updatePassword(currentUser, newPassword);
+  },
   signOut: () => signOut(auth),
-  async getIdToken() { return auth.currentUser?.getIdToken() ?? null; },
+  async getIdToken(forceRefresh = false) { return auth.currentUser?.getIdToken(forceRefresh) ?? null; },
 };

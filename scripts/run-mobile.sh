@@ -3,7 +3,7 @@
 set -eu
 
 if [ "$#" -ne 2 ]; then
-  echo "Usage: $0 <android|ios|web> <dev|prod|simulation>" >&2
+  echo "Usage: $0 <android|ios|web> <local|dev|prod|simulation>" >&2
   echo "Use a launcher instead, for example: ./run-ios-dev.sh" >&2
   exit 1
 fi
@@ -11,8 +11,24 @@ fi
 platform=$1
 environment=$2
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-environment_file="$repository_root/.env.$environment"
-environment_template="$repository_root/.env.$environment.example"
+started_api_pid=""
+api_log_file="$repository_root/daycare-api-local.log"
+gradle_user_home="$repository_root/.gradle-local"
+
+case "$environment" in
+  local)
+    environment_file="$repository_root/.env"
+    environment_template="$repository_root/.env.example"
+    ;;
+  dev|prod|simulation)
+    environment_file="$repository_root/.env.$environment"
+    environment_template="$repository_root/.env.$environment.example"
+    ;;
+  *)
+    echo "Unsupported environment: $environment" >&2
+    exit 1
+    ;;
+esac
 
 ensure_node() {
   if ! command -v node >/dev/null 2>&1; then
@@ -25,6 +41,27 @@ ensure_node() {
     echo "Node.js 20 or newer is required; found $(node --version)." >&2
     exit 1
   fi
+}
+
+ensure_java_21() {
+  if command -v /usr/libexec/java_home >/dev/null 2>&1; then
+    java_21_home=$(/usr/libexec/java_home -v 21 2>/dev/null || true)
+    if [ -n "$java_21_home" ]; then
+      export JAVA_HOME="$java_21_home"
+      export PATH="$JAVA_HOME/bin:$PATH"
+      return
+    fi
+  fi
+
+  if command -v java >/dev/null 2>&1; then
+    java_major=$(java -XshowSettings:properties -version 2>&1 | awk -F'= ' '/java.version =/ { print $2; exit }' | awk -F. '{ print $1 }')
+    if [ "${java_major:-0}" -ge 21 ]; then
+      return
+    fi
+  fi
+
+  echo "JDK 21 is required for the local API. Install JDK 21, then run this launcher again." >&2
+  exit 1
 }
 
 ensure_corepack() {
@@ -83,6 +120,24 @@ require_environment_values() {
   fi
 }
 
+require_local_backend_values() {
+  missing=0
+  for variable in FIREBASE_ISSUER_URI; do
+    eval "value=\${$variable-}"
+    case "$value" in
+      ""|*your-project-id*)
+        echo "Missing or placeholder value: $variable in $environment_file" >&2
+        missing=1
+        ;;
+    esac
+  done
+
+  if [ "$missing" -ne 0 ]; then
+    echo "Update $environment_file with the local backend values, then run this launcher again." >&2
+    exit 1
+  fi
+}
+
 require_ios_physical_device() {
   eval "ios_device_udid=\${IOS_DEVICE_UDID-}"
   if [ -z "$ios_device_udid" ]; then
@@ -109,6 +164,11 @@ ensure_platform_tools() {
         echo "Android SDK platform tools are required. Install Android Studio and add adb to PATH, then run this launcher again." >&2
         exit 1
       fi
+
+      if [ ! -f "$repository_root/apps/mobile/google-services.json" ]; then
+        echo "Missing apps/mobile/google-services.json. Add the Firebase Android configuration before building." >&2
+        exit 1
+      fi
       ;;
     ios)
       if ! command -v xcodebuild >/dev/null 2>&1; then
@@ -120,7 +180,201 @@ ensure_platform_tools() {
   esac
 }
 
+ensure_local_android_development_build() {
+  if [ "$platform" != "android" ] || [ "$environment" != "local" ]; then
+    return
+  fi
+
+  android_package_name=$(node -e '
+    const applicationConfig = require(process.argv[1]);
+    const packageName = applicationConfig.expo?.android?.package;
+
+    if (!packageName) {
+      process.exit(1);
+    }
+
+    process.stdout.write(packageName);
+  ' "$repository_root/apps/mobile/app.json") || {
+    echo "Unable to read expo.android.package from apps/mobile/app.json." >&2
+    exit 1
+  }
+  main_application_source=$(find "$repository_root/apps/mobile/android/app/src/main/java" -name MainApplication.kt -type f -print -quit 2>/dev/null || true)
+
+  if [ -z "$main_application_source" ] || ! grep -Fqx "package $android_package_name" "$main_application_source"; then
+    echo "Synchronizing the generated Android project with apps/mobile/app.json..."
+    (
+      cd "$repository_root"
+      corepack pnpm --filter @daycare/app exec expo prebuild --platform android --clean --no-install
+    )
+  fi
+
+  android_local_properties="$repository_root/apps/mobile/android/local.properties"
+  if [ ! -f "$android_local_properties" ]; then
+    android_sdk_directory=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}
+    if [ -z "$android_sdk_directory" ] && [ -d "$HOME/Library/Android/sdk" ]; then
+      android_sdk_directory="$HOME/Library/Android/sdk"
+    fi
+
+    if [ -z "$android_sdk_directory" ] || [ ! -d "$android_sdk_directory" ]; then
+      echo "Android SDK location is unavailable. Set ANDROID_HOME or ANDROID_SDK_ROOT, then run this launcher again." >&2
+      exit 1
+    fi
+
+    printf 'sdk.dir=%s\n' "$android_sdk_directory" >"$android_local_properties"
+  fi
+
+  echo "Preparing and installing the local Android development build..."
+  (
+    cd "$repository_root"
+    corepack pnpm --filter @daycare/app exec expo run:android --no-bundler
+  )
+}
+
+ensure_local_backend_tools() {
+  if ! command -v gradle >/dev/null 2>&1; then
+    echo "Gradle is required to run the local API. Install Gradle, then run this launcher again." >&2
+    exit 1
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "curl is required to verify the local API startup. Install curl, then run this launcher again." >&2
+    exit 1
+  fi
+
+  if ! command -v pg_isready >/dev/null 2>&1; then
+    echo "pg_isready is required to detect a local PostgreSQL instance when Docker is unavailable. Install PostgreSQL client tools, then run this launcher again." >&2
+    exit 1
+  fi
+}
+
+local_api_ready() {
+  curl --silent --fail --max-time 2 http://localhost:8080/api/v3/api-docs >/dev/null 2>&1
+}
+
+local_postgres_ready() {
+  postgres_host=${POSTGRES_HOST:-localhost}
+  postgres_port=${POSTGRES_PORT:-5432}
+  pg_isready -h "$postgres_host" -p "$postgres_port" >/dev/null 2>&1
+}
+
+local_api_port_pid() {
+  lsof -ti tcp:8080 -sTCP:LISTEN 2>/dev/null | head -n 1
+}
+
+repo_owned_api_pid() {
+  existing_api_pid=$(local_api_port_pid || true)
+  if [ -z "$existing_api_pid" ]; then
+    return 1
+  fi
+
+  existing_api_command=$(ps -p "$existing_api_pid" -o command= 2>/dev/null || true)
+  case "$existing_api_command" in
+    *"$repository_root/apps/api/build/"*com.daycare.api.DaycareApplicationKt*)
+      printf '%s\n' "$existing_api_pid"
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+cleanup() {
+  if [ -n "$started_api_pid" ]; then
+    kill "$started_api_pid" >/dev/null 2>&1 || true
+    wait "$started_api_pid" >/dev/null 2>&1 || true
+  fi
+}
+
+ensure_local_backend() {
+  ensure_local_backend_tools
+  require_local_backend_values
+
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    echo "Starting local PostgreSQL container..."
+    (
+      cd "$repository_root"
+      docker compose up -d postgres
+    )
+  elif local_postgres_ready; then
+    echo "Using existing local PostgreSQL at ${POSTGRES_HOST:-localhost}:${POSTGRES_PORT:-5432}."
+  else
+    echo "No PostgreSQL service is available for the local stack." >&2
+    echo "Start PostgreSQL locally on ${POSTGRES_HOST:-localhost}:${POSTGRES_PORT:-5432} or install Docker Desktop, then run this launcher again." >&2
+    exit 1
+  fi
+
+  existing_api_pid=$(local_api_port_pid || true)
+  if [ -n "$existing_api_pid" ]; then
+    owned_api_pid=$(repo_owned_api_pid || true)
+    if [ -n "$owned_api_pid" ]; then
+      echo "Stopping existing local API owned by this repo (PID $owned_api_pid)..."
+      kill "$owned_api_pid" >/dev/null 2>&1 || true
+      wait "$owned_api_pid" >/dev/null 2>&1 || true
+    elif local_api_ready; then
+      echo "Port 8080 is already used by a running API process (PID $existing_api_pid)." >&2
+      echo "run-android-local.sh can only replace the Java API process owned by this repo. Stop the existing process, then run this launcher again." >&2
+      exit 1
+    else
+      echo "Port 8080 is already in use by PID $existing_api_pid, so the local API cannot be started by this launcher." >&2
+      echo "Free port 8080, then run this launcher again." >&2
+      exit 1
+    fi
+  fi
+
+  echo "Starting local API in the background..."
+  (
+    cd "$repository_root"
+    set -a
+    . "$environment_file"
+    set +a
+    export GRADLE_USER_HOME="$gradle_user_home"
+    gradle --no-daemon -p apps/api bootRun --stacktrace >"$api_log_file" 2>&1
+  ) &
+  started_api_pid=$!
+  trap cleanup EXIT INT TERM
+
+  attempts=0
+  while [ "$attempts" -lt 60 ]; do
+    if local_api_ready; then
+      echo "Local API is ready at http://localhost:8080/api."
+      echo "API logs: $api_log_file"
+      return
+    fi
+
+    if ! kill -0 "$started_api_pid" >/dev/null 2>&1; then
+      echo "Local API exited before becoming ready. Check $api_log_file for details." >&2
+      exit 1
+    fi
+
+    attempts=$((attempts + 1))
+    sleep 1
+  done
+
+  echo "Timed out waiting for the local API. Check $api_log_file for details." >&2
+  exit 1
+}
+
+run_client() {
+  case "$platform" in
+    android)
+      corepack pnpm --filter @daycare/app exec expo start --dev-client --android
+      ;;
+    ios)
+      corepack pnpm --filter @daycare/app exec expo run:ios --device "$ios_device_udid"
+      ;;
+    web)
+      corepack pnpm --filter @daycare/app exec expo start --web
+      ;;
+    *)
+      echo "Unsupported platform: $platform" >&2
+      exit 1
+      ;;
+  esac
+}
+
 ensure_node
+ensure_java_21
 ensure_corepack
 ensure_workspace_dependencies
 ensure_environment_file
@@ -131,21 +385,12 @@ set +a
 
 require_environment_values
 ensure_platform_tools
+ensure_local_android_development_build
+
+if [ "$environment" = "local" ]; then
+  ensure_local_backend
+fi
 
 cd "$repository_root"
 
-case "$platform" in
-  android)
-    exec corepack pnpm --filter @daycare/app exec expo start --dev-client --android
-    ;;
-  ios)
-    exec corepack pnpm --filter @daycare/app exec expo run:ios --device "$ios_device_udid"
-    ;;
-  web)
-    exec corepack pnpm --filter @daycare/app exec expo start --web
-    ;;
-  *)
-    echo "Unsupported platform: $platform" >&2
-    exit 1
-    ;;
-esac
+run_client

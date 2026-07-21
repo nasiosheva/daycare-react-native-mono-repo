@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { AppText } from "./AppText";
 import { colors, radius, spacing } from "./theme";
 
 type Variant = "primary" | "secondary" | "danger" | "ghost";
-type Props = { children: ReactNode; onPress: () => void; variant?: Variant; disabled?: boolean; loading?: boolean; accessibilityLabel?: string };
+type Props = { children: ReactNode; onPress: () => void; variant?: Variant; disabled?: boolean; loading?: boolean; accessibilityLabel?: string; style?: StyleProp<ViewStyle> };
 
-export function Button({ children, onPress, variant = "primary", disabled = false, loading = false, accessibilityLabel }: Props) {
+export function Button({ children, onPress, variant = "primary", disabled = false, loading = false, accessibilityLabel, style }: Props) {
   const inactive = disabled || loading;
   const textTone = variant === "primary" || variant === "danger" ? "onDark" : "onLight";
   return (
@@ -16,7 +16,7 @@ export function Button({ children, onPress, variant = "primary", disabled = fals
       accessibilityState={{ disabled: inactive, busy: loading }}
       disabled={inactive}
       onPress={onPress}
-      style={({ pressed }) => [styles.base, styles[variant], inactive && styles.disabled, pressed && !inactive && styles.pressed]}
+      style={({ pressed }) => [styles.base, styles[variant], inactive && styles.disabled, pressed && !inactive && styles.pressed, style]}
     >
       <View style={styles.content}>
         {loading && <ActivityIndicator color={textTone === "onDark" ? colors.onPrimary : colors.primary} />}

@@ -5,6 +5,8 @@ export type AuthGateway = {
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   sendPhoneCode: (phoneNumber: string) => Promise<PhoneChallenge>;
+  updateDisplayName: (displayName: string) => Promise<AuthUser>;
+  changePassword: (newPassword: string) => Promise<void>;
   signOut: () => Promise<void>;
-  getIdToken: () => Promise<string | null>;
+  getIdToken: (forceRefresh?: boolean) => Promise<string | null>;
 };

@@ -3,6 +3,7 @@ package com.daycare.api.service
 import com.daycare.api.domain.BookingStatus
 import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.InvoiceStatus
+import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.ServicePlanType
 import com.daycare.api.domain.UnusedCreditPolicy
@@ -15,6 +16,7 @@ import com.daycare.api.persistence.ServiceEntitlement
 import com.daycare.api.persistence.ServiceEntitlementRepository
 import com.daycare.api.persistence.ServicePlan
 import com.daycare.api.persistence.ServicePlanRepository
+import com.daycare.api.persistence.UserProfileRepository
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
@@ -34,9 +36,9 @@ data class PurchaseServiceRequest(val planId: UUID, val childId: UUID, val booki
 data class CreateEntitlementBookingsRequest(@field:NotEmpty val bookingDates: List<LocalDate>)
 data class BookingApprovalRequest(val approved: Boolean)
 data class ServicePlanResponse(val id: UUID, val name: String, val type: ServicePlanType, val price: BigDecimal, val creditCount: Int?, val unusedCreditPolicy: UnusedCreditPolicy?, val carryForwardDays: Int?, val bookingRequiresApproval: Boolean)
-data class EntitlementResponse(val id: UUID, val childId: UUID, val planName: String, val type: ServicePlanType, val status: EntitlementStatus, val remainingCredits: Int?, val validUntil: LocalDate)
+data class EntitlementResponse(val id: UUID, val childId: UUID, val childName: String, val parentName: String?, val parentEmail: String?, val planName: String, val type: ServicePlanType, val status: EntitlementStatus, val totalCredits: Int?, val remainingCredits: Int?, val validUntil: LocalDate)
 data class BookingResponse(val id: UUID, val childId: UUID, val childName: String, val bookingDate: LocalDate, val status: BookingStatus, val planName: String, val invoiceId: UUID)
-data class InvoiceResponse(val id: UUID, val invoiceNumber: String, val childId: UUID, val childName: String, val totalAmount: BigDecimal, val status: InvoiceStatus, val dueDate: LocalDate, val createdAt: Instant)
+data class InvoiceResponse(val id: UUID, val invoiceNumber: String, val childId: UUID, val childName: String, val parentName: String?, val parentEmail: String?, val totalAmount: BigDecimal, val status: InvoiceStatus, val dueDate: LocalDate, val createdAt: Instant)
 data class PurchaseServiceResponse(val entitlement: EntitlementResponse, val invoice: InvoiceResponse, val bookings: List<BookingResponse>)
 
 @Service
@@ -48,24 +50,25 @@ class BillingService(
     private val invoices: InvoiceRepository,
     private val entitlements: ServiceEntitlementRepository,
     private val bookings: BookingRepository,
+    private val users: UserProfileRepository,
     private val notifications: NotificationService,
 ) {
     @Transactional
     fun plans(jwt: Jwt, organizationId: UUID): List<ServicePlanResponse> {
-        access.require(jwt, organizationId, Role.entries.toSet())
+        access.require(jwt, organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS)
         return plans.findAllByOrganizationIdAndActiveTrue(organizationId).map(::planResponse)
     }
 
     @Transactional
     fun createPlan(jwt: Jwt, organizationId: UUID, request: CreateServicePlanRequest): ServicePlanResponse {
-        access.require(jwt, organizationId, setOf(Role.ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
         validatePlan(request)
         return planResponse(plans.save(ServicePlan(organizationId = organizationId, name = request.name.trim(), type = request.type, price = request.price, creditCount = request.creditCount, unusedCreditPolicy = request.unusedCreditPolicy, carryForwardDays = request.carryForwardDays, bookingRequiresApproval = request.bookingRequiresApproval)))
     }
 
     @Transactional
     fun purchase(jwt: Jwt, organizationId: UUID, request: PurchaseServiceRequest): PurchaseServiceResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.PARENT))
+        val scope = access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)
         val child = childScopes.requireParentLinkedChild(scope, request.childId, organizationId)
         val plan = plans.findById(request.planId).orElseThrow { IllegalArgumentException("Service plan was not found") }
         require(plan.organizationId == organizationId && plan.active) { "Service plan is not available" }
@@ -83,7 +86,7 @@ class BillingService(
 
     @Transactional
     fun createBookingsFromEntitlement(jwt: Jwt, organizationId: UUID, entitlementId: UUID, request: CreateEntitlementBookingsRequest): List<BookingResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.PARENT))
+        val scope = access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)
         val entitlement = entitlements.findById(entitlementId).orElseThrow { IllegalArgumentException("Service entitlement was not found") }
         require(entitlement.organizationId == organizationId && entitlement.ownerUserId == scope.user.id) { "Service entitlement is not available" }
         require(entitlement.status == EntitlementStatus.ACTIVE) { "Service entitlement is not active" }
@@ -103,7 +106,7 @@ class BillingService(
 
     @Transactional
     fun markInvoicePaid(jwt: Jwt, organizationId: UUID, invoiceId: UUID): InvoiceResponse {
-        access.require(jwt, organizationId, setOf(Role.ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
         val invoice = requireInvoice(invoiceId, organizationId)
         require(invoice.status == InvoiceStatus.PENDING) { "Invoice is not awaiting payment" }
         invoice.status = InvoiceStatus.PAID; invoice.paidAt = Instant.now()
@@ -116,7 +119,7 @@ class BillingService(
 
     @Transactional
     fun approveBooking(jwt: Jwt, organizationId: UUID, bookingId: UUID, request: BookingApprovalRequest): BookingResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.ADMIN, Role.STAFF))
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS)
         val booking = bookings.findById(bookingId).orElseThrow { IllegalArgumentException("Booking was not found") }
         require(booking.organizationId == organizationId && booking.status == BookingStatus.PENDING_APPROVAL) { "Booking cannot be approved" }
         childScopes.requireStaffManagedChild(scope, booking.childId, organizationId)
@@ -129,24 +132,25 @@ class BillingService(
 
     @Transactional
     fun entitlements(jwt: Jwt, organizationId: UUID): List<EntitlementResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.PARENT))
-        return entitlements.findAllByOrganizationIdAndOwnerUserId(organizationId, scope.user.id).onEach(::expireIfNeeded).map(::entitlementResponse)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)
+        val source = if (scope.membership.role == Role.STAFF_ADMIN) entitlements.findAllByOrganizationId(organizationId) else entitlements.findAllByOrganizationIdAndOwnerUserId(organizationId, scope.user.id)
+        return source.onEach(::expireIfNeeded).sortedByDescending { it.validUntil }.map(::entitlementResponse)
     }
 
     @Transactional
     fun bookings(jwt: Jwt, organizationId: UUID, pendingOnly: Boolean): List<BookingResponse> {
-        val scope = access.require(jwt, organizationId, if (pendingOnly) setOf(Role.ADMIN, Role.STAFF) else Role.entries.toSet())
+        val scope = access.require(jwt, organizationId, if (pendingOnly) setOf(Role.STAFF_ADMIN, Role.STAFF) else setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)
         val source = if (pendingOnly) bookings.findAllByOrganizationIdAndStatusOrderByBookingDateAsc(organizationId, BookingStatus.PENDING_APPROVAL) else bookings.findAllByOrganizationIdOrderByBookingDateDesc(organizationId)
         return source.filter { booking ->
             if (scope.membership.role == Role.PARENT) entitlements.findById(booking.entitlementId).map { it.ownerUserId == scope.user.id }.orElse(false)
-            else scope.membership.role == Role.ADMIN || scope.membership.branchId == null || scope.membership.branchId == booking.branchId
+            else scope.membership.role == Role.STAFF_ADMIN || scope.membership.branchId == null || scope.membership.branchId == booking.branchId
         }.map { bookingResponse(it, childName(it.childId)) }
     }
 
     @Transactional
     fun invoices(jwt: Jwt, organizationId: UUID): List<InvoiceResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.ADMIN, Role.PARENT))
-        val source = if (scope.membership.role == Role.ADMIN) invoices.findAllByOrganizationIdOrderByCreatedAtDesc(organizationId) else invoices.findAllByOrganizationIdAndPayerUserIdOrderByCreatedAtDesc(organizationId, scope.user.id)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)
+        val source = if (scope.membership.role == Role.STAFF_ADMIN) invoices.findAllByOrganizationIdOrderByCreatedAtDesc(organizationId) else invoices.findAllByOrganizationIdAndPayerUserIdOrderByCreatedAtDesc(organizationId, scope.user.id)
         return source.map { invoice ->
             val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found")
             invoiceResponse(invoice, entitlement.childId, childName(entitlement.childId))
@@ -175,10 +179,16 @@ class BillingService(
     }
     private fun expireIfNeeded(entitlement: ServiceEntitlement) { if (entitlement.status == EntitlementStatus.ACTIVE && entitlement.validUntil.isBefore(LocalDate.now())) entitlement.status = EntitlementStatus.EXPIRED }
     private fun planResponse(plan: ServicePlan) = ServicePlanResponse(plan.id, plan.name, plan.type, plan.price, plan.creditCount, plan.unusedCreditPolicy, plan.carryForwardDays, plan.bookingRequiresApproval)
-    private fun entitlementResponse(entitlement: ServiceEntitlement) = EntitlementResponse(entitlement.id, entitlement.childId, entitlement.planName, entitlement.planType, entitlement.status, entitlement.totalCredits?.let { remainingCredits(entitlement) }, entitlement.validUntil)
+    private fun entitlementResponse(entitlement: ServiceEntitlement): EntitlementResponse {
+        val parent = users.findById(entitlement.ownerUserId).orElse(null)
+        return EntitlementResponse(entitlement.id, entitlement.childId, childName(entitlement.childId), parent?.displayName, parent?.email, entitlement.planName, entitlement.planType, entitlement.status, entitlement.totalCredits, entitlement.totalCredits?.let { remainingCredits(entitlement) }, entitlement.validUntil)
+    }
     private fun remainingCredits(entitlement: ServiceEntitlement) = (entitlement.totalCredits!! - entitlement.usedCredits - entitlement.reservedCredits).coerceAtLeast(0)
     private fun bookingResponse(booking: Booking, childName: String) = BookingResponse(booking.id, booking.childId, childName, booking.bookingDate, booking.status, booking.planName, booking.invoiceId)
-    private fun invoiceResponse(invoice: Invoice, childId: UUID, childName: String) = InvoiceResponse(invoice.id, invoice.invoiceNumber, childId, childName, invoice.totalAmount, invoice.status, invoice.dueDate, invoice.createdAt)
+    private fun invoiceResponse(invoice: Invoice, childId: UUID, childName: String): InvoiceResponse {
+        val parent = users.findById(invoice.payerUserId).orElse(null)
+        return InvoiceResponse(invoice.id, invoice.invoiceNumber, childId, childName, parent?.displayName, parent?.email, invoice.totalAmount, invoice.status, invoice.dueDate, invoice.createdAt)
+    }
     private fun requireInvoice(invoiceId: UUID, organizationId: UUID) = invoices.findById(invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }.also { require(it.organizationId == organizationId) { "Invoice belongs to a different organization" } }
     private fun childName(childId: UUID) = children.findById(childId).orElseThrow { IllegalArgumentException("Child was not found") }.fullName()
     private fun com.daycare.api.persistence.Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")

@@ -13,14 +13,31 @@ import com.daycare.api.service.CreateInvitationRequest
 import com.daycare.api.service.CreateDevelopmentEntryRequest
 import com.daycare.api.service.DevelopmentService
 import com.daycare.api.service.RegisterDeviceRequest
+import com.daycare.api.service.CreateTenantRequest
+import com.daycare.api.service.CreatePlatformAdminRequest
+import com.daycare.api.service.ChangeTenantUserPasswordRequest
+import com.daycare.api.service.AcademicService
+import com.daycare.api.service.CreateAcademicYearRequest
+import com.daycare.api.service.CreateCurriculumProgramRequest
+import com.daycare.api.service.ChangePlatformAdminPinRequest
+import com.daycare.api.service.PlatformAdminPinService
+import com.daycare.api.service.PlatformAdministrationService
+import com.daycare.api.service.UpdateTenantRequest
+import com.daycare.api.service.RenewTenantSubscriptionRequest
+import com.daycare.api.service.ChildManagementService
+import com.daycare.api.service.UpdateChildRequest
+import com.daycare.api.service.CreateChildProgramRequest
+import com.daycare.api.service.AssignChildStaffRequest
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
@@ -36,14 +53,73 @@ class IdentityController(private val access: AccessService) {
 }
 
 @RestController
+@RequestMapping("/v1/platform")
+@SecurityRequirement(name = "bearerAuth")
+class PlatformController(private val platformAdministration: PlatformAdministrationService, private val platformAdminPin: PlatformAdminPinService) {
+    @GetMapping("/tenants")
+    fun tenants(@AuthenticationPrincipal jwt: Jwt) = platformAdministration.tenants(jwt)
+
+    @PostMapping("/tenants") @ResponseStatus(HttpStatus.CREATED)
+    fun createTenant(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: CreateTenantRequest) = platformAdministration.createTenant(jwt, request)
+
+    @GetMapping("/tenants/{organizationId}")
+    fun tenant(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID) = platformAdministration.tenant(jwt, organizationId)
+
+    @PatchMapping("/tenants/{organizationId}")
+    fun updateTenant(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @Valid @RequestBody request: UpdateTenantRequest) = platformAdministration.updateTenant(jwt, organizationId, request)
+
+    @PostMapping("/tenants/{organizationId}/subscription/renew")
+    fun renewSubscription(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @Valid @RequestBody request: RenewTenantSubscriptionRequest) = platformAdministration.renewSubscription(jwt, organizationId, request)
+
+    @PostMapping("/tenants/{organizationId}/subscription/{status}")
+    fun setSubscriptionStatus(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable status: com.daycare.api.domain.TenantSubscriptionStatus) = platformAdministration.setSubscriptionStatus(jwt, organizationId, status)
+
+    @PostMapping("/admins") @ResponseStatus(HttpStatus.CREATED)
+    fun createPlatformAdmin(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: CreatePlatformAdminRequest) = mapOf("id" to platformAdministration.createPlatformAdmin(jwt, request))
+
+    @PostMapping("/pin") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun changePin(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: ChangePlatformAdminPinRequest) = platformAdminPin.changePin(jwt, request)
+
+    @PostMapping("/tenants/{organizationId}/payments/{paymentId}/mark-paid")
+    fun markPaymentPaid(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable paymentId: UUID) = platformAdministration.markPaymentPaid(jwt, organizationId, paymentId)
+
+    @PostMapping("/tenants/{organizationId}/payments/{paymentId}/void")
+    fun voidPayment(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable paymentId: UUID) = platformAdministration.voidPayment(jwt, organizationId, paymentId)
+
+    @PostMapping("/tenants/{organizationId}/staff-admin-invitation/refresh")
+    fun refreshStaffAdminInvitation(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID) = platformAdministration.refreshStaffAdminInvitation(jwt, organizationId)
+
+    @PostMapping("/tenants/{organizationId}/staff-admin-invitation/cancel")
+    fun cancelStaffAdminInvitation(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID) = platformAdministration.cancelStaffAdminInvitation(jwt, organizationId)
+}
+
+@RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class DaycareController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService) {
+class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService) {
     @GetMapping("/children")
     fun children(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = attendance.listChildren(jwt, organizationId)
 
     @PostMapping("/children") @ResponseStatus(HttpStatus.CREATED)
     fun createChild(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateChildRequest) = administration.createChild(jwt, organizationId, request)
+
+    @GetMapping("/children/{childId}")
+    fun childProfile(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childManagement.profile(jwt, organizationId, childId)
+
+    @PatchMapping("/children/{childId}")
+    fun updateChild(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: UpdateChildRequest) = childManagement.update(jwt, organizationId, childId, request)
+
+    @PostMapping("/children/{childId}/programs") @ResponseStatus(HttpStatus.CREATED)
+    fun addChildProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateChildProgramRequest) = childManagement.addProgram(jwt, organizationId, childId, request)
+
+    @DeleteMapping("/children/{childId}/programs/{programId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun removeChildProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable programId: UUID) = childManagement.removeProgram(jwt, organizationId, childId, programId)
+
+    @PostMapping("/children/{childId}/staff-assignments") @ResponseStatus(HttpStatus.CREATED)
+    fun assignChildStaff(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: AssignChildStaffRequest) = childManagement.assignStaff(jwt, organizationId, childId, request)
+
+    @DeleteMapping("/children/{childId}/staff-assignments/{assignmentId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun unassignChildStaff(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable assignmentId: UUID) = childManagement.unassignStaff(jwt, organizationId, childId, assignmentId)
 
     @PostMapping("/children/{childId}/attendance")
     fun recordAttendance(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody command: AttendanceCommand) = attendance.record(jwt, organizationId, childId, command)
@@ -59,6 +135,24 @@ class DaycareController(private val attendance: AttendanceService, private val a
 
     @PostMapping("/invitations") @ResponseStatus(HttpStatus.CREATED)
     fun invite(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateInvitationRequest) = mapOf("id" to administration.invite(jwt, organizationId, request))
+
+    @GetMapping("/tenant-users")
+    fun tenantUsers(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = administration.tenantUsers(jwt, organizationId)
+
+    @GetMapping("/academic-years")
+    fun academicYears(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = academic.academicYears(jwt, organizationId)
+
+    @PostMapping("/academic-years") @ResponseStatus(HttpStatus.CREATED)
+    fun createAcademicYear(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateAcademicYearRequest) = academic.createAcademicYear(jwt, organizationId, request)
+
+    @GetMapping("/curriculum-programs")
+    fun curriculumPrograms(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = academic.curriculumPrograms(jwt, organizationId)
+
+    @PostMapping("/curriculum-programs") @ResponseStatus(HttpStatus.CREATED)
+    fun createCurriculumProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateCurriculumProgramRequest) = academic.createCurriculumProgram(jwt, organizationId, request)
+
+    @PostMapping("/tenant-users/{userId}/password") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun changeTenantUserPassword(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable userId: UUID, @Valid @RequestBody request: ChangeTenantUserPasswordRequest) = administration.changeTenantUserPassword(jwt, organizationId, userId, request)
 
     @PostMapping("/device-tokens") @ResponseStatus(HttpStatus.NO_CONTENT)
     fun registerDevice(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: RegisterDeviceRequest) = administration.registerDevice(jwt, organizationId, request)

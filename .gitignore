@@ -34,6 +34,7 @@ apps/mobile/GoogleService-Info.plist
 
 # Android and Gradle local state
 local.properties
+.gradle-local/
 apps/api/build/
 apps/api/.gradle/
 

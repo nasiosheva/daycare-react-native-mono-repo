@@ -1,14 +1,19 @@
 package com.daycare.api.persistence
 
 import com.daycare.api.domain.InvitationStatus
+import com.daycare.api.domain.InstitutionType
 import com.daycare.api.domain.DevelopmentCategory
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.TenantPaymentStatus
+import com.daycare.api.domain.TenantSubscriptionPlan
+import com.daycare.api.domain.TenantSubscriptionStatus
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
@@ -25,6 +30,65 @@ class UserProfile(
 
 @Entity @Table(name = "organizations")
 class Organization(@Id var id: UUID = UUID.randomUUID(), @Column(nullable = false) var name: String = "", @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now())
+
+@Entity
+@Table(name = "organization_types", uniqueConstraints = [UniqueConstraint(columnNames = ["organization_id", "type_code"])])
+class OrganizationTypeAssignment(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(name = "type_code", nullable = false) var type: InstitutionType = InstitutionType.DAYCARE,
+)
+
+@Entity @Table(name = "academic_years")
+class AcademicYear(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var name: String = "",
+    @Column(name = "starts_on", nullable = false) var startsOn: LocalDate = LocalDate.now(),
+    @Column(name = "ends_on", nullable = false) var endsOn: LocalDate = LocalDate.now(),
+    @Column(nullable = false) var active: Boolean = true,
+)
+
+@Entity @Table(name = "curriculum_programs")
+class CurriculumProgram(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "academic_year_id", nullable = false) var academicYearId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var name: String = "",
+    @Column(nullable = false) var description: String = "",
+)
+
+@Entity @Table(name = "platform_administrators")
+class PlatformAdministrator(
+    @Id @Column(name = "user_id") var userId: UUID = UUID.randomUUID(),
+    @Column(name = "pin_hash") var pinHash: String? = null,
+    @Column(name = "pin_changed_at") var pinChangedAt: Instant? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "tenant_subscriptions")
+class TenantSubscription(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false, unique = true) var organizationId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(name = "plan_code", nullable = false) var plan: TenantSubscriptionPlan = TenantSubscriptionPlan.STARTER,
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: TenantSubscriptionStatus = TenantSubscriptionStatus.PENDING_PAYMENT,
+    @Column(name = "period_start", nullable = false) var periodStart: LocalDate = LocalDate.now(),
+    @Column(name = "period_end", nullable = false) var periodEnd: LocalDate = LocalDate.now(),
+    @Column(name = "trial_ends_at") var trialEndsAt: LocalDate? = null,
+    @Column(name = "monthly_fee", precision = 14, scale = 2) var monthlyFee: java.math.BigDecimal? = null,
+)
+
+@Entity @Table(name = "tenant_payments")
+class TenantPayment(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "subscription_id", nullable = false) var subscriptionId: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(nullable = false, precision = 14, scale = 2) var amount: java.math.BigDecimal = java.math.BigDecimal.ZERO,
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: TenantPaymentStatus = TenantPaymentStatus.PENDING,
+    @Column(name = "due_date", nullable = false) var dueDate: LocalDate = LocalDate.now(),
+    @Column(name = "paid_at") var paidAt: Instant? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
 
 @Entity @Table(name = "branches")
 class Branch(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(nullable = false) var name: String = "", @Column(nullable = false) var timezone: String = "Asia/Jakarta")
@@ -51,6 +115,28 @@ class Child(
     @Column(name = "first_name", nullable = false) var firstName: String = "",
     @Column(name = "last_name") var lastName: String? = null,
     @Column(name = "date_of_birth", nullable = false) var dateOfBirth: LocalDate = LocalDate.now(),
+)
+
+@Entity
+@Table(name = "child_programs")
+class ChildProgram(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var name: String = "",
+    @Column(nullable = false) var description: String = "",
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity
+@Table(name = "child_staff_assignments", uniqueConstraints = [UniqueConstraint(columnNames = ["child_id", "user_id"])])
+class ChildStaffAssignment(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(),
+    @Column(name = "assignment_role", nullable = false) var assignmentRole: String = "STAFF",
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
 @Entity @Table(name = "guardian_links")

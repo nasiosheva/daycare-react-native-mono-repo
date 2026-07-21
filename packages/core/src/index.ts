@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const roleValues = ["ADMIN", "STAFF", "PARENT"] as const;
+export const roleValues = ["ADMIN", "STAFF_ADMIN", "STAFF", "PARENT"] as const;
 export type Role = (typeof roleValues)[number];
 
 export const attendanceMethods = ["MANUAL", "QR"] as const;
@@ -20,15 +20,43 @@ export const bookingStatuses = ["PENDING_PAYMENT", "PENDING_APPROVAL", "CONFIRME
 export type BookingStatus = (typeof bookingStatuses)[number];
 export const invoiceStatuses = ["PENDING", "PAID", "OVERDUE", "VOID"] as const;
 export type InvoiceStatus = (typeof invoiceStatuses)[number];
+export const tenantSubscriptionPlans = ["STARTER", "STANDARD", "PREMIUM"] as const;
+export type TenantSubscriptionPlan = (typeof tenantSubscriptionPlans)[number];
+export const tenantSubscriptionStatuses = ["TRIAL", "PENDING_PAYMENT", "ACTIVE", "SUSPENDED", "EXPIRED"] as const;
+export type TenantSubscriptionStatus = (typeof tenantSubscriptionStatuses)[number];
+export const tenantPaymentStatuses = ["PENDING", "PAID", "VOID"] as const;
+export type TenantPaymentStatus = (typeof tenantPaymentStatuses)[number];
+
+export const institutionTypes = ["DAYCARE", "PAUD", "TK"] as const;
+export type InstitutionType = (typeof institutionTypes)[number];
+export const institutionCapabilities = ["DAYCARE_OPERATIONS", "ACADEMIC_CURRICULUM"] as const;
+export type InstitutionCapability = (typeof institutionCapabilities)[number];
+
+const capabilitiesByInstitutionType: Record<InstitutionType, readonly InstitutionCapability[]> = {
+  DAYCARE: ["DAYCARE_OPERATIONS"],
+  PAUD: ["ACADEMIC_CURRICULUM"],
+  TK: ["ACADEMIC_CURRICULUM"],
+};
+
+export function capabilitiesForInstitutionTypes(types: readonly InstitutionType[]): InstitutionCapability[] {
+  return Array.from(new Set(types.flatMap((type) => capabilitiesByInstitutionType[type])));
+}
+
+export function hasInstitutionCapability(capabilities: readonly InstitutionCapability[] | undefined, capability: InstitutionCapability): boolean {
+  return capabilities?.includes(capability) ?? false;
+}
 
 export const permissions = {
-  manageOrganization: ["ADMIN"],
-  manageChildren: ["ADMIN", "STAFF"],
-  recordAttendance: ["ADMIN", "STAFF"],
-  recordDevelopment: ["ADMIN", "STAFF"],
-  viewChildDevelopment: ["ADMIN", "STAFF", "PARENT"],
-  manageServicePlans: ["ADMIN"],
-  approveBookings: ["ADMIN", "STAFF"],
+  manageTenants: ["ADMIN"],
+  manageTenantSubscriptions: ["ADMIN"],
+  manageOrganization: ["STAFF_ADMIN"],
+  manageTenantUsers: ["STAFF_ADMIN"],
+  manageChildren: ["STAFF_ADMIN", "STAFF"],
+  recordAttendance: ["STAFF"],
+  recordDevelopment: ["STAFF_ADMIN", "STAFF"],
+  viewChildDevelopment: ["STAFF_ADMIN", "STAFF", "PARENT"],
+  manageServicePlans: ["STAFF_ADMIN"],
+  approveBookings: ["STAFF_ADMIN", "STAFF"],
   bookServices: ["PARENT"],
   viewOwnChildren: ["PARENT"],
 } as const satisfies Record<string, readonly Role[]>;
@@ -73,10 +101,13 @@ export type PurchaseServiceInput = z.infer<typeof purchaseServiceSchema>;
 export type CurrentUser = {
   id: string;
   displayName: string;
+  isPlatformAdmin: boolean;
   memberships: Array<{
     organizationId: string;
     organizationName: string;
     branchId?: string;
     role: Role;
+    institutionTypes: InstitutionType[];
+    capabilities: InstitutionCapability[];
   }>;
 };

@@ -52,7 +52,7 @@ class DevelopmentService(
 
     @Transactional
     fun create(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreateDevelopmentEntryRequest): DevelopmentEntryResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.ADMIN, Role.STAFF))
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         val entry = entries.save(DevelopmentEntry(
             organizationId = organizationId,

@@ -1,22 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
-import { router } from "expo-router";
-import { AppText, Button, Screen, spacing } from "@daycare/ui";
+import { AppText, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppScreen } from "@/navigation/AppScreen";
 import { developmentCategories, type DevelopmentCategory, can } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren } from "@/attendance/useAttendance";
 import { useCreateDevelopmentEntry, useDevelopmentEntries } from "@/development/useDevelopment";
-import { strings } from "@/i18n/strings";
-
-const categoryLabels: Record<DevelopmentCategory, string> = {
-  ACTIVITY: "Aktivitas",
-  MEAL: "Makan",
-  NAP: "Tidur",
-  OBSERVATION: "Observasi",
-};
+import { useI18n } from "@/i18n/I18nProvider";
+import { developmentCategoryKey } from "@/i18n/translations";
 
 export default function DevelopmentScreen() {
   const { profile, organizationId } = useAuth();
+  const { t, formatDateTime } = useI18n();
   const children = useChildren();
   const [childId, setChildId] = useState<string | null>(null);
   const [category, setCategory] = useState<DevelopmentCategory>("OBSERVATION");
@@ -35,41 +30,41 @@ export default function DevelopmentScreen() {
       await createEntry.mutateAsync({ category, title, content });
       setTitle("");
       setContent("");
-      Alert.alert("Tersimpan", "Catatan perkembangan sudah dibagikan kepada parent.");
+      Alert.alert(t("development.saved"), t("development.savedDescription"));
     } catch (error) {
-      Alert.alert("Tidak dapat menyimpan", error instanceof Error ? error.message : "Silakan coba lagi.");
+      Alert.alert(t("development.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"));
     }
   };
 
-  return <Screen header={<Button variant="ghost" onPress={() => router.back()}>Kembali</Button>}>
-    <AppText variant="title">{strings.development}</AppText>
-    <AppText tone="muted">Aktivitas harian, makan, tidur, dan observasi guru.</AppText>
+  return <AppScreen>
+    <AppText variant="title">{t("development.title")}</AppText>
+    <AppText tone="muted">{t("development.subtitle")}</AppText>
     <View style={styles.selector}>
       {children.data?.map((child) => <Button key={child.id} variant={child.id === childId ? "primary" : "secondary"} onPress={() => setChildId(child.id)}>{child.fullName}</Button>)}
     </View>
     {selectedChild && canRecord && <View style={styles.form}>
-      <AppText variant="heading">Catat perkembangan {selectedChild.fullName}</AppText>
-      <View style={styles.selector}>{developmentCategories.map((item) => <Button key={item} variant={item === category ? "primary" : "secondary"} onPress={() => setCategory(item)}>{categoryLabels[item]}</Button>)}</View>
-      <TextInput style={styles.input} placeholder="Judul singkat" value={title} onChangeText={setTitle} maxLength={120} />
-      <TextInput style={[styles.input, styles.contentInput]} placeholder="Catatan perkembangan anak" value={content} onChangeText={setContent} multiline maxLength={2_000} textAlignVertical="top" />
-      <Button loading={createEntry.isPending} disabled={!title.trim() || !content.trim()} onPress={() => void submit()}>Bagikan kepada parent</Button>
+      <AppText variant="heading">{t("development.record", { name: selectedChild.fullName })}</AppText>
+      <View style={styles.selector}>{developmentCategories.map((item) => <Button key={item} variant={item === category ? "primary" : "secondary"} onPress={() => setCategory(item)}>{t(developmentCategoryKey(item))}</Button>)}</View>
+      <TextInput style={styles.input} placeholder={t("development.shortTitle")} value={title} onChangeText={setTitle} maxLength={120} />
+      <TextInput style={[styles.input, styles.contentInput]} placeholder={t("development.note")} value={content} onChangeText={setContent} multiline maxLength={2_000} textAlignVertical="top" />
+      <Button loading={createEntry.isPending} disabled={!title.trim() || !content.trim()} onPress={() => void submit()}>{t("development.share")}</Button>
     </View>}
-    <AppText variant="heading">Riwayat</AppText>
-    {entries.isLoading && <AppText>Memuat perkembangan...</AppText>}
-    {entries.isError && <Button onPress={() => entries.refetch()}>{strings.retry}</Button>}
+    <AppText variant="heading">{t("development.history")}</AppText>
+    {entries.isLoading && <AppText>{t("development.loading")}</AppText>}
+    {entries.isError && <Button onPress={() => entries.refetch()}>{t("common.retry")}</Button>}
     {entries.data?.map((entry) => <View key={entry.id} style={styles.entry}>
-      <AppText variant="label">{categoryLabels[entry.category]} · {entry.title}</AppText>
+      <AppText variant="label">{t(developmentCategoryKey(entry.category))} · {entry.title}</AppText>
       <AppText>{entry.content}</AppText>
-      <AppText variant="caption" tone="muted">{new Date(entry.recordedAt).toLocaleString("id-ID")} · {entry.recordedBy}</AppText>
+      <AppText variant="caption" tone="muted">{formatDateTime(entry.recordedAt)} · {entry.recordedBy}</AppText>
     </View>)}
-    {selectedChild && !entries.isLoading && entries.data?.length === 0 && <AppText tone="muted">Belum ada catatan perkembangan.</AppText>}
-  </Screen>;
+    {selectedChild && !entries.isLoading && entries.data?.length === 0 && <AppText tone="muted">{t("development.empty")}</AppText>}
+  </AppScreen>;
 }
 
 const styles = StyleSheet.create({
   selector: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  form: { gap: spacing.sm, padding: spacing.md, borderRadius: 12, backgroundColor: "#FFFFFF" },
-  input: { minHeight: 48, borderWidth: 1, borderColor: "#D0D5DD", borderRadius: 12, paddingHorizontal: 12, backgroundColor: "#FFFFFF" },
+  form: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 12, backgroundColor: colors.surface },
   contentInput: { minHeight: 120, paddingTop: 12 },
-  entry: { gap: spacing.xs, padding: spacing.md, borderRadius: 12, backgroundColor: "#FFFFFF" },
+  entry: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint },
 });

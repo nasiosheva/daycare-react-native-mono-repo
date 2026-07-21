@@ -14,9 +14,10 @@ class ChildScopeService(
     private val guardians: GuardianLinkRepository,
 ) {
     fun visibleChildren(scope: AccessScope, organizationId: UUID): List<Child> = when (scope.membership.role) {
-        Role.ADMIN -> children.findAllByOrganizationId(organizationId)
+        Role.STAFF_ADMIN -> children.findAllByOrganizationId(organizationId)
         Role.STAFF -> scope.membership.branchId?.let { children.findAllByOrganizationIdAndBranchId(organizationId, it) } ?: children.findAllByOrganizationId(organizationId)
         Role.PARENT -> guardians.findAllByUserId(scope.user.id).mapNotNull { children.findById(it.childId).orElse(null) }.filter { it.organizationId == organizationId }
+        Role.ADMIN -> throw AccessDeniedException("Platform administrators do not have tenant child access")
     }
 
     fun requireStaffManagedChild(scope: AccessScope, childId: UUID, organizationId: UUID): Child {

@@ -8,7 +8,9 @@
     "start:web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@daycare/api-client": "workspace:*",
@@ -21,7 +23,9 @@
     "@tanstack/react-query": "^5.81.5",
     "expo": "~53.0.12",
     "expo-camera": "~16.1.10",
+    "expo-constants": "~17.1.8",
     "expo-dev-client": "~5.2.4",
+    "expo-linking": "~7.1.7",
     "expo-notifications": "~0.31.4",
     "expo-router": "~5.1.0",
     "expo-secure-store": "~14.2.3",
@@ -35,5 +39,11 @@
     "react-native-svg": "15.11.2",
     "react-native-web": "^0.20.0"
   },
-  "devDependencies": { "@types/react": "19.0.10", "eslint": "^9.0.0", "eslint-config-expo": "~9.2.0", "typescript": "~5.8.3", "vitest": "^3.2.3" }
+  "devDependencies": {
+    "@types/react": "19.0.10",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~9.2.0",
+    "typescript": "~5.8.3",
+    "vitest": "^3.2.3"
+  }
 }

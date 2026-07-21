@@ -1,6 +1,9 @@
 spring:
   application:
     name: daycare-api
+  messages:
+    basename: i18n/errors
+    fallback-to-system-locale: false
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/daycare}
     username: ${POSTGRES_USER:daycare}
@@ -18,6 +21,8 @@ server:
   servlet:
     context-path: /api
 daycare:
+  platform-admin-emails: ${PLATFORM_ADMIN_EMAILS:}
+  firebase-service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
   qr-signing-secret: ${QR_SIGNING_SECRET:replace-this-development-secret-with-at-least-32-characters}
   expo-push-url: ${EXPO_PUSH_URL:https://exp.host/--/api/v2/push/send}
 springdoc:
