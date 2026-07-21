@@ -12,6 +12,7 @@ export default function StaffPasswordsScreen() {
   const { api, profile, organizationId } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const canManage = membership?.active !== false;
   const users = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: membership?.role === "STAFF_ADMIN" });
   const changePassword = useMutation({ mutationFn: ({ userId, password }: { userId: string; password: string }) => api.changeTenantUserPassword(userId, password) });
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -32,13 +33,14 @@ export default function StaffPasswordsScreen() {
 
   return <AppScreen showBottomNavigation={false} title={t("tenantUsers.staffPasswords")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("tenantUsers.staffPasswordSubtitle")}</AppText>
+    {!canManage && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     {users.isLoading && <AppText>{t("tenantUsers.loadingStaff")}</AppText>}
     {users.isError && <Button variant="secondary" onPress={() => users.refetch()}>{t("common.retry")}</Button>}
-    {!selectedUser && eligibleUsers.map((user) => <View key={user.id} style={styles.user}>
+    {canManage && !selectedUser && eligibleUsers.map((user) => <View key={user.id} style={styles.user}>
       <View><AppText variant="label">{user.displayName ?? user.email ?? t("common.noData")}</AppText><AppText tone="muted">{t(roleKey(user.role))} · {user.email}</AppText></View>
       <Button variant="secondary" onPress={() => setSelectedUserId(user.userId)}>{t("tenantUsers.changePassword")}</Button>
     </View>)}
-    {selectedUser && <View style={styles.form}>
+    {canManage && selectedUser && <View style={styles.form}>
       <AppText variant="heading">{selectedUser.displayName ?? selectedUser.email}</AppText>
       <PasswordInput placeholder={t("password.new")} value={password} onChangeText={setPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
       <View style={styles.actions}>

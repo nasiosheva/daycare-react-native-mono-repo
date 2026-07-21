@@ -60,17 +60,17 @@ class AccessService(
     @Transactional
     fun currentUser(jwt: Jwt): CurrentUserResponse {
         val user = identityService.sync(jwt)
-        return CurrentUserResponse(user.id, user.displayName, platformAccess.isPlatformAdmin(user), memberships.findAllByUserId(user.id).map { membership ->
+        return CurrentUserResponse(user.id, user.displayName, platformAccess.isPlatformAdmin(user), memberships.findAllByUserId(user.id).filter { it.active || it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }.sortedByDescending { it.active }.map { membership ->
             val name = organizations.findById(membership.organizationId).map { it.name }.orElse("Unknown organization")
             val capabilities = organizationCapabilities.forOrganization(membership.organizationId)
-            MembershipResponse(membership.organizationId, name, membership.role, membership.branchId, membership.classroomId, capabilities.types, capabilities.capabilities)
+            MembershipResponse(membership.organizationId, name, membership.role, membership.active, membership.branchId, membership.classroomId, capabilities.types, capabilities.capabilities)
         })
     }
 
     @Transactional
-    fun require(jwt: Jwt, organizationId: UUID, allowedRoles: Set<Role>, requiredCapability: InstitutionCapability? = null): AccessScope {
+    fun require(jwt: Jwt, organizationId: UUID, allowedRoles: Set<Role>, requiredCapability: InstitutionCapability? = null, readOnly: Boolean = false): AccessScope {
         val user = identityService.sync(jwt)
-        val membership = memberships.findAllByUserIdAndOrganizationId(user.id, organizationId).firstOrNull { it.role in allowedRoles }
+        val membership = memberships.findAllByUserIdAndOrganizationId(user.id, organizationId).sortedByDescending { it.active }.firstOrNull { (it.active || (readOnly && it.role in setOf(Role.STAFF_ADMIN, Role.STAFF))) && it.role in allowedRoles }
             ?: throw AccessDeniedException("You do not have permission for this organization")
         val subscription = subscriptions.findByOrganizationId(organizationId)
         if (subscription != null) {
@@ -80,6 +80,10 @@ class AccessService(
         val capabilities = organizationCapabilities.forOrganization(organizationId)
         if (requiredCapability != null && requiredCapability !in capabilities.capabilities) throw AccessDeniedException("This feature is not enabled for the institution")
         return AccessScope(user, membership, capabilities.types, capabilities.capabilities)
+    }
+
+    fun requireWritable(scope: AccessScope) {
+        if (!scope.membership.active) throw AccessDeniedException("Your tenant access is read-only")
     }
 }
 
@@ -103,5 +107,5 @@ class PlatformAccessService(
     }
 }
 
-data class MembershipResponse(val organizationId: UUID, val organizationName: String, val role: Role, val branchId: UUID?, val classroomId: UUID?, val institutionTypes: Set<InstitutionType>, val capabilities: Set<InstitutionCapability>)
+data class MembershipResponse(val organizationId: UUID, val organizationName: String, val role: Role, val active: Boolean, val branchId: UUID?, val classroomId: UUID?, val institutionTypes: Set<InstitutionType>, val capabilities: Set<InstitutionCapability>)
 data class CurrentUserResponse(val id: UUID, val displayName: String, val isPlatformAdmin: Boolean, val memberships: List<MembershipResponse>)

@@ -11,6 +11,7 @@ export default function StaffAdminScreen() {
   const { api, profile, organizationId } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const readOnly = membership?.active === false;
   const users = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: membership?.role === "STAFF_ADMIN" });
   const invoices = useInvoices();
   const entitlements = useEntitlements();
@@ -22,13 +23,14 @@ export default function StaffAdminScreen() {
   const remainingCredits = entitlements.data?.filter((entitlement) => entitlement.status === "ACTIVE").reduce((total, entitlement) => total + (entitlement.remainingCredits ?? 0), 0) ?? 0;
 
   return <AppScreen><AppText variant="title">{t("staffAdmin.title")}</AppText>
-    <AppText tone="muted">{t("staffAdmin.subtitle")}</AppText>
+    <AppText tone="muted">{t("staffAdmin.subtitle")}</AppText>{readOnly && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     <View style={styles.metrics}>
       <Metric label={t("staffAdmin.activeStaff")} value={activeStaff} />
       <Metric label={t("staffAdmin.pendingPayments")} value={pendingPayments} />
       <Metric label={t("staffAdmin.activeSubscriptions")} value={activeSubscriptions} />
       <Metric label={t("staffAdmin.remainingCredits")} value={remainingCredits} />
     </View>
+    <MenuItem title={t("nav.development")} description={t("staffOperations.developmentDescription")} onPress={() => router.push("/development")} />
     <MenuItem title={t("staffAdmin.staff")} description={t("staffAdmin.staffDescription")} onPress={() => router.push("/tenant-users")} />
     <MenuItem title={t("staffAdmin.payments")} description={t("staffAdmin.paymentsDescription")} onPress={() => router.push("/parent-payments")} />
     <MenuItem title={t("staffAdmin.subscriptions")} description={t("staffAdmin.subscriptionsDescription")} onPress={() => router.push("/parent-subscriptions")} />

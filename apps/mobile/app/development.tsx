@@ -21,7 +21,7 @@ export default function DevelopmentScreen() {
   const entries = useDevelopmentEntries(childId);
   const createEntry = useCreateDevelopmentEntry(childId);
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const canRecord = membership ? can(membership.role, "recordDevelopment") : false;
+  const canRecord = membership ? can(membership.role, "recordDevelopment") && membership.active : false;
 
   useEffect(() => { if (!childId && children.data?.[0]) setChildId(children.data[0].id); }, [childId, children.data]);
 
@@ -39,6 +39,7 @@ export default function DevelopmentScreen() {
   return <AppScreen>
     <AppText variant="title">{t("development.title")}</AppText>
     <AppText tone="muted">{t("development.subtitle")}</AppText>
+    {membership?.active === false && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     <View style={styles.selector}>
       {children.data?.map((child) => <Button key={child.id} variant={child.id === childId ? "primary" : "secondary"} onPress={() => setChildId(child.id)}>{child.fullName}</Button>)}
     </View>

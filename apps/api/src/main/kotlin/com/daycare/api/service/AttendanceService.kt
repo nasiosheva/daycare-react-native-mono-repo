@@ -38,13 +38,14 @@ class AttendanceService(
 ) {
     @Transactional
     fun listChildren(jwt: Jwt, organizationId: UUID): List<ChildResponse> {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet())
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
         return childScopes.visibleChildren(scope, organizationId).map(::toResponse)
     }
 
     @Transactional
     fun record(jwt: Jwt, organizationId: UUID, childId: UUID, command: AttendanceCommand): AttendanceResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF))
+        access.requireWritable(scope)
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         if (command.method == AttendanceMethod.QR) qr.verify(child.id, child.fullName(), command.qrToken ?: throw IllegalArgumentException("QR token is required"))
         val timezone = branches.findById(child.branchId).orElseThrow { IllegalArgumentException("Child branch was not found") }.timezone

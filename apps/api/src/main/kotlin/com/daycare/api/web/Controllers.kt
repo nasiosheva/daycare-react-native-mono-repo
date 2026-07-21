@@ -23,6 +23,7 @@ import com.daycare.api.service.LearningStructureService
 import com.daycare.api.service.UpsertLearningLevelRequest
 import com.daycare.api.service.UpsertClassroomRequest
 import com.daycare.api.service.AssignClassroomStaffRequest
+import com.daycare.api.service.CreateClassroomProgramRequest
 import com.daycare.api.service.CreateChildPlacementRequest
 import com.daycare.api.service.CreateAcademicYearRequest
 import com.daycare.api.service.CreateCurriculumProgramRequest
@@ -174,6 +175,9 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @PatchMapping("/children/{childId}")
     fun updateChild(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: UpdateChildRequest) = childManagement.update(jwt, organizationId, childId, request)
 
+    @PostMapping("/children/{childId}/deactivate")
+    fun deactivateChild(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childManagement.deactivate(jwt, organizationId, childId)
+
     @PostMapping("/children/{childId}/programs") @ResponseStatus(HttpStatus.CREATED)
     fun addChildProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateChildProgramRequest) = childManagement.addProgram(jwt, organizationId, childId, request)
 
@@ -206,6 +210,9 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @GetMapping("/tenant-users")
     fun tenantUsers(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = administration.tenantUsers(jwt, organizationId)
+
+    @PostMapping("/tenant-users/{userId}/deactivate") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deactivateTenantUser(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable userId: UUID) = administration.deactivateTenantUser(jwt, organizationId, userId)
 
     @GetMapping("/branches")
     fun branches(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = branchManagement.branches(jwt, organizationId)
@@ -272,6 +279,15 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @DeleteMapping("/classrooms/{classroomId}/staff-assignments/{assignmentId}") @ResponseStatus(HttpStatus.NO_CONTENT)
     fun unassignClassroomStaff(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable classroomId: UUID, @PathVariable assignmentId: UUID) = learning.unassignClassroomStaff(jwt, organizationId, classroomId, assignmentId)
+
+    @GetMapping("/classrooms/{classroomId}/programs")
+    fun classroomPrograms(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable classroomId: UUID) = learning.classroomPrograms(jwt, organizationId, classroomId)
+
+    @PostMapping("/classrooms/{classroomId}/programs") @ResponseStatus(HttpStatus.CREATED)
+    fun createClassroomProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable classroomId: UUID, @Valid @RequestBody request: CreateClassroomProgramRequest) = learning.createClassroomProgram(jwt, organizationId, classroomId, request)
+
+    @DeleteMapping("/classrooms/{classroomId}/programs/{programId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun removeClassroomProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable classroomId: UUID, @PathVariable programId: UUID) = learning.removeClassroomProgram(jwt, organizationId, classroomId, programId)
 
     @GetMapping("/children/{childId}/placements")
     fun childPlacements(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = learning.placements(jwt, organizationId, childId)

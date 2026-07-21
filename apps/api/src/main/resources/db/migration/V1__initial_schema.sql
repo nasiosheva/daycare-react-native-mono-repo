@@ -86,6 +86,7 @@ CREATE TABLE memberships (
   role VARCHAR(20) NOT NULL,
   branch_id UUID REFERENCES branches(id),
   classroom_id UUID REFERENCES classrooms(id),
+  active BOOLEAN NOT NULL DEFAULT TRUE,
   UNIQUE (user_id, organization_id, role, branch_id, classroom_id)
 );
 
@@ -97,7 +98,8 @@ CREATE TABLE children (
   first_name VARCHAR(100) NOT NULL,
   last_name VARCHAR(100),
   date_of_birth DATE NOT NULL,
-  enrollment_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
+  enrollment_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+  active BOOLEAN NOT NULL DEFAULT TRUE
 );
 CREATE INDEX children_organization_branch_idx ON children (organization_id, branch_id);
 
@@ -155,6 +157,17 @@ CREATE TABLE classroom_staff_assignments (
   CONSTRAINT classroom_staff_assignments_unique UNIQUE (classroom_id, user_id)
 );
 CREATE INDEX classroom_staff_assignments_user_idx ON classroom_staff_assignments (organization_id, user_id);
+
+CREATE TABLE classroom_programs (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  classroom_id UUID NOT NULL REFERENCES classrooms(id) ON DELETE CASCADE,
+  name VARCHAR(120) NOT NULL,
+  description VARCHAR(2000) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  CONSTRAINT classroom_programs_unique UNIQUE (classroom_id, name)
+);
+CREATE INDEX classroom_programs_classroom_idx ON classroom_programs (organization_id, classroom_id, created_at DESC);
 
 CREATE TABLE attendance_records (
   id UUID PRIMARY KEY,

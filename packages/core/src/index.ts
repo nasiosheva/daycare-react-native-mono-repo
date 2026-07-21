@@ -114,6 +114,7 @@ export type CurrentUser = {
     organizationName: string;
     branchId?: string;
     role: Role;
+    active: boolean;
     institutionTypes: InstitutionType[];
     capabilities: InstitutionCapability[];
   }>;

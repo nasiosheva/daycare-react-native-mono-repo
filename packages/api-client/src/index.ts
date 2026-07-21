@@ -63,15 +63,16 @@ export type UpsertLearningLevelInput = { name: string; minAgeMonths?: number; ma
 export type Classroom = { id: string; branchId: string; learningLevelId?: string | null; learningPeriodId?: string | null; name: string; capacity?: number | null; active: boolean; activeChildren: number };
 export type UpsertClassroomInput = { branchId: string; learningLevelId: string; learningPeriodId?: string; name: string; capacity?: number };
 export type ClassroomStaffAssignment = { id: string; userId: string; displayName: string; email?: string | null; assignmentRole: ChildAssignmentRole };
+export type ClassroomProgram = { id: string; name: string; description: string };
 export type ChildPlacement = { id: string; classroomId: string; classroomName: string; learningLevelId?: string | null; learningLevelName?: string | null; learningPeriodId?: string | null; startsOn: string; endedOn?: string | null; ageGuidanceWarning: boolean };
 export type TenantInvitationInput = { email?: string; phoneNumber?: string; role: Extract<Role, "STAFF" | "PARENT">; branchId?: string; classroomId?: string };
 export type CreateTenantUserInput = { displayName: string; email: string; password: string; role: Extract<Role, "STAFF_ADMIN" | "STAFF"> };
-export type TenantUser = { id: string; userId: string | null; displayName: string | null; email: string | null; role: Extract<Role, "STAFF_ADMIN" | "STAFF" | "PARENT">; status: "ACTIVE" | "PENDING" };
+export type TenantUser = { id: string; userId: string | null; displayName: string | null; email: string | null; role: Extract<Role, "STAFF_ADMIN" | "STAFF" | "PARENT">; status: "ACTIVE" | "INACTIVE" | "PENDING" };
 export type ParentTenantPlan = { id: string; name: string; type: ServicePlanType; price: number; creditCount?: number | null; bookingRequiresApproval: boolean; dailyCapacity?: number | null };
 export type ParentTenantCatalog = { organizationId: string; organizationName: string; branches: Array<{ id: string; name: string; dailyCapacity?: number | null }>; plans: ParentTenantPlan[] };
 export type ParentEnrollmentStatus = "PENDING_PAYMENT" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "EXPIRED";
 export type ParentEnrollment = { id: string; organizationId: string; branchId: string; childId: string; childName: string; invoiceId: string; entitlementId: string; status: ParentEnrollmentStatus; rejectionReason?: string | null; createdAt: string };
-export type ParentEnrollmentCheckoutInput = { organizationId: string; branchId: string; planId: string; bookingDates: string[]; promoCode?: string; child: { firstName: string; lastName?: string; dateOfBirth: string } };
+export type ParentEnrollmentCheckoutInput = { organizationId: string; branchId: string; planId: string; bookingDates: string[]; promoCode?: string; children: Array<{ firstName: string; lastName?: string; dateOfBirth: string }> };
 
 export class ApiClient {
   constructor(private readonly options: ApiClientOptions) {}
@@ -81,7 +82,7 @@ export class ApiClient {
   }
   async parentEnrollmentCatalog(): Promise<ParentTenantCatalog[]> { return this.request("/parent-enrollment/catalog"); }
   async parentEnrollments(): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment"); }
-  async checkoutParentEnrollment(input: ParentEnrollmentCheckoutInput): Promise<ParentEnrollment> { return this.request("/parent-enrollment/checkout", { method: "POST", body: JSON.stringify(input) }); }
+  async checkoutParentEnrollment(input: ParentEnrollmentCheckoutInput): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment/checkout", { method: "POST", body: JSON.stringify(input) }); }
   async pendingParentEnrollments(): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment/pending-approval"); }
   async approveParentEnrollment(enrollmentId: string, approved: boolean, rejectionReason?: string): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/approval`, { method: "POST", body: JSON.stringify({ approved, rejectionReason }) }); }
   async retryParentEnrollment(enrollmentId: string, bookingDates: string[]): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/retry`, { method: "POST", body: JSON.stringify({ bookingDates }) }); }
@@ -106,6 +107,7 @@ export class ApiClient {
   async inviteTenantUser(input: TenantInvitationInput): Promise<{ id: string }> { return this.request("/invitations", { method: "POST", body: JSON.stringify(input) }); }
   async createTenantUser(input: CreateTenantUserInput): Promise<TenantUser> { return this.request("/tenant-users", { method: "POST", body: JSON.stringify(input) }); }
   async tenantUsers(): Promise<TenantUser[]> { return this.request("/tenant-users"); }
+  async deactivateTenantUser(userId: string): Promise<void> { await this.request<void>(`/tenant-users/${userId}/deactivate`, { method: "POST" }); }
   async changeTenantUserPassword(userId: string, password: string): Promise<void> { await this.request<void>(`/tenant-users/${userId}/password`, { method: "POST", body: JSON.stringify({ password }) }); }
   async academicYears(): Promise<AcademicYear[]> { return this.request("/academic-years"); }
   async createAcademicYear(input: CreateAcademicYearInput): Promise<AcademicYear> { return this.request("/academic-years", { method: "POST", body: JSON.stringify(input) }); }
@@ -124,6 +126,9 @@ export class ApiClient {
   async classroomStaffAssignments(classroomId: string): Promise<ClassroomStaffAssignment[]> { return this.request(`/classrooms/${classroomId}/staff-assignments`); }
   async assignClassroomStaff(classroomId: string, input: { userId: string; assignmentRole: ChildAssignmentRole }): Promise<ClassroomStaffAssignment> { return this.request(`/classrooms/${classroomId}/staff-assignments`, { method: "POST", body: JSON.stringify(input) }); }
   async unassignClassroomStaff(classroomId: string, assignmentId: string): Promise<void> { await this.request<void>(`/classrooms/${classroomId}/staff-assignments/${assignmentId}`, { method: "DELETE" }); }
+  async classroomPrograms(classroomId: string): Promise<ClassroomProgram[]> { return this.request(`/classrooms/${classroomId}/programs`); }
+  async createClassroomProgram(classroomId: string, input: { name: string; description?: string }): Promise<ClassroomProgram> { return this.request(`/classrooms/${classroomId}/programs`, { method: "POST", body: JSON.stringify(input) }); }
+  async removeClassroomProgram(classroomId: string, programId: string): Promise<void> { await this.request<void>(`/classrooms/${classroomId}/programs/${programId}`, { method: "DELETE" }); }
   async childPlacements(childId: string): Promise<ChildPlacement[]> { return this.request(`/children/${childId}/placements`); }
   async placeChild(childId: string, input: { classroomId: string; startsOn?: string }): Promise<ChildPlacement> { return this.request(`/children/${childId}/placements`, { method: "POST", body: JSON.stringify(input) }); }
 
@@ -133,6 +138,7 @@ export class ApiClient {
   async createChild(input: ChildInput): Promise<Child> { return this.request("/children", { method: "POST", body: JSON.stringify(input) }); }
   async childProfile(childId: string): Promise<ChildProfile> { return this.request(`/children/${childId}`); }
   async updateChild(childId: string, input: UpdateChildInput): Promise<Child> { return this.request(`/children/${childId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async deactivateChild(childId: string): Promise<Child> { return this.request(`/children/${childId}/deactivate`, { method: "POST" }); }
   async addChildProgram(childId: string, input: { name: string; description?: string }): Promise<ChildProgram> { return this.request(`/children/${childId}/programs`, { method: "POST", body: JSON.stringify(input) }); }
   async removeChildProgram(childId: string, programId: string): Promise<void> { await this.request<void>(`/children/${childId}/programs/${programId}`, { method: "DELETE" }); }
   async assignChildStaff(childId: string, input: { userId: string; assignmentRole: ChildAssignmentRole }): Promise<ChildStaffAssignment> { return this.request(`/children/${childId}/staff-assignments`, { method: "POST", body: JSON.stringify(input) }); }

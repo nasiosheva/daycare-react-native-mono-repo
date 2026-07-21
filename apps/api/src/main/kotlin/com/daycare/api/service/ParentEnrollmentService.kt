@@ -31,7 +31,14 @@ import java.time.LocalDate
 import java.util.UUID
 
 data class ParentEnrollmentChildInput(@field:NotBlank @field:Size(max = 100) val firstName: String, @field:Size(max = 100) val lastName: String?, val dateOfBirth: LocalDate)
-data class ParentEnrollmentCheckoutRequest(val organizationId: UUID, val branchId: UUID, val planId: UUID, val bookingDates: List<LocalDate>, val promoCode: String? = null, @field:Valid val child: ParentEnrollmentChildInput)
+data class ParentEnrollmentCheckoutRequest(
+    val organizationId: UUID,
+    val branchId: UUID,
+    val planId: UUID,
+    val bookingDates: List<LocalDate>,
+    val promoCode: String? = null,
+    @field:Size(min = 1, max = 10) @field:Valid val children: List<ParentEnrollmentChildInput>,
+)
 data class ParentEnrollmentApprovalRequest(val approved: Boolean, @field:Size(max = 500) val rejectionReason: String? = null)
 data class ParentEnrollmentRetryRequest(val bookingDates: List<LocalDate> = emptyList())
 data class ParentTenantPlanResponse(val id: UUID, val name: String, val type: com.daycare.api.domain.ServicePlanType, val price: java.math.BigDecimal, val creditCount: Int?, val bookingRequiresApproval: Boolean, val dailyCapacity: Int?)
@@ -74,17 +81,20 @@ class ParentEnrollmentService(
     }
 
     @Transactional
-    fun checkout(jwt: Jwt, request: ParentEnrollmentCheckoutRequest): ParentEnrollmentResponse {
+    fun checkout(jwt: Jwt, request: ParentEnrollmentCheckoutRequest): List<ParentEnrollmentResponse> {
         val parent = identity.sync(jwt)
         require(memberships.findAllByUserIdAndOrganizationId(parent.id, request.organizationId).none { it.role == Role.PARENT }) { "Parent is already active in this tenant" }
         requireCatalogTenant(request.organizationId)
         val branch = branches.findById(request.branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
         require(branch.organizationId == request.organizationId && branch.active) { "Branch is not available for this organization" }
-        val child = children.save(Child(organizationId = request.organizationId, branchId = branch.id, firstName = request.child.firstName.trim(), lastName = request.child.lastName?.trim()?.ifBlank { null }, dateOfBirth = request.child.dateOfBirth, enrollmentStatus = ChildEnrollmentStatus.PENDING))
-        val purchase = billing.purchaseForEnrollment(parent, request.organizationId, child, PurchaseServiceRequest(request.planId, child.id, request.bookingDates, request.promoCode))
-        val enrollment = enrollments.save(ParentEnrollment(userId = parent.id, organizationId = request.organizationId, branchId = branch.id, childId = child.id, invoiceId = purchase.invoice.id, entitlementId = purchase.entitlement.id))
-        notifyStaffAdmins(request.organizationId, "Pembayaran Parent baru", "Pengajuan ${child.fullName()} menunggu konfirmasi pembayaran.", "/parent-payments")
-        return response(enrollment)
+        val created = request.children.map { childInput ->
+            val child = children.save(Child(organizationId = request.organizationId, branchId = branch.id, firstName = childInput.firstName.trim(), lastName = childInput.lastName?.trim()?.ifBlank { null }, dateOfBirth = childInput.dateOfBirth, enrollmentStatus = ChildEnrollmentStatus.PENDING))
+            val purchase = billing.purchaseForEnrollment(parent, request.organizationId, child, PurchaseServiceRequest(request.planId, child.id, request.bookingDates, request.promoCode))
+            val enrollment = enrollments.save(ParentEnrollment(userId = parent.id, organizationId = request.organizationId, branchId = branch.id, childId = child.id, invoiceId = purchase.invoice.id, entitlementId = purchase.entitlement.id))
+            response(enrollment)
+        }
+        notifyStaffAdmins(request.organizationId, "Pembayaran Parent baru", "Pengajuan ${created.joinToString { it.childName }} menunggu konfirmasi pembayaran.", "/parent-payments")
+        return created
     }
 
     @Transactional(readOnly = true)
@@ -95,7 +105,7 @@ class ParentEnrollmentService(
 
     @Transactional
     fun pendingApprovals(jwt: Jwt, organizationId: UUID): List<ParentEnrollmentResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
         return enrollments.findAllByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId, ParentEnrollmentStatus.PENDING_APPROVAL).map(::response)
     }
 
@@ -160,7 +170,7 @@ class ParentEnrollmentService(
 
     private fun billingBranchCapacity(organizationId: UUID, branchId: UUID): Int? = billing.branchCapacityForCatalog(organizationId, branchId)
     private fun notifyStaffAdmins(organizationId: UUID, title: String, body: String, actionPath: String) {
-        memberships.findAllByOrganizationId(organizationId).filter { it.role == Role.STAFF_ADMIN }.forEach { notifications.notify(organizationId, it.userId, title, body, actionPath) }
+        memberships.findAllByOrganizationId(organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.forEach { notifications.notify(organizationId, it.userId, title, body, actionPath) }
     }
     private fun response(enrollment: ParentEnrollment): ParentEnrollmentResponse {
         val child = children.findById(enrollment.childId).orElseThrow { IllegalArgumentException("Child was not found") }

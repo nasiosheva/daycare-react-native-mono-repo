@@ -29,7 +29,7 @@ export function createSimulationSession(role: Role): SimulationSession {
       id,
       displayName: details.displayName,
       isPlatformAdmin: role === "ADMIN",
-      memberships: [{ organizationId: simulationOrganization.id, organizationName: simulationOrganization.name, role, institutionTypes: ["DAYCARE"], capabilities: capabilitiesForInstitutionTypes(["DAYCARE"]) }],
+      memberships: [{ organizationId: simulationOrganization.id, organizationName: simulationOrganization.name, role, active: true, institutionTypes: ["DAYCARE"], capabilities: capabilitiesForInstitutionTypes(["DAYCARE"]) }],
     },
   };
 }

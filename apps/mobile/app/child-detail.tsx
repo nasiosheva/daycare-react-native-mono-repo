@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppText, BackButton, Button, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
-import { useAddChildProgram, useAssignChildStaff, useChildProfile, useCreateChild, useRemoveChildProgram, useUnassignChildStaff, useUpdateChild } from "@/children/useChildManagement";
+import { useAddChildProgram, useAssignChildStaff, useChildProfile, useCreateChild, useDeactivateChild, useRemoveChildProgram, useUnassignChildStaff, useUpdateChild } from "@/children/useChildManagement";
 import { useI18n } from "@/i18n/I18nProvider";
 
 const assignmentRoles = ["STAFF", "NURSE", "MISS"] as const;
@@ -17,10 +17,12 @@ export default function ChildDetailScreen() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const canManage = membership?.role === "STAFF_ADMIN";
+  const canManage = membership?.role === "STAFF_ADMIN" && membership.active;
+  const canPlaceChild = membership?.active !== false;
   const childProfile = useChildProfile(childId);
   const createChild = useCreateChild();
   const updateChild = useUpdateChild(childId ?? "");
+  const deactivateChild = useDeactivateChild(childId ?? "");
   const addProgram = useAddChildProgram(childId ?? "");
   const removeProgram = useRemoveChildProgram(childId ?? "");
   const assignStaff = useAssignChildStaff(childId ?? "");
@@ -68,6 +70,13 @@ export default function ChildDetailScreen() {
     try { await assignStaff.mutateAsync({ userId: staffUserId, assignmentRole }); setStaffUserId(null); }
     catch (error) { Alert.alert(t("children.assignmentFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
+  const deactivate = () => {
+    if (!childId) return;
+    Alert.alert(t("children.deactivate"), t("children.deactivateDescription"), [
+      { text: t("common.cancel"), style: "cancel" },
+      { text: t("children.deactivate"), style: "destructive", onPress: () => void deactivateChild.mutateAsync().then(() => router.replace("/children")).catch((error: unknown) => Alert.alert(t("children.deactivateFailed"), error instanceof Error ? error.message : t("auth.tryAgain"))) },
+    ]);
+  };
 
   return <AppScreen showBottomNavigation={false} title={childId ? t("children.detailTitle") : t("children.add")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {childId && childProfile.isLoading ? <AppText>{t("children.loading")}</AppText> : <View style={styles.form}>
@@ -76,12 +85,14 @@ export default function ChildDetailScreen() {
       <TextInput style={styles.input} placeholder={t("children.lastName")} value={lastName} onChangeText={setLastName} />
       <TextInput style={styles.input} placeholder={t("children.birthDate")} value={dateOfBirth} onChangeText={setDateOfBirth} />
       {canManage && <Button loading={createChild.isPending || updateChild.isPending} onPress={() => void saveChild()}>{t("children.save")}</Button>}
+      {canManage && childId && <Button variant="danger" loading={deactivateChild.isPending} onPress={deactivate}>{t("children.deactivate")}</Button>}
     </View>}
     {childId && childProfile.data && <>
       <View style={styles.form}><AppText variant="h5">{t("learning.placements")}</AppText>
-        <View style={styles.options}>{classrooms.data?.filter((classroom) => classroom.active).map((classroom) => <Button key={classroom.id} variant={classroomId === classroom.id ? "primary" : "secondary"} onPress={() => setClassroomId(classroom.id)}>{classroom.name}</Button>)}</View>
+        {membership?.active === false && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
+        {canPlaceChild && <><View style={styles.options}>{classrooms.data?.filter((classroom) => classroom.active).map((classroom) => <Button key={classroom.id} variant={classroomId === classroom.id ? "primary" : "secondary"} onPress={() => setClassroomId(classroom.id)}>{classroom.name}</Button>)}</View>
         <TextInput style={styles.input} placeholder={t("learning.startDate")} value={placementStart} onChangeText={setPlacementStart} />
-        <Button loading={placeChild.isPending} disabled={!classroomId} onPress={() => { if (!classroomId) return; void placeChild.mutateAsync({ classroomId, startsOn: placementStart || undefined }).then((placement) => { if (placement.ageGuidanceWarning) Alert.alert(t("learning.ageGuidance")); setClassroomId(null); setPlacementStart(""); }).catch((error: unknown) => Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"))); }}>{t("learning.placeChild")}</Button>
+        <Button loading={placeChild.isPending} disabled={!classroomId} onPress={() => { if (!classroomId) return; void placeChild.mutateAsync({ classroomId, startsOn: placementStart || undefined }).then((placement) => { if (placement.ageGuidanceWarning) Alert.alert(t("learning.ageGuidance")); setClassroomId(null); setPlacementStart(""); }).catch((error: unknown) => Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"))); }}>{t("learning.placeChild")}</Button></>}
         {placements.data?.map((placement) => <View key={placement.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{placement.learningLevelName ?? "–"} · {placement.classroomName}</AppText><AppText variant="bodySmall" tone="muted">{placement.startsOn}{placement.endedOn ? ` – ${placement.endedOn}` : ""}</AppText></View></View>)}
         {placements.data?.length === 0 && <AppText tone="muted">{t("learning.noPlacements")}</AppText>}
       </View>

@@ -77,11 +77,11 @@ class AdministrationService(
 
     @Transactional(readOnly = true)
     fun tenantUsers(jwt: Jwt, organizationId: UUID): List<TenantUserResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
         val activeUsers = users.findAllById(membershipsFor(organizationId).map { it.userId }).associateBy { it.id }
         val memberships = membershipsFor(organizationId).map { membership ->
             val user = activeUsers[membership.userId]
-            TenantUserResponse(membership.id, membership.userId, user?.displayName, user?.email, membership.role, "ACTIVE")
+            TenantUserResponse(membership.id, membership.userId, user?.displayName, user?.email, membership.role, if (membership.active) "ACTIVE" else "INACTIVE")
         }
         val invitations = invitations.findAllByOrganizationIdAndStatus(organizationId, InvitationStatus.PENDING)
             .filter { it.role in setOf(Role.STAFF, Role.PARENT) }
@@ -93,15 +93,26 @@ class AdministrationService(
     fun changeTenantUserPassword(jwt: Jwt, organizationId: UUID, userId: UUID, request: ChangeTenantUserPasswordRequest) {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         require(request.password.length >= 6) { TenantUserAccountError.PASSWORD_TOO_SHORT }
-        val membership = memberships.findAllByUserIdAndOrganizationId(userId, organizationId).firstOrNull { it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }
+        val membership = memberships.findAllByUserIdAndOrganizationId(userId, organizationId).firstOrNull { it.active && it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }
             ?: throw IllegalArgumentException("Only active Staff Admin or Staff users in this tenant can have their password changed")
         val user = users.findById(membership.userId).orElseThrow { IllegalArgumentException("Tenant user was not found") }
         tenantUserAccounts.changePassword(user, request.password)
     }
 
     @Transactional
+    fun deactivateTenantUser(jwt: Jwt, organizationId: UUID, userId: UUID) {
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        require(scope.user.id != userId) { "You cannot deactivate your own tenant access" }
+        val membership = memberships.findAllByUserIdAndOrganizationId(userId, organizationId).firstOrNull { it.active && it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }
+            ?: throw IllegalArgumentException("Only active Staff Admin or Staff users in this tenant can be deactivated")
+        if (membership.role == Role.STAFF_ADMIN) require(membershipsFor(organizationId).count { it.active && it.role == Role.STAFF_ADMIN } > 1) { "At least one active Staff Admin is required" }
+        membership.active = false
+    }
+
+    @Transactional
     fun registerDevice(jwt: Jwt, organizationId: UUID, request: RegisterDeviceRequest) {
         val scope = access.require(jwt, organizationId, Role.entries.toSet())
+        access.requireWritable(scope)
         require(request.token.isNotBlank() && request.platform in setOf("ios", "android")) { "A valid native device token is required" }
         val device = deviceTokens.findByToken(request.token) ?: DeviceToken(token = request.token)
         device.organizationId = organizationId
@@ -112,7 +123,7 @@ class AdministrationService(
 
     @Transactional(readOnly = true)
     fun notifications(jwt: Jwt, organizationId: UUID): List<NotificationResponse> {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet())
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
         return notifications.findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDesc(scope.user.id, organizationId).map { NotificationResponse(it.id, it.title, it.body, it.createdAt, it.readAt) }
     }
 

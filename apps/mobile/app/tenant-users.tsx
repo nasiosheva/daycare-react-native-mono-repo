@@ -15,10 +15,12 @@ export default function TenantUsersScreen() {
   const { api, profile, organizationId } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const canManage = membership?.active !== false;
   const queryClient = useQueryClient();
   const tenantUsers = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: membership?.role === "STAFF_ADMIN" });
   const createTenantUser = useMutation({ mutationFn: api.createTenantUser.bind(api), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tenant-users", organizationId] }) });
   const inviteParent = useMutation({ mutationFn: api.inviteTenantUser.bind(api), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tenant-users", organizationId] }) });
+  const deactivateTenantUser = useMutation({ mutationFn: api.deactivateTenantUser.bind(api), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tenant-users", organizationId] }) });
   const [displayName, setDisplayName] = useState("");
   const [staffEmail, setStaffEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -44,29 +46,35 @@ export default function TenantUsersScreen() {
       Alert.alert(t("tenantUsers.invited"), t("tenantUsers.invitedDescription"));
     } catch (error) { Alert.alert(t("tenantUsers.inviteFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
+  const deactivate = async (userId: string) => {
+    try { await deactivateTenantUser.mutateAsync(userId); }
+    catch (error) { Alert.alert(t("tenantUsers.deactivateFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+  };
 
   return <AppScreen><AppText variant="title">{t("tenantUsers.title")}</AppText>
     <AppText tone="muted">{t("tenantUsers.subtitle")}</AppText>
-    <Button variant="secondary" onPress={() => router.push("/staff-passwords")}>{t("tenantUsers.managePasswords")}</Button>
-    <View style={styles.form}>
+    {membership?.active === false && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
+    {canManage && <Button variant="secondary" onPress={() => router.push("/staff-passwords")}>{t("tenantUsers.managePasswords")}</Button>}
+    {canManage && <View style={styles.form}>
       <AppText variant="heading">{t("tenantUsers.createStaffAccount")}</AppText>
       <TextInput style={styles.input} placeholder={t("tenantUsers.displayName")} value={displayName} onChangeText={setDisplayName} />
       <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder={t("tenantUsers.email")} value={staffEmail} onChangeText={setStaffEmail} />
       <PasswordInput placeholder={t("tenantUsers.password")} value={password} onChangeText={setPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
       <View style={styles.options}>{staffRoles.map((item) => <Button key={item} variant={item === staffRole ? "primary" : "secondary"} onPress={() => setStaffRole(item)}>{t(roleKey(item))}</Button>)}</View>
       <Button loading={createTenantUser.isPending} onPress={() => void submitStaffAccount()}>{t("tenantUsers.createStaffAccount")}</Button>
-    </View>
-    <View style={styles.form}>
+    </View>}
+    {canManage && <View style={styles.form}>
       <AppText variant="heading">{t("tenantUsers.parentInvitation")}</AppText>
       <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder={t("tenantUsers.email")} value={parentEmail} onChangeText={setParentEmail} />
       <Button loading={inviteParent.isPending} onPress={() => void submitParentInvitation()}>{t("tenantUsers.invite")}</Button>
-    </View>
+    </View>}
     <AppText variant="heading">{t("tenantUsers.accounts")}</AppText>
     {tenantUsers.isLoading && <AppText>{t("tenantUsers.loading")}</AppText>}
     {tenantUsers.isError && <Button variant="secondary" onPress={() => tenantUsers.refetch()}>{t("common.retry")}</Button>}
     {tenantUsers.data?.map((item) => <View key={item.id} style={styles.user}>
       <AppText variant="label">{item.displayName ?? item.email ?? t("common.noData")}</AppText>
       <AppText tone="muted">{t(roleKey(item.role))} · {t(`status.${item.status}` as Parameters<typeof t>[0])}</AppText>
+      {canManage && item.status === "ACTIVE" && item.userId && (item.role === "STAFF_ADMIN" || item.role === "STAFF") && <Button variant="danger" loading={deactivateTenantUser.isPending} onPress={() => void deactivate(item.userId!)}>{t("tenantUsers.deactivate")}</Button>}
     </View>)}
   </AppScreen>;
 }

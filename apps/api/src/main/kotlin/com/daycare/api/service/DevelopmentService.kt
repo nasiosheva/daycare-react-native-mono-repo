@@ -44,7 +44,7 @@ class DevelopmentService(
 ) {
     @Transactional
     fun list(jwt: Jwt, organizationId: UUID, childId: UUID): List<DevelopmentEntryResponse> {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet())
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
         if (scope.membership.role == Role.PARENT) childScopes.requireParentLinkedChild(scope, childId, organizationId)
         else childScopes.requireStaffManagedChild(scope, childId, organizationId)
         return entries.findAllByOrganizationIdAndChildIdOrderByRecordedAtDesc(organizationId, childId).map(::toResponse)
@@ -53,6 +53,7 @@ class DevelopmentService(
     @Transactional
     fun create(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreateDevelopmentEntryRequest): DevelopmentEntryResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
+        access.requireWritable(scope)
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         val entry = entries.save(DevelopmentEntry(
             organizationId = organizationId,

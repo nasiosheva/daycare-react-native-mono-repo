@@ -27,7 +27,7 @@ class BranchManagementService(
 ) {
     @Transactional
     fun branches(jwt: Jwt, organizationId: UUID): List<TenantBranchResponse> {
-        requireStaffAdmin(jwt, organizationId)
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
         return branches.findAllByOrganizationId(organizationId)
             .sortedWith(compareByDescending<Branch> { it.primary }.thenBy { it.name })
             .map(::response)

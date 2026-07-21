@@ -16,11 +16,8 @@ const navigationByRole: Record<Role, NavigationItem[]> = {
   STAFF_ADMIN: [
     { href: "/home", labelKey: "nav.home" },
     { href: "/children", labelKey: "nav.children" },
-    { href: "/development", labelKey: "nav.development" },
     { href: "/academic", labelKey: "nav.academic" },
-    { href: "/booking-approvals", labelKey: "nav.approvals", requiredCapability: "DAYCARE_OPERATIONS" },
-    { href: "/billing-admin", labelKey: "nav.finance", requiredCapability: "DAYCARE_OPERATIONS" },
-    { href: "/staff-admin", labelKey: "staffAdmin.title" },
+    { href: "/staff-admin", labelKey: "nav.management" },
     { href: "/profile", labelKey: "nav.profile" },
   ],
   STAFF: [

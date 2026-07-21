@@ -24,6 +24,11 @@ export function useUpdateChild(childId: string) {
   return useChildMutation<UpdateChildInput, Awaited<ReturnType<typeof api.updateChild>>>((input) => api.updateChild(childId, input));
 }
 
+export function useDeactivateChild(childId: string) {
+  const { api } = useAuth();
+  return useChildMutation<void, Awaited<ReturnType<typeof api.deactivateChild>>>(() => api.deactivateChild(childId));
+}
+
 export function useAddChildProgram(childId: string) {
   const { api } = useAuth();
   return useChildMutation<{ name: string; description?: string }, Awaited<ReturnType<typeof api.addChildProgram>>>((input) => api.addChildProgram(childId, input));

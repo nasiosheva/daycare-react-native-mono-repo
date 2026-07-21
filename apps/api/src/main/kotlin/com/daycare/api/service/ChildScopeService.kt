@@ -29,7 +29,7 @@ class ChildScopeService(
             ).distinct().mapNotNull { childId -> children.findById(childId).orElse(null) }
         Role.PARENT -> guardians.findAllByUserId(scope.user.id).mapNotNull { children.findById(it.childId).orElse(null) }.filter { it.organizationId == organizationId }
         Role.ADMIN -> throw AccessDeniedException("Platform administrators do not have tenant child access")
-    }).filter { it.organizationId == organizationId && it.enrollmentStatus == ChildEnrollmentStatus.ACTIVE }
+    }).filter { it.organizationId == organizationId && it.enrollmentStatus == ChildEnrollmentStatus.ACTIVE && it.active }
 
     fun requireStaffManagedChild(scope: AccessScope, childId: UUID, organizationId: UUID): Child {
         val child = requireOrganizationChild(childId, organizationId)
@@ -55,6 +55,7 @@ class ChildScopeService(
     private fun requireOrganizationChild(childId: UUID, organizationId: UUID): Child {
         val child = children.findById(childId).orElseThrow { IllegalArgumentException("Child was not found") }
         if (child.organizationId != organizationId) throw AccessDeniedException("Child belongs to a different organization")
+        require(child.active) { "Child is inactive" }
         return child
     }
 }

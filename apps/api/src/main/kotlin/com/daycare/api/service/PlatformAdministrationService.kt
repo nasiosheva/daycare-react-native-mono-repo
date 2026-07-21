@@ -241,7 +241,7 @@ class PlatformAdministrationService(
         if (subscription?.status == TenantSubscriptionStatus.TRIAL && subscription.trialEndsAt?.isBefore(LocalDate.now()) == true) subscription.status = TenantSubscriptionStatus.PENDING_PAYMENT
         if (subscription?.status == TenantSubscriptionStatus.ACTIVE && subscription.periodEnd.isBefore(LocalDate.now())) subscription.status = TenantSubscriptionStatus.EXPIRED
         val capabilities = organizationCapabilities.forOrganization(organization.id)
-        val activeStaffAdmin = memberships.findAllByOrganizationId(organization.id).firstOrNull { it.role == Role.STAFF_ADMIN }?.let { membership ->
+        val activeStaffAdmin = memberships.findAllByOrganizationId(organization.id).firstOrNull { it.active && it.role == Role.STAFF_ADMIN }?.let { membership ->
             users.findById(membership.userId).orElse(null)?.let { user -> TenantStaffAdminResponse(membership.id, user.email, user.displayName, "ACTIVE") }
         }
         val pendingStaffAdmin = invitations.findAllByOrganizationIdAndStatus(organization.id, InvitationStatus.PENDING)

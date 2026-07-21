@@ -82,7 +82,7 @@ class BillingService(
 ) {
     @Transactional
     fun plans(jwt: Jwt, organizationId: UUID): List<ServicePlanResponse> {
-        access.require(jwt, organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS)
+        access.require(jwt, organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
         return plans.findAllByOrganizationIdAndActiveTrue(organizationId).map(::planResponse)
     }
 
@@ -95,7 +95,7 @@ class BillingService(
 
     @Transactional(readOnly = true)
     fun branchCapacities(jwt: Jwt, organizationId: UUID): List<BranchCapacityResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
         val capacities = capacity.branchSettings(organizationId).associateBy { it.branchId }
         return branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId).map { branch -> BranchCapacityResponse(branch.id, capacities[branch.id]?.dailyCapacity) }
     }
@@ -111,7 +111,7 @@ class BillingService(
 
     @Transactional(readOnly = true)
     fun planDiscounts(jwt: Jwt, organizationId: UUID, planId: UUID): List<ServicePlanDiscountResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
         requirePlan(planId, organizationId)
         return discounts.findAllByOrganizationIdAndServicePlanIdOrderByCreatedAtDesc(organizationId, planId).map(::discountResponse)
     }
@@ -137,7 +137,7 @@ class BillingService(
 
     @Transactional(readOnly = true)
     fun planTemplates(jwt: Jwt, organizationId: UUID): List<ServicePlanTemplateResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
         return systemTemplates + templates.findAllByOrganizationIdOrderByNameAsc(organizationId).map(::templateResponse)
     }
 
@@ -226,6 +226,7 @@ class BillingService(
     @Transactional
     fun approveBooking(jwt: Jwt, organizationId: UUID, bookingId: UUID, request: BookingApprovalRequest): BookingResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS)
+        access.requireWritable(scope)
         val booking = bookings.findById(bookingId).orElseThrow { IllegalArgumentException("Booking was not found") }
         require(booking.organizationId == organizationId && booking.status == BookingStatus.PENDING_APPROVAL) { "Booking cannot be approved" }
         require(parentEnrollments.findByInvoiceId(booking.invoiceId) == null) { "Self-registered Parent bookings must be decided through the Parent enrollment approval" }
@@ -239,7 +240,7 @@ class BillingService(
 
     @Transactional
     fun entitlements(jwt: Jwt, organizationId: UUID): List<EntitlementResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
         reconcileExpiredInvoices(organizationId)
         val source = if (scope.membership.role == Role.STAFF_ADMIN) entitlements.findAllByOrganizationId(organizationId) else entitlements.findAllByOrganizationIdAndOwnerUserId(organizationId, scope.user.id)
         return source.onEach(::expireIfNeeded).sortedByDescending { it.validUntil }.map(::entitlementResponse)
@@ -247,7 +248,7 @@ class BillingService(
 
     @Transactional
     fun bookings(jwt: Jwt, organizationId: UUID, pendingOnly: Boolean): List<BookingResponse> {
-        val scope = access.require(jwt, organizationId, if (pendingOnly) setOf(Role.STAFF_ADMIN, Role.STAFF) else setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)
+        val scope = access.require(jwt, organizationId, if (pendingOnly) setOf(Role.STAFF_ADMIN, Role.STAFF) else setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
         val source = if (pendingOnly) bookings.findAllByOrganizationIdAndStatusOrderByBookingDateAsc(organizationId, BookingStatus.PENDING_APPROVAL) else bookings.findAllByOrganizationIdOrderByBookingDateDesc(organizationId)
         return source.filter { booking ->
             (!pendingOnly || parentEnrollments.findByInvoiceId(booking.invoiceId) == null) &&
@@ -257,7 +258,7 @@ class BillingService(
 
     @Transactional
     fun invoices(jwt: Jwt, organizationId: UUID): List<InvoiceResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
         reconcileExpiredInvoices(organizationId)
         val source = if (scope.membership.role == Role.STAFF_ADMIN) invoices.findAllByOrganizationIdOrderByCreatedAtDesc(organizationId) else invoices.findAllByOrganizationIdAndPayerUserIdOrderByCreatedAtDesc(organizationId, scope.user.id)
         return source.map { invoice -> val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found"); invoiceResponse(invoice, entitlement.childId, childName(entitlement.childId)) }

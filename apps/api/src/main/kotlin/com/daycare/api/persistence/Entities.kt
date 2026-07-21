@@ -159,6 +159,17 @@ class ClassroomStaffAssignment(
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
+@Entity
+@Table(name = "classroom_programs", uniqueConstraints = [UniqueConstraint(columnNames = ["classroom_id", "name"])])
+class ClassroomProgram(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "classroom_id", nullable = false) var classroomId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var name: String = "",
+    @Column(nullable = false) var description: String = "",
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
 @Entity @Table(name = "memberships")
 class Membership(
     @Id var id: UUID = UUID.randomUUID(),
@@ -167,6 +178,7 @@ class Membership(
     @Enumerated(EnumType.STRING) @Column(nullable = false) var role: Role = Role.PARENT,
     @Column(name = "branch_id") var branchId: UUID? = null,
     @Column(name = "classroom_id") var classroomId: UUID? = null,
+    @Column(nullable = false) var active: Boolean = true,
 )
 
 @Entity @Table(name = "children")
@@ -179,6 +191,7 @@ class Child(
     @Column(name = "last_name") var lastName: String? = null,
     @Column(name = "date_of_birth", nullable = false) var dateOfBirth: LocalDate = LocalDate.now(),
     @Enumerated(EnumType.STRING) @Column(name = "enrollment_status", nullable = false) var enrollmentStatus: ChildEnrollmentStatus = ChildEnrollmentStatus.ACTIVE,
+    @Column(nullable = false) var active: Boolean = true,
 )
 
 @Entity @Table(name = "parent_enrollments")

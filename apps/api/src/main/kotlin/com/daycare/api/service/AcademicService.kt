@@ -34,7 +34,7 @@ class AcademicService(
 ) {
     @Transactional(readOnly = true)
     fun academicYears(jwt: Jwt, organizationId: UUID): List<AcademicYearResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
         return academicYears.findAllByOrganizationIdOrderByStartsOnDesc(organizationId).map(::academicYearResponse)
     }
 
@@ -47,7 +47,7 @@ class AcademicService(
 
     @Transactional(readOnly = true)
     fun curriculumPrograms(jwt: Jwt, organizationId: UUID): List<CurriculumProgramResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
         return curriculumPrograms.findAllByOrganizationIdOrderByNameAsc(organizationId).map(::curriculumProgramResponse)
     }
 

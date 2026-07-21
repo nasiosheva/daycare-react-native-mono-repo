@@ -2,6 +2,8 @@ package com.daycare.api.persistence
 
 import com.daycare.api.domain.InvitationStatus
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.Lock
 import java.time.LocalDate
@@ -20,8 +22,27 @@ interface TenantSubscriptionRepository : JpaRepository<TenantSubscription, UUID>
 interface TenantPaymentRepository : JpaRepository<TenantPayment, UUID> { fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<TenantPayment> }
 interface BranchRepository : JpaRepository<Branch, UUID> { fun findFirstByOrganizationId(organizationId: UUID): Branch?; fun findByOrganizationIdAndPrimaryTrue(organizationId: UUID): Branch?; fun findAllByOrganizationId(organizationId: UUID): List<Branch>; fun findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId: UUID): List<Branch>; @Lock(LockModeType.PESSIMISTIC_WRITE) fun findWithLockById(id: UUID): Branch? }
 interface ClassroomRepository : JpaRepository<Classroom, UUID> { fun findAllByOrganizationIdOrderByNameAsc(organizationId: UUID): List<Classroom>; fun findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId: UUID): List<Classroom> }
-interface ChildPlacementRepository : JpaRepository<ChildPlacement, UUID> { fun findByChildIdAndEndedOnIsNull(childId: UUID): ChildPlacement?; fun findAllByOrganizationIdAndChildIdOrderByStartsOnDesc(organizationId: UUID, childId: UUID): List<ChildPlacement>; fun findAllByClassroomIdAndEndedOnIsNull(classroomId: UUID): List<ChildPlacement>; fun countByClassroomIdAndEndedOnIsNull(classroomId: UUID): Long }
+interface ChildPlacementRepository : JpaRepository<ChildPlacement, UUID> {
+    fun findByChildIdAndEndedOnIsNull(childId: UUID): ChildPlacement?
+    fun findAllByOrganizationIdAndChildIdOrderByStartsOnDesc(organizationId: UUID, childId: UUID): List<ChildPlacement>
+    fun findAllByClassroomIdAndEndedOnIsNull(classroomId: UUID): List<ChildPlacement>
+
+    @Query("""
+        select count(placement)
+        from ChildPlacement placement, Child child
+        where placement.classroomId = :classroomId
+          and placement.endedOn is null
+          and placement.childId = child.id
+          and child.enrollmentStatus = :enrollmentStatus
+          and child.active = true
+    """)
+    fun countByClassroomIdAndActiveEnrollmentStatus(
+        @Param("classroomId") classroomId: UUID,
+        @Param("enrollmentStatus") enrollmentStatus: com.daycare.api.domain.ChildEnrollmentStatus,
+    ): Long
+}
 interface ClassroomStaffAssignmentRepository : JpaRepository<ClassroomStaffAssignment, UUID> { fun findAllByOrganizationIdAndClassroomIdOrderByCreatedAtDesc(organizationId: UUID, classroomId: UUID): List<ClassroomStaffAssignment>; fun findAllByOrganizationIdAndUserId(organizationId: UUID, userId: UUID): List<ClassroomStaffAssignment>; fun existsByOrganizationIdAndClassroomIdAndUserId(organizationId: UUID, classroomId: UUID, userId: UUID): Boolean }
+interface ClassroomProgramRepository : JpaRepository<ClassroomProgram, UUID> { fun findAllByOrganizationIdAndClassroomIdOrderByCreatedAtDesc(organizationId: UUID, classroomId: UUID): List<ClassroomProgram> }
 interface ChildRepository : JpaRepository<Child, UUID> { fun findAllByOrganizationId(organizationId: UUID): List<Child>; fun findAllByOrganizationIdAndBranchId(organizationId: UUID, branchId: UUID): List<Child> }
 interface ParentEnrollmentRepository : JpaRepository<ParentEnrollment, UUID> { fun findAllByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId: UUID, status: com.daycare.api.domain.ParentEnrollmentStatus): List<ParentEnrollment>; fun findAllByUserIdOrderByCreatedAtDesc(userId: UUID): List<ParentEnrollment>; fun findByInvoiceId(invoiceId: UUID): ParentEnrollment? }
 interface ChildProgramRepository : JpaRepository<ChildProgram, UUID> { fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildProgram> }
