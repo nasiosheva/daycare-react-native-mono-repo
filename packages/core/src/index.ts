@@ -63,6 +63,8 @@ export const permissions = {
   approveBookings: ["STAFF_ADMIN", "STAFF"],
   bookServices: ["PARENT"],
   viewOwnChildren: ["PARENT"],
+  manageLearningStructure: ["STAFF_ADMIN"],
+  manageChildPlacements: ["STAFF_ADMIN", "STAFF"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof permissions;

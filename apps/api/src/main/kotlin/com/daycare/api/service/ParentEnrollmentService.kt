@@ -1,13 +1,11 @@
 package com.daycare.api.service
 
 import com.daycare.api.domain.ChildEnrollmentStatus
-import com.daycare.api.domain.BookingStatus
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.ParentEnrollmentStatus
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.TenantSubscriptionStatus
 import com.daycare.api.persistence.BranchRepository
-import com.daycare.api.persistence.BookingRepository
 import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.GuardianLink
@@ -35,7 +33,7 @@ import java.util.UUID
 data class ParentEnrollmentChildInput(@field:NotBlank @field:Size(max = 100) val firstName: String, @field:Size(max = 100) val lastName: String?, val dateOfBirth: LocalDate)
 data class ParentEnrollmentCheckoutRequest(val organizationId: UUID, val branchId: UUID, val planId: UUID, val bookingDates: List<LocalDate>, val promoCode: String? = null, @field:Valid val child: ParentEnrollmentChildInput)
 data class ParentEnrollmentApprovalRequest(val approved: Boolean, @field:Size(max = 500) val rejectionReason: String? = null)
-data class ParentEnrollmentRetryRequest(val bookingDates: List<LocalDate>)
+data class ParentEnrollmentRetryRequest(val bookingDates: List<LocalDate> = emptyList())
 data class ParentTenantPlanResponse(val id: UUID, val name: String, val type: com.daycare.api.domain.ServicePlanType, val price: java.math.BigDecimal, val creditCount: Int?, val bookingRequiresApproval: Boolean, val dailyCapacity: Int?)
 data class ParentTenantBranchResponse(val id: UUID, val name: String, val dailyCapacity: Int?)
 data class ParentTenantCatalogResponse(val organizationId: UUID, val organizationName: String, val branches: List<ParentTenantBranchResponse>, val plans: List<ParentTenantPlanResponse>)
@@ -56,8 +54,6 @@ class ParentEnrollmentService(
     private val guardians: GuardianLinkRepository,
     private val users: UserProfileRepository,
     private val entitlements: ServiceEntitlementRepository,
-    private val bookings: BookingRepository,
-    private val capacity: CapacityReservationService,
     private val billing: BillingService,
     private val notifications: NotificationService,
 ) {
@@ -115,18 +111,12 @@ class ParentEnrollmentService(
             if (!guardians.existsByChildIdAndUserId(child.id, enrollment.userId)) guardians.save(GuardianLink(childId = child.id, userId = enrollment.userId))
             enrollment.status = ParentEnrollmentStatus.APPROVED
             enrollment.approvedAt = Instant.now()
-            bookings.findAllByInvoiceId(enrollment.invoiceId).filter { it.status == BookingStatus.PENDING_APPROVAL }.forEach { it.status = BookingStatus.CONFIRMED }
             notifications.notify(organizationId, enrollment.userId, "Pengajuan disetujui", "Pengajuan ${child.fullName()} disetujui. Anda sekarang dapat memakai dashboard Parent.", "/home")
         } else {
             enrollment.status = ParentEnrollmentStatus.REJECTED
             enrollment.rejectionReason = request.rejectionReason?.trim()?.ifBlank { null }
             val entitlement = entitlements.findById(enrollment.entitlementId).orElseThrow { IllegalArgumentException("Service entitlement was not found") }
-            bookings.findAllByInvoiceId(enrollment.invoiceId).filter { it.status == BookingStatus.PENDING_APPROVAL }.forEach { booking ->
-                booking.status = BookingStatus.REJECTED
-                entitlement.reservedCredits = (entitlement.reservedCredits - 1).coerceAtLeast(0)
-                capacity.releaseForBooking(booking.id)
-            }
-            notifications.notify(organizationId, enrollment.userId, "Booking ditolak", "Paket tetap menjadi kredit. Pilih ulang tanggal booking yang tersedia.", "/parent-enrollment")
+            notifications.notify(organizationId, enrollment.userId, "Pengajuan ditolak", "Paket tetap tersimpan. Ajukan ulang untuk ditinjau kembali.", "/parent-enrollment")
         }
         return response(enrollment)
     }
@@ -136,12 +126,12 @@ class ParentEnrollmentService(
         val parent = identity.sync(jwt)
         val enrollment = enrollments.findById(enrollmentId).orElseThrow { IllegalArgumentException("Parent enrollment was not found") }
         require(enrollment.userId == parent.id && enrollment.status == ParentEnrollmentStatus.REJECTED) { "Parent enrollment cannot be retried" }
+        require(request.bookingDates.isEmpty()) { "Parent enrollment retry does not create bookings" }
         val entitlement = entitlements.findById(enrollment.entitlementId).orElseThrow { IllegalArgumentException("Service entitlement was not found") }
-        if (entitlement.planType != com.daycare.api.domain.ServicePlanType.MONTHLY) billing.createEnrollmentRetryBookings(enrollment.organizationId, entitlement.id, enrollment.childId, request.bookingDates)
-        else require(request.bookingDates.isEmpty()) { "Monthly plans do not require booking dates" }
+        require(entitlement.status == com.daycare.api.domain.EntitlementStatus.ACTIVE) { "Service entitlement is not active" }
         enrollment.status = ParentEnrollmentStatus.PENDING_APPROVAL
         enrollment.rejectionReason = null
-        notifyStaffAdmins(enrollment.organizationId, "Booking Parent menunggu persetujuan", "Pengajuan ${response(enrollment).childName} diajukan ulang menggunakan kredit.", "/booking-approvals")
+        notifyStaffAdmins(enrollment.organizationId, "Pengajuan Parent menunggu persetujuan", "Pengajuan ${response(enrollment).childName} diajukan ulang menggunakan paket yang sudah dibayar.", "/booking-approvals")
         return response(enrollment)
     }
 
@@ -152,7 +142,14 @@ class ParentEnrollmentService(
         if (enrollment.status != ParentEnrollmentStatus.PENDING_PAYMENT) return
         enrollment.status = ParentEnrollmentStatus.PENDING_APPROVAL
         val child = children.findById(enrollment.childId).orElseThrow { IllegalArgumentException("Child was not found") }
-        notifyStaffAdmins(enrollment.organizationId, "Booking Parent menunggu persetujuan", "Pengajuan ${child.fullName()} sudah dibayar dan menunggu persetujuan booking.", "/booking-approvals")
+        notifyStaffAdmins(enrollment.organizationId, "Pengajuan Parent menunggu persetujuan", "Pengajuan ${child.fullName()} sudah dibayar dan menunggu persetujuan binding Parent.", "/booking-approvals")
+    }
+
+    @Transactional
+    @EventListener
+    fun invoiceExpired(event: InvoiceExpiredEvent) {
+        val enrollment = enrollments.findByInvoiceId(event.invoiceId) ?: return
+        if (enrollment.status == ParentEnrollmentStatus.PENDING_PAYMENT) enrollment.status = ParentEnrollmentStatus.EXPIRED
     }
 
     private fun requireCatalogTenant(organizationId: UUID) {

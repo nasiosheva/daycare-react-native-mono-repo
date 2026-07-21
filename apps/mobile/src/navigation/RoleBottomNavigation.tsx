@@ -17,7 +17,7 @@ const navigationByRole: Record<Role, NavigationItem[]> = {
     { href: "/home", labelKey: "nav.home" },
     { href: "/children", labelKey: "nav.children" },
     { href: "/development", labelKey: "nav.development" },
-    { href: "/academic", labelKey: "nav.academic", requiredCapability: "ACADEMIC_CURRICULUM" },
+    { href: "/academic", labelKey: "nav.academic" },
     { href: "/booking-approvals", labelKey: "nav.approvals", requiredCapability: "DAYCARE_OPERATIONS" },
     { href: "/billing-admin", labelKey: "nav.finance", requiredCapability: "DAYCARE_OPERATIONS" },
     { href: "/staff-admin", labelKey: "staffAdmin.title" },
@@ -26,7 +26,7 @@ const navigationByRole: Record<Role, NavigationItem[]> = {
   STAFF: [
     { href: "/home", labelKey: "nav.home" },
     { href: "/staff-operations", labelKey: "nav.staffFlow" },
-    { href: "/academic", labelKey: "nav.academic", requiredCapability: "ACADEMIC_CURRICULUM" },
+    { href: "/academic", labelKey: "nav.academic" },
     { href: "/booking-approvals", labelKey: "nav.approvals", requiredCapability: "DAYCARE_OPERATIONS" },
     { href: "/profile", labelKey: "nav.profile" },
   ],

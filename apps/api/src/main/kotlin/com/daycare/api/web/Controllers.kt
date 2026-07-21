@@ -19,6 +19,11 @@ import com.daycare.api.service.CreateTenantRequest
 import com.daycare.api.service.CreatePlatformAdminRequest
 import com.daycare.api.service.ChangeTenantUserPasswordRequest
 import com.daycare.api.service.AcademicService
+import com.daycare.api.service.LearningStructureService
+import com.daycare.api.service.UpsertLearningLevelRequest
+import com.daycare.api.service.UpsertClassroomRequest
+import com.daycare.api.service.AssignClassroomStaffRequest
+import com.daycare.api.service.CreateChildPlacementRequest
 import com.daycare.api.service.CreateAcademicYearRequest
 import com.daycare.api.service.CreateCurriculumProgramRequest
 import com.daycare.api.service.ChangePlatformAdminPinRequest
@@ -153,7 +158,7 @@ class PlatformController(private val platformAdministration: PlatformAdministrat
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService) {
+class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val learning: LearningStructureService) {
     @GetMapping("/children")
     fun children(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = attendance.listChildren(jwt, organizationId)
 
@@ -210,6 +215,51 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PostMapping("/curriculum-programs") @ResponseStatus(HttpStatus.CREATED)
     fun createCurriculumProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateCurriculumProgramRequest) = academic.createCurriculumProgram(jwt, organizationId, request)
+
+    @GetMapping("/learning-level-templates")
+    fun learningLevelTemplates(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = learning.templates(jwt, organizationId)
+
+    @GetMapping("/learning-branches")
+    fun learningBranches(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = learning.branches(jwt, organizationId)
+
+    @GetMapping("/learning-levels")
+    fun learningLevels(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = learning.levels(jwt, organizationId)
+
+    @PostMapping("/learning-levels") @ResponseStatus(HttpStatus.CREATED)
+    fun createLearningLevel(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertLearningLevelRequest) = learning.createLevel(jwt, organizationId, request)
+
+    @PatchMapping("/learning-levels/{levelId}")
+    fun updateLearningLevel(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable levelId: UUID, @Valid @RequestBody request: UpsertLearningLevelRequest) = learning.updateLevel(jwt, organizationId, levelId, request)
+
+    @PostMapping("/learning-levels/{levelId}/archive")
+    fun archiveLearningLevel(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable levelId: UUID) = learning.archiveLevel(jwt, organizationId, levelId)
+
+    @GetMapping("/classrooms")
+    fun classrooms(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = learning.classrooms(jwt, organizationId)
+
+    @PostMapping("/classrooms") @ResponseStatus(HttpStatus.CREATED)
+    fun createClassroom(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertClassroomRequest) = learning.createClassroom(jwt, organizationId, request)
+
+    @PatchMapping("/classrooms/{classroomId}")
+    fun updateClassroom(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable classroomId: UUID, @Valid @RequestBody request: UpsertClassroomRequest) = learning.updateClassroom(jwt, organizationId, classroomId, request)
+
+    @PostMapping("/classrooms/{classroomId}/archive")
+    fun archiveClassroom(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable classroomId: UUID) = learning.archiveClassroom(jwt, organizationId, classroomId)
+
+    @GetMapping("/classrooms/{classroomId}/staff-assignments")
+    fun classroomStaff(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable classroomId: UUID) = learning.classroomStaff(jwt, organizationId, classroomId)
+
+    @PostMapping("/classrooms/{classroomId}/staff-assignments") @ResponseStatus(HttpStatus.CREATED)
+    fun assignClassroomStaff(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable classroomId: UUID, @Valid @RequestBody request: AssignClassroomStaffRequest) = learning.assignClassroomStaff(jwt, organizationId, classroomId, request)
+
+    @DeleteMapping("/classrooms/{classroomId}/staff-assignments/{assignmentId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun unassignClassroomStaff(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable classroomId: UUID, @PathVariable assignmentId: UUID) = learning.unassignClassroomStaff(jwt, organizationId, classroomId, assignmentId)
+
+    @GetMapping("/children/{childId}/placements")
+    fun childPlacements(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = learning.placements(jwt, organizationId, childId)
+
+    @PostMapping("/children/{childId}/placements") @ResponseStatus(HttpStatus.CREATED)
+    fun placeChild(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateChildPlacementRequest) = learning.placeChild(jwt, organizationId, childId, request)
 
     @PostMapping("/tenant-users/{userId}/password") @ResponseStatus(HttpStatus.NO_CONTENT)
     fun changeTenantUserPassword(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable userId: UUID, @Valid @RequestBody request: ChangeTenantUserPasswordRequest) = administration.changeTenantUserPassword(jwt, organizationId, userId, request)

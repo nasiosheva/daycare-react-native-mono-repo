@@ -28,7 +28,7 @@ Umur Emas is a multi-tenant early-childhood platform for web, iOS, Android, and 
 
 ## Product capabilities
 
-- Platform `ADMIN` manages tenant lifecycle, tenant subscriptions, and tenant payments. Tenant `STAFF_ADMIN` (owner/head) manages the tenant's users and operational configuration; `STAFF` (teacher/miss) records attendance and development; `PARENT` accesses only their own children.
+- Platform `ADMIN` manages tenant lifecycle, tenant subscriptions, and tenant payments. Tenant `STAFF_ADMIN` (owner/head) manages the tenant's users and operational configuration; `STAFF` (teacher/miss) sees and records attendance, development, and booking decisions for children assigned directly or through an active class group; `PARENT` accesses only their own children.
 - A consistent app bar on every screen and role-specific bottom navigation: Platform Admin has tenant administration; Staff Admin has tenant operations, approval, finance, and account management; Staff has classroom operations and approvals; Parent has development, attendance QR, and booking. Every role has a Profile menu, which is the sole location for signing out. Profile also manages display name and Firebase password; Platform Admin can create another Platform Admin with an email, username, and password.
 - Shared mobile UI includes an accessible bottom sheet with a drag handle and close button. Profile uses it to confirm logout before ending the session.
 - Child management, manual or QR attendance, and development notes.
@@ -37,14 +37,14 @@ Umur Emas is a multi-tenant early-childhood platform for web, iOS, Android, and 
 
 ## Institution types and shared core
 
-The platform supports one or more institution types per tenant: `DAYCARE`, `PAUD`, and `TK`. The shared core covers tenant management, branches, classrooms, children, guardians, staff roles, attendance, child development, notifications, billing infrastructure, profile management, and reusable mobile UI.
+The platform supports one or more institution types per tenant: `DAYCARE`, `PAUD`, and `TK`. The shared core covers tenant management, branches, reusable learning levels, class groups, children, guardians, staff roles, attendance, child development, notifications, billing infrastructure, profile management, and reusable mobile UI.
 
 Capabilities are derived from the selected institution types and drive both mobile navigation and backend authorization:
 
 | Capability | Institution type | Scope |
 | --- | --- | --- |
 | `DAYCARE_OPERATIONS` | `DAYCARE` | Service plans, service purchases, booking, booking approval, and the booking prerequisite for attendance. |
-| `ACADEMIC_CURRICULUM` | `PAUD`, `TK` | Academic years and curriculum programs. |
+| `ACADEMIC_CURRICULUM` | `PAUD`, `TK` | Academic curriculum capability; learning periods and curriculum programs are available to all tenant types through the shared learning structure. |
 
 An institution may select more than one type, for example a Daycare that also operates a TK program. Daycare remains the default for legacy tenants so existing operations continue unchanged.
 - In-app/native notifications for payment, booking, and development events.
@@ -238,6 +238,9 @@ All API routes are under `/api/v1` and require a Firebase bearer token except th
 | Read or edit a child | `GET` / `PATCH /api/v1/children/{childId}` |
 | Add or remove a child's programs | `POST /api/v1/children/{childId}/programs`, `DELETE /api/v1/children/{childId}/programs/{programId}` |
 | Assign or remove a child's Staff Admin, staff, nurse, or miss | `POST /api/v1/children/{childId}/staff-assignments`, `DELETE /api/v1/children/{childId}/staff-assignments/{assignmentId}` |
+| Manage learning levels and templates | `GET` / `POST /api/v1/learning-levels`, `GET /api/v1/learning-level-templates`, `PATCH /api/v1/learning-levels/{id}`, `POST /api/v1/learning-levels/{id}/archive` |
+| Manage class groups and their staff | `GET` / `POST /api/v1/classrooms`, `PATCH /api/v1/classrooms/{id}`, `POST /api/v1/classrooms/{id}/archive`, `/api/v1/classrooms/{id}/staff-assignments` |
+| Read or change a child's class placement | `GET` / `POST /api/v1/children/{childId}/placements` |
 | Record attendance | `POST /api/v1/children/{childId}/attendance` |
 | Issue attendance QR token | `GET /api/v1/children/{childId}/attendance-qr` |
 | List or create development entries | `GET` / `POST /api/v1/children/{childId}/development-entries` |
@@ -264,7 +267,7 @@ The mobile app exchanges Firebase ID tokens through `Authorization: Bearer <toke
 1. A `STAFF_ADMIN` creates a daily, weekly, or monthly service plan, optionally using a system or tenant template, with a daily package capacity and a daily branch capacity when needed.
 2. A `PARENT` purchases a plan for a linked child. The API applies the larger valid automatic discount or package promo code, then creates a pending invoice, entitlement, and any requested booking dates.
 3. A `STAFF_ADMIN` confirms the payment. The entitlement becomes active and bookings become `PENDING_APPROVAL` or `CONFIRMED` according to the plan policy.
-4. A `STAFF_ADMIN` or properly scoped `STAFF` approves or rejects pending bookings. A rejection returns the reserved daily/weekly credit.
+4. A `STAFF_ADMIN` or the `STAFF` explicitly assigned to the child approves or rejects pending bookings. A rejection returns the reserved daily/weekly credit.
 5. Attendance check-in requires a confirmed booking unless the child has an active monthly entitlement covering the current operational day.
 
 Weekly plans reserve credits for selected dates. Unused credits either expire with the plan period or carry forward for the configured number of days. Pending payment, approval, and confirmed bookings hold both branch and package capacity; monthly plans hold capacity for each day in their active period. An unpaid invoice releases its slots and promo redemption after its due date. The current payment-confirmation action is manual; a payment-gateway integration must verify a provider callback before marking an invoice paid.
@@ -316,12 +319,14 @@ Before committing, run `pnpm verify`. Keep environment files, Firebase platform 
 
 ## Current scope
 
-Platform Admins create tenants, their initial subscription payment, and the initial active Staff Admin account. Daycare Staff Admins configure daily, weekly, and monthly service plans; create Staff Admin and teacher/miss accounts; invite parents; and manage tenant operations. A parent purchases a plan for a linked child; this creates an invoice with a manual-payment status. A Staff Admin confirms the payment, then a Staff Admin or staff member for the child's branch approves or rejects each booking. Attendance check-in requires a confirmed booking only for tenants with the `DAYCARE_OPERATIONS` capability. PAUD/TK attendance remains a shared core feature and does not require a Daycare booking.
+Platform Admins create tenants, their initial subscription payment, and the initial active Staff Admin account. Daycare Staff Admins configure daily, weekly, and monthly service plans; create Staff Admin and teacher/miss accounts; invite parents; and manage tenant operations. A parent purchases a plan for a linked child; this creates an invoice with a manual-payment status. A Staff Admin confirms the payment, then a Staff Admin or staff member explicitly assigned to that child approves or rejects each booking. Attendance check-in requires a confirmed booking only for tenants with the `DAYCARE_OPERATIONS` capability. PAUD/TK attendance remains a shared core feature and does not require a Daycare booking.
 
-For `PAUD` and `TK`, Staff Admins manage academic years and curriculum programs from the Akademik menu. This is the initial academic foundation; learning outcomes, assessment, report cards, and academic calendars can be layered on the same academic-year and curriculum-program models.
+The **Kelas** menu is a shared learning core for Daycare, PAUD, and TK. Staff Admins create optional learning periods, curriculum programs, reusable levels, and class groups. A level represents a tier such as Nursery, Toddler, PAUD, TK A, or TK B; a class group represents a parallel group such as `TK A – Matahari`. System templates are filtered by the tenant's institution types, while custom levels remain allowed. Levels may carry optional age guidance and curriculum-program links. Class groups may have an optional child capacity and a Staff, Nurse, or Miss roster.
+
+Staff Admins and Staff can place or move a child between active class groups. The previous placement is closed and preserved as history; a child has one active placement at a time. Age guidance warns instead of blocking a placement. A class-group capacity is checked first, then the configured branch capacity is used when the class group does not have its own limit. Class-group staff receive the same child visibility scope as direct child assignments. Archiving preserves historical placements and never deletes them.
 
 Weekly plans specify the number of day credits. Parents can initially select fewer dates than the purchased credits, then use the visible remaining credits for a later booking. The Staff Admin chooses whether unused weekly credits expire at the end of the seven-day period or remain transferable for 30 additional days. Rejected bookings return their reserved credit. This first version intentionally uses Staff Admin payment confirmation; connect a payment gateway such as Midtrans or Xendit by replacing that confirmation step with a verified payment callback.
 
-Staff Admins and staff can record activities, meals, naps, and observations for children in their permitted branch. Parents can view development notes for children linked to their account and receive in-app/native push notifications for newly recorded notes.
+Staff Admins can record activities, meals, naps, and observations for every tenant child. Staff can do so only for children explicitly assigned to them through the child's Staff, Nurse, or Miss assignment; the same assignment scope limits the Staff Home list, child list, attendance, development, and booking approval. Parents can view development notes for children linked to their account and receive in-app/native push notifications for newly recorded notes.
 
 Photo uploads are intentionally not included. They require separate object storage, consent, retention, access-control, and deletion policies.

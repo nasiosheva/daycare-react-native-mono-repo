@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppText, BackButton, Button, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -15,7 +15,9 @@ export default function ChildDetailScreen() {
   const childId = typeof rawChildId === "string" ? rawChildId : null;
   const { api, profile, organizationId } = useAuth();
   const { t } = useI18n();
+  const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const canManage = membership?.role === "STAFF_ADMIN";
   const childProfile = useChildProfile(childId);
   const createChild = useCreateChild();
   const updateChild = useUpdateChild(childId ?? "");
@@ -24,6 +26,9 @@ export default function ChildDetailScreen() {
   const assignStaff = useAssignChildStaff(childId ?? "");
   const unassignStaff = useUnassignChildStaff(childId ?? "");
   const staff = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: membership?.role === "STAFF_ADMIN" && Boolean(childId) });
+  const classrooms = useQuery({ queryKey: ["classrooms", organizationId], queryFn: () => api.classrooms(), enabled: Boolean(childId && membership) });
+  const placements = useQuery({ queryKey: ["child-placements", organizationId, childId], queryFn: () => api.childPlacements(childId!), enabled: Boolean(childId && membership) });
+  const placeChild = useMutation({ mutationFn: (input: { classroomId: string; startsOn?: string }) => api.placeChild(childId!, input), onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["child-placements", organizationId, childId] }); void queryClient.invalidateQueries({ queryKey: ["children", organizationId] }); } });
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -31,6 +36,8 @@ export default function ChildDetailScreen() {
   const [programDescription, setProgramDescription] = useState("");
   const [staffUserId, setStaffUserId] = useState<string | null>(null);
   const [assignmentRole, setAssignmentRole] = useState<(typeof assignmentRoles)[number]>("STAFF");
+  const [classroomId, setClassroomId] = useState<string | null>(null);
+  const [placementStart, setPlacementStart] = useState("");
   const assignableStaff = useMemo(() => staff.data?.filter((user) => user.userId && user.status === "ACTIVE" && (user.role === "STAFF_ADMIN" || user.role === "STAFF")) ?? [], [staff.data]);
   const assignmentRoleLabel = (role: (typeof assignmentRoles)[number]) => role === "NURSE" ? t("children.nurse") : role === "MISS" ? t("children.miss") : t("children.staff");
 
@@ -41,7 +48,7 @@ export default function ChildDetailScreen() {
     setDateOfBirth(childProfile.data.child.dateOfBirth);
   }, [childProfile.data]);
 
-  if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
+  if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role) || (!childId && !canManage)) return <Redirect href="/home" />;
   const saveChild = async () => {
     if (!firstName.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) return Alert.alert(t("children.required"));
     const payload = { firstName: firstName.trim(), lastName: lastName.trim() || undefined, dateOfBirth };
@@ -68,24 +75,31 @@ export default function ChildDetailScreen() {
       <TextInput style={styles.input} placeholder={t("children.firstName")} value={firstName} onChangeText={setFirstName} />
       <TextInput style={styles.input} placeholder={t("children.lastName")} value={lastName} onChangeText={setLastName} />
       <TextInput style={styles.input} placeholder={t("children.birthDate")} value={dateOfBirth} onChangeText={setDateOfBirth} />
-      <Button loading={createChild.isPending || updateChild.isPending} onPress={() => void saveChild()}>{t("children.save")}</Button>
+      {canManage && <Button loading={createChild.isPending || updateChild.isPending} onPress={() => void saveChild()}>{t("children.save")}</Button>}
     </View>}
     {childId && childProfile.data && <>
-      <View style={styles.form}><AppText variant="h5">{t("children.programs")}</AppText>
+      <View style={styles.form}><AppText variant="h5">{t("learning.placements")}</AppText>
+        <View style={styles.options}>{classrooms.data?.filter((classroom) => classroom.active).map((classroom) => <Button key={classroom.id} variant={classroomId === classroom.id ? "primary" : "secondary"} onPress={() => setClassroomId(classroom.id)}>{classroom.name}</Button>)}</View>
+        <TextInput style={styles.input} placeholder={t("learning.startDate")} value={placementStart} onChangeText={setPlacementStart} />
+        <Button loading={placeChild.isPending} disabled={!classroomId} onPress={() => { if (!classroomId) return; void placeChild.mutateAsync({ classroomId, startsOn: placementStart || undefined }).then((placement) => { if (placement.ageGuidanceWarning) Alert.alert(t("learning.ageGuidance")); setClassroomId(null); setPlacementStart(""); }).catch((error: unknown) => Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"))); }}>{t("learning.placeChild")}</Button>
+        {placements.data?.map((placement) => <View key={placement.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{placement.learningLevelName ?? "–"} · {placement.classroomName}</AppText><AppText variant="bodySmall" tone="muted">{placement.startsOn}{placement.endedOn ? ` – ${placement.endedOn}` : ""}</AppText></View></View>)}
+        {placements.data?.length === 0 && <AppText tone="muted">{t("learning.noPlacements")}</AppText>}
+      </View>
+      {canManage && <View style={styles.form}><AppText variant="h5">{t("children.programs")}</AppText>
         <TextInput style={styles.input} placeholder={t("children.programName")} value={programName} onChangeText={setProgramName} />
         <TextInput style={styles.input} placeholder={t("children.programDescription")} value={programDescription} onChangeText={setProgramDescription} />
         <Button loading={addProgram.isPending} disabled={!programName.trim()} onPress={() => void saveProgram()}>{t("children.addProgram")}</Button>
         {childProfile.data.programs.map((program) => <View key={program.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{program.name}</AppText>{program.description && <AppText variant="bodySmall" tone="muted">{program.description}</AppText>}</View><Button variant="danger" onPress={() => void removeProgram.mutateAsync(program.id)}>{t("children.remove")}</Button></View>)}
         {childProfile.data.programs.length === 0 && <AppText tone="muted">{t("children.noPrograms")}</AppText>}
-      </View>
-      <View style={styles.form}><AppText variant="h5">{t("children.staffAssignments")}</AppText>
+      </View>}
+      {canManage && <View style={styles.form}><AppText variant="h5">{t("children.staffAssignments")}</AppText>
         <View style={styles.options}>{assignableStaff.map((user) => <Button key={user.id} variant={staffUserId === user.userId ? "primary" : "secondary"} onPress={() => setStaffUserId(user.userId)}>{user.displayName ?? user.email ?? t("children.selectStaff")}</Button>)}</View>
         <AppText variant="label">{t("children.assignmentRole")}</AppText>
         <View style={styles.options}>{assignmentRoles.map((role) => <Button key={role} variant={assignmentRole === role ? "primary" : "secondary"} onPress={() => setAssignmentRole(role)}>{assignmentRoleLabel(role)}</Button>)}</View>
         <Button loading={assignStaff.isPending} disabled={!staffUserId} onPress={() => void saveAssignment()}>{t("children.assign")}</Button>
         {childProfile.data.staffAssignments.map((assignment) => <View key={assignment.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{assignment.displayName}</AppText><AppText variant="bodySmall" tone="muted">{assignmentRoleLabel(assignment.assignmentRole)} · {assignment.email}</AppText></View><Button variant="danger" onPress={() => void unassignStaff.mutateAsync(assignment.id)}>{t("children.unassign")}</Button></View>)}
         {childProfile.data.staffAssignments.length === 0 && <AppText tone="muted">{t("children.noStaff")}</AppText>}
-      </View>
+      </View>}
     </>}
   </AppScreen>;
 }

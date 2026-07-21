@@ -53,14 +53,22 @@ export type UpdateTenantInput = { tenantName: string; branchName: string; instit
 export type CreatePlatformAdminInput = { email: string; username: string; password: string };
 export type AcademicYear = { id: string; name: string; startsOn: string; endsOn: string; active: boolean };
 export type CreateAcademicYearInput = { name: string; startsOn: string; endsOn: string };
-export type CurriculumProgram = { id: string; academicYearId: string; name: string; description: string };
-export type CreateCurriculumProgramInput = { academicYearId: string; name: string; description: string };
+export type CurriculumProgram = { id: string; academicYearId?: string | null; name: string; description: string };
+export type CreateCurriculumProgramInput = { academicYearId?: string; name: string; description: string };
+export type LearningLevelTemplate = { code: string; name: string; minAgeMonths?: number | null; maxAgeMonths?: number | null };
+export type LearningBranch = { id: string; name: string };
+export type LearningLevel = { id: string; name: string; minAgeMonths?: number | null; maxAgeMonths?: number | null; displayOrder: number; active: boolean; curriculumProgramIds: string[] };
+export type UpsertLearningLevelInput = { name: string; minAgeMonths?: number; maxAgeMonths?: number; displayOrder?: number; curriculumProgramIds?: string[] };
+export type Classroom = { id: string; branchId: string; learningLevelId?: string | null; learningPeriodId?: string | null; name: string; capacity?: number | null; active: boolean; activeChildren: number };
+export type UpsertClassroomInput = { branchId: string; learningLevelId: string; learningPeriodId?: string; name: string; capacity?: number };
+export type ClassroomStaffAssignment = { id: string; userId: string; displayName: string; email?: string | null; assignmentRole: ChildAssignmentRole };
+export type ChildPlacement = { id: string; classroomId: string; classroomName: string; learningLevelId?: string | null; learningLevelName?: string | null; learningPeriodId?: string | null; startsOn: string; endedOn?: string | null; ageGuidanceWarning: boolean };
 export type TenantInvitationInput = { email?: string; phoneNumber?: string; role: Extract<Role, "STAFF" | "PARENT">; branchId?: string; classroomId?: string };
 export type CreateTenantUserInput = { displayName: string; email: string; password: string; role: Extract<Role, "STAFF_ADMIN" | "STAFF"> };
 export type TenantUser = { id: string; userId: string | null; displayName: string | null; email: string | null; role: Extract<Role, "STAFF_ADMIN" | "STAFF" | "PARENT">; status: "ACTIVE" | "PENDING" };
 export type ParentTenantPlan = { id: string; name: string; type: ServicePlanType; price: number; creditCount?: number | null; bookingRequiresApproval: boolean; dailyCapacity?: number | null };
 export type ParentTenantCatalog = { organizationId: string; organizationName: string; branches: Array<{ id: string; name: string; dailyCapacity?: number | null }>; plans: ParentTenantPlan[] };
-export type ParentEnrollmentStatus = "PENDING_PAYMENT" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED";
+export type ParentEnrollmentStatus = "PENDING_PAYMENT" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "EXPIRED";
 export type ParentEnrollment = { id: string; organizationId: string; branchId: string; childId: string; childName: string; invoiceId: string; entitlementId: string; status: ParentEnrollmentStatus; rejectionReason?: string | null; createdAt: string };
 export type ParentEnrollmentCheckoutInput = { organizationId: string; branchId: string; planId: string; bookingDates: string[]; promoCode?: string; child: { firstName: string; lastName?: string; dateOfBirth: string } };
 
@@ -97,6 +105,21 @@ export class ApiClient {
   async createAcademicYear(input: CreateAcademicYearInput): Promise<AcademicYear> { return this.request("/academic-years", { method: "POST", body: JSON.stringify(input) }); }
   async curriculumPrograms(): Promise<CurriculumProgram[]> { return this.request("/curriculum-programs"); }
   async createCurriculumProgram(input: CreateCurriculumProgramInput): Promise<CurriculumProgram> { return this.request("/curriculum-programs", { method: "POST", body: JSON.stringify(input) }); }
+  async learningLevelTemplates(): Promise<LearningLevelTemplate[]> { return this.request("/learning-level-templates"); }
+  async learningBranches(): Promise<LearningBranch[]> { return this.request("/learning-branches"); }
+  async learningLevels(): Promise<LearningLevel[]> { return this.request("/learning-levels"); }
+  async createLearningLevel(input: UpsertLearningLevelInput): Promise<LearningLevel> { return this.request("/learning-levels", { method: "POST", body: JSON.stringify(input) }); }
+  async updateLearningLevel(levelId: string, input: UpsertLearningLevelInput): Promise<LearningLevel> { return this.request(`/learning-levels/${levelId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async archiveLearningLevel(levelId: string): Promise<LearningLevel> { return this.request(`/learning-levels/${levelId}/archive`, { method: "POST" }); }
+  async classrooms(): Promise<Classroom[]> { return this.request("/classrooms"); }
+  async createClassroom(input: UpsertClassroomInput): Promise<Classroom> { return this.request("/classrooms", { method: "POST", body: JSON.stringify(input) }); }
+  async updateClassroom(classroomId: string, input: UpsertClassroomInput): Promise<Classroom> { return this.request(`/classrooms/${classroomId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async archiveClassroom(classroomId: string): Promise<Classroom> { return this.request(`/classrooms/${classroomId}/archive`, { method: "POST" }); }
+  async classroomStaffAssignments(classroomId: string): Promise<ClassroomStaffAssignment[]> { return this.request(`/classrooms/${classroomId}/staff-assignments`); }
+  async assignClassroomStaff(classroomId: string, input: { userId: string; assignmentRole: ChildAssignmentRole }): Promise<ClassroomStaffAssignment> { return this.request(`/classrooms/${classroomId}/staff-assignments`, { method: "POST", body: JSON.stringify(input) }); }
+  async unassignClassroomStaff(classroomId: string, assignmentId: string): Promise<void> { await this.request<void>(`/classrooms/${classroomId}/staff-assignments/${assignmentId}`, { method: "DELETE" }); }
+  async childPlacements(childId: string): Promise<ChildPlacement[]> { return this.request(`/children/${childId}/placements`); }
+  async placeChild(childId: string, input: { classroomId: string; startsOn?: string }): Promise<ChildPlacement> { return this.request(`/children/${childId}/placements`, { method: "POST", body: JSON.stringify(input) }); }
 
   async children(): Promise<Child[]> {
     return this.request("/children");

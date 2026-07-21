@@ -3,6 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { AppText, Button, colors, FloatingActionButton, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
+import { useChildren } from "@/attendance/useAttendance";
 import { AppScreen } from "@/navigation/AppScreen";
 import { can, hasInstitutionCapability } from "@daycare/core";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -11,12 +12,12 @@ import { roleKey, tenantPaymentStatusKey, tenantSubscriptionPlanKey } from "@/i1
 export default function HomeScreen() {
   const { user, profile, organizationId, isSimulationSession } = useAuth();
   const { t } = useI18n();
+  const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const staffChildren = useChildren(membership?.role === "STAFF");
   if (!user) return <Redirect href="/sign-in" />;
   if (profile?.isPlatformAdmin) return <PlatformAdminHome />;
-  const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   if (!membership) return <Redirect href={"/parent-enrollment" as never} />;
   const hasDaycareOperations = hasInstitutionCapability(membership.capabilities, "DAYCARE_OPERATIONS");
-  const hasAcademicCurriculum = hasInstitutionCapability(membership.capabilities, "ACADEMIC_CURRICULUM");
   const isStaffAdmin = membership.role === "STAFF_ADMIN";
   const isStaff = membership.role === "STAFF";
   const hasStaffProfileMenu = membership.role === "STAFF_ADMIN" || membership.role === "STAFF";
@@ -24,12 +25,18 @@ export default function HomeScreen() {
     <AppText variant="title">{t("home.greeting", { name: profile?.displayName ?? "" })}</AppText>
     <AppText tone="muted">{membership.organizationName} · {t(roleKey(membership.role))}</AppText>
     {isSimulationSession && <AppText variant="caption" tone="muted">{t("home.simulation")}</AppText>}
+    {isStaff && <View style={styles.managedChildren}>
+      <AppText variant="heading">{t("home.managedChildren")}</AppText>
+      {staffChildren.isLoading && <AppText tone="muted">{t("children.loading")}</AppText>}
+      {staffChildren.data?.map((child) => <AppText key={child.id}>{child.fullName}</AppText>)}
+      {!staffChildren.isLoading && staffChildren.data?.length === 0 && <AppText tone="muted">{t("home.noManagedChildren")}</AppText>}
+    </View>}
     {isStaff && <Button onPress={() => router.push("/staff-operations")}>{t("nav.staffFlow")}</Button>}
     {!isStaff && can(membership.role, "recordAttendance") && <Button onPress={() => router.push("/attendance")}>{t("attendance.title")}</Button>}
     {!isStaff && can(membership.role, "manageChildren") && <Button variant="secondary" onPress={() => router.push("/children")}>{t("children.title")}</Button>}
     {!isStaff && can(membership.role, "viewChildDevelopment") && <Button variant="secondary" onPress={() => router.push("/development")}>{t("development.title")}</Button>}
     {can(membership.role, "viewOwnChildren") && <Button onPress={() => router.push("/parent-qr")}>{t("qr.title")}</Button>}
-    {hasAcademicCurriculum && ["STAFF_ADMIN", "STAFF"].includes(membership.role) && <Button variant="secondary" onPress={() => router.push("/academic")}>{t("nav.academic")}</Button>}
+    {["STAFF_ADMIN", "STAFF"].includes(membership.role) && <Button variant="secondary" onPress={() => router.push("/academic")}>{t("nav.academic")}</Button>}
     {hasDaycareOperations && can(membership.role, "bookServices") && <Button onPress={() => router.push("/booking")}>{t("booking.title")}</Button>}
     {membership.role === "PARENT" && <Button variant="secondary" onPress={() => router.push("/parent-enrollment" as never)}>{t("parentEnrollment.manageTenants")}</Button>}
     {isStaffAdmin && hasDaycareOperations && <Button onPress={() => router.push("/staff-admin")}>{t("staffAdmin.title")}</Button>}
@@ -69,6 +76,7 @@ function TenantSection({ title, tenants, emptyMessage, formatCurrency, t }: { ti
 
 const styles = StyleSheet.create({
   content: { gap: spacing.md },
+  managedChildren: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   section: { gap: spacing.sm },
   tenant: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
 });

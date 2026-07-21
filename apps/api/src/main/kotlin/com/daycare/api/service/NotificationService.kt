@@ -21,7 +21,7 @@ class NotificationService(
     fun notify(organizationId: UUID, recipientUserId: UUID, title: String, body: String, actionPath: String? = null) {
         notifications.save(Notification(organizationId = organizationId, recipientUserId = recipientUserId, title = title, body = body, actionPath = actionPath))
         deviceTokens.findAllByUserIdAndOrganizationId(recipientUserId, organizationId).forEach { token ->
-            runCatching { restClient.post().uri(expoPushUrl).body(mapOf("to" to token.token, "title" to title, "body" to body, "data" to mapOf("actionPath" to actionPath), "sound" to "default")).retrieve().toBodilessEntity() }
+            runCatching { restClient.post().uri(expoPushUrl).body(mapOf("to" to token.token, "title" to title, "body" to body, "data" to mapOf("actionPath" to actionPath, "organizationId" to organizationId.toString()), "sound" to "default")).retrieve().toBodilessEntity() }
                 .onFailure { error -> logger.warn("Unable to deliver Expo push token {}: {}", token.id, error.message) }
         }
     }

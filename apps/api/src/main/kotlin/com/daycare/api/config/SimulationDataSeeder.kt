@@ -22,6 +22,8 @@ import com.daycare.api.persistence.Branch
 import com.daycare.api.persistence.BranchRepository
 import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildRepository
+import com.daycare.api.persistence.ChildStaffAssignment
+import com.daycare.api.persistence.ChildStaffAssignmentRepository
 import com.daycare.api.persistence.Classroom
 import com.daycare.api.persistence.ClassroomRepository
 import com.daycare.api.persistence.DevelopmentEntry
@@ -79,6 +81,7 @@ class SimulationDataSeeder(
     private val classrooms: ClassroomRepository,
     private val memberships: MembershipRepository,
     private val children: ChildRepository,
+    private val staffAssignments: ChildStaffAssignmentRepository,
     private val guardians: GuardianLinkRepository,
     private val subscriptions: TenantSubscriptionRepository,
     private val tenantPayments: TenantPaymentRepository,
@@ -144,6 +147,7 @@ class SimulationDataSeeder(
         ))
 
         val child = children.save(Child(id = Ids.child, organizationId = Ids.activeTenant, branchId = Ids.activeBranch, classroomId = Ids.activeClassroom, firstName = "Aruna", lastName = "Putri", dateOfBirth = today.minusYears(4)))
+        staffAssignments.save(ChildStaffAssignment(id = Ids.childTeacherAssignment, organizationId = Ids.activeTenant, childId = child.id, userId = Ids.teacher, assignmentRole = "MISS"))
         guardians.save(GuardianLink(id = Ids.guardianLink, childId = child.id, userId = Ids.parent))
 
         val monthlyPlan = plans.save(ServicePlan(id = Ids.monthlyPlan, organizationId = Ids.activeTenant, name = "Paket Bulanan Pelangi", type = ServicePlanType.MONTHLY, price = BigDecimal("1200000"), bookingRequiresApproval = false))
@@ -184,6 +188,7 @@ class SimulationDataSeeder(
         val trialTenantPayment: UUID = UUID.fromString("10000000-0000-0000-0000-000000000003")
         val child: UUID = UUID.fromString("20000000-0000-0000-0000-000000000001")
         val guardianLink: UUID = UUID.fromString("20000000-0000-0000-0000-000000000002")
+        val childTeacherAssignment: UUID = UUID.fromString("20000000-0000-0000-0000-000000000003")
         val monthlyPlan: UUID = UUID.fromString("30000000-0000-0000-0000-000000000001")
         val weeklyPlan: UUID = UUID.fromString("30000000-0000-0000-0000-000000000002")
         val invoice: UUID = UUID.fromString("40000000-0000-0000-0000-000000000001")

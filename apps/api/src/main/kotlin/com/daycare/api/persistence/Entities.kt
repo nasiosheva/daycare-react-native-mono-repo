@@ -57,7 +57,7 @@ class AcademicYear(
 class CurriculumProgram(
     @Id var id: UUID = UUID.randomUUID(),
     @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
-    @Column(name = "academic_year_id", nullable = false) var academicYearId: UUID = UUID.randomUUID(),
+    @Column(name = "academic_year_id") var academicYearId: UUID? = null,
     @Column(nullable = false) var name: String = "",
     @Column(nullable = false) var description: String = "",
 )
@@ -97,8 +97,60 @@ class TenantPayment(
 @Entity @Table(name = "branches")
 class Branch(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(nullable = false) var name: String = "", @Column(nullable = false) var timezone: String = "Asia/Jakarta")
 
+@Entity @Table(name = "learning_levels")
+class LearningLevel(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var name: String = "",
+    @Column(name = "min_age_months") var minAgeMonths: Int? = null,
+    @Column(name = "max_age_months") var maxAgeMonths: Int? = null,
+    @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
+    @Column(nullable = false) var active: Boolean = true,
+)
+
+@Entity
+@Table(name = "learning_level_curriculum_programs")
+class LearningLevelCurriculumProgram(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "learning_level_id", nullable = false) var learningLevelId: UUID = UUID.randomUUID(),
+    @Column(name = "curriculum_program_id", nullable = false) var curriculumProgramId: UUID = UUID.randomUUID(),
+)
+
 @Entity @Table(name = "classrooms")
-class Classroom(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(), @Column(nullable = false) var name: String = "")
+class Classroom(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var name: String = "",
+    @Column(name = "learning_level_id") var learningLevelId: UUID? = null,
+    @Column(name = "academic_year_id") var academicYearId: UUID? = null,
+    var capacity: Int? = null,
+    @Column(nullable = false) var active: Boolean = true,
+)
+
+@Entity @Table(name = "child_placements")
+class ChildPlacement(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "classroom_id", nullable = false) var classroomId: UUID = UUID.randomUUID(),
+    @Column(name = "learning_level_id") var learningLevelId: UUID? = null,
+    @Column(name = "academic_year_id") var academicYearId: UUID? = null,
+    @Column(name = "starts_on", nullable = false) var startsOn: LocalDate = LocalDate.now(),
+    @Column(name = "ended_on") var endedOn: LocalDate? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity
+@Table(name = "classroom_staff_assignments", uniqueConstraints = [UniqueConstraint(columnNames = ["classroom_id", "user_id"])])
+class ClassroomStaffAssignment(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "classroom_id", nullable = false) var classroomId: UUID = UUID.randomUUID(),
+    @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(),
+    @Column(name = "assignment_role", nullable = false) var assignmentRole: String = "STAFF",
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
 
 @Entity @Table(name = "memberships")
 class Membership(
