@@ -50,5 +50,5 @@ function BottomNavigationBackHandler({ children }: PropsWithChildren) {
 }
 
 export default function RootLayout() {
-  return <Providers><BottomNavigationBackHandler><Stack screenOptions={{ headerShown: false }}>{bottomNavigationScreenNames.map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none"}} />)}<Stack.Screen name="parent-enrollment" options={{ animation: "none" }} /><Stack.Screen name="sign-up" options={{ animation: "none" }} /></Stack></BottomNavigationBackHandler></Providers>;
+  return <Providers><BottomNavigationBackHandler><Stack screenOptions={{ headerShown: false }}>{bottomNavigationScreenNames.map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none"}} />)}<Stack.Screen name="branches" options={{ animation: "none" }} /><Stack.Screen name="parent-enrollment" options={{ animation: "none" }} /><Stack.Screen name="sign-up" options={{ animation: "none" }} /></Stack></BottomNavigationBackHandler></Providers>;
 }

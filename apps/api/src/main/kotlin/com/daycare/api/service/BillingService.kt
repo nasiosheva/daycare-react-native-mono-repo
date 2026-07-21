@@ -97,7 +97,7 @@ class BillingService(
     fun branchCapacities(jwt: Jwt, organizationId: UUID): List<BranchCapacityResponse> {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
         val capacities = capacity.branchSettings(organizationId).associateBy { it.branchId }
-        return branches.findAllByOrganizationId(organizationId).map { branch -> BranchCapacityResponse(branch.id, capacities[branch.id]?.dailyCapacity) }
+        return branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId).map { branch -> BranchCapacityResponse(branch.id, capacities[branch.id]?.dailyCapacity) }
     }
 
     @Transactional(readOnly = true)

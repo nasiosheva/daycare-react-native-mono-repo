@@ -71,7 +71,7 @@ class LearningStructureService(
     @Transactional(readOnly = true)
     fun branches(jwt: Jwt, organizationId: UUID): List<LearningBranchResponse> {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
-        return branches.findAllByOrganizationId(organizationId).map { LearningBranchResponse(it.id, it.name) }
+        return branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId).map { LearningBranchResponse(it.id, it.name) }
     }
 
     @Transactional(readOnly = true)
@@ -212,7 +212,8 @@ class LearningStructureService(
     private fun replacePrograms(levelId: UUID, ids: Set<UUID>) { levelPrograms.deleteAllByLearningLevelId(levelId); levelPrograms.saveAll(ids.map { LearningLevelCurriculumProgram(learningLevelId = levelId, curriculumProgramId = it) }) }
     private fun validateClassroomReferences(organizationId: UUID, request: UpsertClassroomRequest) {
         require(request.capacity == null || request.capacity > 0) { "Classroom capacity must be positive" }
-        require(branches.findById(request.branchId).orElseThrow { IllegalArgumentException("Branch was not found") }.organizationId == organizationId) { "Branch belongs to a different organization" }
+        val branch = branches.findById(request.branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
+        require(branch.organizationId == organizationId && branch.active) { "Branch is not available for this organization" }
         level(request.learningLevelId, organizationId)
         request.learningPeriodId?.let { id -> require(academicYears.findById(id).orElseThrow { IllegalArgumentException("Learning period was not found") }.organizationId == organizationId) { "Learning period belongs to a different organization" } }
     }

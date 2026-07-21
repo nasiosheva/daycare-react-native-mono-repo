@@ -51,9 +51,9 @@ class AdministrationService(
     fun createChild(jwt: Jwt, organizationId: UUID, request: CreateChildRequest): ChildResponse {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         require(request.firstName.isNotBlank()) { "First name is required" }
-        val branchId = request.branchId ?: branches.findFirstByOrganizationId(organizationId)?.id ?: throw IllegalArgumentException("Branch was not found")
+        val branchId = request.branchId ?: branches.findByOrganizationIdAndPrimaryTrue(organizationId)?.id ?: throw IllegalArgumentException("Primary branch was not found")
         val branch = branches.findById(branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
-        require(branch.organizationId == organizationId) { "Branch belongs to a different organization" }
+        require(branch.organizationId == organizationId && branch.active) { "Branch is not available for this organization" }
         val child = children.save(Child(organizationId = organizationId, branchId = branchId, classroomId = request.classroomId, firstName = request.firstName.trim(), lastName = request.lastName?.trim()?.ifBlank { null }, dateOfBirth = request.dateOfBirth))
         return ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.dateOfBirth)
     }

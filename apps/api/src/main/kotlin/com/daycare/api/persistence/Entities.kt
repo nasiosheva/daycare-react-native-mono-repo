@@ -95,7 +95,14 @@ class TenantPayment(
 )
 
 @Entity @Table(name = "branches")
-class Branch(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(nullable = false) var name: String = "", @Column(nullable = false) var timezone: String = "Asia/Jakarta")
+class Branch(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var name: String = "",
+    @Column(nullable = false) var timezone: String = "Asia/Jakarta",
+    @Column(nullable = false) var active: Boolean = true,
+    @Column(name = "is_primary", nullable = false) var primary: Boolean = false,
+)
 
 @Entity @Table(name = "learning_levels")
 class LearningLevel(

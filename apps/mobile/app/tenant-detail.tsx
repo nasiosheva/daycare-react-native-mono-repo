@@ -27,7 +27,6 @@ export default function TenantDetailScreen() {
   const cancelInvitation = useMutation({ mutationFn: () => api.cancelTenantStaffAdminInvitation(tenantId), onSuccess: refresh });
   const [sheet, setSheet] = useState<Sheet>(null);
   const [name, setName] = useState("");
-  const [branchName, setBranchName] = useState("");
   const [types, setTypes] = useState<InstitutionType[]>([]);
   const [plan, setPlan] = useState<TenantSubscriptionPlan>("STARTER");
   const [monthlyFee, setMonthlyFee] = useState("");
@@ -35,7 +34,6 @@ export default function TenantDetailScreen() {
   useEffect(() => {
     if (!tenant.data) return;
     setName(tenant.data.name);
-    setBranchName(tenant.data.branchName ?? "");
     setTypes(tenant.data.institutionTypes);
     setPlan(tenant.data.subscriptionPlan ?? "STARTER");
     setMonthlyFee(tenant.data.monthlyFee?.toString() ?? "");
@@ -44,9 +42,9 @@ export default function TenantDetailScreen() {
 
   const save = async () => {
     const fee = monthlyFee.trim() ? Number(monthlyFee) : undefined;
-    if (!name.trim() || !branchName.trim() || !types.length || !Number.isFinite(fee ?? 1) || (fee !== undefined && fee <= 0)) return Alert.alert(t("tenant.dataRequired"));
+    if (!name.trim() || !types.length || !Number.isFinite(fee ?? 1) || (fee !== undefined && fee <= 0)) return Alert.alert(t("tenant.dataRequired"));
     try {
-      await update.mutateAsync({ tenantName: name.trim(), branchName: branchName.trim(), institutionTypes: types, subscriptionPlan: plan, monthlyFee: fee });
+      await update.mutateAsync({ tenantName: name.trim(), institutionTypes: types, subscriptionPlan: plan, monthlyFee: fee });
       setSheet(null);
       Alert.alert(t("tenant.saved"));
     } catch (error) { Alert.alert(t("tenant.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
@@ -74,7 +72,6 @@ export default function TenantDetailScreen() {
       Alert.alert(action === "refresh" ? t("tenant.invitationRefreshed") : t("tenant.invitationCancelled"));
     } catch (error) { Alert.alert(t("tenant.invitationFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
-
   return <AppScreen showBottomNavigation={false} title={t("tenant.detailTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {tenant.isLoading && <AppText>{t("tenant.load")}</AppText>}
     {tenant.isError && <Button variant="secondary" onPress={() => tenant.refetch()}>{t("common.retry")}</Button>}
@@ -84,6 +81,12 @@ export default function TenantDetailScreen() {
         <AppText tone="muted">{tenant.data.branchName ?? t("common.noData")}</AppText>
         <AppText>{tenant.data.institutionTypes.map((type) => t(institutionTypeKey(type))).join(" + ")}</AppText>
         <Button variant="secondary" onPress={() => setSheet("edit")}>{t("tenant.edit")}</Button>
+      </View>
+      <View style={styles.card}>
+        <AppText variant="heading">{t("tenant.branches")}</AppText>
+        {tenant.data.branches.map((branch) => <View key={branch.id} style={styles.branch}>
+          <View style={styles.branchContent}><AppText variant="label">{branch.name}{branch.primary ? ` · ${t("tenant.primaryBranch")}` : ""}</AppText><AppText tone="muted">{branch.timezone}{branch.active ? "" : ` · ${t("tenant.archivedBranch")}`}</AppText></View>
+        </View>)}
       </View>
       <View style={styles.card}>
         <AppText variant="heading">{t("tenant.staffAdmin")}</AppText>
@@ -112,7 +115,6 @@ export default function TenantDetailScreen() {
     </View>}
     <BottomSheet visible={sheet === "edit"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("tenant.edit")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("common.save"), loading: update.isPending, onPress: () => void save() }}>
       <TextInput style={styles.input} placeholder={t("tenant.name")} value={name} onChangeText={setName} />
-      <TextInput style={styles.input} placeholder={t("tenant.branch")} value={branchName} onChangeText={setBranchName} />
       <View style={styles.actions}>{institutionTypes.map((type) => <Button key={type} variant={types.includes(type) ? "primary" : "secondary"} onPress={() => setTypes((current) => current.includes(type) ? current.filter((item) => item !== type) : [...current, type])}>{t(institutionTypeKey(type))}</Button>)}</View>
       <View style={styles.actions}>{tenantSubscriptionPlans.map((item) => <Button key={item} variant={plan === item ? "primary" : "secondary"} onPress={() => setPlan(item)}>{t(tenantSubscriptionPlanKey(item))}</Button>)}</View>
       <TextInput style={styles.input} keyboardType="numeric" placeholder={t("tenant.monthlyFee")} value={monthlyFee} onChangeText={setMonthlyFee} />
@@ -127,5 +129,7 @@ const styles = StyleSheet.create({
   content: { gap: spacing.md },
   card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  branch: { gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
+  branchContent: { gap: spacing.xs },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
 });

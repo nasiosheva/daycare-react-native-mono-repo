@@ -67,7 +67,7 @@ class ParentEnrollmentService(
             else ParentTenantCatalogResponse(
                 organization.id,
                 organization.name,
-                branches.findAllByOrganizationId(organization.id).map { branch -> ParentTenantBranchResponse(branch.id, branch.name, billingBranchCapacity(organization.id, branch.id)) },
+                branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organization.id).map { branch -> ParentTenantBranchResponse(branch.id, branch.name, billingBranchCapacity(organization.id, branch.id)) },
                 plans.findAllByOrganizationIdAndActiveTrue(organization.id).map { plan -> ParentTenantPlanResponse(plan.id, plan.name, plan.type, plan.price, plan.creditCount, plan.bookingRequiresApproval, plan.dailyCapacity) },
             )
         }.filter { it.branches.isNotEmpty() && it.plans.isNotEmpty() }
@@ -79,7 +79,7 @@ class ParentEnrollmentService(
         require(memberships.findAllByUserIdAndOrganizationId(parent.id, request.organizationId).none { it.role == Role.PARENT }) { "Parent is already active in this tenant" }
         requireCatalogTenant(request.organizationId)
         val branch = branches.findById(request.branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
-        require(branch.organizationId == request.organizationId) { "Branch belongs to a different organization" }
+        require(branch.organizationId == request.organizationId && branch.active) { "Branch is not available for this organization" }
         val child = children.save(Child(organizationId = request.organizationId, branchId = branch.id, firstName = request.child.firstName.trim(), lastName = request.child.lastName?.trim()?.ifBlank { null }, dateOfBirth = request.child.dateOfBirth, enrollmentStatus = ChildEnrollmentStatus.PENDING))
         val purchase = billing.purchaseForEnrollment(parent, request.organizationId, child, PurchaseServiceRequest(request.planId, child.id, request.bookingDates, request.promoCode))
         val enrollment = enrollments.save(ParentEnrollment(userId = parent.id, organizationId = request.organizationId, branchId = branch.id, childId = child.id, invoiceId = purchase.invoice.id, entitlementId = purchase.entitlement.id))

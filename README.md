@@ -20,7 +20,7 @@ Umur Emas is a multi-tenant early-childhood platform for web, iOS, Android, and 
 ## Repository structure
 
 - `apps/mobile`: Expo Router app for Android, iOS, and web.
-- `apps/api`: Kotlin Spring Boot REST API and Flyway migrations.
+- `apps/api`: Kotlin Spring Boot REST API and the unreleased Flyway baseline schema.
 - `packages/core`: roles, permissions, domain types, and Zod validation schemas.
 - `packages/ui`: shared React Native UI primitives and design tokens.
 - `packages/api-client`: typed API client and OpenAPI generation target.
@@ -37,7 +37,7 @@ Umur Emas is a multi-tenant early-childhood platform for web, iOS, Android, and 
 
 ## Institution types and shared core
 
-The platform supports one or more institution types per tenant: `DAYCARE`, `PAUD`, and `TK`. The shared core covers tenant management, branches, reusable learning levels, class groups, children, guardians, staff roles, attendance, child development, notifications, billing infrastructure, profile management, and reusable mobile UI.
+The platform supports one or more institution types per tenant: `DAYCARE`, `PAUD`, and `TK`. The shared core covers tenant management, branches, reusable learning levels, class groups, children, guardians, staff roles, attendance, child development, notifications, billing infrastructure, profile management, and reusable mobile UI. A tenant is the billing and data boundary; it may operate multiple physical branches under the same tenant-wide Staff Admin account and subscription.
 
 Capabilities are derived from the selected institution types and drive both mobile navigation and backend authorization:
 
@@ -114,7 +114,7 @@ Environment files are local-only and ignored by Git. Start from the correspondin
    set -a && . ./.env && set +a && pnpm dev:api
    ```
 
-   The API runs at `http://localhost:8080/api`. Flyway applies migrations automatically at startup. Swagger UI is available at `http://localhost:8080/api/swagger-ui/index.html`, and the OpenAPI document is at `http://localhost:8080/api/v3/api-docs`.
+   The API runs at `http://localhost:8080/api`. Flyway applies the single unreleased baseline schema, `V1__initial_schema.sql`, automatically at startup. Swagger UI is available at `http://localhost:8080/api/swagger-ui/index.html`, and the OpenAPI document is at `http://localhost:8080/api/v3/api-docs`.
 
 5. Start a client. For direct Expo development, `.env` supplies the public configuration.
 
@@ -228,6 +228,7 @@ All API routes are under `/api/v1` and require a Firebase bearer token except th
 | Change platform-admin PIN | `POST /api/v1/platform/pin` |
 | List or create platform tenants | `GET` / `POST /api/v1/platform/tenants` |
 | Read or update a tenant | `GET` / `PATCH /api/v1/platform/tenants/{organizationId}` |
+| Manage the current tenant's branches (Staff Admin) | `GET` / `POST /api/v1/branches`, `PATCH /api/v1/branches/{branchId}`, `POST /api/v1/branches/{branchId}/{primary\|archive}` |
 | Renew, activate, or suspend a tenant subscription | `POST /api/v1/platform/tenants/{organizationId}/subscription/renew`, `POST /api/v1/platform/tenants/{organizationId}/subscription/{ACTIVE\|SUSPENDED}` |
 | Mark a tenant subscription payment as paid | `POST /api/v1/platform/tenants/{organizationId}/payments/{paymentId}/mark-paid` |
 | Void a pending tenant subscription payment | `POST /api/v1/platform/tenants/{organizationId}/payments/{paymentId}/void` |
@@ -319,7 +320,7 @@ Before committing, run `pnpm verify`. Keep environment files, Firebase platform 
 
 ## Current scope
 
-Platform Admins create tenants, their initial subscription payment, and the initial active Staff Admin account. Daycare Staff Admins configure daily, weekly, and monthly service plans; create Staff Admin and teacher/miss accounts; invite parents; and manage tenant operations. A parent purchases a plan for a linked child; this creates an invoice with a manual-payment status. A Staff Admin confirms the payment, then a Staff Admin or staff member explicitly assigned to that child approves or rejects each booking. Attendance check-in requires a confirmed booking only for tenants with the `DAYCARE_OPERATIONS` capability. PAUD/TK attendance remains a shared core feature and does not require a Daycare booking.
+Platform Admins create tenants, their initial subscription payment, and the initial active Staff Admin account. The initial branch is the primary branch. Staff Admins manage the branches inside their own tenant: they can add, edit, designate, and archive non-primary branches; adding a branch never creates or consumes another Staff Admin account. Platform Admins retain read-only branch visibility in tenant detail for support, alongside billing and subscription control. A tenant has exactly one active primary branch for defaults, while its Staff Admin membership remains tenant-wide across every branch. Daycare Staff Admins configure daily, weekly, and monthly service plans; create Staff Admin and teacher/miss accounts; invite parents; and manage tenant operations. A parent purchases a plan for a linked child; this creates an invoice with a manual-payment status. A Staff Admin confirms the payment, then a Staff Admin or staff member explicitly assigned to that child approves or rejects each booking. Attendance check-in requires a confirmed booking only for tenants with the `DAYCARE_OPERATIONS` capability. PAUD/TK attendance remains a shared core feature and does not require a Daycare booking.
 
 The **Kelas** menu is a shared learning core for Daycare, PAUD, and TK. Staff Admins create optional learning periods, curriculum programs, reusable levels, and class groups. A level represents a tier such as Nursery, Toddler, PAUD, TK A, or TK B; a class group represents a parallel group such as `TK A – Matahari`. System templates are filtered by the tenant's institution types, while custom levels remain allowed. Levels may carry optional age guidance and curriculum-program links. Class groups may have an optional child capacity and a Staff, Nurse, or Miss roster.
 

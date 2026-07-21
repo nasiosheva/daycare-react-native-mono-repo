@@ -42,6 +42,9 @@ import com.daycare.api.service.ParentEnrollmentService
 import com.daycare.api.service.ParentEnrollmentCheckoutRequest
 import com.daycare.api.service.ParentEnrollmentApprovalRequest
 import com.daycare.api.service.ParentEnrollmentRetryRequest
+import com.daycare.api.service.CreateTenantBranchRequest
+import com.daycare.api.service.UpdateTenantBranchRequest
+import com.daycare.api.service.BranchManagementService
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
@@ -158,7 +161,7 @@ class PlatformController(private val platformAdministration: PlatformAdministrat
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val learning: LearningStructureService) {
+class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService) {
     @GetMapping("/children")
     fun children(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = attendance.listChildren(jwt, organizationId)
 
@@ -203,6 +206,21 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @GetMapping("/tenant-users")
     fun tenantUsers(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = administration.tenantUsers(jwt, organizationId)
+
+    @GetMapping("/branches")
+    fun branches(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = branchManagement.branches(jwt, organizationId)
+
+    @PostMapping("/branches") @ResponseStatus(HttpStatus.CREATED)
+    fun createBranch(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateTenantBranchRequest) = branchManagement.create(jwt, organizationId, request)
+
+    @PatchMapping("/branches/{branchId}")
+    fun updateBranch(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable branchId: UUID, @Valid @RequestBody request: UpdateTenantBranchRequest) = branchManagement.update(jwt, organizationId, branchId, request)
+
+    @PostMapping("/branches/{branchId}/primary")
+    fun setPrimaryBranch(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable branchId: UUID) = branchManagement.setPrimary(jwt, organizationId, branchId)
+
+    @PostMapping("/branches/{branchId}/archive")
+    fun archiveBranch(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable branchId: UUID) = branchManagement.archive(jwt, organizationId, branchId)
 
     @GetMapping("/academic-years")
     fun academicYears(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = academic.academicYears(jwt, organizationId)

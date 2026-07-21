@@ -8,7 +8,7 @@ This file is the durable, repository-local context for agents working on Umur Em
 
 - Monorepo: Expo/React Native application in `apps/mobile`, Kotlin/Spring Boot API in `apps/api`, shared domain rules in `packages/core`, UI primitives in `packages/ui`, and typed HTTP client in `packages/api-client`.
 - The product name is **Umur Emas**. It supports web, iOS, Android, and tablet layouts.
-- PostgreSQL schema changes use versioned Flyway SQL migrations under `apps/api/src/main/resources/db/migration`.
+- Until first release, PostgreSQL uses one consolidated Flyway baseline at `apps/api/src/main/resources/db/migration/V1__initial_schema.sql`; a local schema reset is required whenever that baseline changes.
 - Backend features that persist data require matching service-layer authorization, API route, API-client contract, and migration.
 
 ## Product conventions
@@ -24,6 +24,7 @@ This file is the durable, repository-local context for agents working on Umur Em
 - Parent attendance QR payloads include the child ID and name, and their short-lived server token is signed against both values; the scan flow trusts the signed token, not the display name alone.
 - Parent self-enrollment is finalized only through the Staff Admin enrollment decision shown in Booking Approvals; linked ordinary booking rows cannot bypass activation. Enrollment checkout purchases a package without creating a booking or reservation; booking capacity is checked and reserved only after Parent–tenant binding is active. Expired unpaid applications become `EXPIRED`, and a pending Parent screen refreshes the profile after approval.
 - Learning structure is tenant-generic: `LearningLevel` (for example Nursery, Toddler, PAUD, TK A, TK B) is separate from a parallel `Classroom`/rombel. `ChildPlacement` preserves history with one active placement, and Staff may manage children assigned directly or through an active classroom assignment. Learning periods are optional for every institution type; templates are filtered by institution type but tenant-defined levels remain allowed.
+- Tenant is the data and billing boundary; a tenant may own multiple active branches but exactly one primary branch. `STAFF_ADMIN` manages its tenant's branch lifecycle; Platform Admin has read-only branch visibility for support plus tenant billing and subscription control. Adding a branch never creates another Staff Admin account: `STAFF_ADMIN` membership remains tenant-wide, and inactive branches are excluded from new enrollment, child, class, and capacity flows.
 - `apps/mobile/src/audio` is a generic Android/iOS-only, foreground recording module. It produces temporary M4A cache files for at most five minutes; callers own upload, persistence, and deletion. It has no screen or API wiring.
 - `apps/mobile/src/image-picker` is a generic Android/iOS-only picker for up to ten compressed gallery images or one camera image. It has no crop UI, storage, upload, API, or screen wiring; callers own persistence and upload.
 - Local-only authentication is enabled only with `LOCAL_AUTH_ENABLED=true`; it uses a locally seeded PostgreSQL account and an HMAC JWT, while Firebase authentication remains the development and production path.

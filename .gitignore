@@ -37,6 +37,7 @@ local.properties
 .gradle-local/
 apps/api/build/
 apps/api/.gradle/
+apps/api/bin/
 
 # IDE and operating-system files
 .DS_Store

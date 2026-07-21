@@ -57,6 +57,7 @@ data class TenantResponse(
     val id: UUID,
     val name: String,
     val branchName: String?,
+    val branches: List<TenantBranchResponse>,
     val institutionTypes: Set<InstitutionType>,
     val capabilities: Set<InstitutionCapability>,
     val subscriptionPlan: TenantSubscriptionPlan?,
@@ -70,7 +71,6 @@ data class TenantResponse(
 )
 data class UpdateTenantRequest(
     @field:NotBlank @field:Size(max = 200) val tenantName: String,
-    @field:NotBlank @field:Size(max = 200) val branchName: String,
     val institutionTypes: Set<InstitutionType>,
     val subscriptionPlan: TenantSubscriptionPlan,
     @field:DecimalMin("1") val monthlyFee: BigDecimal?,
@@ -116,7 +116,7 @@ class PlatformAdministrationService(
         val organization = organizations.save(Organization(name = request.tenantName.trim()))
         val institutionTypes = request.institutionTypes?.takeIf { it.isNotEmpty() } ?: setOf(InstitutionType.DAYCARE)
         organizationTypes.saveAll(institutionTypes.map { type -> OrganizationTypeAssignment(organizationId = organization.id, type = type) })
-        branches.save(Branch(organizationId = organization.id, name = request.branchName.trim()))
+        branches.save(Branch(organizationId = organization.id, name = request.branchName.trim(), primary = true))
         val today = LocalDate.now()
         val isTrial = request.trialMonths != null
         require(isTrial || request.monthlyFee != null) { "Monthly fee is required when tenant does not use a trial" }
@@ -143,8 +143,6 @@ class PlatformAdministrationService(
         require(request.institutionTypes.isNotEmpty()) { "At least one institution type is required" }
         val organization = requireOrganization(organizationId)
         organization.name = request.tenantName.trim()
-        val branch = branches.findFirstByOrganizationId(organizationId) ?: throw IllegalArgumentException("Tenant branch was not found")
-        branch.name = request.branchName.trim()
         organizationTypes.deleteAll(organizationTypes.findAllByOrganizationId(organizationId))
         organizationTypes.flush()
         organizationTypes.saveAll(request.institutionTypes.map { OrganizationTypeAssignment(organizationId = organizationId, type = it) })
@@ -249,8 +247,10 @@ class PlatformAdministrationService(
         val pendingStaffAdmin = invitations.findAllByOrganizationIdAndStatus(organization.id, InvitationStatus.PENDING)
             .firstOrNull { it.role == Role.STAFF_ADMIN }
             ?.let { invitation -> TenantStaffAdminResponse(invitation.id, invitation.email ?: invitation.phoneNumber, null, "PENDING") }
-        return TenantResponse(organization.id, organization.name, branches.findFirstByOrganizationId(organization.id)?.name, capabilities.types, capabilities.capabilities, subscription?.plan, subscription?.status, subscription?.periodStart, subscription?.periodEnd, subscription?.trialEndsAt, subscription?.monthlyFee, activeStaffAdmin ?: pendingStaffAdmin, payments.findAllByOrganizationIdOrderByCreatedAtDesc(organization.id).map { TenantPaymentResponse(it.id, it.amount, it.status, it.dueDate, it.paidAt) })
+        val tenantBranches = branches.findAllByOrganizationId(organization.id).sortedWith(compareByDescending<Branch> { it.primary }.thenBy { it.name })
+        return TenantResponse(organization.id, organization.name, tenantBranches.firstOrNull { it.primary }?.name, tenantBranches.map(::branchResponse), capabilities.types, capabilities.capabilities, subscription?.plan, subscription?.status, subscription?.periodStart, subscription?.periodEnd, subscription?.trialEndsAt, subscription?.monthlyFee, activeStaffAdmin ?: pendingStaffAdmin, payments.findAllByOrganizationIdOrderByCreatedAtDesc(organization.id).map { TenantPaymentResponse(it.id, it.amount, it.status, it.dueDate, it.paidAt) })
     }
 
     private fun requireOrganization(organizationId: UUID) = organizations.findById(organizationId).orElseThrow { IllegalArgumentException("Tenant was not found") }
+    private fun branchResponse(branch: Branch) = TenantBranchResponse(branch.id, branch.name, branch.timezone, branch.active, branch.primary)
 }
