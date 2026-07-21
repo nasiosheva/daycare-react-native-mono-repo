@@ -1,0 +1,20 @@
+{
+  "name": "daycare-platform",
+  "private": true,
+  "packageManager": "pnpm@10.12.1",
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "dev:app": "corepack pnpm --filter @daycare/app start",
+    "dev:api": "gradle -p apps/api bootRun",
+    "dev:api:simulation": "set -a && . ./.env.simulation && set +a && SPRING_PROFILES_ACTIVE=simulation gradle -p apps/api bootRun",
+    "lint": "corepack pnpm -r --if-present lint",
+    "typecheck": "corepack pnpm -r --if-present typecheck",
+    "test": "corepack pnpm -r --if-present test",
+    "generate:api": "corepack pnpm --filter @daycare/api-client generate",
+    "verify": "corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.3"
+  }
+}

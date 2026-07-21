@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "Daycare Platform",
+    "slug": "daycare-platform",
+    "scheme": "daycare",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "plugins": ["expo-router", "expo-notifications", "@react-native-firebase/app", "@react-native-firebase/auth", "@react-native-google-signin/google-signin"],
+    "ios": { "bundleIdentifier": "com.daycare.platform", "supportsTablet": true, "googleServicesFile": "./GoogleService-Info.plist" },
+    "android": { "package": "com.daycare.platform", "googleServicesFile": "./google-services.json" },
+    "web": { "bundler": "metro", "output": "single" },
+    "experiments": { "typedRoutes": true }
+  }
+}

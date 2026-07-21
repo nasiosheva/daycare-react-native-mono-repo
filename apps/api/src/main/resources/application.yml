@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: daycare-api
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/daycare}
+    username: ${POSTGRES_USER:daycare}
+    password: ${POSTGRES_PASSWORD:daycare}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${FIREBASE_ISSUER_URI}
+server:
+  servlet:
+    context-path: /api
+daycare:
+  qr-signing-secret: ${QR_SIGNING_SECRET:replace-this-development-secret-with-at-least-32-characters}
+  expo-push-url: ${EXPO_PUSH_URL:https://exp.host/--/api/v2/push/send}
+springdoc:
+  api-docs:
+    path: /v3/api-docs

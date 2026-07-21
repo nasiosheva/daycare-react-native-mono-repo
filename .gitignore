@@ -1,0 +1,50 @@
+# Dependencies and package-manager artifacts
+node_modules/
+.turbo/
+
+# Build, test, and runtime artifacts
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Expo and React Native generated files
+.expo/
+.expo-shared/
+android/
+ios/
+web-build/
+
+# Local environment configuration; keep committed templates only
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Firebase and signing credentials
+apps/mobile/google-services.json
+apps/mobile/GoogleService-Info.plist
+*.jks
+*.keystore
+*.p8
+
+# Android and Gradle local state
+local.properties
+apps/api/build/
+apps/api/.gradle/
+
+# IDE and operating-system files
+.DS_Store
+*.iml
+.idea/
+.vscode/
+*.xcuserstate
+xcuserdata/
+DerivedData/
+
+# Local PostgreSQL data volume
+postgres-data/

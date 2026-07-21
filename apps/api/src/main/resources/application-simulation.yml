@@ -1,0 +1,15 @@
+spring:
+  config:
+    activate:
+      on-profile: simulation
+  datasource:
+    url: ${SIMULATION_DATABASE_URL:jdbc:postgresql://localhost:5433/daycare_simulation}
+    username: ${SIMULATION_POSTGRES_USER:daycare}
+    password: ${SIMULATION_POSTGRES_PASSWORD:daycare}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${SIMULATION_FIREBASE_ISSUER_URI:${FIREBASE_ISSUER_URI}}
+daycare:
+  qr-signing-secret: ${SIMULATION_QR_SIGNING_SECRET:simulation-secret-must-be-replaced-with-at-least-32-characters}

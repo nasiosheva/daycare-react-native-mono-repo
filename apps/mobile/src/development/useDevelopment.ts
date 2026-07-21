@@ -1,0 +1,17 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { DevelopmentEntryInput } from "@daycare/core";
+import { useAuth } from "@/auth/AuthProvider";
+
+export function useDevelopmentEntries(childId: string | null) {
+  const { api, organizationId } = useAuth();
+  return useQuery({ queryKey: ["development-entries", organizationId, childId], queryFn: () => api.developmentEntries(childId as string), enabled: Boolean(childId && organizationId) });
+}
+
+export function useCreateDevelopmentEntry(childId: string | null) {
+  const { api, organizationId } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DevelopmentEntryInput) => api.createDevelopmentEntry(childId as string, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["development-entries", organizationId, childId] }),
+  });
+}
