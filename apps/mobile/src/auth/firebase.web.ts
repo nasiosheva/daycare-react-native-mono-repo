@@ -3,17 +3,25 @@ import { getAuth, GoogleAuthProvider, onAuthStateChanged, RecaptchaVerifier, sig
 import { env } from "@/config/env";
 import type { AuthGateway, AuthUser } from "./types";
 
-const app = getApps()[0] ?? initializeApp(env.firebase);
-const auth = getAuth(app);
+let firebaseAuthentication: ReturnType<typeof getAuth> | null = null;
+
+function authentication() {
+  if (firebaseAuthentication) return firebaseAuthentication;
+  const app = getApps()[0] ?? initializeApp(env.firebase);
+  firebaseAuthentication = getAuth(app);
+  return firebaseAuthentication;
+}
+
 function toUser(user: User | null): AuthUser | null {
   return user ? { uid: user.uid, email: user.email, phoneNumber: user.phoneNumber, displayName: user.displayName } : null;
 }
 
 export const firebaseAuth: AuthGateway = {
-  observe(listener) { return onAuthStateChanged(auth, (user) => listener(toUser(user))); },
-  async signInWithEmail(email, password) { await signInWithEmailAndPassword(auth, email, password); },
-  async signInWithGoogle() { await signInWithPopup(auth, new GoogleAuthProvider()); },
+  observe(listener) { return onAuthStateChanged(authentication(), (user) => listener(toUser(user))); },
+  async signInWithEmail(email, password) { await signInWithEmailAndPassword(authentication(), email, password); },
+  async signInWithGoogle() { await signInWithPopup(authentication(), new GoogleAuthProvider()); },
   async sendPhoneCode(phoneNumber) {
+    const auth = authentication();
     const containerId = "firebase-phone-recaptcha";
     if (!document.getElementById(containerId)) {
       const element = document.createElement("div");
@@ -25,6 +33,7 @@ export const firebaseAuth: AuthGateway = {
     return { confirmation: async (code) => { await confirmation.confirm(code); verifier.clear(); } };
   },
   async updateDisplayName(displayName) {
+    const auth = authentication();
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error("Tidak ada akun Firebase yang sedang masuk.");
     await updateProfile(currentUser, { displayName });
@@ -33,10 +42,11 @@ export const firebaseAuth: AuthGateway = {
     return user;
   },
   async changePassword(newPassword) {
+    const auth = authentication();
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error("Tidak ada akun Firebase yang sedang masuk.");
     await updatePassword(currentUser, newPassword);
   },
-  signOut: () => signOut(auth),
-  async getIdToken(forceRefresh = false) { return auth.currentUser?.getIdToken(forceRefresh) ?? null; },
+  signOut: () => signOut(authentication()),
+  async getIdToken(forceRefresh = false) { return authentication().currentUser?.getIdToken(forceRefresh) ?? null; },
 };

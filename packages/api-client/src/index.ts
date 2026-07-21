@@ -1,4 +1,4 @@
-import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildInput, CurrentUser, DevelopmentCategory, DevelopmentEntryInput, InstitutionCapability, InstitutionType, InvoiceStatus, PurchaseServiceInput, Role, ServicePlanType, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
+import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildInput, CurrentUser, DevelopmentCategory, DevelopmentEntryInput, InstitutionCapability, InstitutionType, InvoiceStatus, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -36,14 +36,19 @@ export type DevelopmentEntry = {
   recordedAt: string;
   recordedBy: string;
 };
-export type ServicePlan = { id: string; name: string; type: ServicePlanType; price: number; creditCount?: number; unusedCreditPolicy?: UnusedCreditPolicy; carryForwardDays?: number; bookingRequiresApproval: boolean };
+export type ServicePlan = { id: string; name: string; type: ServicePlanType; price: number; creditCount?: number; unusedCreditPolicy?: UnusedCreditPolicy; carryForwardDays?: number; bookingRequiresApproval: boolean; dailyCapacity?: number | null };
+export type BranchCapacity = { branchId: string; dailyCapacity?: number | null };
+export type ServicePlanDiscount = { id: string; planId: string; kind: ServicePlanDiscountKind; name: string; promoCode?: string | null; type: ServicePlanDiscountType; value: number; startsOn?: string | null; endsOn?: string | null; usageLimit?: number | null; active: boolean };
+export type CreateServicePlanDiscountInput = Omit<ServicePlanDiscount, "id" | "planId" | "active">;
+export type ServicePlanTemplate = { id: string; source: "SYSTEM" | "TENANT"; name: string; type: ServicePlanType; suggestedPrice?: number | null; creditCount?: number | null; unusedCreditPolicy?: UnusedCreditPolicy | null; carryForwardDays?: number | null; bookingRequiresApproval: boolean; dailyCapacity?: number | null };
+export type UpsertServicePlanTemplateInput = Omit<ServicePlanTemplate, "id" | "source">;
 export type ServiceEntitlement = { id: string; childId: string; childName: string; parentName?: string | null; parentEmail?: string | null; planName: string; type: ServicePlanType; status: "PENDING_PAYMENT" | "ACTIVE" | "EXPIRED" | "EXHAUSTED"; totalCredits?: number | null; remainingCredits?: number | null; validUntil: string };
 export type Booking = { id: string; childId: string; childName: string; bookingDate: string; status: BookingStatus; planName: string; invoiceId: string };
-export type Invoice = { id: string; invoiceNumber: string; childId: string; childName: string; parentName?: string | null; parentEmail?: string | null; totalAmount: number; status: InvoiceStatus; dueDate: string; createdAt: string };
+export type Invoice = { id: string; invoiceNumber: string; childId: string; childName: string; parentName?: string | null; parentEmail?: string | null; subtotalAmount: number; discountAmount: number; discountName?: string | null; discountCode?: string | null; totalAmount: number; status: InvoiceStatus; dueDate: string; createdAt: string };
 export type TenantPayment = { id: string; amount: number; status: TenantPaymentStatus; dueDate: string; paidAt: string | null };
 export type TenantStaffAdmin = { id: string; email: string | null; displayName: string | null; status: "ACTIVE" | "PENDING" };
 export type Tenant = { id: string; name: string; branchName: string | null; institutionTypes: InstitutionType[]; capabilities: InstitutionCapability[]; subscriptionPlan: TenantSubscriptionPlan | null; subscriptionStatus: TenantSubscriptionStatus | null; periodStart: string | null; periodEnd: string | null; trialEndsAt: string | null; monthlyFee: number | null; staffAdmin: TenantStaffAdmin | null; payments: TenantPayment[] };
-export type CreateTenantInput = { tenantName: string; branchName: string; institutionTypes: InstitutionType[]; subscriptionPlan: TenantSubscriptionPlan; monthlyFee?: number; trialMonths?: number; staffAdminEmail: string };
+export type CreateTenantInput = { tenantName: string; branchName: string; institutionTypes: InstitutionType[]; subscriptionPlan: TenantSubscriptionPlan; monthlyFee?: number; trialMonths?: number; staffAdminName: string; staffAdminEmail: string; staffAdminPassword: string };
 export type UpdateTenantInput = { tenantName: string; branchName: string; institutionTypes: InstitutionType[]; subscriptionPlan: TenantSubscriptionPlan; monthlyFee?: number };
 export type CreatePlatformAdminInput = { email: string; username: string; password: string };
 export type AcademicYear = { id: string; name: string; startsOn: string; endsOn: string; active: boolean };
@@ -51,6 +56,7 @@ export type CreateAcademicYearInput = { name: string; startsOn: string; endsOn: 
 export type CurriculumProgram = { id: string; academicYearId: string; name: string; description: string };
 export type CreateCurriculumProgramInput = { academicYearId: string; name: string; description: string };
 export type TenantInvitationInput = { email?: string; phoneNumber?: string; role: Extract<Role, "STAFF" | "PARENT">; branchId?: string; classroomId?: string };
+export type CreateTenantUserInput = { displayName: string; email: string; password: string; role: Extract<Role, "STAFF_ADMIN" | "STAFF"> };
 export type TenantUser = { id: string; userId: string | null; displayName: string | null; email: string | null; role: Extract<Role, "STAFF_ADMIN" | "STAFF" | "PARENT">; status: "ACTIVE" | "PENDING" };
 
 export class ApiClient {
@@ -73,6 +79,7 @@ export class ApiClient {
   async refreshTenantStaffAdminInvitation(organizationId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/staff-admin-invitation/refresh`, { method: "POST" }); }
   async cancelTenantStaffAdminInvitation(organizationId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/staff-admin-invitation/cancel`, { method: "POST" }); }
   async inviteTenantUser(input: TenantInvitationInput): Promise<{ id: string }> { return this.request("/invitations", { method: "POST", body: JSON.stringify(input) }); }
+  async createTenantUser(input: CreateTenantUserInput): Promise<TenantUser> { return this.request("/tenant-users", { method: "POST", body: JSON.stringify(input) }); }
   async tenantUsers(): Promise<TenantUser[]> { return this.request("/tenant-users"); }
   async changeTenantUserPassword(userId: string, password: string): Promise<void> { await this.request<void>(`/tenant-users/${userId}/password`, { method: "POST", body: JSON.stringify({ password }) }); }
   async academicYears(): Promise<AcademicYear[]> { return this.request("/academic-years"); }
@@ -109,6 +116,15 @@ export class ApiClient {
 
   async servicePlans(): Promise<ServicePlan[]> { return this.request("/service-plans"); }
   async createServicePlan(input: Omit<ServicePlan, "id">): Promise<ServicePlan> { return this.request("/service-plans", { method: "POST", body: JSON.stringify(input) }); }
+  async branchCapacities(): Promise<BranchCapacity[]> { return this.request("/branch-capacities"); }
+  async setBranchCapacity(branchId: string, dailyCapacity: number): Promise<BranchCapacity> { return this.request(`/branches/${branchId}/capacity`, { method: "PUT", body: JSON.stringify({ dailyCapacity }) }); }
+  async servicePlanDiscounts(planId: string): Promise<ServicePlanDiscount[]> { return this.request(`/service-plans/${planId}/discounts`); }
+  async createServicePlanDiscount(planId: string, input: CreateServicePlanDiscountInput): Promise<ServicePlanDiscount> { return this.request(`/service-plans/${planId}/discounts`, { method: "POST", body: JSON.stringify(input) }); }
+  async deactivateServicePlanDiscount(planId: string, discountId: string): Promise<ServicePlanDiscount> { return this.request(`/service-plans/${planId}/discounts/${discountId}/deactivate`, { method: "POST" }); }
+  async servicePlanTemplates(): Promise<ServicePlanTemplate[]> { return this.request("/service-plan-templates"); }
+  async createServicePlanTemplate(input: UpsertServicePlanTemplateInput): Promise<ServicePlanTemplate> { return this.request("/service-plan-templates", { method: "POST", body: JSON.stringify(input) }); }
+  async updateServicePlanTemplate(templateId: string, input: UpsertServicePlanTemplateInput): Promise<ServicePlanTemplate> { return this.request(`/service-plan-templates/${templateId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async deleteServicePlanTemplate(templateId: string): Promise<void> { await this.request<void>(`/service-plan-templates/${templateId}`, { method: "DELETE" }); }
   async purchaseService(input: PurchaseServiceInput): Promise<{ entitlement: ServiceEntitlement; invoice: Invoice; bookings: Booking[] }> { return this.request("/service-purchases", { method: "POST", body: JSON.stringify(input) }); }
   async entitlements(): Promise<ServiceEntitlement[]> { return this.request("/service-entitlements"); }
   async bookEntitlement(entitlementId: string, bookingDates: string[]): Promise<Booking[]> { return this.request(`/service-entitlements/${entitlementId}/bookings`, { method: "POST", body: JSON.stringify({ bookingDates }) }); }

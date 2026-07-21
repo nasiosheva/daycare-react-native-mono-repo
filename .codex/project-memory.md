@@ -17,6 +17,10 @@ This file is the durable, repository-local context for agents working on Umur Em
 - Main role layouts do not use an app bar. Child/detail screens use an app bar and a back button, and do not show the bottom navigation.
 - Roles: platform `ADMIN`; tenant `STAFF_ADMIN`, `STAFF`, and `PARENT`.
 - Staff Admin manages children, tenant staff, billing, subscriptions, and booking approvals. Child management supports child profiles, child programs, and staff assignments with `STAFF`, `NURSE`, or `MISS` responsibilities.
+- Creating a tenant provisions one active `STAFF_ADMIN` account. Staff Admins can directly create additional `STAFF_ADMIN` and `STAFF` accounts; Parents continue to use invitations.
+- `apps/mobile/src/audio` is a generic Android/iOS-only, foreground recording module. It produces temporary M4A cache files for at most five minutes; callers own upload, persistence, and deletion. It has no screen or API wiring.
+- `apps/mobile/src/image-picker` is a generic Android/iOS-only picker for up to ten compressed gallery images or one camera image. It has no crop UI, storage, upload, API, or screen wiring; callers own persistence and upload.
+- Local-only authentication is enabled only with `LOCAL_AUTH_ENABLED=true`; it uses a locally seeded PostgreSQL account and an HMAC JWT, while Firebase authentication remains the development and production path.
 
 ## Verification
 

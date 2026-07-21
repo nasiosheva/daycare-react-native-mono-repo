@@ -16,6 +16,10 @@ export const servicePlanTypes = ["DAILY", "WEEKLY", "MONTHLY"] as const;
 export type ServicePlanType = (typeof servicePlanTypes)[number];
 export const unusedCreditPolicies = ["CARRY_FORWARD", "EXPIRE"] as const;
 export type UnusedCreditPolicy = (typeof unusedCreditPolicies)[number];
+export const servicePlanDiscountKinds = ["AUTOMATIC", "PROMO_CODE"] as const;
+export type ServicePlanDiscountKind = (typeof servicePlanDiscountKinds)[number];
+export const servicePlanDiscountTypes = ["PERCENTAGE", "FIXED_AMOUNT"] as const;
+export type ServicePlanDiscountType = (typeof servicePlanDiscountTypes)[number];
 export const bookingStatuses = ["PENDING_PAYMENT", "PENDING_APPROVAL", "CONFIRMED", "REJECTED", "CANCELLED", "COMPLETED"] as const;
 export type BookingStatus = (typeof bookingStatuses)[number];
 export const invoiceStatuses = ["PENDING", "PAID", "OVERDUE", "VOID"] as const;
@@ -91,6 +95,7 @@ export const purchaseServiceSchema = z.object({
   planId: z.string().uuid(),
   childId: z.string().uuid(),
   bookingDates: z.array(z.string().date()).max(7),
+  promoCode: z.string().trim().min(1).max(80).optional(),
 });
 
 export type ChildInput = z.infer<typeof childSchema>;

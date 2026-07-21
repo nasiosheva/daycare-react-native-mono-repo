@@ -1,8 +1,11 @@
 package com.daycare.api.persistence
 
 import com.daycare.api.domain.BookingStatus
+import com.daycare.api.domain.CapacityReservationStatus
 import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.InvoiceStatus
+import com.daycare.api.domain.ServicePlanDiscountKind
+import com.daycare.api.domain.ServicePlanDiscountType
 import com.daycare.api.domain.ServicePlanType
 import com.daycare.api.domain.UnusedCreditPolicy
 import jakarta.persistence.Column
@@ -22,13 +25,13 @@ class ServicePlan(
     @Column(nullable = false) var name: String = "", @Enumerated(EnumType.STRING) @Column(name = "plan_type", nullable = false) var type: ServicePlanType = ServicePlanType.DAILY,
     @Column(nullable = false, precision = 14, scale = 2) var price: BigDecimal = BigDecimal.ZERO, @Column(name = "credit_count") var creditCount: Int? = null,
     @Enumerated(EnumType.STRING) @Column(name = "unused_credit_policy") var unusedCreditPolicy: UnusedCreditPolicy? = null, @Column(name = "carry_forward_days") var carryForwardDays: Int? = null,
-    @Column(name = "booking_requires_approval", nullable = false) var bookingRequiresApproval: Boolean = true, @Column(nullable = false) var active: Boolean = true,
+    @Column(name = "booking_requires_approval", nullable = false) var bookingRequiresApproval: Boolean = true, @Column(name = "daily_capacity") var dailyCapacity: Int? = null, @Column(nullable = false) var active: Boolean = true,
 )
 
 @Entity @Table(name = "invoices")
 class Invoice(
     @Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "payer_user_id", nullable = false) var payerUserId: UUID = UUID.randomUUID(),
-    @Column(name = "invoice_number", nullable = false, unique = true) var invoiceNumber: String = "", @Column(nullable = false, precision = 14, scale = 2) var totalAmount: BigDecimal = BigDecimal.ZERO,
+    @Column(name = "invoice_number", nullable = false, unique = true) var invoiceNumber: String = "", @Column(name = "subtotal_amount", nullable = false, precision = 14, scale = 2) var subtotalAmount: BigDecimal = BigDecimal.ZERO, @Column(name = "discount_amount", nullable = false, precision = 14, scale = 2) var discountAmount: BigDecimal = BigDecimal.ZERO, @Column(name = "discount_name") var discountName: String? = null, @Column(name = "discount_code") var discountCode: String? = null, @Column(nullable = false, precision = 14, scale = 2) var totalAmount: BigDecimal = BigDecimal.ZERO,
     @Enumerated(EnumType.STRING) @Column(nullable = false) var status: InvoiceStatus = InvoiceStatus.PENDING, @Column(name = "due_date", nullable = false) var dueDate: LocalDate = LocalDate.now(),
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(), @Column(name = "paid_at") var paidAt: Instant? = null,
 )
@@ -47,4 +50,41 @@ class Booking(
     @Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(), @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
     @Column(name = "entitlement_id", nullable = false) var entitlementId: UUID = UUID.randomUUID(), @Column(name = "invoice_id", nullable = false) var invoiceId: UUID = UUID.randomUUID(), @Column(name = "booking_date", nullable = false) var bookingDate: LocalDate = LocalDate.now(),
     @Enumerated(EnumType.STRING) @Column(nullable = false) var status: BookingStatus = BookingStatus.PENDING_PAYMENT, @Column(name = "plan_name", nullable = false) var planName: String = "", @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "branch_capacity_settings")
+class BranchCapacitySetting(
+    @Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "branch_id", nullable = false, unique = true) var branchId: UUID = UUID.randomUUID(), @Column(name = "daily_capacity", nullable = false) var dailyCapacity: Int = 1,
+)
+
+@Entity @Table(name = "capacity_reservations")
+class CapacityReservation(
+    @Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(), @Column(name = "service_plan_id", nullable = false) var servicePlanId: UUID = UUID.randomUUID(),
+    @Column(name = "entitlement_id", nullable = false) var entitlementId: UUID = UUID.randomUUID(), @Column(name = "booking_id") var bookingId: UUID? = null,
+    @Column(name = "capacity_date", nullable = false) var capacityDate: LocalDate = LocalDate.now(), @Enumerated(EnumType.STRING) @Column(nullable = false) var status: CapacityReservationStatus = CapacityReservationStatus.HELD,
+)
+
+@Entity @Table(name = "service_plan_discounts")
+class ServicePlanDiscount(
+    @Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "service_plan_id", nullable = false) var servicePlanId: UUID = UUID.randomUUID(), @Enumerated(EnumType.STRING) @Column(nullable = false) var kind: ServicePlanDiscountKind = ServicePlanDiscountKind.AUTOMATIC,
+    @Column(nullable = false) var name: String = "", @Column(name = "promo_code") var promoCode: String? = null, @Enumerated(EnumType.STRING) @Column(name = "discount_type", nullable = false) var type: ServicePlanDiscountType = ServicePlanDiscountType.PERCENTAGE,
+    @Column(nullable = false, precision = 14, scale = 2) var value: BigDecimal = BigDecimal.ZERO, @Column(name = "starts_on") var startsOn: LocalDate? = null, @Column(name = "ends_on") var endsOn: LocalDate? = null,
+    @Column(name = "usage_limit") var usageLimit: Int? = null, @Column(nullable = false) var active: Boolean = true, @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "service_plan_discount_redemptions")
+class ServicePlanDiscountRedemption(
+    @Id var id: UUID = UUID.randomUUID(), @Column(name = "discount_id", nullable = false) var discountId: UUID = UUID.randomUUID(), @Column(name = "invoice_id", nullable = false, unique = true) var invoiceId: UUID = UUID.randomUUID(),
+)
+
+@Entity @Table(name = "service_plan_templates")
+class ServicePlanTemplate(
+    @Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var name: String = "", @Enumerated(EnumType.STRING) @Column(name = "plan_type", nullable = false) var type: ServicePlanType = ServicePlanType.DAILY,
+    @Column(name = "suggested_price", precision = 14, scale = 2) var suggestedPrice: BigDecimal? = null, @Column(name = "credit_count") var creditCount: Int? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "unused_credit_policy") var unusedCreditPolicy: UnusedCreditPolicy? = null, @Column(name = "carry_forward_days") var carryForwardDays: Int? = null,
+    @Column(name = "booking_requires_approval", nullable = false) var bookingRequiresApproval: Boolean = true, @Column(name = "daily_capacity") var dailyCapacity: Int? = null,
 )

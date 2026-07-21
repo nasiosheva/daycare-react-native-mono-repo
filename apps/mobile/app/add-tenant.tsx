@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { Redirect, router } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Button, colors, PasswordInput, radius, spacing } from "@daycare/ui";
 import { institutionTypes, tenantSubscriptionPlans, type InstitutionType, type TenantSubscriptionPlan } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -20,7 +20,9 @@ export default function AddTenantScreen() {
   const [step, setStep] = useState(0);
   const [tenantName, setTenantName] = useState("");
   const [branchName, setBranchName] = useState("");
+  const [staffAdminName, setStaffAdminName] = useState("");
   const [staffAdminEmail, setStaffAdminEmail] = useState("");
+  const [staffAdminPassword, setStaffAdminPassword] = useState("");
   const [selectedInstitutionTypes, setSelectedInstitutionTypes] = useState<InstitutionType[]>(["DAYCARE"]);
   const [plan, setPlan] = useState<TenantSubscriptionPlan>("STARTER");
   const [monthlyFee, setMonthlyFee] = useState("");
@@ -29,13 +31,13 @@ export default function AddTenantScreen() {
   if (!profile?.isPlatformAdmin) return <Redirect href="/home" />;
 
   const next = () => {
-    if (step === 0 && (!tenantName.trim() || !branchName.trim() || !staffAdminEmail.trim() || selectedInstitutionTypes.length === 0)) return Alert.alert(t("tenant.institutionRequired"));
+    if (step === 0 && (!tenantName.trim() || !branchName.trim() || !staffAdminName.trim() || !staffAdminEmail.trim() || staffAdminPassword.length < 6 || selectedInstitutionTypes.length === 0)) return Alert.alert(t("tenant.institutionRequired"));
     if (step === 1 && !hasTrial && (!Number.isFinite(Number(monthlyFee)) || Number(monthlyFee) <= 0)) return Alert.alert(t("tenant.feeRequired"));
     setStep((current) => current + 1);
   };
   const checkout = async () => {
     try {
-      await createTenant.mutateAsync({ tenantName: tenantName.trim(), branchName: branchName.trim(), institutionTypes: selectedInstitutionTypes, subscriptionPlan: plan, ...(hasTrial ? { trialMonths: trialMonthsCount } : { monthlyFee: Number(monthlyFee) }), staffAdminEmail: staffAdminEmail.trim() });
+      await createTenant.mutateAsync({ tenantName: tenantName.trim(), branchName: branchName.trim(), institutionTypes: selectedInstitutionTypes, subscriptionPlan: plan, ...(hasTrial ? { trialMonths: trialMonthsCount } : { monthlyFee: Number(monthlyFee) }), staffAdminName: staffAdminName.trim(), staffAdminEmail: staffAdminEmail.trim(), staffAdminPassword });
       Alert.alert(t("tenant.checkoutSuccess"), hasTrial ? t("tenant.checkoutTrial", { count: trialMonthsCount }) : t("tenant.checkoutPayment"), [{ text: t("tenant.viewTenants"), onPress: () => router.replace("/platform-tenants") }]);
     } catch (error) { Alert.alert(t("tenant.checkoutFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
@@ -51,7 +53,9 @@ export default function AddTenantScreen() {
         const selected = selectedInstitutionTypes.includes(type);
         return <Button key={type} variant={selected ? "primary" : "secondary"} onPress={() => setSelectedInstitutionTypes((current) => selected ? current.filter((item) => item !== type) : [...current, type])}>{t(institutionTypeKey(type))}</Button>;
       })}</View>
+      <TextInput style={styles.input} placeholder={t("tenant.staffAdminName")} value={staffAdminName} onChangeText={setStaffAdminName} />
       <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder={t("tenant.staffAdminEmail")} value={staffAdminEmail} onChangeText={setStaffAdminEmail} />
+      <PasswordInput placeholder={t("tenant.staffAdminPassword")} value={staffAdminPassword} onChangeText={setStaffAdminPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
     </View>}
     {step === 1 && <View style={styles.form}>
       <AppText variant="heading">{t("tenant.planTrial")}</AppText>
@@ -67,10 +71,10 @@ export default function AddTenantScreen() {
     {step === 2 && <View style={styles.form}>
       <AppText variant="heading">{t("tenant.stepCheckout")}</AppText>
       <AppText>{tenantName}</AppText>
-      <AppText tone="muted">{branchName} · {staffAdminEmail}</AppText>
+      <AppText tone="muted">{branchName} · {staffAdminName} · {staffAdminEmail}</AppText>
       <AppText>{selectedInstitutionTypes.map((type) => t(institutionTypeKey(type))).join(" + ")}</AppText>
       <AppText>{t(tenantSubscriptionPlanKey(plan))}</AppText>
-      {hasTrial ? <><AppText>{t("tenant.checkoutTrial", { count: trialMonthsCount })}</AppText><AppText variant="caption" tone="muted">{t("tenant.invitationTrial")}</AppText></> : <><AppText>{formatCurrency(Number(monthlyFee))}</AppText><AppText variant="caption" tone="muted">{t("tenant.invitationPayment")}</AppText></>}
+      {hasTrial ? <><AppText>{t("tenant.checkoutTrial", { count: trialMonthsCount })}</AppText><AppText variant="caption" tone="muted">{t("tenant.accountTrial")}</AppText></> : <><AppText>{formatCurrency(Number(monthlyFee))}</AppText><AppText variant="caption" tone="muted">{t("tenant.accountPayment")}</AppText></>}
     </View>}
     <View style={styles.actions}>
       {step > 0 && <Button variant="secondary" onPress={() => setStep((current) => current - 1)}>{t("common.back")}</Button>}

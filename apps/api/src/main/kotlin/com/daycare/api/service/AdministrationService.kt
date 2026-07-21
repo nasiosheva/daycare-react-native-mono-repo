@@ -12,6 +12,10 @@ import com.daycare.api.persistence.InvitationRepository
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.NotificationRepository
 import com.daycare.api.persistence.UserProfileRepository
+import com.daycare.api.persistence.Membership
+import jakarta.validation.constraints.Email
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -24,6 +28,12 @@ data class RegisterDeviceRequest(val token: String, val platform: String)
 data class NotificationResponse(val id: UUID, val title: String, val body: String, val createdAt: java.time.Instant, val readAt: java.time.Instant?)
 data class TenantUserResponse(val id: UUID, val userId: UUID?, val displayName: String?, val email: String?, val role: Role, val status: String)
 data class ChangeTenantUserPasswordRequest(val password: String)
+data class CreateTenantUserRequest(
+    @field:NotBlank @field:Size(min = 2, max = 100) val displayName: String,
+    @field:Email @field:NotBlank val email: String,
+    @field:NotBlank @field:Size(min = 6, max = 128) val password: String,
+    val role: Role,
+)
 
 @Service
 class AdministrationService(
@@ -35,7 +45,7 @@ class AdministrationService(
     private val users: UserProfileRepository,
     private val deviceTokens: DeviceTokenRepository,
     private val notifications: NotificationRepository,
-    private val firebaseAdminIdentity: FirebaseAdminIdentityService,
+    private val tenantUserAccounts: TenantUserAccountService,
 ) {
     @Transactional
     fun createChild(jwt: Jwt, organizationId: UUID, request: CreateChildRequest): ChildResponse {
@@ -54,6 +64,15 @@ class AdministrationService(
         require(!request.email.isNullOrBlank() || !request.phoneNumber.isNullOrBlank()) { "An email or phone number is required" }
         require(request.role in setOf(Role.STAFF, Role.PARENT)) { "Tenant staff administrators can invite only STAFF or PARENT users" }
         return invitations.save(Invitation(organizationId = organizationId, email = request.email?.trim()?.lowercase(), phoneNumber = request.phoneNumber?.trim(), role = request.role, branchId = request.branchId, classroomId = request.classroomId)).id
+    }
+
+    @Transactional
+    fun createTenantUser(jwt: Jwt, organizationId: UUID, request: CreateTenantUserRequest): TenantUserResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        require(request.role in setOf(Role.STAFF_ADMIN, Role.STAFF)) { "Tenant staff administrators can create only STAFF_ADMIN or STAFF users" }
+        val user = tenantUserAccounts.create(request.displayName, request.email, request.password)
+        val membership = memberships.save(Membership(userId = user.id, organizationId = organizationId, role = request.role))
+        return TenantUserResponse(membership.id, user.id, user.displayName, user.email, membership.role, "ACTIVE")
     }
 
     @Transactional(readOnly = true)
@@ -77,7 +96,7 @@ class AdministrationService(
         val membership = memberships.findAllByUserIdAndOrganizationId(userId, organizationId).firstOrNull { it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }
             ?: throw IllegalArgumentException("Only active Staff Admin or Staff users in this tenant can have their password changed")
         val user = users.findById(membership.userId).orElseThrow { IllegalArgumentException("Tenant user was not found") }
-        firebaseAdminIdentity.updatePassword(user.firebaseUid, request.password)
+        tenantUserAccounts.changePassword(user, request.password)
     }
 
     @Transactional

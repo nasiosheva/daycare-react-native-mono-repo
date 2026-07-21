@@ -24,6 +24,7 @@ import com.daycare.api.persistence.TenantSubscriptionRepository
 import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.UserProfileRepository
 import com.daycare.api.persistence.MembershipRepository
+import com.daycare.api.persistence.Membership
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
@@ -45,7 +46,9 @@ data class CreateTenantRequest(
     val subscriptionPlan: TenantSubscriptionPlan,
     @field:DecimalMin("1") val monthlyFee: BigDecimal?,
     @field:Min(1) @field:Max(12) val trialMonths: Int?,
-    @field:Email val staffAdminEmail: String,
+    @field:NotBlank @field:Size(min = 2, max = 100) val staffAdminName: String,
+    @field:Email @field:NotBlank val staffAdminEmail: String,
+    @field:NotBlank @field:Size(min = 6, max = 128) val staffAdminPassword: String,
 )
 
 data class TenantPaymentResponse(val id: UUID, val amount: BigDecimal, val status: TenantPaymentStatus, val dueDate: LocalDate, val paidAt: Instant?)
@@ -93,6 +96,7 @@ class PlatformAdministrationService(
     private val users: UserProfileRepository,
     private val platformAdministrators: PlatformAdministratorRepository,
     private val firebaseAdminIdentity: FirebaseAdminIdentityService,
+    private val tenantUserAccounts: TenantUserAccountService,
 ) {
     @Transactional
     fun tenants(jwt: Jwt): List<TenantResponse> {
@@ -128,7 +132,8 @@ class PlatformAdministrationService(
             monthlyFee = request.monthlyFee,
         ))
         if (!isTrial) payments.save(TenantPayment(subscriptionId = subscription.id, organizationId = organization.id, amount = request.monthlyFee!!, dueDate = today))
-        invitations.save(Invitation(organizationId = organization.id, email = request.staffAdminEmail.trim().lowercase(), role = Role.STAFF_ADMIN, status = InvitationStatus.PENDING))
+        val staffAdmin = tenantUserAccounts.create(request.staffAdminName, request.staffAdminEmail, request.staffAdminPassword)
+        memberships.save(Membership(userId = staffAdmin.id, organizationId = organization.id, role = Role.STAFF_ADMIN))
         return tenantResponse(organization)
     }
 

@@ -23,7 +23,9 @@ class UserProfile(
     @Id var id: UUID = UUID.randomUUID(),
     @Column(name = "firebase_uid", nullable = false, unique = true) var firebaseUid: String = "",
     @Column(nullable = false) var displayName: String = "",
+    var username: String? = null,
     var email: String? = null,
+    @Column(name = "local_password_hash") var localPasswordHash: String? = null,
     @Column(name = "phone_number") var phoneNumber: String? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )

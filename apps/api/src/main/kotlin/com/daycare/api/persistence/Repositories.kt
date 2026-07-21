@@ -2,10 +2,12 @@ package com.daycare.api.persistence
 
 import com.daycare.api.domain.InvitationStatus
 import org.springframework.data.jpa.repository.JpaRepository
+import jakarta.persistence.LockModeType
+import org.springframework.data.jpa.repository.Lock
 import java.time.LocalDate
 import java.util.UUID
 
-interface UserProfileRepository : JpaRepository<UserProfile, UUID> { fun findByFirebaseUid(firebaseUid: String): UserProfile? }
+interface UserProfileRepository : JpaRepository<UserProfile, UUID> { fun findByFirebaseUid(firebaseUid: String): UserProfile?; fun findByEmailIgnoreCase(email: String): UserProfile?; fun findByUsernameIgnoreCase(username: String): UserProfile? }
 interface MembershipRepository : JpaRepository<Membership, UUID> { fun findAllByUserIdAndOrganizationId(userId: UUID, organizationId: UUID): List<Membership>; fun findAllByUserId(userId: UUID): List<Membership>; fun findAllByOrganizationId(organizationId: UUID): List<Membership> }
 interface OrganizationRepository : JpaRepository<Organization, UUID>
 interface OrganizationTypeAssignmentRepository : JpaRepository<OrganizationTypeAssignment, UUID> { fun findAllByOrganizationId(organizationId: UUID): List<OrganizationTypeAssignment> }
@@ -14,7 +16,7 @@ interface CurriculumProgramRepository : JpaRepository<CurriculumProgram, UUID> {
 interface PlatformAdministratorRepository : JpaRepository<PlatformAdministrator, UUID>
 interface TenantSubscriptionRepository : JpaRepository<TenantSubscription, UUID> { fun findByOrganizationId(organizationId: UUID): TenantSubscription? }
 interface TenantPaymentRepository : JpaRepository<TenantPayment, UUID> { fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<TenantPayment> }
-interface BranchRepository : JpaRepository<Branch, UUID> { fun findFirstByOrganizationId(organizationId: UUID): Branch? }
+interface BranchRepository : JpaRepository<Branch, UUID> { fun findFirstByOrganizationId(organizationId: UUID): Branch?; fun findAllByOrganizationId(organizationId: UUID): List<Branch>; @Lock(LockModeType.PESSIMISTIC_WRITE) fun findWithLockById(id: UUID): Branch? }
 interface ClassroomRepository : JpaRepository<Classroom, UUID>
 interface ChildRepository : JpaRepository<Child, UUID> { fun findAllByOrganizationId(organizationId: UUID): List<Child>; fun findAllByOrganizationIdAndBranchId(organizationId: UUID, branchId: UUID): List<Child> }
 interface ChildProgramRepository : JpaRepository<ChildProgram, UUID> { fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildProgram> }

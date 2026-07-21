@@ -14,6 +14,7 @@ repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 started_api_pid=""
 api_log_file="$repository_root/daycare-api-local.log"
 gradle_user_home="$repository_root/.gradle-local"
+native_project_was_synchronized=false
 
 case "$environment" in
   local)
@@ -104,7 +105,12 @@ ensure_environment_file() {
 
 require_environment_values() {
   missing=0
-  for variable in EXPO_PUBLIC_API_URL EXPO_PUBLIC_FIREBASE_API_KEY EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN EXPO_PUBLIC_FIREBASE_PROJECT_ID EXPO_PUBLIC_FIREBASE_APP_ID; do
+  required_variables="EXPO_PUBLIC_API_URL"
+  if [ "${EXPO_PUBLIC_LOCAL_AUTH_ENABLED:-false}" != "true" ]; then
+    required_variables="$required_variables EXPO_PUBLIC_FIREBASE_API_KEY EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN EXPO_PUBLIC_FIREBASE_PROJECT_ID EXPO_PUBLIC_FIREBASE_APP_ID"
+  fi
+
+  for variable in $required_variables; do
     eval "value=\${$variable-}"
     case "$value" in
       ""|*example.com*|*your-*|replace-this-*)
@@ -121,6 +127,10 @@ require_environment_values() {
 }
 
 require_local_backend_values() {
+  if [ "${LOCAL_AUTH_ENABLED:-false}" = "true" ]; then
+    return
+  fi
+
   missing=0
   for variable in FIREBASE_ISSUER_URI; do
     eval "value=\${$variable-}"
@@ -180,32 +190,62 @@ ensure_platform_tools() {
   esac
 }
 
-ensure_local_android_development_build() {
-  if [ "$platform" != "android" ] || [ "$environment" != "local" ]; then
+native_config_fingerprint() {
+  node -e '
+    const { createHash } = require("node:crypto");
+    const { readFileSync } = require("node:fs");
+    const fingerprint = createHash("sha256");
+
+    for (const configFile of process.argv.slice(1)) {
+      try {
+        fingerprint.update(readFileSync(configFile));
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+
+    process.stdout.write(fingerprint.digest("hex"));
+  ' \
+    "$repository_root/apps/mobile/app.json" \
+    "$repository_root/apps/mobile/package.json" \
+    "$repository_root/pnpm-lock.yaml"
+}
+
+ensure_native_project_sync() {
+  case "$platform" in
+    android|ios)
+      ;;
+    *)
+      return
+      ;;
+  esac
+
+  native_config_directory="$repository_root/apps/mobile/.expo"
+  native_config_stamp="$native_config_directory/native-$platform-config.sha256"
+  current_native_config_fingerprint=$(native_config_fingerprint)
+  recorded_native_config_fingerprint=$(cat "$native_config_stamp" 2>/dev/null || true)
+
+  if [ "$current_native_config_fingerprint" = "$recorded_native_config_fingerprint" ]; then
     return
   fi
 
-  android_package_name=$(node -e '
-    const applicationConfig = require(process.argv[1]);
-    const packageName = applicationConfig.expo?.android?.package;
+  echo "Synchronizing the generated $platform project with the Expo native configuration..."
+  (
+    cd "$repository_root"
+    corepack pnpm --filter @daycare/app exec expo prebuild --platform "$platform" --clean --no-install
+  )
+  native_project_was_synchronized=true
+  mkdir -p "$native_config_directory"
+  printf '%s\n' "$current_native_config_fingerprint" >"$native_config_stamp"
+}
 
-    if (!packageName) {
-      process.exit(1);
-    }
+ensure_android_development_build() {
+  if [ "$platform" != "android" ]; then
+    return
+  fi
 
-    process.stdout.write(packageName);
-  ' "$repository_root/apps/mobile/app.json") || {
-    echo "Unable to read expo.android.package from apps/mobile/app.json." >&2
-    exit 1
-  }
-  main_application_source=$(find "$repository_root/apps/mobile/android/app/src/main/java" -name MainApplication.kt -type f -print -quit 2>/dev/null || true)
-
-  if [ -z "$main_application_source" ] || ! grep -Fqx "package $android_package_name" "$main_application_source"; then
-    echo "Synchronizing the generated Android project with apps/mobile/app.json..."
-    (
-      cd "$repository_root"
-      corepack pnpm --filter @daycare/app exec expo prebuild --platform android --clean --no-install
-    )
+  if [ "$environment" != "local" ] && [ "$native_project_was_synchronized" != "true" ]; then
+    return
   fi
 
   android_local_properties="$repository_root/apps/mobile/android/local.properties"
@@ -223,7 +263,7 @@ ensure_local_android_development_build() {
     printf 'sdk.dir=%s\n' "$android_sdk_directory" >"$android_local_properties"
   fi
 
-  echo "Preparing and installing the local Android development build..."
+  echo "Preparing and installing the Android development build..."
   (
     cd "$repository_root"
     corepack pnpm --filter @daycare/app exec expo run:android --no-bundler
@@ -385,7 +425,8 @@ set +a
 
 require_environment_values
 ensure_platform_tools
-ensure_local_android_development_build
+ensure_native_project_sync
+ensure_android_development_build
 
 if [ "$environment" = "local" ]; then
   ensure_local_backend

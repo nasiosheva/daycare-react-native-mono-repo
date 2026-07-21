@@ -6,7 +6,26 @@
     "version": "0.1.0",
     "orientation": "default",
     "userInterfaceStyle": "light",
-    "plugins": ["expo-router", "expo-notifications", "@react-native-firebase/app", "@react-native-firebase/auth", "@react-native-google-signin/google-signin"],
+    "plugins": [
+      "expo-router",
+      "expo-notifications",
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth",
+      "@react-native-google-signin/google-signin",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Izinkan Umur Emas mengakses mikrofon untuk merekam audio."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Izinkan Umur Emas mengakses foto untuk memilih gambar.",
+          "cameraPermission": "Izinkan Umur Emas mengakses kamera untuk mengambil gambar."
+        }
+      ]
+    ],
     "ios": { "bundleIdentifier": "com.children.platform", "supportsTablet": true, "googleServicesFile": "./GoogleService-Info.plist" },
     "android": { "package": "com.children.platform", "googleServicesFile": "./google-services.json" },
     "web": { "bundler": "metro", "output": "single" },

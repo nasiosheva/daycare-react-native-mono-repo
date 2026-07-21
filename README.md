@@ -29,7 +29,7 @@ Umur Emas is a multi-tenant early-childhood platform for web, iOS, Android, and 
 ## Product capabilities
 
 - Platform `ADMIN` manages tenant lifecycle, tenant subscriptions, and tenant payments. Tenant `STAFF_ADMIN` (owner/head) manages the tenant's users and operational configuration; `STAFF` (teacher/miss) records attendance and development; `PARENT` accesses only their own children.
-- A consistent app bar on every screen and role-specific bottom navigation: Platform Admin has tenant administration; Staff Admin has tenant operations, approval, finance, and account invitations; Staff has classroom operations and approvals; Parent has development, attendance QR, and booking. Every role has a Profile menu, which is the sole location for signing out. Profile also manages display name and Firebase password; Platform Admin can create another Platform Admin with an email, username, and password.
+- A consistent app bar on every screen and role-specific bottom navigation: Platform Admin has tenant administration; Staff Admin has tenant operations, approval, finance, and account management; Staff has classroom operations and approvals; Parent has development, attendance QR, and booking. Every role has a Profile menu, which is the sole location for signing out. Profile also manages display name and Firebase password; Platform Admin can create another Platform Admin with an email, username, and password.
 - Shared mobile UI includes an accessible bottom sheet with a drag handle and close button. Profile uses it to confirm logout before ending the session.
 - Child management, manual or QR attendance, and development notes.
 - Service-plan purchase, invoice tracking, booking approval, and remaining-credit management.
@@ -128,13 +128,15 @@ Environment files are local-only and ignored by Git. Start from the correspondin
 
 Flyway creates the schema only; it does not create demo tenant data. A Firebase user is synchronized on its first authenticated request, but receives tenant access only when an existing invitation matches that user's email or phone number.
 
-Set `PLATFORM_ADMIN_EMAILS` to the Firebase email address of the platform operator. When that user first calls the API, it is recorded as a platform `ADMIN` and can create a tenant. Platform Admin creates a tenant through a three-step checkout: tenant data, subscription/trial selection, and checkout confirmation. A trial is configurable from one to twelve months and disables manual monthly-price input. Without a trial, the Platform Admin must enter the monthly price manually; the new tenant is created with a payment due immediately and remains inactive until paid. Every tenant creation also makes one pending `STAFF_ADMIN` invitation. The invited user receives tenant access after signing in with the invited Firebase email.
+For a database-only local Platform Admin, set `LOCAL_AUTH_ENABLED=true`, provide a `LOCAL_AUTH_JWT_SECRET` of at least 32 characters, and set `LOCAL_SEED_ENABLED=true`. The local startup then creates or reuses a Platform Admin in PostgreSQL without Firebase. The default local account is email `admin@gmail.com`, username `admin`, and password `123123`; override it with the `LOCAL_SEED_ADMIN_*` values in `.env`. The password is BCrypt-hashed and is only generated when the seeded user has no local password yet, so a password changed through the app is retained after restart. This local-only mode is disabled by default and does not run for the `simulation`, development, or production profiles.
+
+Set `PLATFORM_ADMIN_EMAILS` to the Firebase email address of the platform operator. When that user first calls the API, it is recorded as a platform `ADMIN` and can create a tenant. Platform Admin creates a tenant through a three-step checkout: tenant data (including the initial Staff Admin name, email, and password), subscription/trial selection, and checkout confirmation. A trial is configurable from one to twelve months and disables manual monthly-price input. Without a trial, the Platform Admin must enter the monthly price manually; the new tenant is created with a payment due immediately and remains inactive until paid. Every tenant creation directly provisions one active `STAFF_ADMIN` account and its tenant membership; the account can sign in immediately with the entered email and password.
 
 Platform Admin can manage every tenant from **Tenant**: search and filter the list, open a tenant detail, edit its name/main branch/institution types/plan/monthly fee, create a one-month renewal invoice, mark or void a pending invoice, and suspend or reactivate the subscription. A pending Staff Admin invitation can have its validity extended or be cancelled from the same detail. An expired trial becomes `PENDING_PAYMENT` when the Platform Admin reads the tenant list or details. Payment confirmation remains manual until a verified payment-provider callback is integrated.
 
 Platform Admins create another Platform Admin from Profile with an email, username, and password. The API creates the Firebase email/password account and grants Platform Admin access in one transaction. This requires a service-account credential for the matching Firebase project. Platform administrator records are protected from deletion at the database level, and the API has no delete route for them.
 
-Staff Admins can open **Akun tenant → Kelola password staf** to replace the password of active `STAFF_ADMIN` and `STAFF` accounts in their own tenant. Parent accounts are excluded. This action also requires the same Firebase service-account credential and never stores a password in PostgreSQL.
+Staff Admins can create additional active `STAFF_ADMIN` and `STAFF` accounts from **Akun tenant** with a name, email, and password; an already-registered email is rejected. Parent accounts remain invitation-based. From **Akun tenant → Kelola password staf**, Staff Admins can replace the password of active `STAFF_ADMIN` and `STAFF` accounts in their own tenant. Parent accounts are excluded. In Firebase environments this requires the Firebase service-account credential; in local auth the password is stored only as a BCrypt hash in PostgreSQL.
 
 ## Simulation environment
 
@@ -185,7 +187,7 @@ cp .env.simulation.example .env.simulation
 | Production services | `./run-android-prod.sh` | `./run-ios-prod.sh` | `./run-web-prod.sh` |
 | Simulation | `./run-android-simulation.sh` | `./run-ios-simulation.sh` | `./run-web-simulation.sh` |
 
-`./run-android-local.sh` synchronizes the generated Android project with `apps/mobile/app.json` when needed, restores `android/local.properties` from `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or the standard macOS SDK location, then creates or refreshes and installs the Android development build before starting the local API and Metro. It can therefore be used as the one-command local Android launcher, including after an Android application-package change. The other Android launchers start an installed Expo development build using the selected service environment. iOS launchers only build and run on the physical iPhone identified by `IOS_DEVICE_UDID`; simulators are intentionally unsupported. The `prod` scripts point at production services but do not create a signed store/release build and do not deploy the API.
+`./run-android-local.sh` synchronizes the generated Android project with the Expo native configuration when needed, restores `android/local.properties` from `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or the standard macOS SDK location, then creates or refreshes and installs the Android development build before starting the local API and Metro. It can therefore be used as the one-command local Android launcher, including after an Android application-package or native-plugin change. The other Android launchers start an installed Expo development build using the selected service environment, and rebuild it automatically when the native configuration changes. iOS launchers only build and run on the physical iPhone identified by `IOS_DEVICE_UDID`; simulators are intentionally unsupported. The `prod` scripts point at production services but do not create a signed store/release build and do not deploy the API.
 
 The `local` launchers use `.env` and also start the default local stack for you. They prefer `docker compose up -d postgres` when Docker is available; otherwise they reuse a PostgreSQL server that is already accepting connections on `${POSTGRES_HOST:-localhost}:${POSTGRES_PORT:-5432}`. After the database is available, the launcher starts `gradle -p apps/api bootRun` in the background and waits until `http://localhost:8080/api/v3/api-docs` responds before starting Expo. The launcher must own that backend process so it can stop it on exit; if port `8080` is already occupied by the Java API process from this same repo, the launcher stops it and starts a fresh one. If another process owns port `8080`, the launcher fails and asks you to stop that process first. Backend logs are written to `daycare-api-local.log`, and the background API process is stopped when the launcher exits.
 
@@ -208,9 +210,17 @@ For iOS, use `./run-ios-dev.sh` after setting `IOS_DEVICE_UDID`; it runs `expo r
 
 To identify the connected iPhone UDID, run `xcrun xctrace list devices`, copy the UDID shown for the physical device (not a line marked `Simulator`), and set it as `IOS_DEVICE_UDID` in the matching environment file. The iPhone must be connected, trusted, and enabled for development.
 
+### Audio recording module
+
+`apps/mobile/src/audio` provides a generic `useAudioRecording` hook for Android and iOS. It requests microphone permission, records foreground-only high-quality M4A audio for at most five minutes, and returns a cache-file descriptor (`uri`, duration, MIME type, creation time, and size when available). The caller owns the cache lifecycle: upload or move it as needed, then call `clear`; `cancel` deletes an unfinished recording. No screen, API route, or upload flow is wired yet. Web callers receive an explicit unsupported result.
+
+### Image picker module
+
+`apps/mobile/src/image-picker` provides a generic `useImagePicker` hook for Android and iOS. It can select up to ten images from the gallery or take one photo with the camera, returning local metadata without base64, EXIF, crop UI, upload, or persistent storage. Images use 80% picker compression; callers own any later upload or persistence. The hook restores a pending Android picker result when the activity is recreated. Web callers receive an explicit unsupported result.
+
 ## API contract and authentication
 
-All API routes are under `/api/v1` and require a Firebase bearer token except the OpenAPI/Swagger endpoints. Endpoints that operate on an organization also require `X-Organization-Id`. The mobile app supports Indonesian and English; it saves the chosen language on the device, sends it in `Accept-Language` (`id` or `en`), and the API localizes error details accordingly. Indonesian is the default when the header is absent or unsupported.
+All API routes are under `/api/v1` and require a Firebase bearer token except the OpenAPI/Swagger endpoints. With `LOCAL_AUTH_ENABLED=true`, local email/username-and-password login instead returns a local bearer token for the same API routes; Google and phone login remain Firebase-only and are hidden in this local mode. Endpoints that operate on an organization also require `X-Organization-Id`. The mobile app supports Indonesian and English; it saves the chosen language on the device, sends it in `Accept-Language` (`id` or `en`), and the API localizes error details accordingly. Indonesian is the default when the header is absent or unsupported.
 
 | Capability | Endpoint |
 | --- | --- |
@@ -222,6 +232,8 @@ All API routes are under `/api/v1` and require a Firebase bearer token except th
 | Mark a tenant subscription payment as paid | `POST /api/v1/platform/tenants/{organizationId}/payments/{paymentId}/mark-paid` |
 | Void a pending tenant subscription payment | `POST /api/v1/platform/tenants/{organizationId}/payments/{paymentId}/void` |
 | Extend or cancel a pending Staff Admin invitation | `POST /api/v1/platform/tenants/{organizationId}/staff-admin-invitation/{refresh\|cancel}` |
+| Create or list tenant accounts | `POST` / `GET /api/v1/tenant-users` |
+| Invite a Parent to a tenant | `POST /api/v1/invitations` |
 | List or create children | `GET` / `POST /api/v1/children` |
 | Read or edit a child | `GET` / `PATCH /api/v1/children/{childId}` |
 | Add or remove a child's programs | `POST /api/v1/children/{childId}/programs`, `DELETE /api/v1/children/{childId}/programs/{programId}` |
@@ -230,6 +242,9 @@ All API routes are under `/api/v1` and require a Firebase bearer token except th
 | Issue attendance QR token | `GET /api/v1/children/{childId}/attendance-qr` |
 | List or create development entries | `GET` / `POST /api/v1/children/{childId}/development-entries` |
 | List or create service plans | `GET` / `POST /api/v1/service-plans` |
+| Read or set a branch daily capacity | `GET /api/v1/branch-capacities`, `PUT /api/v1/branches/{branchId}/capacity` |
+| List, create, or deactivate a package discount/promo | `GET` / `POST /api/v1/service-plans/{planId}/discounts`, `POST /api/v1/service-plans/{planId}/discounts/{discountId}/deactivate` |
+| List or manage package templates | `GET` / `POST /api/v1/service-plan-templates`, `PATCH` / `DELETE /api/v1/service-plan-templates/{templateId}` |
 | Purchase a service plan and create its invoice | `POST /api/v1/service-purchases` |
 | List parent service entitlements and use remaining credits | `GET /api/v1/service-entitlements`, `POST /api/v1/service-entitlements/{id}/bookings` |
 | List bookings or pending branch approvals | `GET /api/v1/bookings`, `GET /api/v1/bookings/pending-approval` |
@@ -246,13 +261,13 @@ The mobile app exchanges Firebase ID tokens through `Authorization: Bearer <toke
 
 ### Booking and billing lifecycle
 
-1. A `STAFF_ADMIN` creates a daily, weekly, or monthly service plan.
-2. A `PARENT` purchases a plan for a linked child. The API creates a pending invoice, entitlement, and any requested booking dates.
+1. A `STAFF_ADMIN` creates a daily, weekly, or monthly service plan, optionally using a system or tenant template, with a daily package capacity and a daily branch capacity when needed.
+2. A `PARENT` purchases a plan for a linked child. The API applies the larger valid automatic discount or package promo code, then creates a pending invoice, entitlement, and any requested booking dates.
 3. A `STAFF_ADMIN` confirms the payment. The entitlement becomes active and bookings become `PENDING_APPROVAL` or `CONFIRMED` according to the plan policy.
 4. A `STAFF_ADMIN` or properly scoped `STAFF` approves or rejects pending bookings. A rejection returns the reserved daily/weekly credit.
 5. Attendance check-in requires a confirmed booking unless the child has an active monthly entitlement covering the current operational day.
 
-Weekly plans reserve credits for selected dates. Unused credits either expire with the plan period or carry forward for the configured number of days. The current payment-confirmation action is manual; a payment-gateway integration must verify a provider callback before marking an invoice paid.
+Weekly plans reserve credits for selected dates. Unused credits either expire with the plan period or carry forward for the configured number of days. Pending payment, approval, and confirmed bookings hold both branch and package capacity; monthly plans hold capacity for each day in their active period. An unpaid invoice releases its slots and promo redemption after its due date. The current payment-confirmation action is manual; a payment-gateway integration must verify a provider callback before marking an invoice paid.
 
 ## Core packages
 
@@ -301,7 +316,7 @@ Before committing, run `pnpm verify`. Keep environment files, Firebase platform 
 
 ## Current scope
 
-Platform Admins create tenants, their initial subscription payment, and the initial Staff Admin invitation. Daycare Staff Admins configure daily, weekly, and monthly service plans; invite teachers/miss and parents; and manage tenant operations. A parent purchases a plan for a linked child; this creates an invoice with a manual-payment status. A Staff Admin confirms the payment, then a Staff Admin or staff member for the child's branch approves or rejects each booking. Attendance check-in requires a confirmed booking only for tenants with the `DAYCARE_OPERATIONS` capability. PAUD/TK attendance remains a shared core feature and does not require a Daycare booking.
+Platform Admins create tenants, their initial subscription payment, and the initial active Staff Admin account. Daycare Staff Admins configure daily, weekly, and monthly service plans; create Staff Admin and teacher/miss accounts; invite parents; and manage tenant operations. A parent purchases a plan for a linked child; this creates an invoice with a manual-payment status. A Staff Admin confirms the payment, then a Staff Admin or staff member for the child's branch approves or rejects each booking. Attendance check-in requires a confirmed booking only for tenants with the `DAYCARE_OPERATIONS` capability. PAUD/TK attendance remains a shared core feature and does not require a Daycare booking.
 
 For `PAUD` and `TK`, Staff Admins manage academic years and curriculum programs from the Akademik menu. This is the initial academic foundation; learning outcomes, assessment, report cards, and academic calendars can be layered on the same academic-year and curriculum-program models.
 
