@@ -6,7 +6,7 @@ import { AuthProvider } from "@/auth/AuthProvider";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { bottomNavigationPaths } from "@/navigation/RoleBottomNavigation";
 
-const bottomNavigationScreenNames = ["home", "platform-tenants", "tenant-detail", "children", "development", "booking-approvals", "billing-admin", "staff-admin", "staff-operations", "attendance", "parent-qr", "booking", "profile"];
+  const bottomNavigationScreenNames = ["home", "platform-tenants", "tenant-detail", "children", "development", "booking-approvals", "billing-admin", "staff-admin", "staff-operations", "attendance", "parent-qr", "booking", "profile"];
 
 function Providers({ children }: PropsWithChildren) {
   const [queryClient] = useState(() => new QueryClient());
@@ -32,5 +32,5 @@ function BottomNavigationBackHandler({ children }: PropsWithChildren) {
 }
 
 export default function RootLayout() {
-  return <Providers><BottomNavigationBackHandler><Stack screenOptions={{ headerShown: false }}>{bottomNavigationScreenNames.map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none" }} />)}</Stack></BottomNavigationBackHandler></Providers>;
+  return <Providers><BottomNavigationBackHandler><Stack screenOptions={{ headerShown: false }}>{bottomNavigationScreenNames.map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none"}} />)}<Stack.Screen name="parent-enrollment" options={{ animation: "none" }} /><Stack.Screen name="sign-up" options={{ animation: "none" }} /></Stack></BottomNavigationBackHandler></Providers>;
 }

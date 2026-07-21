@@ -7,7 +7,15 @@ import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionSynchronization
 import org.springframework.transaction.support.TransactionSynchronizationManager
+import java.util.Locale
 import java.util.UUID
+
+object TenantUserAccountError {
+    const val DISPLAY_NAME_REQUIRED = "tenant_user.display_name_required"
+    const val EMAIL_REQUIRED = "tenant_user.email_required"
+    const val PASSWORD_TOO_SHORT = "tenant_user.password_too_short"
+    const val EMAIL_REGISTERED = "tenant_user.email_registered"
+}
 
 @Service
 class TenantUserAccountService(
@@ -18,8 +26,11 @@ class TenantUserAccountService(
 ) {
     fun create(displayName: String, email: String, password: String): UserProfile {
         val normalizedName = displayName.trim()
-        val normalizedEmail = email.trim().lowercase()
-        require(users.findByEmailIgnoreCase(normalizedEmail) == null) { "Email is already registered" }
+        val normalizedEmail = email.trim().lowercase(Locale.ROOT)
+        require(normalizedName.isNotBlank()) { TenantUserAccountError.DISPLAY_NAME_REQUIRED }
+        require(normalizedEmail.contains("@")) { TenantUserAccountError.EMAIL_REQUIRED }
+        require(password.length >= 6) { TenantUserAccountError.PASSWORD_TOO_SHORT }
+        require(users.findByEmailIgnoreCase(normalizedEmail) == null) { TenantUserAccountError.EMAIL_REGISTERED }
 
         val firebaseUid = if (localAuthEnabled) "local:${UUID.randomUUID()}" else firebaseAdminIdentity.createEmailPasswordUser(normalizedEmail, normalizedName, password)
         if (!localAuthEnabled) registerFirebaseRollback(firebaseUid)
@@ -32,6 +43,7 @@ class TenantUserAccountService(
     }
 
     fun changePassword(user: UserProfile, password: String) {
+        require(password.length >= 6) { TenantUserAccountError.PASSWORD_TOO_SHORT }
         if (localAuthEnabled) user.localPasswordHash = passwordEncoder.encode(password)
         else firebaseAdminIdentity.updatePassword(user.firebaseUid, password)
     }

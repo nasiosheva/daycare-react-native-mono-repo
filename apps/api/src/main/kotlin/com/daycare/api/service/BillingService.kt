@@ -27,12 +27,15 @@ import com.daycare.api.persistence.ServicePlanRepository
 import com.daycare.api.persistence.ServicePlanTemplate
 import com.daycare.api.persistence.ServicePlanTemplateRepository
 import com.daycare.api.persistence.UserProfileRepository
+import com.daycare.api.persistence.UserProfile
+import com.daycare.api.persistence.Child
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.Size
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -73,6 +76,7 @@ class BillingService(
     private val templates: ServicePlanTemplateRepository,
     private val capacity: CapacityReservationService,
     private val notifications: NotificationService,
+    private val events: ApplicationEventPublisher,
 ) {
     @Transactional
     fun plans(jwt: Jwt, organizationId: UUID): List<ServicePlanResponse> {
@@ -93,6 +97,9 @@ class BillingService(
         val capacities = capacity.branchSettings(organizationId).associateBy { it.branchId }
         return branches.findAllByOrganizationId(organizationId).map { branch -> BranchCapacityResponse(branch.id, capacities[branch.id]?.dailyCapacity) }
     }
+
+    @Transactional(readOnly = true)
+    fun branchCapacityForCatalog(organizationId: UUID, branchId: UUID): Int? = capacity.branchSettings(organizationId).firstOrNull { it.branchId == branchId }?.dailyCapacity
 
     @Transactional
     fun setBranchCapacity(jwt: Jwt, organizationId: UUID, branchId: UUID, request: SetBranchCapacityRequest): BranchCapacityResponse {
@@ -160,8 +167,15 @@ class BillingService(
     @Transactional
     fun purchase(jwt: Jwt, organizationId: UUID, request: PurchaseServiceRequest): PurchaseServiceResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)
-        reconcileExpiredInvoices(organizationId)
         val child = childScopes.requireParentLinkedChild(scope, request.childId, organizationId)
+        return purchaseForChild(scope.user, organizationId, child, request)
+    }
+
+    @Transactional
+    fun purchaseForEnrollment(parent: UserProfile, organizationId: UUID, child: Child, request: PurchaseServiceRequest): PurchaseServiceResponse = purchaseForChild(parent, organizationId, child, request)
+
+    private fun purchaseForChild(parent: UserProfile, organizationId: UUID, child: Child, request: PurchaseServiceRequest): PurchaseServiceResponse {
+        reconcileExpiredInvoices(organizationId)
         val initialPlan = requirePlan(request.planId, organizationId)
         val today = LocalDate.now()
         val dates = request.bookingDates.distinct().sorted()
@@ -173,9 +187,9 @@ class BillingService(
         val discountAmount = appliedDiscount?.amount ?: BigDecimal.ZERO
         val totalAmount = plan.price.subtract(discountAmount)
         require(totalAmount > BigDecimal.ZERO) { "Discount must leave a positive total" }
-        val invoice = invoices.save(Invoice(organizationId = organizationId, payerUserId = scope.user.id, invoiceNumber = "INV-${UUID.randomUUID().toString().take(8).uppercase()}", subtotalAmount = plan.price, discountAmount = discountAmount, discountName = appliedDiscount?.discount?.name, discountCode = appliedDiscount?.discount?.promoCode, totalAmount = totalAmount, dueDate = today.plusDays(2)))
+        val invoice = invoices.save(Invoice(organizationId = organizationId, payerUserId = parent.id, invoiceNumber = "INV-${UUID.randomUUID().toString().take(8).uppercase()}", subtotalAmount = plan.price, discountAmount = discountAmount, discountName = appliedDiscount?.discount?.name, discountCode = appliedDiscount?.discount?.promoCode, totalAmount = totalAmount, dueDate = today.plusDays(2)))
         val validUntil = if (plan.type == ServicePlanType.WEEKLY && plan.unusedCreditPolicy == UnusedCreditPolicy.CARRY_FORWARD) periodEnd.plusDays(plan.carryForwardDays?.toLong() ?: 30) else periodEnd
-        val entitlement = entitlements.save(ServiceEntitlement(organizationId = organizationId, branchId = child.branchId, childId = child.id, ownerUserId = scope.user.id, planId = plan.id, invoiceId = invoice.id, planName = plan.name, planType = plan.type, totalCredits = plan.creditCount, reservedCredits = dates.size, bookingRequiresApproval = plan.bookingRequiresApproval, periodStart = today, periodEnd = periodEnd, validUntil = validUntil))
+        val entitlement = entitlements.save(ServiceEntitlement(organizationId = organizationId, branchId = child.branchId, childId = child.id, ownerUserId = parent.id, planId = plan.id, invoiceId = invoice.id, planName = plan.name, planType = plan.type, totalCredits = plan.creditCount, reservedCredits = dates.size, bookingRequiresApproval = plan.bookingRequiresApproval, periodStart = today, periodEnd = periodEnd, validUntil = validUntil))
         val createdBookings = dates.map { date -> bookings.save(Booking(organizationId = organizationId, branchId = child.branchId, childId = child.id, entitlementId = entitlement.id, invoiceId = invoice.id, bookingDate = date, planName = plan.name)) }
         capacity.reserve(organizationId, child.branchId, plan.id, entitlement.id, capacityDates(plan.type, dates, today, periodEnd), createdBookings.associate { it.bookingDate to it.id })
         if (appliedDiscount?.discount?.kind == ServicePlanDiscountKind.PROMO_CODE) discountRedemptions.save(ServicePlanDiscountRedemption(discountId = appliedDiscount.discount.id, invoiceId = invoice.id))
@@ -188,19 +202,16 @@ class BillingService(
         reconcileExpiredInvoices(organizationId)
         val entitlement = entitlements.findById(entitlementId).orElseThrow { IllegalArgumentException("Service entitlement was not found") }
         require(entitlement.organizationId == organizationId && entitlement.ownerUserId == scope.user.id) { "Service entitlement is not available" }
-        require(entitlement.status == EntitlementStatus.ACTIVE) { "Service entitlement is not active" }
-        require(entitlement.planType != ServicePlanType.MONTHLY) { "Monthly plans do not require daily bookings" }
-        val dates = request.bookingDates.distinct().sorted()
-        require(dates.isNotEmpty()) { "At least one booking date is required" }
-        require(dates.all { !it.isBefore(LocalDate.now()) && !it.isAfter(entitlement.validUntil) }) { "Booking dates are outside the valid service period" }
-        require(dates.size <= remainingCredits(entitlement)) { "Booking dates exceed remaining service credits" }
-        requireAvailableDates(organizationId, entitlement.childId, dates)
         val child = childScopes.requireParentLinkedChild(scope, entitlement.childId, organizationId)
-        capacity.requireAvailability(organizationId, child.branchId, entitlement.planId, dates, requireActivePlan = false)
-        val created = dates.map { date -> bookings.save(Booking(organizationId = organizationId, branchId = child.branchId, childId = child.id, entitlementId = entitlement.id, invoiceId = entitlement.invoiceId, bookingDate = date, status = if (entitlement.bookingRequiresApproval) BookingStatus.PENDING_APPROVAL else BookingStatus.CONFIRMED, planName = entitlement.planName)) }
-        capacity.reserve(organizationId, child.branchId, entitlement.planId, entitlement.id, dates, created.associate { it.bookingDate to it.id })
-        entitlement.reservedCredits += dates.size
-        return created.map { bookingResponse(it, child.fullName()) }
+        return createBookingsForEntitlement(organizationId, entitlement, child, request.bookingDates, if (entitlement.bookingRequiresApproval) BookingStatus.PENDING_APPROVAL else BookingStatus.CONFIRMED)
+    }
+
+    @Transactional
+    fun createEnrollmentRetryBookings(organizationId: UUID, entitlementId: UUID, childId: UUID, bookingDates: List<LocalDate>): List<BookingResponse> {
+        val entitlement = entitlements.findById(entitlementId).orElseThrow { IllegalArgumentException("Service entitlement was not found") }
+        require(entitlement.organizationId == organizationId && entitlement.childId == childId) { "Service entitlement is not available" }
+        val child = children.findById(childId).orElseThrow { IllegalArgumentException("Child was not found") }
+        return if (entitlement.planType == ServicePlanType.MONTHLY) emptyList() else createBookingsForEntitlement(organizationId, entitlement, child, bookingDates, BookingStatus.PENDING_APPROVAL)
     }
 
     @Transactional
@@ -214,6 +225,7 @@ class BillingService(
         entitlement.status = if (entitlement.validUntil.isBefore(LocalDate.now())) EntitlementStatus.EXPIRED else EntitlementStatus.ACTIVE
         bookings.findAllByInvoiceId(invoice.id).forEach { booking -> if (booking.status == BookingStatus.PENDING_PAYMENT) booking.status = if (entitlement.bookingRequiresApproval) BookingStatus.PENDING_APPROVAL else BookingStatus.CONFIRMED }
         notifications.notify(organizationId, invoice.payerUserId, "Pembayaran diterima", "Tagihan ${invoice.invoiceNumber} telah dikonfirmasi.")
+        events.publishEvent(InvoicePaidEvent(invoice.id))
         return invoiceResponse(invoice, entitlement.childId, childName(entitlement.childId))
     }
 
@@ -314,6 +326,21 @@ class BillingService(
     private fun requireAvailableDates(organizationId: UUID, childId: UUID, dates: List<LocalDate>) {
         val blockingStatuses = setOf(BookingStatus.PENDING_PAYMENT, BookingStatus.PENDING_APPROVAL, BookingStatus.CONFIRMED, BookingStatus.COMPLETED)
         require(dates.none { bookings.existsByOrganizationIdAndChildIdAndBookingDateAndStatusIn(organizationId, childId, it, blockingStatuses) }) { "One or more dates already have a booking" }
+    }
+
+    private fun createBookingsForEntitlement(organizationId: UUID, entitlement: ServiceEntitlement, child: Child, bookingDates: List<LocalDate>, status: BookingStatus): List<BookingResponse> {
+        require(entitlement.status == EntitlementStatus.ACTIVE) { "Service entitlement is not active" }
+        require(entitlement.planType != ServicePlanType.MONTHLY) { "Monthly plans do not require daily bookings" }
+        val dates = bookingDates.distinct().sorted()
+        require(dates.isNotEmpty()) { "At least one booking date is required" }
+        require(dates.all { !it.isBefore(LocalDate.now()) && !it.isAfter(entitlement.validUntil) }) { "Booking dates are outside the valid service period" }
+        require(dates.size <= remainingCredits(entitlement)) { "Booking dates exceed remaining service credits" }
+        requireAvailableDates(organizationId, entitlement.childId, dates)
+        capacity.requireAvailability(organizationId, child.branchId, entitlement.planId, dates, requireActivePlan = false)
+        val created = dates.map { date -> bookings.save(Booking(organizationId = organizationId, branchId = child.branchId, childId = child.id, entitlementId = entitlement.id, invoiceId = entitlement.invoiceId, bookingDate = date, status = status, planName = entitlement.planName)) }
+        capacity.reserve(organizationId, child.branchId, entitlement.planId, entitlement.id, dates, created.associate { it.bookingDate to it.id })
+        entitlement.reservedCredits += dates.size
+        return created.map { bookingResponse(it, child.fullName()) }
     }
 
     private fun periodEnd(type: ServicePlanType, dates: List<LocalDate>, today: LocalDate) = when (type) { ServicePlanType.DAILY -> dates.single(); ServicePlanType.WEEKLY -> today.plusDays(6); ServicePlanType.MONTHLY -> YearMonth.from(today).atEndOfMonth() }

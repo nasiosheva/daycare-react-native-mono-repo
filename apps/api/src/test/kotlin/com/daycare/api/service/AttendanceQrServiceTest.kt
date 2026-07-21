@@ -11,8 +11,10 @@ class AttendanceQrServiceTest {
     @Test
     fun `issued token validates only for its child`() {
         val childId = UUID.randomUUID()
-        val issued = service.issue(childId)
-        assertDoesNotThrow { service.verify(childId, issued.token) }
-        assertThrows(IllegalArgumentException::class.java) { service.verify(UUID.randomUUID(), issued.token) }
+        val childName = "Alya Putri"
+        val issued = service.issue(childId, childName)
+        assertDoesNotThrow { service.verify(childId, childName, issued.token) }
+        assertThrows(IllegalArgumentException::class.java) { service.verify(UUID.randomUUID(), childName, issued.token) }
+        assertThrows(IllegalArgumentException::class.java) { service.verify(childId, "Anak Lain", issued.token) }
     }
 }

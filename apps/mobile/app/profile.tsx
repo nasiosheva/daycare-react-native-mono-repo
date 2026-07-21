@@ -11,9 +11,10 @@ import { AppScreen } from "@/navigation/AppScreen";
 type ProfileSheet = "profile" | "password" | "admin" | null;
 
 export default function ProfileScreen() {
-  const { api, user, profile, organizationId, isSimulationSession, signOut, updateDisplayName, changePassword } = useAuth();
+  const { api, user, profile, organizationId, isSimulationSession, signOut, updateDisplayName, changePassword, selectOrganization } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const parentMemberships = profile?.memberships.filter((item) => item.role === "PARENT") ?? [];
   const [displayName, setDisplayName] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
@@ -78,6 +79,7 @@ export default function ProfileScreen() {
     <View style={styles.card}>
       <AppText variant="heading">{profile?.displayName ?? user?.displayName ?? t("common.noData")}</AppText>
       {user?.email && <AppText tone="muted">{user.email}</AppText>}
+      {user?.phoneNumber && <AppText tone="muted">{user.phoneNumber}</AppText>}
       {profile?.isPlatformAdmin && <AppText tone="muted">{t("profile.rolePlatform")}</AppText>}
       {membership && <>
         <AppText>{membership.organizationName}</AppText>
@@ -85,6 +87,13 @@ export default function ProfileScreen() {
       </>}
       {isSimulationSession && <AppText variant="caption" tone="muted">{t("profile.simulation")}</AppText>}
     </View>
+
+    {parentMemberships.length > 0 && <View style={styles.form}>
+      <AppText variant="heading">{t("profile.tenants")}</AppText>
+      {parentMemberships.map((item) => <Button key={item.organizationId} variant={item.organizationId === organizationId ? "primary" : "secondary"} onPress={() => { selectOrganization(item.organizationId); router.replace("/home"); }}>{item.organizationName}</Button>)}
+      <Button variant="secondary" onPress={() => router.push("/parent-enrollment" as never)}>{t("profile.manageTenants")}</Button>
+      <Button variant="secondary" onPress={() => router.push("/parent-qr")}>{t("profile.showQr")}</Button>
+    </View>}
 
     <View style={styles.form}>
       <AppText variant="heading">{t("profile.personal")}</AppText>

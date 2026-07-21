@@ -33,6 +33,10 @@ import com.daycare.api.service.AssignChildStaffRequest
 import com.daycare.api.service.SetBranchCapacityRequest
 import com.daycare.api.service.UpsertServicePlanTemplateRequest
 import com.daycare.api.service.LocalAuthenticationService
+import com.daycare.api.service.ParentEnrollmentService
+import com.daycare.api.service.ParentEnrollmentCheckoutRequest
+import com.daycare.api.service.ParentEnrollmentApprovalRequest
+import com.daycare.api.service.ParentEnrollmentRetryRequest
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
@@ -56,11 +60,15 @@ import java.util.UUID
 data class LocalLoginRequest(@field:NotBlank @field:Size(max = 128) val identifier: String, @field:Size(min = 6, max = 128) val password: String)
 data class LocalPasswordRequest(@field:Size(min = 6, max = 128) val password: String)
 data class LocalProfileRequest(@field:NotBlank @field:Size(max = 128) val displayName: String)
+data class LocalRegistrationRequest(@field:NotBlank @field:Size(max = 128) val displayName: String, @field:NotBlank @field:Size(max = 254) val email: String, @field:NotBlank @field:Size(min = 6, max = 128) val password: String)
 
 @RestController
 @RequestMapping("/v1/auth/local")
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(prefix = "daycare", name = ["local-auth-enabled"], havingValue = "true")
 class LocalAuthenticationController(private val localAuthentication: LocalAuthenticationService) {
+    @PostMapping("/register") @ResponseStatus(HttpStatus.CREATED)
+    fun register(@Valid @RequestBody request: LocalRegistrationRequest) = localAuthentication.register(request.displayName, request.email, request.password)
+
     @PostMapping("/login")
     fun login(@Valid @RequestBody request: LocalLoginRequest) = localAuthentication.login(request.identifier, request.password)
 
@@ -76,6 +84,29 @@ class LocalAuthenticationController(private val localAuthentication: LocalAuthen
 @SecurityRequirement(name = "bearerAuth")
 class IdentityController(private val access: AccessService) {
     @GetMapping("/me") fun me(@AuthenticationPrincipal jwt: Jwt) = access.currentUser(jwt)
+}
+
+@RestController
+@RequestMapping("/v1/parent-enrollment")
+@SecurityRequirement(name = "bearerAuth")
+class ParentEnrollmentController(private val enrollments: ParentEnrollmentService) {
+    @GetMapping("/catalog")
+    fun catalog(@AuthenticationPrincipal jwt: Jwt) = enrollments.catalog(jwt)
+
+    @PostMapping("/checkout") @ResponseStatus(HttpStatus.CREATED)
+    fun checkout(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: ParentEnrollmentCheckoutRequest) = enrollments.checkout(jwt, request)
+
+    @GetMapping
+    fun mine(@AuthenticationPrincipal jwt: Jwt) = enrollments.mine(jwt)
+
+    @GetMapping("/pending-approval")
+    fun pendingApprovals(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = enrollments.pendingApprovals(jwt, organizationId)
+
+    @PostMapping("/{enrollmentId}/approval")
+    fun decide(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable enrollmentId: UUID, @Valid @RequestBody request: ParentEnrollmentApprovalRequest) = enrollments.decide(jwt, organizationId, enrollmentId, request)
+
+    @PostMapping("/{enrollmentId}/retry")
+    fun retry(@AuthenticationPrincipal jwt: Jwt, @PathVariable enrollmentId: UUID, @Valid @RequestBody request: ParentEnrollmentRetryRequest) = enrollments.retry(jwt, enrollmentId, request)
 }
 
 @RestController

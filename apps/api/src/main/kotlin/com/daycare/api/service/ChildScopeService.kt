@@ -1,6 +1,7 @@
 package com.daycare.api.service
 
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.ChildEnrollmentStatus
 import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.GuardianLinkRepository
@@ -13,12 +14,12 @@ class ChildScopeService(
     private val children: ChildRepository,
     private val guardians: GuardianLinkRepository,
 ) {
-    fun visibleChildren(scope: AccessScope, organizationId: UUID): List<Child> = when (scope.membership.role) {
+    fun visibleChildren(scope: AccessScope, organizationId: UUID): List<Child> = (when (scope.membership.role) {
         Role.STAFF_ADMIN -> children.findAllByOrganizationId(organizationId)
         Role.STAFF -> scope.membership.branchId?.let { children.findAllByOrganizationIdAndBranchId(organizationId, it) } ?: children.findAllByOrganizationId(organizationId)
         Role.PARENT -> guardians.findAllByUserId(scope.user.id).mapNotNull { children.findById(it.childId).orElse(null) }.filter { it.organizationId == organizationId }
         Role.ADMIN -> throw AccessDeniedException("Platform administrators do not have tenant child access")
-    }
+    }).filter { it.enrollmentStatus == ChildEnrollmentStatus.ACTIVE }
 
     fun requireStaffManagedChild(scope: AccessScope, childId: UUID, organizationId: UUID): Child {
         val child = requireOrganizationChild(childId, organizationId)

@@ -136,7 +136,7 @@ Platform Admin can manage every tenant from **Tenant**: search and filter the li
 
 Platform Admins create another Platform Admin from Profile with an email, username, and password. The API creates the Firebase email/password account and grants Platform Admin access in one transaction. This requires a service-account credential for the matching Firebase project. Platform administrator records are protected from deletion at the database level, and the API has no delete route for them.
 
-Staff Admins can create additional active `STAFF_ADMIN` and `STAFF` accounts from **Akun tenant** with a name, email, and password; an already-registered email is rejected. Parent accounts remain invitation-based. From **Akun tenant → Kelola password staf**, Staff Admins can replace the password of active `STAFF_ADMIN` and `STAFF` accounts in their own tenant. Parent accounts are excluded. In Firebase environments this requires the Firebase service-account credential; in local auth the password is stored only as a BCrypt hash in PostgreSQL.
+Staff Admins can create additional active `STAFF_ADMIN` and `STAFF` accounts from **Akun tenant** with a name, email, and password; names and emails are required, passwords must contain at least six characters, and email matching is case-insensitive. An already-registered email is rejected. Parent accounts remain invitation-based. From **Akun tenant → Kelola password staf**, Staff Admins can replace the password of active `STAFF_ADMIN` and `STAFF` accounts in their own tenant using the same password rule. Parent accounts are excluded. In Firebase environments this requires the Firebase service-account credential; in local auth the password is stored only as a BCrypt hash in PostgreSQL.
 
 ## Simulation environment
 
@@ -220,7 +220,7 @@ To identify the connected iPhone UDID, run `xcrun xctrace list devices`, copy th
 
 ## API contract and authentication
 
-All API routes are under `/api/v1` and require a Firebase bearer token except the OpenAPI/Swagger endpoints. With `LOCAL_AUTH_ENABLED=true`, local email/username-and-password login instead returns a local bearer token for the same API routes; Google and phone login remain Firebase-only and are hidden in this local mode. Endpoints that operate on an organization also require `X-Organization-Id`. The mobile app supports Indonesian and English; it saves the chosen language on the device, sends it in `Accept-Language` (`id` or `en`), and the API localizes error details accordingly. Indonesian is the default when the header is absent or unsupported.
+All API routes are under `/api/v1` and require a Firebase bearer token except the OpenAPI/Swagger endpoints. With `LOCAL_AUTH_ENABLED=true`, local email/username-and-password login instead returns a local bearer token for the same API routes; Google and phone login remain Firebase-only and are hidden in this local mode. Endpoints that operate on an organization also require `X-Organization-Id`. The mobile app supports Indonesian and English; it saves the chosen language on the device, sends it in `Accept-Language` (`id` or `en`), and the API localizes error details accordingly. Indonesian is the default when the header is absent or unsupported. Firebase account provisioning failures are returned as localized application errors; raw Firebase provider messages and configuration details are not exposed to clients.
 
 | Capability | Endpoint |
 | --- | --- |

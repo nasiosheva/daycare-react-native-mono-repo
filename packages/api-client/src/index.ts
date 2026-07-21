@@ -58,6 +58,11 @@ export type CreateCurriculumProgramInput = { academicYearId: string; name: strin
 export type TenantInvitationInput = { email?: string; phoneNumber?: string; role: Extract<Role, "STAFF" | "PARENT">; branchId?: string; classroomId?: string };
 export type CreateTenantUserInput = { displayName: string; email: string; password: string; role: Extract<Role, "STAFF_ADMIN" | "STAFF"> };
 export type TenantUser = { id: string; userId: string | null; displayName: string | null; email: string | null; role: Extract<Role, "STAFF_ADMIN" | "STAFF" | "PARENT">; status: "ACTIVE" | "PENDING" };
+export type ParentTenantPlan = { id: string; name: string; type: ServicePlanType; price: number; creditCount?: number | null; bookingRequiresApproval: boolean; dailyCapacity?: number | null };
+export type ParentTenantCatalog = { organizationId: string; organizationName: string; branches: Array<{ id: string; name: string; dailyCapacity?: number | null }>; plans: ParentTenantPlan[] };
+export type ParentEnrollmentStatus = "PENDING_PAYMENT" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED";
+export type ParentEnrollment = { id: string; organizationId: string; branchId: string; childId: string; childName: string; invoiceId: string; entitlementId: string; status: ParentEnrollmentStatus; rejectionReason?: string | null; createdAt: string };
+export type ParentEnrollmentCheckoutInput = { organizationId: string; branchId: string; planId: string; bookingDates: string[]; promoCode?: string; child: { firstName: string; lastName?: string; dateOfBirth: string } };
 
 export class ApiClient {
   constructor(private readonly options: ApiClientOptions) {}
@@ -65,6 +70,12 @@ export class ApiClient {
   async me(): Promise<CurrentUser> {
     return this.request("/me");
   }
+  async parentEnrollmentCatalog(): Promise<ParentTenantCatalog[]> { return this.request("/parent-enrollment/catalog"); }
+  async parentEnrollments(): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment"); }
+  async checkoutParentEnrollment(input: ParentEnrollmentCheckoutInput): Promise<ParentEnrollment> { return this.request("/parent-enrollment/checkout", { method: "POST", body: JSON.stringify(input) }); }
+  async pendingParentEnrollments(): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment/pending-approval"); }
+  async approveParentEnrollment(enrollmentId: string, approved: boolean, rejectionReason?: string): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/approval`, { method: "POST", body: JSON.stringify({ approved, rejectionReason }) }); }
+  async retryParentEnrollment(enrollmentId: string, bookingDates: string[]): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/retry`, { method: "POST", body: JSON.stringify({ bookingDates }) }); }
 
   async tenants(): Promise<Tenant[]> { return this.request("/platform/tenants"); }
   async tenant(organizationId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}`); }

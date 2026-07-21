@@ -2,6 +2,9 @@ package com.daycare.api.web
 
 import com.daycare.api.service.AttendanceConflict
 import com.daycare.api.service.InvalidLocalCredentialsException
+import com.daycare.api.service.LocalAuthenticationError
+import com.daycare.api.service.FirebaseIdentityError
+import com.daycare.api.service.TenantUserAccountError
 import org.springframework.context.MessageSource
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -15,7 +18,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 @RestControllerAdvice
 class ApiExceptionHandler(private val messages: MessageSource) {
     @ExceptionHandler(InvalidLocalCredentialsException::class)
-    fun invalidLocalCredentials(error: InvalidLocalCredentialsException): ProblemDetail = problem(HttpStatus.UNAUTHORIZED, "AUTHENTICATION_FAILED", "invalid_local_credentials")
+    fun invalidLocalCredentials(error: InvalidLocalCredentialsException): ProblemDetail = problem(HttpStatus.UNAUTHORIZED, "AUTHENTICATION_FAILED", error.message)
     @ExceptionHandler(IllegalArgumentException::class)
     fun invalidRequest(error: IllegalArgumentException): ProblemDetail = problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", error.message)
     @ExceptionHandler(IllegalStateException::class)
@@ -36,7 +39,20 @@ class ApiExceptionHandler(private val messages: MessageSource) {
     private companion object {
         val errorKeys = mapOf(
             "validation" to "error.validation", "invalid_request" to "error.invalidRequest",
-            "invalid_local_credentials" to "error.invalidLocalCredentials",
+            LocalAuthenticationError.INVALID_CREDENTIALS to "error.invalidLocalCredentials",
+            LocalAuthenticationError.DISPLAY_NAME_REQUIRED to "error.localDisplayNameRequired",
+            LocalAuthenticationError.EMAIL_REQUIRED to "error.localEmailRequired",
+            LocalAuthenticationError.PASSWORD_TOO_SHORT to "error.localPasswordTooShort",
+            LocalAuthenticationError.EMAIL_REGISTERED to "error.emailRegistered",
+            LocalAuthenticationError.USER_NOT_FOUND to "error.localUserNotFound",
+            FirebaseIdentityError.ACCOUNT_READ_FAILED to "error.firebaseAccountReadFailed",
+            FirebaseIdentityError.ACCOUNT_CREATE_FAILED to "error.firebaseAccountCreateFailed",
+            FirebaseIdentityError.PASSWORD_UPDATE_FAILED to "error.firebasePasswordUpdateFailed",
+            FirebaseIdentityError.SERVICE_ACCOUNT_MISSING to "error.firebaseConfiguration",
+            TenantUserAccountError.DISPLAY_NAME_REQUIRED to "error.tenantUserDisplayNameRequired",
+            TenantUserAccountError.EMAIL_REQUIRED to "error.tenantUserEmailRequired",
+            TenantUserAccountError.PASSWORD_TOO_SHORT to "error.tenantUserPasswordTooShort",
+            TenantUserAccountError.EMAIL_REGISTERED to "error.emailRegistered",
             "You do not have permission for this organization" to "error.organizationAccess",
             "Tenant subscription is not active" to "error.subscriptionInactive",
             "This feature is not enabled for the institution" to "error.featureUnavailable",
@@ -57,7 +73,7 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             "Only active Staff Admin or Staff users can be assigned to a child" to "error.childAssignmentStaff", "Staff member is already assigned to this child" to "error.childAssignmentDuplicate",
             "Child staff assignment was not found" to "error.childAssignmentNotFound", "Child staff assignment belongs to a different child" to "error.childAssignmentScope",
             "Only active Staff Admin or Staff users in this tenant can have their password changed" to "error.staffPasswordAccess", "Tenant user was not found" to "error.tenantUserNotFound", "Platform administrator record was not found" to "error.platformAdminNotFound",
-            "Email is already registered" to "error.emailRegistered", "Tenant staff administrators can create only STAFF_ADMIN or STAFF users" to "error.staffAccountRole"
+            "Tenant staff administrators can create only STAFF_ADMIN or STAFF users" to "error.staffAccountRole"
         )
     }
 }

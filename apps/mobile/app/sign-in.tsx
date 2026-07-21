@@ -8,11 +8,11 @@ import { simulationRoleOptions } from "@/auth/simulation";
 import { env } from "@/config/env";
 import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useI18n } from "@/i18n/I18nProvider";
-import { localAuthIdentifierLabel, roleKey } from "@/i18n/translations";
+import { roleKey } from "@/i18n/translations";
 
 export default function SignInScreen() {
   const { signInWithEmail, signInWithGoogle, signInAsSimulationRole } = useAuth();
-  const { locale, t } = useI18n();
+  const { t } = useI18n();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -68,7 +68,7 @@ export default function SignInScreen() {
       <AppText variant="caption" tone="muted">{t("auth.simulationWarning")}</AppText>
     </View>}
     {env.isSimulation && <AppText variant="caption" tone="muted">{t("auth.orFirebase")}</AppText>}
-    <AppText variant="label">{env.isLocalAuth ? localAuthIdentifierLabel(locale) : t("auth.email")}</AppText>
+    <AppText variant="label">{env.isLocalAuth ? t("auth.identifier") : t("auth.email")}</AppText>
     <TextInput style={styles.input} autoCapitalize="none" keyboardType={env.isLocalAuth ? "default" : "email-address"} value={identifier} onChangeText={setIdentifier} />
     <AppText variant="label">{t("auth.password")}</AppText>
     <PasswordInput value={password} onChangeText={setPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
@@ -79,6 +79,7 @@ export default function SignInScreen() {
       <AppText>{t("auth.rememberMe")}</AppText>
     </Pressable>
     <Button loading={loading} onPress={submitEmail}>{t("auth.signIn")}</Button>
+    <Button variant="secondary" disabled={loading} onPress={() => router.push("/sign-up" as never)}>{t("auth.createAccount")}</Button>
     {!env.isLocalAuth && <>
       <Button variant="secondary" loading={loading} onPress={submitGoogle}>{t("auth.google")}</Button>
       <Button variant="secondary" onPress={() => router.push("/verify-phone")}>{t("auth.phone")}</Button>

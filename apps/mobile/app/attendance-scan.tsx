@@ -7,7 +7,7 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { useRecordAttendance } from "@/attendance/useAttendance";
 import { useI18n } from "@/i18n/I18nProvider";
 
-type QrPayload = { childId: string; token: string };
+type QrPayload = { child: { id: string; name: string }; token: string };
 
 export default function AttendanceScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -19,7 +19,8 @@ export default function AttendanceScanScreen() {
     try {
       setScanned(true);
       const payload = JSON.parse(data) as QrPayload;
-      await record.mutateAsync({ childId: payload.childId, action: "CHECK_IN", method: "QR", qrToken: payload.token });
+      if (!payload.child?.id || !payload.child.name || !payload.token) throw new Error(t("attendance.invalidQr"));
+      await record.mutateAsync({ childId: payload.child.id, action: "CHECK_IN", method: "QR", qrToken: payload.token });
       Alert.alert(t("attendance.success"), t("attendance.qrRecorded"), [{ text: t("common.ok"), onPress: () => router.back() }]);
     } catch (error) {
       setScanned(false);

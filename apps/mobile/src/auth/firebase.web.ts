@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth, GoogleAuthProvider, onAuthStateChanged, RecaptchaVerifier, signInWithEmailAndPassword, signInWithPhoneNumber, signInWithPopup, signOut, updatePassword, updateProfile, type User } from "firebase/auth";
+import { createUserWithEmailAndPassword, getAuth, GoogleAuthProvider, onAuthStateChanged, RecaptchaVerifier, signInWithEmailAndPassword, signInWithPhoneNumber, signInWithPopup, signOut, updatePassword, updateProfile, type User } from "firebase/auth";
 import { env } from "@/config/env";
 import type { AuthGateway, AuthUser } from "./types";
 
@@ -19,6 +19,7 @@ function toUser(user: User | null): AuthUser | null {
 export const firebaseAuth: AuthGateway = {
   observe(listener) { return onAuthStateChanged(authentication(), (user) => listener(toUser(user))); },
   async signInWithEmail(email, password) { await signInWithEmailAndPassword(authentication(), email, password); },
+  async signUpWithEmail(email, password, displayName) { const result = await createUserWithEmailAndPassword(authentication(), email, password); await updateProfile(result.user, { displayName }); },
   async signInWithGoogle() { await signInWithPopup(authentication(), new GoogleAuthProvider()); },
   async sendPhoneCode(phoneNumber) {
     const auth = authentication();

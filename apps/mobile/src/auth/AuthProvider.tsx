@@ -17,6 +17,7 @@ type AuthContextValue = {
   isSimulationSession: boolean;
   api: ApiClient;
   signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   sendPhoneCode: (phoneNumber: string) => Promise<PhoneChallenge>;
   verifyPhoneCode: (code: string) => Promise<void>;
@@ -77,7 +78,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [firebaseUser, localSession, refreshProfile, simulationSession]);
 
   const signInWithLocalCredentials = async (identifier: string, password: string) => {
-    const session = await localAuth.signIn(env.apiUrl, identifier, password);
+    const session = await localAuth.signIn(env.apiUrl, identifier, password, t("common.error"));
+    await saveLocalSession(session);
+    setLocalSession(session);
+  };
+  const signUpWithLocalCredentials = async (email: string, password: string, displayName: string) => {
+    const session = await localAuth.signUp(env.apiUrl, email, password, displayName, t("common.error"));
     await saveLocalSession(session);
     setLocalSession(session);
   };
@@ -122,7 +128,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
     if (env.isLocalAuth) {
       if (!localSession) throw new Error(t("auth.signInFailed"));
-      const user = await localAuth.updateDisplayName(env.apiUrl, localSession.token, normalizedName);
+      const user = await localAuth.updateDisplayName(env.apiUrl, localSession.token, normalizedName, t("common.error"));
       const nextSession = { ...localSession, user };
       await saveLocalSession(nextSession);
       setLocalSession(nextSession);
@@ -138,12 +144,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (simulationSession) throw new Error(t("profile.passwordSimulation"));
     if (env.isLocalAuth) {
       if (!localSession) throw new Error(t("auth.signInFailed"));
-      await localAuth.changePassword(env.apiUrl, localSession.token, newPassword);
+      await localAuth.changePassword(env.apiUrl, localSession.token, newPassword, t("common.error"));
       return;
     }
     await firebaseAuth.changePassword(newPassword);
   };
-  const value = { user, profile, organizationId, loading, isSimulationSession: Boolean(simulationSession), api, signInWithEmail: env.isLocalAuth ? signInWithLocalCredentials : firebaseAuth.signInWithEmail, signInWithGoogle: firebaseAuth.signInWithGoogle, sendPhoneCode, verifyPhoneCode, updateDisplayName, changePassword, refreshProfile, signInAsSimulationRole, selectOrganization: setOrganizationId, signOut };
+  const value = { user, profile, organizationId, loading, isSimulationSession: Boolean(simulationSession), api, signInWithEmail: env.isLocalAuth ? signInWithLocalCredentials : firebaseAuth.signInWithEmail, signUpWithEmail: env.isLocalAuth ? signUpWithLocalCredentials : firebaseAuth.signUpWithEmail, signInWithGoogle: firebaseAuth.signInWithGoogle, sendPhoneCode, verifyPhoneCode, updateDisplayName, changePassword, refreshProfile, signInAsSimulationRole, selectOrganization: setOrganizationId, signOut };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

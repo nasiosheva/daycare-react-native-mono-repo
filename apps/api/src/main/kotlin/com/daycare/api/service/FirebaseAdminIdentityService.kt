@@ -15,6 +15,13 @@ interface EmailPasswordIdentityProvisioner {
     fun findOrCreateEmailPasswordUser(email: String, username: String, password: String): String
 }
 
+object FirebaseIdentityError {
+    const val ACCOUNT_READ_FAILED = "firebase.account_read_failed"
+    const val ACCOUNT_CREATE_FAILED = "firebase.account_create_failed"
+    const val PASSWORD_UPDATE_FAILED = "firebase.password_update_failed"
+    const val SERVICE_ACCOUNT_MISSING = "firebase.service_account_missing"
+}
+
 @Service
 class FirebaseAdminIdentityService(
     @Value("\${daycare.firebase-service-account-json:}") private val serviceAccountJson: String,
@@ -23,7 +30,7 @@ class FirebaseAdminIdentityService(
         firebaseAuth().getUserByEmail(email).uid
     } catch (error: FirebaseAuthException) {
         if (error.authErrorCode != AuthErrorCode.USER_NOT_FOUND) {
-            throw IllegalArgumentException(error.message ?: "Firebase account could not be read")
+            throw IllegalStateException(FirebaseIdentityError.ACCOUNT_READ_FAILED)
         }
         createEmailPasswordUser(email, username, password)
     }
@@ -35,14 +42,14 @@ class FirebaseAdminIdentityService(
             .setPassword(password))
             .uid
     } catch (error: FirebaseAuthException) {
-        throw IllegalArgumentException(error.message ?: "Firebase account could not be created")
+        throw IllegalStateException(FirebaseIdentityError.ACCOUNT_CREATE_FAILED)
     }
 
     fun updatePassword(firebaseUid: String, password: String) {
         try {
             firebaseAuth().updateUser(UserRecord.UpdateRequest(firebaseUid).setPassword(password))
         } catch (error: FirebaseAuthException) {
-            throw IllegalArgumentException(error.message ?: "Firebase password could not be updated")
+            throw IllegalStateException(FirebaseIdentityError.PASSWORD_UPDATE_FAILED)
         }
     }
 
@@ -55,7 +62,7 @@ class FirebaseAdminIdentityService(
     }
 
     private fun firebaseAuth(): FirebaseAuth {
-        require(serviceAccountJson.isNotBlank()) { "FIREBASE_SERVICE_ACCOUNT_JSON must be configured before creating an Admin account" }
+        require(serviceAccountJson.isNotBlank()) { FirebaseIdentityError.SERVICE_ACCOUNT_MISSING }
         val app = synchronized(this) {
             FirebaseApp.getApps().firstOrNull() ?: FirebaseApp.initializeApp(FirebaseOptions.builder()
                 .setCredentials(GoogleCredentials.fromStream(ByteArrayInputStream(serviceAccountJson.toByteArray())))

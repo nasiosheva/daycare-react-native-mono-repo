@@ -92,7 +92,7 @@ class AdministrationService(
     @Transactional
     fun changeTenantUserPassword(jwt: Jwt, organizationId: UUID, userId: UUID, request: ChangeTenantUserPasswordRequest) {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
-        require(request.password.length >= 6) { "Password must contain at least 6 characters" }
+        require(request.password.length >= 6) { TenantUserAccountError.PASSWORD_TOO_SHORT }
         val membership = memberships.findAllByUserIdAndOrganizationId(userId, organizationId).firstOrNull { it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }
             ?: throw IllegalArgumentException("Only active Staff Admin or Staff users in this tenant can have their password changed")
         val user = users.findById(membership.userId).orElseThrow { IllegalArgumentException("Tenant user was not found") }

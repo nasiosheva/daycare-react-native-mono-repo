@@ -46,7 +46,7 @@ class AttendanceService(
     fun record(jwt: Jwt, organizationId: UUID, childId: UUID, command: AttendanceCommand): AttendanceResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF))
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
-        if (command.method == AttendanceMethod.QR) qr.verify(child.id, command.qrToken ?: throw IllegalArgumentException("QR token is required"))
+        if (command.method == AttendanceMethod.QR) qr.verify(child.id, child.fullName(), command.qrToken ?: throw IllegalArgumentException("QR token is required"))
         val timezone = branches.findById(child.branchId).orElseThrow { IllegalArgumentException("Child branch was not found") }.timezone
         val operationalDate = LocalDate.now(ZoneId.of(timezone))
         val current = attendance.findByChildIdAndOperationalDate(child.id, operationalDate)
@@ -71,8 +71,8 @@ class AttendanceService(
     @Transactional
     fun issueQr(jwt: Jwt, organizationId: UUID, childId: UUID): IssuedQr {
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT))
-        childScopes.requireParentLinkedChild(scope, childId, organizationId)
-        return qr.issue(childId)
+        val child = childScopes.requireParentLinkedChild(scope, childId, organizationId)
+        return qr.issue(child.id, child.fullName())
     }
 
     private fun toResponse(child: Child) = ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.dateOfBirth)

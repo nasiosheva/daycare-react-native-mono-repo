@@ -1,7 +1,7 @@
 import { Redirect, router } from "expo-router";
 import { StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { AppText, Button, colors, FloatingActionButton, radius, Screen, spacing } from "@daycare/ui";
+import { AppText, Button, colors, FloatingActionButton, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { can, hasInstitutionCapability } from "@daycare/core";
@@ -14,7 +14,7 @@ export default function HomeScreen() {
   if (!user) return <Redirect href="/sign-in" />;
   if (profile?.isPlatformAdmin) return <PlatformAdminHome />;
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  if (!membership) return <Screen><AppText variant="heading">{t("home.noAccess")}</AppText></Screen>;
+  if (!membership) return <Redirect href={"/parent-enrollment" as never} />;
   const hasDaycareOperations = hasInstitutionCapability(membership.capabilities, "DAYCARE_OPERATIONS");
   const hasAcademicCurriculum = hasInstitutionCapability(membership.capabilities, "ACADEMIC_CURRICULUM");
   const isStaffAdmin = membership.role === "STAFF_ADMIN";
@@ -31,6 +31,7 @@ export default function HomeScreen() {
     {can(membership.role, "viewOwnChildren") && <Button onPress={() => router.push("/parent-qr")}>{t("qr.title")}</Button>}
     {hasAcademicCurriculum && ["STAFF_ADMIN", "STAFF"].includes(membership.role) && <Button variant="secondary" onPress={() => router.push("/academic")}>{t("nav.academic")}</Button>}
     {hasDaycareOperations && can(membership.role, "bookServices") && <Button onPress={() => router.push("/booking")}>{t("booking.title")}</Button>}
+    {membership.role === "PARENT" && <Button variant="secondary" onPress={() => router.push("/parent-enrollment" as never)}>{t("parentEnrollment.manageTenants")}</Button>}
     {isStaffAdmin && hasDaycareOperations && <Button onPress={() => router.push("/staff-admin")}>{t("staffAdmin.title")}</Button>}
     {!isStaffAdmin && hasDaycareOperations && can(membership.role, "approveBookings") && <Button onPress={() => router.push("/booking-approvals")}>{t("home.bookingApprovals")}</Button>}
     {hasStaffProfileMenu && <Button variant="secondary" onPress={() => router.push("/profile")}>{t("nav.profile")}</Button>}

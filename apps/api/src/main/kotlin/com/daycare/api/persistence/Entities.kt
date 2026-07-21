@@ -4,6 +4,8 @@ import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.InstitutionType
 import com.daycare.api.domain.DevelopmentCategory
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.ChildEnrollmentStatus
+import com.daycare.api.domain.ParentEnrollmentStatus
 import com.daycare.api.domain.TenantPaymentStatus
 import com.daycare.api.domain.TenantSubscriptionPlan
 import com.daycare.api.domain.TenantSubscriptionStatus
@@ -117,6 +119,22 @@ class Child(
     @Column(name = "first_name", nullable = false) var firstName: String = "",
     @Column(name = "last_name") var lastName: String? = null,
     @Column(name = "date_of_birth", nullable = false) var dateOfBirth: LocalDate = LocalDate.now(),
+    @Enumerated(EnumType.STRING) @Column(name = "enrollment_status", nullable = false) var enrollmentStatus: ChildEnrollmentStatus = ChildEnrollmentStatus.ACTIVE,
+)
+
+@Entity @Table(name = "parent_enrollments")
+class ParentEnrollment(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "invoice_id", nullable = false) var invoiceId: UUID = UUID.randomUUID(),
+    @Column(name = "entitlement_id", nullable = false) var entitlementId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: ParentEnrollmentStatus = ParentEnrollmentStatus.PENDING_PAYMENT,
+    @Column(name = "rejection_reason") var rejectionReason: String? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "approved_at") var approvedAt: Instant? = null,
 )
 
 @Entity
@@ -171,7 +189,7 @@ class Invitation(
 )
 
 @Entity @Table(name = "notifications")
-class Notification(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "recipient_user_id", nullable = false) var recipientUserId: UUID = UUID.randomUUID(), @Column(nullable = false) var title: String = "", @Column(nullable = false) var body: String = "", @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(), @Column(name = "read_at") var readAt: Instant? = null)
+class Notification(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "recipient_user_id", nullable = false) var recipientUserId: UUID = UUID.randomUUID(), @Column(nullable = false) var title: String = "", @Column(nullable = false) var body: String = "", @Column(name = "action_path") var actionPath: String? = null, @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(), @Column(name = "read_at") var readAt: Instant? = null)
 
 @Entity @Table(name = "device_tokens")
 class DeviceToken(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(), @Column(nullable = false, unique = true) var token: String = "", @Column(nullable = false) var platform: String = "")
