@@ -4,6 +4,7 @@ import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.InstitutionType
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.TenantSubscriptionStatus
 import com.daycare.api.persistence.InvitationRepository
 import com.daycare.api.persistence.Membership
@@ -31,7 +32,7 @@ class IdentityService(
     fun sync(jwt: Jwt): UserProfile {
         val email = jwt.getClaimAsString("email")
         val phoneNumber = jwt.getClaimAsString("phone_number")
-        val user = users.findByFirebaseUid(jwt.subject) ?: UserProfile(firebaseUid = jwt.subject)
+        val user = users.findByFirebaseUid(jwt.subject) ?: UserProfile(firebaseUid = jwt.subject, registrationRole = RegistrationRole.PARENT)
         user.displayName = jwt.getClaimAsString("name") ?: email ?: phoneNumber ?: "Pengguna"
         user.email = email
         user.phoneNumber = phoneNumber
@@ -60,7 +61,7 @@ class AccessService(
     @Transactional
     fun currentUser(jwt: Jwt): CurrentUserResponse {
         val user = identityService.sync(jwt)
-        return CurrentUserResponse(user.id, user.displayName, platformAccess.isPlatformAdmin(user), memberships.findAllByUserId(user.id).filter { it.active || it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }.sortedByDescending { it.active }.map { membership ->
+        return CurrentUserResponse(user.id, user.displayName, user.registrationRole, platformAccess.isPlatformAdmin(user), memberships.findAllByUserId(user.id).filter { it.active || it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }.sortedByDescending { it.active }.map { membership ->
             val name = organizations.findById(membership.organizationId).map { it.name }.orElse("Unknown organization")
             val capabilities = organizationCapabilities.forOrganization(membership.organizationId)
             MembershipResponse(membership.organizationId, name, membership.role, membership.active, membership.branchId, membership.classroomId, capabilities.types, capabilities.capabilities)
@@ -108,4 +109,4 @@ class PlatformAccessService(
 }
 
 data class MembershipResponse(val organizationId: UUID, val organizationName: String, val role: Role, val active: Boolean, val branchId: UUID?, val classroomId: UUID?, val institutionTypes: Set<InstitutionType>, val capabilities: Set<InstitutionCapability>)
-data class CurrentUserResponse(val id: UUID, val displayName: String, val isPlatformAdmin: Boolean, val memberships: List<MembershipResponse>)
+data class CurrentUserResponse(val id: UUID, val displayName: String, val registrationRole: RegistrationRole?, val isPlatformAdmin: Boolean, val memberships: List<MembershipResponse>)

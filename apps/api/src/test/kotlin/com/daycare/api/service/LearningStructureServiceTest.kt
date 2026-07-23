@@ -13,6 +13,7 @@ import com.daycare.api.persistence.ClassroomProgramRepository
 import com.daycare.api.persistence.ClassroomRepository
 import com.daycare.api.persistence.ClassroomStaffAssignmentRepository
 import com.daycare.api.persistence.CurriculumProgramRepository
+import com.daycare.api.persistence.CurriculumProgram
 import com.daycare.api.persistence.LearningLevelCurriculumProgramRepository
 import com.daycare.api.persistence.LearningLevelRepository
 import com.daycare.api.persistence.Membership
@@ -25,7 +26,9 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import org.mockito.Mockito.any
 import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.security.access.AccessDeniedException
 import java.util.Optional
 import java.util.UUID
 
@@ -44,6 +47,7 @@ class LearningStructureServiceTest {
     private val classroomPrograms = mock(ClassroomProgramRepository::class.java)
     private val branchCapacities = mock(BranchCapacitySettingRepository::class.java)
     private val branches = mock(BranchRepository::class.java)
+    private val childScopes = mock(ChildScopeService::class.java)
     private val organizationId = UUID.randomUUID()
     private val jwt = mock(Jwt::class.java)
 
@@ -71,13 +75,40 @@ class LearningStructureServiceTest {
         }
     }
 
+    @Test
+    fun `Staff placement requires an assigned child`() {
+        val childId = UUID.randomUUID()
+        val scope = AccessScope(UserProfile(), Membership(role = Role.STAFF), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
+        `when`(childScopes.requireStaffManagedChild(scope, childId, organizationId)).thenThrow(AccessDeniedException("Staff member is not assigned to this child"))
+
+        assertThrows(AccessDeniedException::class.java) {
+            service().placeChild(jwt, organizationId, childId, CreateChildPlacementRequest(UUID.randomUUID()))
+        }
+
+        verify(childScopes).requireStaffManagedChild(scope, childId, organizationId)
+    }
+
+    @Test
+    fun `tenant level can link a global curriculum program`() {
+        val program = CurriculumProgram(name = "Fase Fondasi", description = "Program bersama")
+        val scope = AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(scope)
+        `when`(programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(levels.save(any(com.daycare.api.persistence.LearningLevel::class.java))).thenAnswer { it.arguments[0] }
+
+        service().createLevel(jwt, organizationId, UpsertLearningLevelRequest(name = "TK A", curriculumProgramIds = setOf(program.id)))
+
+        verify(programs).findById(program.id)
+    }
+
     private fun allowStaffAccess() {
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF)))
-            .thenReturn(AccessScope(UserProfile(), Membership(), emptySet(), emptySet()))
+            .thenReturn(AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet()))
     }
 
     private fun service() = LearningStructureService(
         access, levels, levelPrograms, programs, classrooms, placements, children, academicYears,
-        memberships, users, classroomAssignments, classroomPrograms, branchCapacities, branches,
+        memberships, users, classroomAssignments, classroomPrograms, branchCapacities, branches, childScopes,
     )
 }

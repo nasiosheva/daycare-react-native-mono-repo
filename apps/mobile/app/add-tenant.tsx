@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
-import { Redirect, router } from "expo-router";
+import { useRouter } from "expo-router";
+import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppText, BackButton, Button, colors, PasswordInput, radius, spacing } from "@daycare/ui";
 import { institutionTypes, tenantSubscriptionPlans, type InstitutionType, type TenantSubscriptionPlan } from "@daycare/core";
+import { isApiNetworkError } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -12,6 +14,7 @@ import { institutionTypeKey, tenantSubscriptionPlanKey } from "@/i18n/translatio
 const trialMonths = Array.from({ length: 12 }, (_, index) => index + 1);
 
 export default function AddTenantScreen() {
+  const router = useRouter();
   const { api, profile } = useAuth();
   const { t, formatCurrency } = useI18n();
   const checkoutSteps = [t("tenant.stepData"), t("tenant.stepTrial"), t("tenant.stepCheckout")];
@@ -28,7 +31,8 @@ export default function AddTenantScreen() {
   const [monthlyFee, setMonthlyFee] = useState("");
   const [hasTrial, setHasTrial] = useState(true);
   const [trialMonthsCount, setTrialMonthsCount] = useState(1);
-  if (!profile?.isPlatformAdmin) return <Redirect href="/home" />;
+  if (!profile) return null;
+  if (!profile.isPlatformAdmin) return <Redirect href="/home" />;
 
   const next = () => {
     if (step === 0 && (!tenantName.trim() || !branchName.trim() || !staffAdminName.trim() || !staffAdminEmail.trim() || staffAdminPassword.length < 6 || selectedInstitutionTypes.length === 0)) return Alert.alert(t("tenant.institutionRequired"));
@@ -39,7 +43,16 @@ export default function AddTenantScreen() {
     try {
       await createTenant.mutateAsync({ tenantName: tenantName.trim(), branchName: branchName.trim(), institutionTypes: selectedInstitutionTypes, subscriptionPlan: plan, ...(hasTrial ? { trialMonths: trialMonthsCount } : { monthlyFee: Number(monthlyFee) }), staffAdminName: staffAdminName.trim(), staffAdminEmail: staffAdminEmail.trim(), staffAdminPassword });
       Alert.alert(t("tenant.checkoutSuccess"), hasTrial ? t("tenant.checkoutTrial", { count: trialMonthsCount }) : t("tenant.checkoutPayment"), [{ text: t("tenant.viewTenants"), onPress: () => router.replace("/platform-tenants") }]);
-    } catch (error) { Alert.alert(t("tenant.checkoutFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    } catch (error) {
+      if (isApiNetworkError(error)) {
+        Alert.alert(t("tenant.apiUnavailableTitle"), t("tenant.apiUnavailableMessage"), [
+          { text: t("common.close"), style: "cancel" },
+          { text: t("tenant.viewTenants"), onPress: () => router.replace("/platform-tenants") },
+        ]);
+        return;
+      }
+      Alert.alert(t("tenant.checkoutFailed"), error instanceof Error ? error.message : t("auth.tryAgain"));
+    }
   };
 
   return <AppScreen showBottomNavigation={false} title={t("tenant.addTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>

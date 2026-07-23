@@ -3,6 +3,7 @@ package com.daycare.api.service
 import com.daycare.api.domain.ChildEnrollmentStatus
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.ParentEnrollmentStatus
+import com.daycare.api.domain.InvoiceStatus
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.TenantSubscriptionStatus
 import com.daycare.api.persistence.BranchRepository
@@ -17,6 +18,7 @@ import com.daycare.api.persistence.ParentEnrollment
 import com.daycare.api.persistence.ParentEnrollmentRepository
 import com.daycare.api.persistence.ServiceEntitlementRepository
 import com.daycare.api.persistence.ServicePlanRepository
+import com.daycare.api.persistence.InvoiceRepository
 import com.daycare.api.persistence.TenantSubscriptionRepository
 import com.daycare.api.persistence.UserProfileRepository
 import jakarta.validation.constraints.NotBlank
@@ -44,7 +46,7 @@ data class ParentEnrollmentRetryRequest(val bookingDates: List<LocalDate> = empt
 data class ParentTenantPlanResponse(val id: UUID, val name: String, val type: com.daycare.api.domain.ServicePlanType, val price: java.math.BigDecimal, val creditCount: Int?, val bookingRequiresApproval: Boolean, val dailyCapacity: Int?)
 data class ParentTenantBranchResponse(val id: UUID, val name: String, val dailyCapacity: Int?)
 data class ParentTenantCatalogResponse(val organizationId: UUID, val organizationName: String, val branches: List<ParentTenantBranchResponse>, val plans: List<ParentTenantPlanResponse>)
-data class ParentEnrollmentResponse(val id: UUID, val organizationId: UUID, val branchId: UUID, val childId: UUID, val childName: String, val invoiceId: UUID, val entitlementId: UUID, val status: ParentEnrollmentStatus, val rejectionReason: String?, val createdAt: Instant)
+data class ParentEnrollmentResponse(val id: UUID, val organizationId: UUID, val branchId: UUID, val childId: UUID, val childName: String, val invoiceId: UUID, val entitlementId: UUID, val status: ParentEnrollmentStatus, val invoiceStatus: InvoiceStatus, val rejectionReason: String?, val createdAt: Instant)
 
 @Service
 class ParentEnrollmentService(
@@ -61,6 +63,7 @@ class ParentEnrollmentService(
     private val guardians: GuardianLinkRepository,
     private val users: UserProfileRepository,
     private val entitlements: ServiceEntitlementRepository,
+    private val invoices: InvoiceRepository,
     private val billing: BillingService,
     private val notifications: NotificationService,
 ) {
@@ -146,6 +149,16 @@ class ParentEnrollmentService(
     }
 
     @Transactional
+    fun cancel(jwt: Jwt, enrollmentId: UUID): ParentEnrollmentResponse {
+        val parent = identity.sync(jwt)
+        val enrollment = enrollments.findById(enrollmentId).orElseThrow { IllegalArgumentException("Parent enrollment was not found") }
+        require(enrollment.userId == parent.id && enrollment.status == ParentEnrollmentStatus.PENDING_PAYMENT) { "Only unpaid Parent applications can be cancelled" }
+        billing.cancelPendingEnrollmentPurchase(enrollment.invoiceId, enrollment.entitlementId)
+        enrollment.status = ParentEnrollmentStatus.CANCELLED
+        return response(enrollment)
+    }
+
+    @Transactional
     @EventListener
     fun invoicePaid(event: InvoicePaidEvent) {
         val enrollment = enrollments.findByInvoiceId(event.invoiceId) ?: return
@@ -174,7 +187,8 @@ class ParentEnrollmentService(
     }
     private fun response(enrollment: ParentEnrollment): ParentEnrollmentResponse {
         val child = children.findById(enrollment.childId).orElseThrow { IllegalArgumentException("Child was not found") }
-        return ParentEnrollmentResponse(enrollment.id, enrollment.organizationId, enrollment.branchId, child.id, child.fullName(), enrollment.invoiceId, enrollment.entitlementId, enrollment.status, enrollment.rejectionReason, enrollment.createdAt)
+        val invoice = invoices.findById(enrollment.invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }
+        return ParentEnrollmentResponse(enrollment.id, enrollment.organizationId, enrollment.branchId, child.id, child.fullName(), enrollment.invoiceId, enrollment.entitlementId, enrollment.status, invoice.status, enrollment.rejectionReason, enrollment.createdAt)
     }
     private fun Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")
 }

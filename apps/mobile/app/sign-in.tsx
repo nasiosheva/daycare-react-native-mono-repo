@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { AppText, Button, colors, PasswordInput, radius, Screen, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { clearRememberedCredentials, loadRememberedCredentials, saveRememberedCredentials } from "@/auth/rememberedCredentialsStorage";
@@ -11,6 +11,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { roleKey } from "@/i18n/translations";
 
 export default function SignInScreen() {
+  const router = useRouter();
   const { signInWithEmail, signInWithGoogle, signInAsSimulationRole } = useAuth();
   const { t } = useI18n();
   const [identifier, setIdentifier] = useState("");
@@ -79,7 +80,7 @@ export default function SignInScreen() {
       <AppText>{t("auth.rememberMe")}</AppText>
     </Pressable>
     <Button loading={loading} onPress={submitEmail}>{t("auth.signIn")}</Button>
-    <Button variant="secondary" disabled={loading} onPress={() => router.push("/sign-up" as never)}>{t("auth.createAccount")}</Button>
+    <Button variant="secondary" disabled={loading} onPress={() => router.push("/sign-up" as never)}>{t("auth.createParentAccount")}</Button>
     {!env.isLocalAuth && <>
       <Button variant="secondary" loading={loading} onPress={submitGoogle}>{t("auth.google")}</Button>
       <Button variant="secondary" onPress={() => router.push("/verify-phone")}>{t("auth.phone")}</Button>

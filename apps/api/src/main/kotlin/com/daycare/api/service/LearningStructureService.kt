@@ -73,6 +73,7 @@ class LearningStructureService(
     private val classroomPrograms: ClassroomProgramRepository,
     private val branchCapacities: BranchCapacitySettingRepository,
     private val branches: BranchRepository,
+    private val childScopes: ChildScopeService,
 ) {
     @Transactional(readOnly = true)
     fun branches(jwt: Jwt, organizationId: UUID): List<LearningBranchResponse> {
@@ -162,9 +163,10 @@ class LearningStructureService(
     @Transactional
     fun assignClassroomStaff(jwt: Jwt, organizationId: UUID, classroomId: UUID, request: AssignClassroomStaffRequest): ClassroomStaffAssignmentResponse {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
-        classroom(classroomId, organizationId)
+        val classroom = classroom(classroomId, organizationId)
         val membership = memberships.findAllByUserIdAndOrganizationId(request.userId, organizationId).firstOrNull { it.active && it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }
             ?: throw IllegalArgumentException("Only active Staff Admin or Staff users can be assigned to a classroom")
+        require(membership.role != Role.STAFF || membership.branchId == classroom.branchId) { "Staff member does not belong to this classroom's branch" }
         require(!classroomAssignments.existsByOrganizationIdAndClassroomIdAndUserId(organizationId, classroomId, request.userId)) { "Staff member is already assigned to this classroom" }
         val saved = classroomAssignments.save(ClassroomStaffAssignment(organizationId = organizationId, classroomId = classroomId, userId = membership.userId, assignmentRole = request.assignmentRole.name))
         return classroomStaffResponse(saved) ?: throw IllegalArgumentException("Staff member was not found")
@@ -204,8 +206,8 @@ class LearningStructureService(
 
     @Transactional(readOnly = true)
     fun placements(jwt: Jwt, organizationId: UUID, childId: UUID): List<ChildPlacementResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
-        requireChild(childId, organizationId)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        if (scope.membership.role == Role.STAFF) childScopes.requireStaffManagedChild(scope, childId, organizationId) else requireChild(childId, organizationId)
         return placements.findAllByOrganizationIdAndChildIdOrderByStartsOnDesc(organizationId, childId).map(::placementResponse)
     }
 
@@ -213,7 +215,7 @@ class LearningStructureService(
     fun placeChild(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreateChildPlacementRequest): ChildPlacementResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
         access.requireWritable(scope)
-        val child = requireChild(childId, organizationId)
+        val child = if (scope.membership.role == Role.STAFF) childScopes.requireStaffManagedChild(scope, childId, organizationId) else requireChild(childId, organizationId)
         require(child.enrollmentStatus == ChildEnrollmentStatus.ACTIVE) { "Child enrollment is still pending Parent approval" }
         val classroom = classroom(request.classroomId, organizationId)
         require(classroom.active && classroom.learningLevelId != null) { "Classroom must be active and assigned to a learning level" }
@@ -239,7 +241,10 @@ class LearningStructureService(
         require(request.maxAgeMonths == null || request.maxAgeMonths >= 0) { "Maximum age must not be negative" }
         require(request.minAgeMonths == null || request.maxAgeMonths == null || request.minAgeMonths <= request.maxAgeMonths) { "Minimum age must not exceed maximum age" }
     }
-    private fun validatePrograms(organizationId: UUID, ids: Set<UUID>) { ids.forEach { id -> require(programs.findById(id).orElseThrow { IllegalArgumentException("Curriculum program was not found") }.organizationId == organizationId) { "Curriculum program belongs to a different organization" } } }
+    private fun validatePrograms(organizationId: UUID, ids: Set<UUID>) { ids.forEach { id ->
+        val program = programs.findById(id).orElseThrow { IllegalArgumentException("Curriculum program was not found") }
+        require(program.organizationId == null || program.organizationId == organizationId) { "Curriculum program belongs to a different organization" }
+    } }
     private fun replacePrograms(levelId: UUID, ids: Set<UUID>) { levelPrograms.deleteAllByLearningLevelId(levelId); levelPrograms.saveAll(ids.map { LearningLevelCurriculumProgram(learningLevelId = levelId, curriculumProgramId = it) }) }
     private fun validateClassroomReferences(organizationId: UUID, request: UpsertClassroomRequest) {
         require(request.capacity == null || request.capacity > 0) { "Classroom capacity must be positive" }

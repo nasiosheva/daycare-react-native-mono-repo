@@ -21,7 +21,7 @@ import java.time.LocalDate
 import java.util.UUID
 
 class AttendanceConflict(message: String) : RuntimeException(message)
-data class ChildResponse(val id: UUID, val organizationId: UUID, val branchId: UUID, val classroomId: UUID?, val firstName: String, val lastName: String?, val dateOfBirth: LocalDate) { val fullName get() = listOfNotNull(firstName, lastName).joinToString(" ") }
+data class ChildResponse(val id: UUID, val organizationId: UUID, val branchId: UUID, val classroomId: UUID?, val firstName: String, val lastName: String?, val nisn: String?, val dateOfBirth: LocalDate) { val fullName get() = listOfNotNull(firstName, lastName).joinToString(" ") }
 data class AttendanceResponse(val id: UUID, val childId: UUID, val operationalDate: LocalDate, val checkedInAt: Instant?, val checkedOutAt: Instant?, val method: AttendanceMethod)
 
 @Service
@@ -76,7 +76,7 @@ class AttendanceService(
         return qr.issue(child.id, child.fullName())
     }
 
-    private fun toResponse(child: Child) = ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.dateOfBirth)
+    private fun toResponse(child: Child) = ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.nisn, child.dateOfBirth)
     private fun toResponse(record: AttendanceRecord, method: AttendanceMethod) = AttendanceResponse(record.id, record.childId, record.operationalDate, record.checkedInAt, record.checkedOutAt, method)
     private fun Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")
 }

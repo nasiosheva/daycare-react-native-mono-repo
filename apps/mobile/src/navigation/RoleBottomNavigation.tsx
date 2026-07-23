@@ -1,4 +1,4 @@
-import { usePathname, router, type Href } from "expo-router";
+import { usePathname, useRouter, type Href } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type { InstitutionCapability, Role } from "@daycare/core";
 import { AppText, colors, spacing } from "@daycare/ui";
@@ -18,7 +18,6 @@ const navigationByRole: Record<Role, NavigationItem[]> = {
     { href: "/children", labelKey: "nav.children" },
     { href: "/academic", labelKey: "nav.academic" },
     { href: "/staff-admin", labelKey: "nav.management" },
-    { href: "/profile", labelKey: "nav.profile" },
   ],
   STAFF: [
     { href: "/home", labelKey: "nav.home" },
@@ -40,6 +39,7 @@ export const bottomNavigationPaths = new Set<string>(Object.values(navigationByR
 
 export function RoleBottomNavigation({ role, capabilities = [] }: { role: Role; capabilities?: readonly InstitutionCapability[] }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { t } = useI18n();
   return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
     {navigationByRole[role].filter((item) => !item.requiredCapability || capabilities.includes(item.requiredCapability)).map((item) => {

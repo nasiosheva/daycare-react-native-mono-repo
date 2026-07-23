@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { AppText, BackButton, Button, colors, radius, Screen, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 
 export default function VerifyPhoneScreen() {
+  const router = useRouter();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [code, setCode] = useState("");
   const [sending, setSending] = useState(false);

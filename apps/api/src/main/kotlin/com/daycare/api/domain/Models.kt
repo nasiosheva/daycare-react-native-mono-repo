@@ -1,8 +1,9 @@
 package com.daycare.api.domain
 
 enum class Role { ADMIN, STAFF_ADMIN, STAFF, PARENT }
+enum class RegistrationRole { PARENT }
 enum class ChildEnrollmentStatus { PENDING, ACTIVE }
-enum class ParentEnrollmentStatus { PENDING_PAYMENT, PENDING_APPROVAL, APPROVED, REJECTED, EXPIRED }
+enum class ParentEnrollmentStatus { PENDING_PAYMENT, PENDING_APPROVAL, APPROVED, REJECTED, EXPIRED, CANCELLED }
 enum class ChildCareRole { STAFF, NURSE, MISS }
 enum class AttendanceMethod { MANUAL, QR }
 enum class AttendanceAction { CHECK_IN, CHECK_OUT }
@@ -14,7 +15,8 @@ enum class ServicePlanDiscountType { PERCENTAGE, FIXED_AMOUNT }
 enum class CapacityReservationStatus { HELD, RELEASED }
 enum class EntitlementStatus { PENDING_PAYMENT, ACTIVE, EXPIRED, EXHAUSTED }
 enum class BookingStatus { PENDING_PAYMENT, PENDING_APPROVAL, CONFIRMED, REJECTED, CANCELLED, COMPLETED }
-enum class InvoiceStatus { PENDING, PAID, OVERDUE, VOID }
+enum class InvoiceStatus { PENDING, PAYMENT_SUBMITTED, PAID, OVERDUE, VOID }
+enum class PaymentProofStatus { SUBMITTED, VERIFIED, REJECTED }
 enum class InvitationStatus { PENDING, ACCEPTED, EXPIRED }
 enum class TenantSubscriptionPlan { STARTER, STANDARD, PREMIUM }
 enum class TenantSubscriptionStatus { TRIAL, PENDING_PAYMENT, ACTIVE, SUSPENDED, EXPIRED }

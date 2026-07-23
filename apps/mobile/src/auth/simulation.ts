@@ -28,6 +28,7 @@ export function createSimulationSession(role: Role): SimulationSession {
     profile: {
       id,
       displayName: details.displayName,
+      registrationRole: role === "PARENT" ? "PARENT" : undefined,
       isPlatformAdmin: role === "ADMIN",
       memberships: [{ organizationId: simulationOrganization.id, organizationName: simulationOrganization.name, role, active: true, institutionTypes: ["DAYCARE"], capabilities: capabilitiesForInstitutionTypes(["DAYCARE"]) }],
     },

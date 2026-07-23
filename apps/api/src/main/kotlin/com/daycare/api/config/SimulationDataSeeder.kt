@@ -7,6 +7,7 @@ import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.InvoiceStatus
 import com.daycare.api.domain.InstitutionType
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.ServicePlanType
 import com.daycare.api.domain.TenantPaymentStatus
 import com.daycare.api.domain.TenantSubscriptionPlan
@@ -34,6 +35,8 @@ import com.daycare.api.persistence.Invitation
 import com.daycare.api.persistence.InvitationRepository
 import com.daycare.api.persistence.Invoice
 import com.daycare.api.persistence.InvoiceRepository
+import com.daycare.api.persistence.PaymentProof
+import com.daycare.api.persistence.PaymentProofRepository
 import com.daycare.api.persistence.Membership
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.Notification
@@ -65,6 +68,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
+import java.util.Base64
 import java.util.UUID
 
 @Component
@@ -87,6 +91,7 @@ class SimulationDataSeeder(
     private val tenantPayments: TenantPaymentRepository,
     private val plans: ServicePlanRepository,
     private val invoices: InvoiceRepository,
+    private val paymentProofs: PaymentProofRepository,
     private val entitlements: ServiceEntitlementRepository,
     private val bookings: BookingRepository,
     private val developmentEntries: DevelopmentEntryRepository,
@@ -106,7 +111,7 @@ class SimulationDataSeeder(
             UserProfile(id = Ids.platformAdmin, firebaseUid = "simulation-platform-admin", displayName = "Admin Platform Simulasi", email = "admin@simulation.local"),
             UserProfile(id = Ids.staffAdmin, firebaseUid = "simulation-staff-admin", displayName = "Kepala Sekolah Pelangi", email = "owner@pelangi.simulation.local"),
             UserProfile(id = Ids.teacher, firebaseUid = "simulation-teacher", displayName = "Miss Rani", email = "rani@pelangi.simulation.local"),
-            UserProfile(id = Ids.parent, firebaseUid = "simulation-parent", displayName = "Bunda Aruna", email = "bunda@pelangi.simulation.local"),
+            UserProfile(id = Ids.parent, firebaseUid = "simulation-parent", displayName = "Bunda Aruna", email = "bunda@pelangi.simulation.local", registrationRole = RegistrationRole.PARENT),
         ))
         platformAdministrators.save(PlatformAdministrator(userId = Ids.platformAdmin))
 
@@ -153,6 +158,7 @@ class SimulationDataSeeder(
         val monthlyPlan = plans.save(ServicePlan(id = Ids.monthlyPlan, organizationId = Ids.activeTenant, name = "Paket Bulanan Pelangi", type = ServicePlanType.MONTHLY, price = BigDecimal("1200000"), bookingRequiresApproval = false))
         plans.save(ServicePlan(id = Ids.weeklyPlan, organizationId = Ids.activeTenant, name = "Paket Mingguan", type = ServicePlanType.WEEKLY, price = BigDecimal("450000"), creditCount = 5, unusedCreditPolicy = UnusedCreditPolicy.CARRY_FORWARD, carryForwardDays = 30, bookingRequiresApproval = true))
         val invoice = invoices.save(Invoice(id = Ids.invoice, organizationId = Ids.activeTenant, payerUserId = Ids.parent, invoiceNumber = "SIM-INV-0001", totalAmount = monthlyPlan.price, status = InvoiceStatus.PAID, dueDate = today.minusDays(2), paidAt = now.minusSeconds(24 * 60 * 60L)))
+        paymentProofs.save(PaymentProof(id = Ids.paymentProof, invoiceId = invoice.id, status = com.daycare.api.domain.PaymentProofStatus.VERIFIED, fileName = "simulasi-bukti.png", contentType = "image/png", imageData = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9D6H8AAAAASUVORK5CYII="), note = "Bukti pembayaran simulasi", submittedAt = now.minusSeconds(25 * 60 * 60L), reviewedAt = now.minusSeconds(24 * 60 * 60L), reviewedByUserId = Ids.staffAdmin))
         val entitlement = entitlements.save(ServiceEntitlement(id = Ids.entitlement, organizationId = Ids.activeTenant, branchId = Ids.activeBranch, childId = child.id, ownerUserId = Ids.parent, planId = monthlyPlan.id, invoiceId = invoice.id, planName = monthlyPlan.name, planType = monthlyPlan.type, status = EntitlementStatus.ACTIVE, bookingRequiresApproval = false, periodStart = today.withDayOfMonth(1), periodEnd = today.plusMonths(1).minusDays(1), validUntil = today.plusMonths(1).minusDays(1)))
         bookings.save(Booking(id = Ids.booking, organizationId = Ids.activeTenant, branchId = Ids.activeBranch, childId = child.id, entitlementId = entitlement.id, invoiceId = invoice.id, bookingDate = today.plusDays(1), status = BookingStatus.CONFIRMED, planName = monthlyPlan.name))
         developmentEntries.save(DevelopmentEntry(id = Ids.developmentEntry, organizationId = Ids.activeTenant, branchId = Ids.activeBranch, childId = child.id, authorUserId = Ids.teacher, category = DevelopmentCategory.ACTIVITY, title = "Kolase warna", content = "Aruna mengikuti aktivitas kolase dengan antusias.", recordedAt = now.minusSeconds(3600)))
@@ -192,6 +198,7 @@ class SimulationDataSeeder(
         val monthlyPlan: UUID = UUID.fromString("30000000-0000-0000-0000-000000000001")
         val weeklyPlan: UUID = UUID.fromString("30000000-0000-0000-0000-000000000002")
         val invoice: UUID = UUID.fromString("40000000-0000-0000-0000-000000000001")
+        val paymentProof: UUID = UUID.fromString("40000000-0000-0000-0000-000000000002")
         val entitlement: UUID = UUID.fromString("50000000-0000-0000-0000-000000000001")
         val booking: UUID = UUID.fromString("60000000-0000-0000-0000-000000000001")
         val developmentEntry: UUID = UUID.fromString("70000000-0000-0000-0000-000000000001")

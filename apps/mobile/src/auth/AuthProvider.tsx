@@ -58,11 +58,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (env.isLocalAuth) {
       let active = true;
-      void loadLocalSession().then((session) => {
-        if (!active) return;
-        setLocalSession(session);
-        setLoading(false);
-      });
+      void loadLocalSession()
+        .then((session) => {
+          if (!active) return;
+          setLocalSession(session);
+        })
+        .catch(() => {
+          if (!active) return;
+          setLocalSession(null);
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
       return () => { active = false; };
     }
 
@@ -74,7 +81,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   useEffect(() => {
-    if ((localSession || firebaseUser) && !simulationSession) void refreshProfile();
+    if (!(localSession || firebaseUser) || simulationSession) return;
+    void refreshProfile().catch(() => {
+      if (!env.isLocalAuth) return;
+      void clearLocalSession().catch(() => undefined);
+      setLocalSession(null);
+      setFirebaseProfile(null);
+      setOrganizationId(null);
+    });
   }, [firebaseUser, localSession, refreshProfile, simulationSession]);
 
   const signInWithLocalCredentials = async (identifier: string, password: string) => {

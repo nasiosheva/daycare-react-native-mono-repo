@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.util.UUID
 
-data class UpdateChildRequest(@field:NotBlank @field:Size(max = 100) val firstName: String, @field:Size(max = 100) val lastName: String?, val dateOfBirth: LocalDate)
+data class UpdateChildRequest(@field:NotBlank @field:Size(max = 100) val firstName: String, @field:Size(max = 100) val lastName: String?, @field:Size(max = 20) val nisn: String?, val dateOfBirth: LocalDate)
 data class CreateChildProgramRequest(@field:NotBlank @field:Size(max = 120) val name: String, @field:Size(max = 2_000) val description: String?)
 data class AssignChildStaffRequest(val userId: UUID, val assignmentRole: ChildCareRole)
 data class ChildProgramResponse(val id: UUID, val name: String, val description: String)
@@ -47,6 +47,7 @@ class ChildManagementService(
         val child = child(childId, organizationId)
         child.firstName = request.firstName.trim()
         child.lastName = request.lastName?.trim()?.ifBlank { null }
+        child.nisn = request.nisn?.trim()?.ifBlank { null }
         child.dateOfBirth = request.dateOfBirth
         return childResponse(child)
     }
@@ -80,9 +81,10 @@ class ChildManagementService(
     @Transactional
     fun assignStaff(jwt: Jwt, organizationId: UUID, childId: UUID, request: AssignChildStaffRequest): ChildStaffAssignmentResponse {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
-        child(childId, organizationId)
+        val child = child(childId, organizationId)
         val staffMembership = memberships.findAllByUserIdAndOrganizationId(request.userId, organizationId).firstOrNull { it.active && it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }
             ?: throw IllegalArgumentException("Only active Staff Admin or Staff users can be assigned to a child")
+        require(staffMembership.role != Role.STAFF || staffMembership.branchId == child.branchId) { "Staff member does not belong to this child's branch" }
         require(!assignments.existsByChildIdAndUserId(childId, request.userId)) { "Staff member is already assigned to this child" }
         val staff = users.findById(staffMembership.userId).orElseThrow { IllegalArgumentException("Tenant user was not found") }
         val saved = assignments.save(ChildStaffAssignment(organizationId = organizationId, childId = childId, userId = staff.id, assignmentRole = request.assignmentRole.name))
@@ -99,7 +101,7 @@ class ChildManagementService(
     }
 
     private fun child(childId: UUID, organizationId: UUID) = children.findById(childId).orElseThrow { IllegalArgumentException("Child was not found") }.also { require(it.organizationId == organizationId) { "Child belongs to a different organization" }; require(it.active) { "Child is inactive" } }
-    private fun childResponse(child: com.daycare.api.persistence.Child) = ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.dateOfBirth)
+    private fun childResponse(child: com.daycare.api.persistence.Child) = ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.nisn, child.dateOfBirth)
     private fun programResponses(organizationId: UUID, childId: UUID) = programs.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId).map { ChildProgramResponse(it.id, it.name, it.description) }
     private fun assignmentResponses(organizationId: UUID, childId: UUID) = assignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId).mapNotNull { assignment -> users.findById(assignment.userId).map { user -> ChildStaffAssignmentResponse(assignment.id, user.id, user.displayName, user.email, assignment.assignmentRole) }.orElse(null) }
 }

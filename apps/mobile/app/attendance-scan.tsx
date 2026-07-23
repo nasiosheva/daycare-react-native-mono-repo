@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { AppText, BackButton, Button } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useRecordAttendance } from "@/attendance/useAttendance";
@@ -10,6 +10,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 type QrPayload = { child: { id: string; name: string }; token: string };
 
 export default function AttendanceScanScreen() {
+  const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const record = useRecordAttendance();

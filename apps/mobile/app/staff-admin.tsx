@@ -1,13 +1,16 @@
-import { Redirect, router } from "expo-router";
+import { useRouter } from "expo-router";
+import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useQuery } from "@tanstack/react-query";
 import { AppText, Button, colors, radius, spacing } from "@daycare/ui";
 import { StyleSheet, View } from "react-native";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useEntitlements, useInvoices } from "@/booking/useBooking";
+import { createStaffAdminSummary } from "@/home/staffAdminSummary";
 import { useI18n } from "@/i18n/I18nProvider";
 
 export default function StaffAdminScreen() {
+  const router = useRouter();
   const { api, profile, organizationId } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
@@ -15,20 +18,18 @@ export default function StaffAdminScreen() {
   const users = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: membership?.role === "STAFF_ADMIN" });
   const invoices = useInvoices();
   const entitlements = useEntitlements();
+  if (!profile) return null;
   if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
 
-  const activeStaff = users.data?.filter((user) => user.status === "ACTIVE" && (user.role === "STAFF_ADMIN" || user.role === "STAFF")).length ?? 0;
-  const pendingPayments = invoices.data?.filter((invoice) => invoice.status === "PENDING").length ?? 0;
-  const activeSubscriptions = entitlements.data?.filter((entitlement) => entitlement.status === "ACTIVE").length ?? 0;
-  const remainingCredits = entitlements.data?.filter((entitlement) => entitlement.status === "ACTIVE").reduce((total, entitlement) => total + (entitlement.remainingCredits ?? 0), 0) ?? 0;
+  const summary = createStaffAdminSummary({ children: [], users: users.data ?? [], pendingBookings: [], invoices: invoices.data ?? [], entitlements: entitlements.data ?? [] });
 
   return <AppScreen><AppText variant="title">{t("staffAdmin.title")}</AppText>
     <AppText tone="muted">{t("staffAdmin.subtitle")}</AppText>{readOnly && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     <View style={styles.metrics}>
-      <Metric label={t("staffAdmin.activeStaff")} value={activeStaff} />
-      <Metric label={t("staffAdmin.pendingPayments")} value={pendingPayments} />
-      <Metric label={t("staffAdmin.activeSubscriptions")} value={activeSubscriptions} />
-      <Metric label={t("staffAdmin.remainingCredits")} value={remainingCredits} />
+      <Metric label={t("staffAdmin.activeStaff")} value={summary.activeStaff} />
+      <Metric label={t("staffAdmin.pendingPayments")} value={summary.pendingInvoices} />
+      <Metric label={t("staffAdmin.activeSubscriptions")} value={summary.activeSubscriptions} />
+      <Metric label={t("staffAdmin.remainingCredits")} value={summary.remainingCredits} />
     </View>
     <MenuItem title={t("nav.development")} description={t("staffOperations.developmentDescription")} onPress={() => router.push("/development")} />
     <MenuItem title={t("staffAdmin.staff")} description={t("staffAdmin.staffDescription")} onPress={() => router.push("/tenant-users")} />

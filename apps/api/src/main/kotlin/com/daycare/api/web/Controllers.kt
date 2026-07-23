@@ -27,9 +27,13 @@ import com.daycare.api.service.CreateClassroomProgramRequest
 import com.daycare.api.service.CreateChildPlacementRequest
 import com.daycare.api.service.CreateAcademicYearRequest
 import com.daycare.api.service.CreateCurriculumProgramRequest
+import com.daycare.api.service.UpsertCurriculumActivityRequest
+import com.daycare.api.service.CreateCurriculumActivityAssessmentRequest
 import com.daycare.api.service.ChangePlatformAdminPinRequest
 import com.daycare.api.service.PlatformAdminPinService
 import com.daycare.api.service.PlatformAdministrationService
+import com.daycare.api.service.PlatformCurriculumService
+import com.daycare.api.service.CreateGlobalCurriculumProgramRequest
 import com.daycare.api.service.UpdateTenantRequest
 import com.daycare.api.service.RenewTenantSubscriptionRequest
 import com.daycare.api.service.ChildManagementService
@@ -116,12 +120,15 @@ class ParentEnrollmentController(private val enrollments: ParentEnrollmentServic
 
     @PostMapping("/{enrollmentId}/retry")
     fun retry(@AuthenticationPrincipal jwt: Jwt, @PathVariable enrollmentId: UUID, @Valid @RequestBody request: ParentEnrollmentRetryRequest) = enrollments.retry(jwt, enrollmentId, request)
+
+    @PostMapping("/{enrollmentId}/cancel")
+    fun cancel(@AuthenticationPrincipal jwt: Jwt, @PathVariable enrollmentId: UUID) = enrollments.cancel(jwt, enrollmentId)
 }
 
 @RestController
 @RequestMapping("/v1/platform")
 @SecurityRequirement(name = "bearerAuth")
-class PlatformController(private val platformAdministration: PlatformAdministrationService, private val platformAdminPin: PlatformAdminPinService) {
+class PlatformController(private val platformAdministration: PlatformAdministrationService, private val platformAdminPin: PlatformAdminPinService, private val platformCurriculum: PlatformCurriculumService) {
     @GetMapping("/tenants")
     fun tenants(@AuthenticationPrincipal jwt: Jwt) = platformAdministration.tenants(jwt)
 
@@ -145,6 +152,12 @@ class PlatformController(private val platformAdministration: PlatformAdministrat
 
     @PostMapping("/pin") @ResponseStatus(HttpStatus.NO_CONTENT)
     fun changePin(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: ChangePlatformAdminPinRequest) = platformAdminPin.changePin(jwt, request)
+
+    @GetMapping("/curriculum-programs")
+    fun curriculumPrograms(@AuthenticationPrincipal jwt: Jwt) = platformCurriculum.programs(jwt)
+
+    @PostMapping("/curriculum-programs") @ResponseStatus(HttpStatus.CREATED)
+    fun createCurriculumProgram(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: CreateGlobalCurriculumProgramRequest) = platformCurriculum.createProgram(jwt, request)
 
     @PostMapping("/tenants/{organizationId}/payments/{paymentId}/mark-paid")
     fun markPaymentPaid(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable paymentId: UUID) = platformAdministration.markPaymentPaid(jwt, organizationId, paymentId)
@@ -241,6 +254,27 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @PostMapping("/curriculum-programs") @ResponseStatus(HttpStatus.CREATED)
     fun createCurriculumProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateCurriculumProgramRequest) = academic.createCurriculumProgram(jwt, organizationId, request)
 
+    @GetMapping("/curriculum-activities")
+    fun activities(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = academic.activities(jwt, organizationId)
+
+    @PostMapping("/curriculum-activities") @ResponseStatus(HttpStatus.CREATED)
+    fun createActivity(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertCurriculumActivityRequest) = academic.createActivity(jwt, organizationId, request)
+
+    @PatchMapping("/curriculum-activities/{activityId}")
+    fun updateActivity(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable activityId: UUID, @Valid @RequestBody request: UpsertCurriculumActivityRequest) = academic.updateActivity(jwt, organizationId, activityId, request)
+
+    @PostMapping("/curriculum-activities/{activityId}/archive")
+    fun archiveActivity(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable activityId: UUID) = academic.archiveActivity(jwt, organizationId, activityId)
+
+    @GetMapping("/curriculum-activities/{activityId}/assessments")
+    fun activityAssessments(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable activityId: UUID) = academic.activityAssessments(jwt, organizationId, activityId)
+
+    @PostMapping("/curriculum-activities/{activityId}/assessments") @ResponseStatus(HttpStatus.CREATED)
+    fun createActivityAssessment(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable activityId: UUID, @Valid @RequestBody request: CreateCurriculumActivityAssessmentRequest) = academic.createActivityAssessment(jwt, organizationId, activityId, request)
+
+    @DeleteMapping("/curriculum-activities/{activityId}/assessments/{assessmentId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun removeActivityAssessment(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable activityId: UUID, @PathVariable assessmentId: UUID) = academic.removeActivityAssessment(jwt, organizationId, activityId, assessmentId)
+
     @GetMapping("/learning-level-templates")
     fun learningLevelTemplates(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = learning.templates(jwt, organizationId)
 
@@ -303,6 +337,9 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @GetMapping("/notifications")
     fun notifications(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = administration.notifications(jwt, organizationId)
+
+    @PatchMapping("/notifications/{notificationId}/read")
+    fun markNotificationRead(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable notificationId: UUID) = administration.markNotificationRead(jwt, organizationId, notificationId)
 }
 
 @RestController
@@ -362,6 +399,18 @@ class BillingController(private val billing: BillingService) {
 
     @GetMapping("/invoices")
     fun invoices(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = billing.invoices(jwt, organizationId)
+
+    @GetMapping("/invoices/{invoiceId}")
+    fun invoice(@AuthenticationPrincipal jwt: Jwt, @PathVariable invoiceId: UUID) = billing.invoice(jwt, invoiceId)
+
+    @PostMapping("/invoices/{invoiceId}/payment-proof")
+    fun submitPaymentProof(@AuthenticationPrincipal jwt: Jwt, @PathVariable invoiceId: UUID, @Valid @RequestBody request: com.daycare.api.service.SubmitPaymentProofRequest) = billing.submitPaymentProof(jwt, invoiceId, request)
+
+    @GetMapping("/invoices/{invoiceId}/payment-proof")
+    fun paymentProof(@AuthenticationPrincipal jwt: Jwt, @PathVariable invoiceId: UUID) = billing.paymentProof(jwt, invoiceId)
+
+    @PostMapping("/invoices/{invoiceId}/payment-proof/review")
+    fun reviewPaymentProof(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID, @Valid @RequestBody request: com.daycare.api.service.ReviewPaymentProofRequest) = billing.reviewPaymentProof(jwt, organizationId, invoiceId, request)
 
     @PostMapping("/invoices/{invoiceId}/mark-paid")
     fun markInvoicePaid(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID) = billing.markInvoicePaid(jwt, organizationId, invoiceId)

@@ -27,13 +27,18 @@ export function LanguageSwitcher({ compact = false }: LanguageSwitcherProps) {
     </View>;
   }
 
-  return <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
+  return <View style={styles.fullContainer}>
     <Button variant={locale === "id" ? "primary" : "secondary"} onPress={() => void setLocale("id")}>{t("common.indonesian")}</Button>
     <Button variant={locale === "en" ? "primary" : "secondary"} onPress={() => void setLocale("en")}>{t("common.english")}</Button>
   </View>;
 }
 
 const styles = StyleSheet.create({
+  fullContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
   compactContainer: {
     flexDirection: "row",
     alignSelf: "flex-end",

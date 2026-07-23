@@ -12,6 +12,8 @@ import com.daycare.api.persistence.BranchRepository
 import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.GuardianLinkRepository
+import com.daycare.api.persistence.Invoice
+import com.daycare.api.persistence.InvoiceRepository
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.OrganizationRepository
 import com.daycare.api.persistence.ParentEnrollment
@@ -53,44 +55,61 @@ class ParentEnrollmentServiceTest {
         val guardians = mock(GuardianLinkRepository::class.java)
         val users = mock(UserProfileRepository::class.java)
         val entitlements = mock(ServiceEntitlementRepository::class.java)
+        val invoices = mock(InvoiceRepository::class.java)
         val billing = mock(BillingService::class.java)
         val notifications = mock(NotificationService::class.java)
         val organizationId = UUID.randomUUID()
         val branch = Branch(organizationId = organizationId, name = "Cabang Utama")
         val parent = UserProfile()
         val planId = UUID.randomUUID()
+        val additionalOrganizationId = UUID.randomUUID()
+        val additionalBranch = Branch(organizationId = additionalOrganizationId, name = "Cabang Kedua")
+        val additionalPlanId = UUID.randomUUID()
         val firstChild = Child(organizationId = organizationId, branchId = branch.id, firstName = "Alya", enrollmentStatus = ChildEnrollmentStatus.PENDING)
         val secondChild = Child(organizationId = organizationId, branchId = branch.id, firstName = "Bima", lastName = "Putra", enrollmentStatus = ChildEnrollmentStatus.PENDING)
+        val thirdChild = Child(organizationId = additionalOrganizationId, branchId = additionalBranch.id, firstName = "Citra", enrollmentStatus = ChildEnrollmentStatus.PENDING)
         val jwt = mock(Jwt::class.java)
         `when`(identity.sync(jwt)).thenReturn(parent)
         `when`(memberships.findAllByUserIdAndOrganizationId(parent.id, organizationId)).thenReturn(emptyList())
+        `when`(memberships.findAllByUserIdAndOrganizationId(parent.id, additionalOrganizationId)).thenReturn(emptyList())
         `when`(subscriptions.findByOrganizationId(organizationId)).thenReturn(TenantSubscription(organizationId = organizationId, status = TenantSubscriptionStatus.ACTIVE))
+        `when`(subscriptions.findByOrganizationId(additionalOrganizationId)).thenReturn(TenantSubscription(organizationId = additionalOrganizationId, status = TenantSubscriptionStatus.ACTIVE))
         `when`(capabilities.forOrganization(organizationId)).thenReturn(OrganizationCapabilities(setOf(InstitutionType.DAYCARE), setOf(InstitutionCapability.DAYCARE_OPERATIONS)))
+        `when`(capabilities.forOrganization(additionalOrganizationId)).thenReturn(OrganizationCapabilities(setOf(InstitutionType.DAYCARE), setOf(InstitutionCapability.DAYCARE_OPERATIONS)))
         `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
-        `when`(children.save(any(Child::class.java))).thenReturn(firstChild, secondChild)
+        `when`(branches.findById(additionalBranch.id)).thenReturn(Optional.of(additionalBranch))
+        `when`(children.save(any(Child::class.java))).thenReturn(firstChild, secondChild, thirdChild)
         `when`(children.findById(firstChild.id)).thenReturn(Optional.of(firstChild))
         `when`(children.findById(secondChild.id)).thenReturn(Optional.of(secondChild))
+        `when`(children.findById(thirdChild.id)).thenReturn(Optional.of(thirdChild))
         `when`(enrollments.save(any(ParentEnrollment::class.java))).thenAnswer { it.arguments[0] }
+        `when`(invoices.findById(any(UUID::class.java))).thenReturn(Optional.of(Invoice(status = InvoiceStatus.PENDING)))
         `when`(memberships.findAllByOrganizationId(organizationId)).thenReturn(emptyList())
+        `when`(memberships.findAllByOrganizationId(additionalOrganizationId)).thenReturn(emptyList())
         `when`(billing.purchaseForEnrollment(parent, organizationId, firstChild, PurchaseServiceRequest(planId, firstChild.id, emptyList()))).thenReturn(purchaseResponse(firstChild))
         `when`(billing.purchaseForEnrollment(parent, organizationId, secondChild, PurchaseServiceRequest(planId, secondChild.id, emptyList()))).thenReturn(purchaseResponse(secondChild))
-        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, capabilities, branches, plans, children, enrollments, memberships, guardians, users, entitlements, billing, notifications)
+        `when`(billing.purchaseForEnrollment(parent, additionalOrganizationId, thirdChild, PurchaseServiceRequest(additionalPlanId, thirdChild.id, emptyList()))).thenReturn(purchaseResponse(thirdChild))
+        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, capabilities, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications)
 
         val response = service.checkout(jwt, ParentEnrollmentCheckoutRequest(organizationId, branch.id, planId, emptyList(), children = listOf(ParentEnrollmentChildInput("Alya", null, LocalDate.of(2022, 1, 1)), ParentEnrollmentChildInput("Bima", "Putra", LocalDate.of(2023, 2, 2)))))
+        val additionalTenantResponse = service.checkout(jwt, ParentEnrollmentCheckoutRequest(additionalOrganizationId, additionalBranch.id, additionalPlanId, emptyList(), children = listOf(ParentEnrollmentChildInput("Citra", null, LocalDate.of(2021, 3, 3)))))
 
         assertEquals(listOf("Alya", "Bima Putra"), response.map { it.childName })
+        assertEquals(listOf("Citra"), additionalTenantResponse.map { it.childName })
         val childCaptor = ArgumentCaptor.forClass(Child::class.java)
-        verify(children, times(2)).save(childCaptor.capture())
-        assertEquals(listOf(ChildEnrollmentStatus.PENDING, ChildEnrollmentStatus.PENDING), childCaptor.allValues.map { it.enrollmentStatus })
+        verify(children, times(3)).save(childCaptor.capture())
+        assertEquals(listOf(ChildEnrollmentStatus.PENDING, ChildEnrollmentStatus.PENDING, ChildEnrollmentStatus.PENDING), childCaptor.allValues.map { it.enrollmentStatus })
+        assertEquals(listOf(organizationId, organizationId, additionalOrganizationId), childCaptor.allValues.map { it.organizationId })
         verify(billing).purchaseForEnrollment(parent, organizationId, firstChild, PurchaseServiceRequest(planId, firstChild.id, emptyList()))
         verify(billing).purchaseForEnrollment(parent, organizationId, secondChild, PurchaseServiceRequest(planId, secondChild.id, emptyList()))
+        verify(billing).purchaseForEnrollment(parent, additionalOrganizationId, thirdChild, PurchaseServiceRequest(additionalPlanId, thirdChild.id, emptyList()))
     }
 
     private fun purchaseResponse(child: Child): PurchaseServiceResponse {
         val invoiceId = UUID.randomUUID()
         return PurchaseServiceResponse(
             EntitlementResponse(UUID.randomUUID(), child.id, child.firstName, null, null, "Paket", ServicePlanType.MONTHLY, EntitlementStatus.PENDING_PAYMENT, null, null, LocalDate.now()),
-            InvoiceResponse(invoiceId, "INV-TEST", child.id, child.firstName, null, null, BigDecimal.ONE, BigDecimal.ZERO, null, null, BigDecimal.ONE, InvoiceStatus.PENDING, LocalDate.now(), Instant.now()),
+            InvoiceResponse(invoiceId, "INV-TEST", child.id, child.firstName, null, null, BigDecimal.ONE, BigDecimal.ZERO, null, null, BigDecimal.ONE, InvoiceStatus.PENDING, LocalDate.now(), Instant.now(), null),
             emptyList(),
         )
     }

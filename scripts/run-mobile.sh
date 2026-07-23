@@ -12,6 +12,9 @@ platform=$1
 environment=$2
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 started_api_pid=""
+started_android_log_pid=""
+started_metro_pid=""
+android_local_uses_reverse=false
 api_log_file="$repository_root/daycare-api-local.log"
 gradle_user_home="$repository_root/.gradle-local"
 native_project_was_synchronized=false
@@ -264,6 +267,17 @@ ensure_android_development_build() {
   fi
 
   echo "Preparing and installing the Android development build..."
+  if [ "$environment" = "local" ]; then
+    # expo run:android launches the development client even with --no-bundler.
+    # Install through Gradle here so Metro is ready before the local client opens.
+    (
+      cd "$repository_root/apps/mobile/android"
+      export NODE_ENV=development
+      ./gradlew app:installDebug
+    )
+    return
+  fi
+
   (
     cd "$repository_root"
     corepack pnpm --filter @daycare/app exec expo run:android --no-bundler
@@ -320,10 +334,72 @@ repo_owned_api_pid() {
 }
 
 cleanup() {
+  if [ -n "$started_metro_pid" ]; then
+    kill "$started_metro_pid" >/dev/null 2>&1 || true
+    wait "$started_metro_pid" >/dev/null 2>&1 || true
+  fi
+  if [ -n "$started_android_log_pid" ]; then
+    kill "$started_android_log_pid" >/dev/null 2>&1 || true
+    wait "$started_android_log_pid" >/dev/null 2>&1 || true
+  fi
   if [ -n "$started_api_pid" ]; then
     kill "$started_api_pid" >/dev/null 2>&1 || true
     wait "$started_api_pid" >/dev/null 2>&1 || true
   fi
+}
+
+start_android_local_logs() {
+  if [ "$platform" != "android" ] || [ "$environment" != "local" ]; then
+    return
+  fi
+
+  echo "Streaming Android and React Native logs. Press Ctrl+C to stop the launcher."
+  adb logcat -v time ReactNative:V ReactNativeJS:V AndroidRuntime:E '*:S' &
+  started_android_log_pid=$!
+}
+
+configure_android_local_reverse() {
+  if [ "$platform" != "android" ] || [ "$environment" != "local" ]; then
+    return
+  fi
+
+  if adb reverse tcp:8080 tcp:8080 >/dev/null 2>&1 && adb reverse tcp:8081 tcp:8081 >/dev/null 2>&1; then
+    android_local_uses_reverse=true
+    echo "Using ADB reverse for local API and Metro."
+  else
+    echo "ADB reverse is unavailable; using the local network for the API and Metro." >&2
+  fi
+}
+
+local_metro_ready() {
+  /usr/bin/curl -fsS http://localhost:8081/status 2>/dev/null | grep -q "packager-status:running"
+}
+
+run_android_local_client_through_adb() {
+  # The API server is mounted at /api and all mobile routes are versioned under /v1.
+  export EXPO_PUBLIC_API_URL="http://localhost:8080/api/v1"
+  corepack pnpm --filter @daycare/app exec expo start --dev-client --clear --localhost &
+  started_metro_pid=$!
+
+  attempts=0
+  while [ "$attempts" -lt 60 ]; do
+    if local_metro_ready; then
+      adb shell am start -W -a android.intent.action.VIEW -d "exp+children-platform://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081" >/dev/null
+      wait "$started_metro_pid"
+      return
+    fi
+
+    if ! kill -0 "$started_metro_pid" >/dev/null 2>&1; then
+      echo "Metro exited before becoming ready." >&2
+      exit 1
+    fi
+
+    attempts=$((attempts + 1))
+    sleep 1
+  done
+
+  echo "Timed out waiting for Metro on localhost:8081." >&2
+  exit 1
 }
 
 ensure_local_backend() {
@@ -398,7 +474,15 @@ ensure_local_backend() {
 run_client() {
   case "$platform" in
     android)
-      corepack pnpm --filter @daycare/app exec expo start --dev-client --android
+      if [ "$environment" = "local" ]; then
+        if [ "$android_local_uses_reverse" = "true" ]; then
+          run_android_local_client_through_adb
+        else
+          corepack pnpm --filter @daycare/app exec expo start --dev-client --android --clear
+        fi
+      else
+        corepack pnpm --filter @daycare/app exec expo start --dev-client --android
+      fi
       ;;
     ios)
       corepack pnpm --filter @daycare/app exec expo run:ios --device "$ios_device_udid"
@@ -434,4 +518,6 @@ fi
 
 cd "$repository_root"
 
+configure_android_local_reverse
+start_android_local_logs
 run_client

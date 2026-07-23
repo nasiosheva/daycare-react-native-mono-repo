@@ -29,6 +29,18 @@ export type AudioRecordingController = {
   clear: () => Promise<void>;
 };
 
+export type AudioPlaybackStatus = "idle" | "loading" | "playing" | "paused" | "finished" | "error";
+
+export type AudioPlaybackController = {
+  status: AudioPlaybackStatus;
+  positionMs: number;
+  durationMs: number;
+  isBuffering: boolean;
+  play: () => void;
+  pause: () => void;
+  seekTo: (positionMs: number) => void;
+};
+
 export function createAudioRecording(uri: string, durationMs: number, createdAt: Date, fileSizeBytes?: number): AudioRecording {
   return {
     uri,

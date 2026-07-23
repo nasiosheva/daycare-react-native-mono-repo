@@ -1,0 +1,109 @@
+package com.daycare.api.web
+
+import com.fasterxml.jackson.databind.ObjectMapper
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.web.client.TestRestTemplate
+import org.springframework.boot.test.web.client.getForEntity
+import org.springframework.boot.test.web.client.postForEntity
+import org.springframework.boot.test.web.server.LocalServerPort
+import org.springframework.http.HttpEntity
+import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpMethod
+import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
+
+@EnabledIfEnvironmentVariable(named = "INTEGRATION_DATABASE_URL", matches = ".+")
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = [
+        "daycare.local-auth-enabled=true",
+        "daycare.local-auth-jwt-secret=integration-test-secret-must-have-at-least-32-bytes",
+        "daycare.local-seed-enabled=true",
+        "daycare.local-seed-admin-email=admin@integration.test",
+        "daycare.local-seed-admin-username=integration-admin",
+        "daycare.local-seed-admin-display-name=Integration Admin",
+        "daycare.local-seed-admin-password=integration-password",
+        "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://issuer.invalid",
+        "spring.datasource.url=\${INTEGRATION_DATABASE_URL}",
+        "spring.datasource.username=\${INTEGRATION_DATABASE_USERNAME}",
+        "spring.datasource.password=\${INTEGRATION_DATABASE_PASSWORD}",
+    ],
+)
+class ApiIntegrationTest(
+    @Autowired private val rest: TestRestTemplate,
+    @Autowired private val json: ObjectMapper,
+    @LocalServerPort private val port: Int,
+) {
+    @Test
+    fun `unauthenticated tenant route is rejected`() {
+        val response = rest.getForEntity<String>(url("/v1/me"))
+
+        assertEquals(HttpStatus.UNAUTHORIZED, response.statusCode)
+    }
+
+    @Test
+    fun `local platform admin creates tenant and tenant admin reaches protected routes`() {
+        val platformToken = login("admin@integration.test", "integration-password")
+        val tenant = rest.exchange(
+            url("/v1/platform/tenants"),
+            HttpMethod.POST,
+            authenticated(platformToken, mapOf(
+                "tenantName" to "Tenant Integration",
+                "branchName" to "Cabang Integration",
+                "institutionTypes" to listOf("DAYCARE"),
+                "subscriptionPlan" to "STARTER",
+                "monthlyFee" to 250000,
+                "trialMonths" to null,
+                "staffAdminName" to "Admin Tenant",
+                "staffAdminEmail" to "staff-admin@integration.test",
+                "staffAdminPassword" to "tenant-password",
+            )),
+            String::class.java,
+        )
+
+        assertEquals(HttpStatus.CREATED, tenant.statusCode)
+        val tenantId = json.readTree(tenant.body).path("id").asText()
+        assertFalse(tenantId.isBlank())
+
+        val tenantAdminToken = login("staff-admin@integration.test", "tenant-password")
+        val children = rest.exchange(
+            url("/v1/children"),
+            HttpMethod.GET,
+            authenticated(tenantAdminToken, null, tenantId),
+            String::class.java,
+        )
+        val notifications = rest.exchange(
+            url("/v1/notifications"),
+            HttpMethod.GET,
+            authenticated(tenantAdminToken, null, tenantId),
+            String::class.java,
+        )
+
+        assertEquals(HttpStatus.OK, children.statusCode)
+        assertEquals(0, json.readTree(children.body).size())
+        assertEquals(HttpStatus.OK, notifications.statusCode)
+        assertEquals(0, json.readTree(notifications.body).size())
+    }
+
+    private fun login(identifier: String, password: String): String {
+        val response = rest.postForEntity<String>(
+            url("/v1/auth/local/login"),
+            HttpEntity(mapOf("identifier" to identifier, "password" to password), jsonHeaders()),
+        )
+        assertEquals(HttpStatus.OK, response.statusCode)
+        return json.readTree(response.body).path("token").asText().also { assertFalse(it.isBlank()) }
+    }
+
+    private fun authenticated(token: String, body: Any?, organizationId: String? = null): HttpEntity<Any?> = HttpEntity(body, jsonHeaders().apply {
+        setBearerAuth(token)
+        organizationId?.let { set("X-Organization-Id", it) }
+    })
+
+    private fun jsonHeaders() = HttpHeaders().apply { contentType = MediaType.APPLICATION_JSON }
+    private fun url(path: String) = "http://localhost:$port/api$path"
+}

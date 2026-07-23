@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Alert } from "react-native";
-import { Redirect, router } from "expo-router";
+import { useRouter } from "expo-router";
+import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { BackButton, PinEntryScreen } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -8,13 +9,15 @@ import { useI18n } from "@/i18n/I18nProvider";
 type Step = "new" | "confirm";
 
 export default function AdminPinScreen() {
+  const router = useRouter();
   const { api, profile, isSimulationSession } = useAuth();
   const { t } = useI18n();
   const [step, setStep] = useState<Step>("new");
   const [newPin, setNewPin] = useState("");
   const [confirmation, setConfirmation] = useState("");
 
-  if (!profile?.isPlatformAdmin) return <Redirect href="/home" />;
+  if (!profile) return null;
+  if (!profile.isPlatformAdmin) return <Redirect href="/home" />;
 
   const handleNewPin = (pin: string) => {
     setNewPin(pin);

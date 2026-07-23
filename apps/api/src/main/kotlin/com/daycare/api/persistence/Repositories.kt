@@ -14,7 +14,12 @@ interface MembershipRepository : JpaRepository<Membership, UUID> { fun findAllBy
 interface OrganizationRepository : JpaRepository<Organization, UUID>
 interface OrganizationTypeAssignmentRepository : JpaRepository<OrganizationTypeAssignment, UUID> { fun findAllByOrganizationId(organizationId: UUID): List<OrganizationTypeAssignment> }
 interface AcademicYearRepository : JpaRepository<AcademicYear, UUID> { fun findAllByOrganizationIdOrderByStartsOnDesc(organizationId: UUID): List<AcademicYear> }
-interface CurriculumProgramRepository : JpaRepository<CurriculumProgram, UUID> { fun findAllByOrganizationIdOrderByNameAsc(organizationId: UUID): List<CurriculumProgram> }
+interface CurriculumProgramRepository : JpaRepository<CurriculumProgram, UUID> {
+    fun findAllByOrganizationIdOrderByNameAsc(organizationId: UUID): List<CurriculumProgram>
+    fun findAllByOrganizationIdIsNullOrderByNameAsc(): List<CurriculumProgram>
+}
+interface CurriculumActivityRepository : JpaRepository<CurriculumActivity, UUID> { fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<CurriculumActivity> }
+interface CurriculumActivityAssessmentRepository : JpaRepository<CurriculumActivityAssessment, UUID> { fun findAllByOrganizationIdAndActivityIdOrderByCreatedAtDesc(organizationId: UUID, activityId: UUID): List<CurriculumActivityAssessment> }
 interface LearningLevelRepository : JpaRepository<LearningLevel, UUID> { fun findAllByOrganizationIdOrderByDisplayOrderAscNameAsc(organizationId: UUID): List<LearningLevel> }
 interface LearningLevelCurriculumProgramRepository : JpaRepository<LearningLevelCurriculumProgram, UUID> { fun findAllByLearningLevelId(learningLevelId: UUID): List<LearningLevelCurriculumProgram>; fun deleteAllByLearningLevelId(learningLevelId: UUID) }
 interface PlatformAdministratorRepository : JpaRepository<PlatformAdministrator, UUID>

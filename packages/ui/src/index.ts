@@ -1,4 +1,5 @@
 export * from "./AppText";
+export * from "./AudioPlayer";
 export * from "./BackButton";
 export * from "./BottomSheet";
 export * from "./Button";

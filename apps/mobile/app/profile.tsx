@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
-import { router } from "expo-router";
-import { AppText, BottomSheet, Button, colors, PasswordInput, radius, spacing } from "@daycare/ui";
+import { useRouter } from "expo-router";
+import { AppText, BackButton, BottomSheet, Button, colors, PasswordInput, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -11,9 +11,11 @@ import { AppScreen } from "@/navigation/AppScreen";
 type ProfileSheet = "profile" | "password" | "admin" | null;
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const { api, user, profile, organizationId, isSimulationSession, signOut, updateDisplayName, changePassword, selectOrganization } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const isStaffAdmin = membership?.role === "STAFF_ADMIN";
   const parentMemberships = profile?.memberships.filter((item) => item.role === "PARENT") ?? [];
   const [displayName, setDisplayName] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -75,7 +77,8 @@ export default function ProfileScreen() {
     finally { setCreatingAdmin(false); }
   };
 
-  return <AppScreen><AppText variant="title">{t("profile.title")}</AppText>
+  return <AppScreen showBottomNavigation={!isStaffAdmin} title={isStaffAdmin ? t("profile.title") : undefined} header={isStaffAdmin ? <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} /> : undefined}>
+    {!isStaffAdmin && <AppText variant="title">{t("profile.title")}</AppText>}
     <View style={styles.card}>
       <AppText variant="heading">{profile?.displayName ?? user?.displayName ?? t("common.noData")}</AppText>
       {user?.email && <AppText tone="muted">{user.email}</AppText>}
@@ -97,7 +100,8 @@ export default function ProfileScreen() {
 
     <View style={styles.form}>
       <AppText variant="heading">{t("profile.personal")}</AppText>
-      <LanguageSwitcher />
+      <LanguageSwitcher compact />
+      {organizationId && <Button variant="secondary" onPress={() => router.push("/notifications" as never)}>{t("profile.notifications")}</Button>}
       <Button variant="secondary" onPress={() => setProfileSheet("profile")}>{t("profile.savePersonal")}</Button>
       <Button variant="secondary" disabled={isSimulationSession} onPress={() => setProfileSheet("password")}>{t("profile.changePassword")}</Button>
       {isSimulationSession && <AppText variant="caption" tone="muted">{t("profile.passwordSimulation")}</AppText>}

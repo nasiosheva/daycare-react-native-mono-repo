@@ -13,6 +13,9 @@ import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtDecoders
 import org.springframework.security.web.SecurityFilterChain
+import org.springframework.web.cors.CorsConfiguration
+import org.springframework.web.cors.CorsConfigurationSource
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 import org.springframework.web.servlet.LocaleResolver
 import org.springframework.web.servlet.i18n.AcceptHeaderLocaleResolver
 import java.util.Locale
@@ -30,6 +33,16 @@ class SecurityConfig {
     }
 
     @Bean
+    fun corsConfigurationSource(@Value("\${daycare.cors-allowed-origins:}") allowedOrigins: String): CorsConfigurationSource {
+        val configuration = CorsConfiguration().apply {
+            this.allowedOrigins = allowedOrigins.split(",").map { it.trim() }.filter { it.isNotBlank() }
+            allowedMethods = listOf("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS")
+            allowedHeaders = listOf("Authorization", "Content-Type", "X-Organization-Id", "Accept-Language")
+        }
+        return UrlBasedCorsConfigurationSource().apply { registerCorsConfiguration("/**", configuration) }
+    }
+
+    @Bean
     fun jwtDecoder(
         localJwtService: ObjectProvider<LocalJwtService>,
         @Value("\${daycare.local-auth-enabled:false}") localAuthEnabled: Boolean,
@@ -37,8 +50,9 @@ class SecurityConfig {
     ): JwtDecoder = if (localAuthEnabled) localJwtService.getObject().decoder() else JwtDecoders.fromIssuerLocation(firebaseIssuer)
 
     @Bean
-    fun securityFilterChain(http: HttpSecurity): SecurityFilterChain = http
+    fun securityFilterChain(http: HttpSecurity, corsConfigurationSource: CorsConfigurationSource): SecurityFilterChain = http
         .csrf { it.disable() }
+        .cors { it.configurationSource(corsConfigurationSource) }
         .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
         .authorizeHttpRequests {
             it.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/actuator/health", "/v1/auth/local/login", "/v1/auth/local/register").permitAll()

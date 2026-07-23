@@ -73,7 +73,13 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             "Only active Staff Admin or Staff users can be assigned to a child" to "error.childAssignmentStaff", "Staff member is already assigned to this child" to "error.childAssignmentDuplicate",
             "Child staff assignment was not found" to "error.childAssignmentNotFound", "Child staff assignment belongs to a different child" to "error.childAssignmentScope",
             "Only active Staff Admin or Staff users in this tenant can have their password changed" to "error.staffPasswordAccess", "Tenant user was not found" to "error.tenantUserNotFound", "Platform administrator record was not found" to "error.platformAdminNotFound",
-            "Tenant staff administrators can create only STAFF_ADMIN or STAFF users" to "error.staffAccountRole"
+            "Tenant staff administrators can create only STAFF_ADMIN or STAFF users" to "error.staffAccountRole",
+            "Branch is not available for this organization" to "error.branchUnavailable",
+            "A branch is required for Staff accounts" to "error.staffBranchRequired",
+            "Staff member does not belong to this child's branch" to "error.childAssignmentBranch",
+            "Staff member does not belong to this classroom's branch" to "error.classroomAssignmentBranch",
+            "Curriculum activity was not found" to "error.activityNotFound", "Curriculum activity belongs to a different organization" to "error.activityOrganization",
+            "Curriculum activity assessment was not found" to "error.activityAssessmentNotFound", "Curriculum activity assessment belongs to a different activity" to "error.activityAssessmentScope",
         )
     }
 }

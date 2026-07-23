@@ -2,6 +2,8 @@ import { z } from "zod";
 
 export const roleValues = ["ADMIN", "STAFF_ADMIN", "STAFF", "PARENT"] as const;
 export type Role = (typeof roleValues)[number];
+export const registrationRoleValues = ["PARENT"] as const;
+export type RegistrationRole = (typeof registrationRoleValues)[number];
 
 export const attendanceMethods = ["MANUAL", "QR"] as const;
 export type AttendanceMethod = (typeof attendanceMethods)[number];
@@ -22,7 +24,7 @@ export const servicePlanDiscountTypes = ["PERCENTAGE", "FIXED_AMOUNT"] as const;
 export type ServicePlanDiscountType = (typeof servicePlanDiscountTypes)[number];
 export const bookingStatuses = ["PENDING_PAYMENT", "PENDING_APPROVAL", "CONFIRMED", "REJECTED", "CANCELLED", "COMPLETED"] as const;
 export type BookingStatus = (typeof bookingStatuses)[number];
-export const invoiceStatuses = ["PENDING", "PAID", "OVERDUE", "VOID"] as const;
+export const invoiceStatuses = ["PENDING", "PAYMENT_SUBMITTED", "PAID", "OVERDUE", "VOID"] as const;
 export type InvoiceStatus = (typeof invoiceStatuses)[number];
 export const tenantSubscriptionPlans = ["STARTER", "STANDARD", "PREMIUM"] as const;
 export type TenantSubscriptionPlan = (typeof tenantSubscriptionPlans)[number];
@@ -76,6 +78,7 @@ export function can(role: Role, permission: Permission): boolean {
 export const childSchema = z.object({
   firstName: z.string().trim().min(1).max(100),
   lastName: z.string().trim().max(100).optional(),
+  nisn: z.string().trim().max(20).optional(),
   dateOfBirth: z.string().date(),
   classroomId: z.string().uuid().optional(),
 });
@@ -108,6 +111,7 @@ export type PurchaseServiceInput = z.infer<typeof purchaseServiceSchema>;
 export type CurrentUser = {
   id: string;
   displayName: string;
+  registrationRole?: RegistrationRole;
   isPlatformAdmin: boolean;
   memberships: Array<{
     organizationId: string;

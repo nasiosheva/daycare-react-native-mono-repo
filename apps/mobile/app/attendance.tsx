@@ -1,5 +1,5 @@
 import { Alert, StyleSheet, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { AppText, Button, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useChildren, useRecordAttendance } from "@/attendance/useAttendance";
@@ -7,6 +7,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 
 export default function AttendanceScreen() {
+  const router = useRouter();
   const children = useChildren();
   const record = useRecordAttendance();
   const { profile, organizationId } = useAuth();

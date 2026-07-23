@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
-import { Redirect, router } from "expo-router";
+import { useRouter } from "expo-router";
+import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
@@ -10,6 +11,7 @@ import { AppScreen } from "@/navigation/AppScreen";
 type Sheet = "branch" | null;
 
 export default function BranchesScreen() {
+  const router = useRouter();
   const { api, profile, organizationId } = useAuth();
   const { t } = useI18n();
   const queryClient = useQueryClient();
@@ -25,6 +27,7 @@ export default function BranchesScreen() {
   const [branchId, setBranchId] = useState<string>();
   const [name, setName] = useState("");
   const [timezone, setTimezone] = useState("Asia/Jakarta");
+  if (!profile) return null;
   if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
 
   const openSheet = (id?: string) => {

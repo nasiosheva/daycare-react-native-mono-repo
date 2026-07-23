@@ -4,6 +4,7 @@ import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.InstitutionType
 import com.daycare.api.domain.DevelopmentCategory
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.ChildEnrollmentStatus
 import com.daycare.api.domain.ParentEnrollmentStatus
 import com.daycare.api.domain.TenantPaymentStatus
@@ -27,6 +28,7 @@ class UserProfile(
     @Column(nullable = false) var displayName: String = "",
     var username: String? = null,
     var email: String? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "registration_role") var registrationRole: RegistrationRole? = null,
     @Column(name = "local_password_hash") var localPasswordHash: String? = null,
     @Column(name = "phone_number") var phoneNumber: String? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
@@ -56,10 +58,30 @@ class AcademicYear(
 @Entity @Table(name = "curriculum_programs")
 class CurriculumProgram(
     @Id var id: UUID = UUID.randomUUID(),
-    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id") var organizationId: UUID? = null,
     @Column(name = "academic_year_id") var academicYearId: UUID? = null,
     @Column(nullable = false) var name: String = "",
     @Column(nullable = false) var description: String = "",
+)
+
+@Entity @Table(name = "curriculum_activities")
+class CurriculumActivity(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var name: String = "",
+    @Column(nullable = false) var description: String = "",
+    @Column(nullable = false) var active: Boolean = true,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "curriculum_activity_assessments")
+class CurriculumActivityAssessment(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "activity_id", nullable = false) var activityId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var name: String = "",
+    @Column(nullable = false) var description: String = "",
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
 @Entity @Table(name = "platform_administrators")
@@ -189,6 +211,7 @@ class Child(
     @Column(name = "classroom_id") var classroomId: UUID? = null,
     @Column(name = "first_name", nullable = false) var firstName: String = "",
     @Column(name = "last_name") var lastName: String? = null,
+    @Column(nullable = true) var nisn: String? = null,
     @Column(name = "date_of_birth", nullable = false) var dateOfBirth: LocalDate = LocalDate.now(),
     @Enumerated(EnumType.STRING) @Column(name = "enrollment_status", nullable = false) var enrollmentStatus: ChildEnrollmentStatus = ChildEnrollmentStatus.ACTIVE,
     @Column(nullable = false) var active: Boolean = true,

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
-import { Redirect, router } from "expo-router";
-import { AppText, Button, colors, PasswordInput, radius, spacing } from "@daycare/ui";
+import { useRouter } from "expo-router";
+import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
+import { AppText, BackButton, BottomSheet, Button, colors, PasswordInput, radius, spacing } from "@daycare/ui";
 import type { Role } from "@daycare/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
@@ -12,12 +13,14 @@ import { roleKey } from "@/i18n/translations";
 const staffRoles: Extract<Role, "STAFF_ADMIN" | "STAFF">[] = ["STAFF_ADMIN", "STAFF"];
 
 export default function TenantUsersScreen() {
+  const router = useRouter();
   const { api, profile, organizationId } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canManage = membership?.active !== false;
   const queryClient = useQueryClient();
   const tenantUsers = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: membership?.role === "STAFF_ADMIN" });
+  const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: membership?.role === "STAFF_ADMIN" });
   const createTenantUser = useMutation({ mutationFn: api.createTenantUser.bind(api), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tenant-users", organizationId] }) });
   const inviteParent = useMutation({ mutationFn: api.inviteTenantUser.bind(api), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tenant-users", organizationId] }) });
   const deactivateTenantUser = useMutation({ mutationFn: api.deactivateTenantUser.bind(api), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tenant-users", organizationId] }) });
@@ -25,16 +28,22 @@ export default function TenantUsersScreen() {
   const [staffEmail, setStaffEmail] = useState("");
   const [password, setPassword] = useState("");
   const [staffRole, setStaffRole] = useState<Extract<Role, "STAFF_ADMIN" | "STAFF">>("STAFF");
+  const [staffBranchId, setStaffBranchId] = useState<string>();
   const [parentEmail, setParentEmail] = useState("");
+  const [sheet, setSheet] = useState<"staff" | "parent" | null>(null);
+  if (!profile) return null;
   if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
 
   const submitStaffAccount = async () => {
     if (!displayName.trim() || !staffEmail.trim() || password.length < 6) return Alert.alert(t("tenantUsers.staffAccountRequired"));
+    if (staffRole === "STAFF" && !staffBranchId) return Alert.alert(t("tenantUsers.branchRequired"));
     try {
-      await createTenantUser.mutateAsync({ displayName: displayName.trim(), email: staffEmail.trim(), password, role: staffRole });
+      await createTenantUser.mutateAsync({ displayName: displayName.trim(), email: staffEmail.trim(), password, role: staffRole, branchId: staffRole === "STAFF" ? staffBranchId : undefined });
       setDisplayName("");
       setStaffEmail("");
       setPassword("");
+      setStaffBranchId(undefined);
+      setSheet(null);
       Alert.alert(t("tenantUsers.staffAccountCreated"), t("tenantUsers.staffAccountCreatedDescription"));
     } catch (error) { Alert.alert(t("tenantUsers.staffAccountCreateFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
@@ -43,6 +52,7 @@ export default function TenantUsersScreen() {
     try {
       await inviteParent.mutateAsync({ email: parentEmail.trim(), role: "PARENT" });
       setParentEmail("");
+      setSheet(null);
       Alert.alert(t("tenantUsers.invited"), t("tenantUsers.invitedDescription"));
     } catch (error) { Alert.alert(t("tenantUsers.inviteFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
@@ -51,31 +61,32 @@ export default function TenantUsersScreen() {
     catch (error) { Alert.alert(t("tenantUsers.deactivateFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
 
-  return <AppScreen><AppText variant="title">{t("tenantUsers.title")}</AppText>
+  return <AppScreen showBottomNavigation={false} title={t("tenantUsers.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("tenantUsers.subtitle")}</AppText>
     {membership?.active === false && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     {canManage && <Button variant="secondary" onPress={() => router.push("/staff-passwords")}>{t("tenantUsers.managePasswords")}</Button>}
-    {canManage && <View style={styles.form}>
-      <AppText variant="heading">{t("tenantUsers.createStaffAccount")}</AppText>
-      <TextInput style={styles.input} placeholder={t("tenantUsers.displayName")} value={displayName} onChangeText={setDisplayName} />
-      <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder={t("tenantUsers.email")} value={staffEmail} onChangeText={setStaffEmail} />
-      <PasswordInput placeholder={t("tenantUsers.password")} value={password} onChangeText={setPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
-      <View style={styles.options}>{staffRoles.map((item) => <Button key={item} variant={item === staffRole ? "primary" : "secondary"} onPress={() => setStaffRole(item)}>{t(roleKey(item))}</Button>)}</View>
-      <Button loading={createTenantUser.isPending} onPress={() => void submitStaffAccount()}>{t("tenantUsers.createStaffAccount")}</Button>
-    </View>}
-    {canManage && <View style={styles.form}>
-      <AppText variant="heading">{t("tenantUsers.parentInvitation")}</AppText>
-      <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder={t("tenantUsers.email")} value={parentEmail} onChangeText={setParentEmail} />
-      <Button loading={inviteParent.isPending} onPress={() => void submitParentInvitation()}>{t("tenantUsers.invite")}</Button>
+    {canManage && <View style={styles.options}>
+      <Button onPress={() => setSheet("staff")}>{t("tenantUsers.createStaffAccount")}</Button>
+      <Button variant="secondary" onPress={() => setSheet("parent")}>{t("tenantUsers.parentInvitation")}</Button>
     </View>}
     <AppText variant="heading">{t("tenantUsers.accounts")}</AppText>
     {tenantUsers.isLoading && <AppText>{t("tenantUsers.loading")}</AppText>}
     {tenantUsers.isError && <Button variant="secondary" onPress={() => tenantUsers.refetch()}>{t("common.retry")}</Button>}
     {tenantUsers.data?.map((item) => <View key={item.id} style={styles.user}>
       <AppText variant="label">{item.displayName ?? item.email ?? t("common.noData")}</AppText>
-      <AppText tone="muted">{t(roleKey(item.role))} · {t(`status.${item.status}` as Parameters<typeof t>[0])}</AppText>
+      <AppText tone="muted">{t(roleKey(item.role))} · {t(`status.${item.status}` as Parameters<typeof t>[0])}{item.role === "STAFF" ? ` · ${branches.data?.find((branch) => branch.id === item.branchId)?.name ?? t("tenantUsers.noBranch")}` : ""}</AppText>
       {canManage && item.status === "ACTIVE" && item.userId && (item.role === "STAFF_ADMIN" || item.role === "STAFF") && <Button variant="danger" loading={deactivateTenantUser.isPending} onPress={() => void deactivate(item.userId!)}>{t("tenantUsers.deactivate")}</Button>}
     </View>)}
+    <BottomSheet visible={sheet === "staff"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("tenantUsers.createStaffAccount")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("tenantUsers.createStaffAccount"), loading: createTenantUser.isPending, onPress: () => void submitStaffAccount() }}>
+      <TextInput style={styles.input} placeholder={t("tenantUsers.displayName")} value={displayName} onChangeText={setDisplayName} />
+      <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder={t("tenantUsers.email")} value={staffEmail} onChangeText={setStaffEmail} />
+      <PasswordInput placeholder={t("tenantUsers.password")} value={password} onChangeText={setPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
+      <View style={styles.options}>{staffRoles.map((item) => <Button key={item} variant={item === staffRole ? "primary" : "secondary"} onPress={() => setStaffRole(item)}>{t(roleKey(item))}</Button>)}</View>
+      {staffRole === "STAFF" && <><AppText variant="label">{t("tenantUsers.branch")}</AppText><View style={styles.options}>{branches.data?.filter((branch) => branch.active).map((branch) => <Button key={branch.id} variant={branch.id === staffBranchId ? "primary" : "secondary"} onPress={() => setStaffBranchId(branch.id)}>{branch.name}</Button>)}</View></>}
+    </BottomSheet>
+    <BottomSheet visible={sheet === "parent"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("tenantUsers.parentInvitation")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("tenantUsers.invite"), loading: inviteParent.isPending, onPress: () => void submitParentInvitation() }}>
+      <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder={t("tenantUsers.email")} value={parentEmail} onChangeText={setParentEmail} />
+    </BottomSheet>
   </AppScreen>;
 }
 

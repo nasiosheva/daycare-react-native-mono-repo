@@ -4,9 +4,9 @@ import type { ServicePlan } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
 
 export function useServicePlans() { const { api, organizationId } = useAuth(); return useQuery({ queryKey: ["service-plans", organizationId], queryFn: () => api.servicePlans(), enabled: Boolean(organizationId) }); }
-export function useEntitlements() { const { api, organizationId } = useAuth(); return useQuery({ queryKey: ["entitlements", organizationId], queryFn: () => api.entitlements(), enabled: Boolean(organizationId) }); }
-export function useBookings(pendingOnly = false) { const { api, organizationId } = useAuth(); return useQuery({ queryKey: ["bookings", organizationId, pendingOnly], queryFn: () => pendingOnly ? api.pendingBookings() : api.bookings(), enabled: Boolean(organizationId) }); }
-export function useInvoices() { const { api, organizationId } = useAuth(); return useQuery({ queryKey: ["invoices", organizationId], queryFn: () => api.invoices(), enabled: Boolean(organizationId) }); }
+export function useEntitlements(enabled = true) { const { api, organizationId } = useAuth(); return useQuery({ queryKey: ["entitlements", organizationId], queryFn: () => api.entitlements(), enabled: Boolean(organizationId) && enabled }); }
+export function useBookings(pendingOnly = false, enabled = true) { const { api, organizationId } = useAuth(); return useQuery({ queryKey: ["bookings", organizationId, pendingOnly], queryFn: () => pendingOnly ? api.pendingBookings() : api.bookings(), enabled: Boolean(organizationId) && enabled }); }
+export function useInvoices(enabled = true) { const { api, organizationId } = useAuth(); return useQuery({ queryKey: ["invoices", organizationId], queryFn: () => api.invoices(), enabled: Boolean(organizationId) && enabled }); }
 
 function useBookingMutation<TVariables>(mutationFn: (variables: TVariables) => Promise<unknown>) {
   const { organizationId } = useAuth(); const client = useQueryClient();

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
-import { Redirect, router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
 import { institutionTypes, tenantSubscriptionPlans, type InstitutionType, type TenantSubscriptionPlan } from "@daycare/core";
@@ -12,6 +13,7 @@ import { institutionTypeKey, tenantPaymentStatusKey, tenantSubscriptionPlanKey, 
 type Sheet = "edit" | "renew" | null;
 
 export default function TenantDetailScreen() {
+  const router = useRouter();
   const { tenantId } = useLocalSearchParams<{ tenantId: string }>();
   const { api, profile } = useAuth();
   const { t, formatCurrency, formatDate } = useI18n();
@@ -38,7 +40,8 @@ export default function TenantDetailScreen() {
     setPlan(tenant.data.subscriptionPlan ?? "STARTER");
     setMonthlyFee(tenant.data.monthlyFee?.toString() ?? "");
   }, [tenant.data]);
-  if (!profile?.isPlatformAdmin) return <Redirect href="/home" />;
+  if (!profile) return null;
+  if (!profile.isPlatformAdmin) return <Redirect href="/home" />;
 
   const save = async () => {
     const fee = monthlyFee.trim() ? Number(monthlyFee) : undefined;

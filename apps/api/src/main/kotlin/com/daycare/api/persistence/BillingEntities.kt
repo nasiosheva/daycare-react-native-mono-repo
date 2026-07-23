@@ -4,6 +4,7 @@ import com.daycare.api.domain.BookingStatus
 import com.daycare.api.domain.CapacityReservationStatus
 import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.InvoiceStatus
+import com.daycare.api.domain.PaymentProofStatus
 import com.daycare.api.domain.ServicePlanDiscountKind
 import com.daycare.api.domain.ServicePlanDiscountType
 import com.daycare.api.domain.ServicePlanType
@@ -34,6 +35,16 @@ class Invoice(
     @Column(name = "invoice_number", nullable = false, unique = true) var invoiceNumber: String = "", @Column(name = "subtotal_amount", nullable = false, precision = 14, scale = 2) var subtotalAmount: BigDecimal = BigDecimal.ZERO, @Column(name = "discount_amount", nullable = false, precision = 14, scale = 2) var discountAmount: BigDecimal = BigDecimal.ZERO, @Column(name = "discount_name") var discountName: String? = null, @Column(name = "discount_code") var discountCode: String? = null, @Column(nullable = false, precision = 14, scale = 2) var totalAmount: BigDecimal = BigDecimal.ZERO,
     @Enumerated(EnumType.STRING) @Column(nullable = false) var status: InvoiceStatus = InvoiceStatus.PENDING, @Column(name = "due_date", nullable = false) var dueDate: LocalDate = LocalDate.now(),
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(), @Column(name = "paid_at") var paidAt: Instant? = null,
+)
+
+@Entity @Table(name = "payment_proofs")
+class PaymentProof(
+    @Id var id: UUID = UUID.randomUUID(), @Column(name = "invoice_id", nullable = false, unique = true) var invoiceId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: PaymentProofStatus = PaymentProofStatus.SUBMITTED,
+    @Column(name = "file_name", nullable = false) var fileName: String = "payment-proof.jpg", @Column(name = "content_type", nullable = false) var contentType: String = "image/jpeg",
+    @Column(name = "image_data", nullable = false) var imageData: ByteArray = byteArrayOf(), @Column(name = "note", length = 500) var note: String? = null,
+    @Column(name = "submitted_at", nullable = false) var submittedAt: Instant = Instant.now(), @Column(name = "reviewed_at") var reviewedAt: Instant? = null,
+    @Column(name = "reviewed_by_user_id") var reviewedByUserId: UUID? = null, @Column(name = "rejection_reason", length = 500) var rejectionReason: String? = null,
 )
 
 @Entity @Table(name = "service_entitlements")

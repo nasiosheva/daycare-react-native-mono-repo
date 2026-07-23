@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack, router, usePathname } from "expo-router";
+import { Stack, useNavigationContainerRef, usePathname, useRouter } from "expo-router";
 import { BackHandler, Platform } from "react-native";
 import { useEffect, useState, type PropsWithChildren } from "react";
 import * as Notifications from "expo-notifications";
@@ -7,48 +7,78 @@ import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { bottomNavigationPaths } from "@/navigation/RoleBottomNavigation";
 
-const bottomNavigationScreenNames = ["home", "platform-tenants", "tenant-detail", "children", "development", "booking-approvals", "billing-admin", "staff-admin", "staff-operations", "attendance", "parent-qr", "booking", "profile"];
+const bottomNavigationScreenNames = ["home", "platform-tenants", "tenant-detail", "children", "academic", "development", "booking-approvals", "billing-admin", "staff-admin", "staff-operations", "attendance", "parent-qr", "booking", "profile"];
 
 function NotificationRouteHandler() {
   const { selectOrganization } = useAuth();
+  const router = useRouter();
+  const navigationRef = useNavigationContainerRef();
   useEffect(() => {
     if (Platform.OS === "web") return;
     const open = (data: Record<string, unknown>) => {
       const organizationId = typeof data.organizationId === "string" ? data.organizationId : null;
       const actionPath = typeof data.actionPath === "string" ? data.actionPath : null;
       if (organizationId) selectOrganization(organizationId);
-      if (actionPath?.startsWith("/")) router.push(actionPath as never);
+      if (actionPath?.startsWith("/") && navigationRef.current?.isReady()) router.push(actionPath as never);
     };
     void Notifications.getLastNotificationResponseAsync().then((response) => { if (response) open(response.notification.request.content.data); });
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => open(response.notification.request.content.data));
     return () => subscription.remove();
-  }, [selectOrganization]);
+  }, [navigationRef, router, selectOrganization]);
+  return null;
+}
+
+function NativeNotificationRegistration() {
+  const { api, organizationId, profile, user } = useAuth();
+
+  useEffect(() => {
+    const platform = Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : null;
+    if (!platform || !organizationId || !profile || !user) return;
+    let cancelled = false;
+    const register = async () => {
+      try {
+        if (platform === "android") await Notifications.setNotificationChannelAsync("default", { name: "Default", importance: Notifications.AndroidImportance.DEFAULT });
+        const permission = await Notifications.getPermissionsAsync();
+        const status = permission.status === "granted" ? permission.status : (await Notifications.requestPermissionsAsync()).status;
+        if (status !== "granted" || cancelled) return;
+        const token = await Notifications.getExpoPushTokenAsync();
+        if (!cancelled) await api.registerDevice({ token: token.data, platform });
+      } catch {
+        // A device may not support push tokens (for example, a simulator). The in-app inbox remains available.
+      }
+    };
+    void register();
+    return () => { cancelled = true; };
+  }, [api, organizationId, profile, user]);
+
   return null;
 }
 
 function Providers({ children }: PropsWithChildren) {
   const [queryClient] = useState(() => new QueryClient());
-  return <QueryClientProvider client={queryClient}><I18nProvider><AuthProvider><NotificationRouteHandler />{children}</AuthProvider></I18nProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><I18nProvider><AuthProvider><NotificationRouteHandler /><NativeNotificationRegistration />{children}</AuthProvider></I18nProvider></QueryClientProvider>;
 }
 
 function BottomNavigationBackHandler({ children }: PropsWithChildren) {
   const pathname = usePathname();
+  const router = useRouter();
+  const navigationRef = useNavigationContainerRef();
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (pathname !== "/home" && bottomNavigationPaths.has(pathname)) {
+      if (navigationRef.current?.isReady() && pathname !== "/home" && bottomNavigationPaths.has(pathname)) {
         router.replace("/home");
         return true;
       }
       return false;
     });
     return () => subscription.remove();
-  }, [pathname]);
+  }, [navigationRef, pathname, router]);
 
   return children;
 }
 
 export default function RootLayout() {
-  return <Providers><BottomNavigationBackHandler><Stack screenOptions={{ headerShown: false }}>{bottomNavigationScreenNames.map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none"}} />)}<Stack.Screen name="branches" options={{ animation: "none" }} /><Stack.Screen name="parent-enrollment" options={{ animation: "none" }} /><Stack.Screen name="sign-up" options={{ animation: "none" }} /></Stack></BottomNavigationBackHandler></Providers>;
+  return <Providers><BottomNavigationBackHandler><Stack initialRouteName="home" screenOptions={{ headerShown: false }}>{bottomNavigationScreenNames.map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none"}} />)}<Stack.Screen name="add-tenant" options={{ animation: "none" }} /><Stack.Screen name="branches" options={{ animation: "none" }} /><Stack.Screen name="global-curriculum" options={{ animation: "none" }} /><Stack.Screen name="notifications" options={{ animation: "none" }} /><Stack.Screen name="parent-enrollment" options={{ animation: "none" }} /><Stack.Screen name="sign-up" options={{ animation: "none" }} /></Stack></BottomNavigationBackHandler></Providers>;
 }

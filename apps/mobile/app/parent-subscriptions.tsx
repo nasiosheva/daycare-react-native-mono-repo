@@ -1,5 +1,6 @@
 import { StyleSheet, View } from "react-native";
-import { Redirect, router } from "expo-router";
+import { useRouter } from "expo-router";
+import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppText, BackButton, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -8,10 +9,12 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { servicePlanTypeKey } from "@/i18n/translations";
 
 export default function ParentSubscriptionsScreen() {
+  const router = useRouter();
   const { profile, organizationId } = useAuth();
   const { t, formatDate } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const entitlements = useEntitlements();
+  if (!profile) return null;
   if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
 
   return <AppScreen showBottomNavigation={false} title={t("staffAdmin.subscriptionsTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>

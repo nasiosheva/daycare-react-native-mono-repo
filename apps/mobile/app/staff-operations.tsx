@@ -1,4 +1,5 @@
-import { Redirect, router } from "expo-router";
+import { useRouter } from "expo-router";
+import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { StyleSheet, View } from "react-native";
 import { AppText, Button, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
@@ -6,10 +7,12 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 
 export default function StaffOperationsScreen() {
+  const router = useRouter();
   const { profile, organizationId } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
 
+  if (!profile) return null;
   if (membership?.role !== "STAFF") return <Redirect href="/home" />;
 
   return <AppScreen>

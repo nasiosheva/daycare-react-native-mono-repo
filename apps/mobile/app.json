@@ -24,11 +24,24 @@
           "photosPermission": "Izinkan Umur Emas mengakses foto untuk memilih gambar.",
           "cameraPermission": "Izinkan Umur Emas mengakses kamera untuk mengambil gambar."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
-    "ios": { "bundleIdentifier": "com.children.platform", "supportsTablet": true, "googleServicesFile": "./GoogleService-Info.plist" },
-    "android": { "package": "com.children.platform", "googleServicesFile": "./google-services.json" },
-    "web": { "bundler": "metro", "output": "single" },
-    "experiments": { "typedRoutes": true }
+    "ios": {
+      "bundleIdentifier": "com.children.platform",
+      "supportsTablet": true,
+      "googleServicesFile": "./GoogleService-Info.plist"
+    },
+    "android": {
+      "package": "com.children.platform",
+      "googleServicesFile": "./google-services.json"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }

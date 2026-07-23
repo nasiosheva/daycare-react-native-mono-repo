@@ -1,5 +1,6 @@
 package com.daycare.api.service
 
+import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.UserProfileRepository
 import com.nimbusds.jose.JWSAlgorithm
@@ -82,7 +83,7 @@ class LocalAuthenticationService(
         require(normalizedEmail.contains("@")) { LocalAuthenticationError.EMAIL_REQUIRED }
         require(password.length >= 6) { LocalAuthenticationError.PASSWORD_TOO_SHORT }
         require(users.findByEmailIgnoreCase(normalizedEmail) == null) { LocalAuthenticationError.EMAIL_REGISTERED }
-        val user = users.save(UserProfile(firebaseUid = "local:${UUID.randomUUID()}", displayName = displayName.trim(), email = normalizedEmail, localPasswordHash = passwordEncoder.encode(password)))
+        val user = users.save(UserProfile(firebaseUid = "local:${UUID.randomUUID()}", displayName = displayName.trim(), email = normalizedEmail, registrationRole = RegistrationRole.PARENT, localPasswordHash = passwordEncoder.encode(password)))
         return LocalLoginResponse(localJwt.issue(user), LocalAuthenticatedUser(user.firebaseUid, user.email, user.displayName))
     }
     @Transactional(readOnly = true)
