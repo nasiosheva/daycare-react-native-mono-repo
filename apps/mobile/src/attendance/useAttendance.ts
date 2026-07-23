@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AttendanceAction, AttendanceMethod } from "@daycare/core";
+import type { ChildListFilter } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
 
-export function useChildren(enabled = true) {
+export function useChildren(filterOrEnabled: ChildListFilter | boolean = {}, enabled = true) {
   const { api, organizationId } = useAuth();
-  return useQuery({ queryKey: ["children", organizationId], queryFn: () => api.children(), enabled: Boolean(organizationId) && enabled });
+  const filter = typeof filterOrEnabled === "boolean" ? {} : filterOrEnabled;
+  const queryEnabled = typeof filterOrEnabled === "boolean" ? filterOrEnabled : enabled;
+  return useQuery({ queryKey: ["children", organizationId, filter], queryFn: () => api.children(filter), enabled: Boolean(organizationId) && queryEnabled });
 }
 
 export function useRecordAttendance() {

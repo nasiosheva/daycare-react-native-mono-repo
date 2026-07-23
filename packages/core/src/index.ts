@@ -13,6 +13,12 @@ export type AttendanceAction = (typeof attendanceActions)[number];
 
 export const developmentCategories = ["ACTIVITY", "MEAL", "NAP", "OBSERVATION"] as const;
 export type DevelopmentCategory = (typeof developmentCategories)[number];
+export const childGenders = ["MALE", "FEMALE"] as const;
+export type ChildGender = (typeof childGenders)[number];
+export const goalCheckInOutcomes = ["YES", "NO"] as const;
+export type GoalCheckInOutcome = (typeof goalCheckInOutcomes)[number];
+export const childGoalOutcomes = ["ACHIEVED", "NOT_ACHIEVED"] as const;
+export type ChildGoalOutcome = (typeof childGoalOutcomes)[number];
 
 export const servicePlanTypes = ["DAILY", "WEEKLY", "MONTHLY"] as const;
 export type ServicePlanType = (typeof servicePlanTypes)[number];
@@ -61,6 +67,10 @@ export const permissions = {
   recordAttendance: ["STAFF"],
   recordDevelopment: ["STAFF_ADMIN", "STAFF"],
   viewChildDevelopment: ["STAFF_ADMIN", "STAFF", "PARENT"],
+  manageGoalTemplates: ["STAFF_ADMIN"],
+  assignChildGoals: ["STAFF_ADMIN"],
+  recordChildGoalProgress: ["STAFF_ADMIN", "STAFF"],
+  viewChildGoalProgress: ["STAFF_ADMIN", "STAFF", "PARENT"],
   manageServicePlans: ["STAFF_ADMIN"],
   approveBookings: ["STAFF_ADMIN", "STAFF"],
   bookServices: ["PARENT"],
@@ -79,6 +89,7 @@ export const childSchema = z.object({
   firstName: z.string().trim().min(1).max(100),
   lastName: z.string().trim().max(100).optional(),
   nisn: z.string().trim().max(20).optional(),
+  gender: z.enum(childGenders),
   dateOfBirth: z.string().date(),
   classroomId: z.string().uuid().optional(),
 });
@@ -119,6 +130,7 @@ export type CurrentUser = {
     branchId?: string;
     role: Role;
     active: boolean;
+    canManageChildPrograms: boolean;
     institutionTypes: InstitutionType[];
     capabilities: InstitutionCapability[];
   }>;

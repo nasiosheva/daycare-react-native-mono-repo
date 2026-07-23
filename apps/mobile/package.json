@@ -33,6 +33,7 @@
     "expo-notifications": "~0.31.4",
     "expo-router": "~5.1.0",
     "expo-secure-store": "~14.2.3",
+    "expo-sharing": "~13.1.5",
     "firebase": "^12.0.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",

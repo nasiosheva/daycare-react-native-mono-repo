@@ -48,6 +48,7 @@ export default function DevelopmentScreen() {
     <View style={styles.selector}>
       {children.data?.map((child) => <Button key={child.id} variant={child.id === childId ? "primary" : "secondary"} onPress={() => setChildId(child.id)}>{child.fullName}</Button>)}
     </View>
+    {selectedChild && <Button variant="secondary" onPress={() => router.push({ pathname: "/goals", params: { childId: selectedChild.id } })}>{t("goals.title")}</Button>}
     {selectedChild && canRecord && <Button onPress={() => setEntryVisible(true)}>{t("development.record", { name: selectedChild.fullName })}</Button>}
     <BottomSheet visible={entryVisible} onClose={() => setEntryVisible(false)} closeAccessibilityLabel={t("common.close")} title={selectedChild ? t("development.record", { name: selectedChild.fullName }) : t("development.title")} negativeAction={{ label: t("common.cancel"), onPress: () => setEntryVisible(false) }} positiveAction={{ label: t("development.share"), loading: createEntry.isPending, disabled: !title.trim() || !content.trim(), onPress: () => void submit() }}>
       <View style={styles.selector}>{developmentCategories.map((item) => <Button key={item} variant={item === category ? "primary" : "secondary"} onPress={() => setCategory(item)}>{t(developmentCategoryKey(item))}</Button>)}</View>

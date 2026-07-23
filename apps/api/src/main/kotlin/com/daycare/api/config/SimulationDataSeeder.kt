@@ -3,6 +3,7 @@ package com.daycare.api.config
 import com.daycare.api.domain.BookingStatus
 import com.daycare.api.domain.DevelopmentCategory
 import com.daycare.api.domain.EntitlementStatus
+import com.daycare.api.domain.Gender
 import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.InvoiceStatus
 import com.daycare.api.domain.InstitutionType
@@ -151,7 +152,7 @@ class SimulationDataSeeder(
             TenantPayment(id = Ids.trialTenantPayment, subscriptionId = Ids.trialSubscription, organizationId = Ids.trialTenant, amount = BigDecimal("1500000"), status = TenantPaymentStatus.PENDING, dueDate = today.plusMonths(3)),
         ))
 
-        val child = children.save(Child(id = Ids.child, organizationId = Ids.activeTenant, branchId = Ids.activeBranch, classroomId = Ids.activeClassroom, firstName = "Aruna", lastName = "Putri", dateOfBirth = today.minusYears(4)))
+        val child = children.save(Child(id = Ids.child, organizationId = Ids.activeTenant, branchId = Ids.activeBranch, classroomId = Ids.activeClassroom, firstName = "Aruna", lastName = "Putri", gender = Gender.FEMALE, dateOfBirth = today.minusYears(4)))
         staffAssignments.save(ChildStaffAssignment(id = Ids.childTeacherAssignment, organizationId = Ids.activeTenant, childId = child.id, userId = Ids.teacher, assignmentRole = "MISS"))
         guardians.save(GuardianLink(id = Ids.guardianLink, childId = child.id, userId = Ids.parent))
 

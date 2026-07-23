@@ -104,10 +104,10 @@ class LocalDemoDataSeeder(
             Membership(id = id("membership-teacher"), userId = teacher.id, organizationId = tenant, role = Role.STAFF, branchId = branch, classroomId = classroom),
             Membership(id = id("membership-parent"), userId = parent.id, organizationId = tenant, role = Role.PARENT),
         ))
-        val aruna = Child(id = id("child-aruna"), organizationId = tenant, branchId = branch, classroomId = classroom, firstName = "Aruna", lastName = "Putri", dateOfBirth = today.minusYears(3))
-        val citra = Child(id = id("child-citra"), organizationId = tenant, branchId = branch, classroomId = classroom, firstName = "Citra", lastName = "Lestari", dateOfBirth = today.minusYears(2))
-        val bima = Child(id = id("child-bima"), organizationId = tenant, branchId = branch, firstName = "Bima", lastName = "Pratama", dateOfBirth = today.minusYears(4), enrollmentStatus = ChildEnrollmentStatus.PENDING)
-        val damar = Child(id = id("child-damar"), organizationId = tenant, branchId = branch, firstName = "Damar", lastName = "Saputra", dateOfBirth = today.minusYears(2), enrollmentStatus = ChildEnrollmentStatus.PENDING)
+        val aruna = Child(id = id("child-aruna"), organizationId = tenant, branchId = branch, classroomId = classroom, firstName = "Aruna", lastName = "Putri", gender = Gender.FEMALE, dateOfBirth = today.minusYears(3))
+        val citra = Child(id = id("child-citra"), organizationId = tenant, branchId = branch, classroomId = classroom, firstName = "Citra", lastName = "Lestari", gender = Gender.FEMALE, dateOfBirth = today.minusYears(2))
+        val bima = Child(id = id("child-bima"), organizationId = tenant, branchId = branch, firstName = "Bima", lastName = "Pratama", gender = Gender.MALE, dateOfBirth = today.minusYears(4), enrollmentStatus = ChildEnrollmentStatus.PENDING)
+        val damar = Child(id = id("child-damar"), organizationId = tenant, branchId = branch, firstName = "Damar", lastName = "Saputra", gender = Gender.MALE, dateOfBirth = today.minusYears(2), enrollmentStatus = ChildEnrollmentStatus.PENDING)
         children.saveAll(listOf(aruna, citra, bima, damar))
         placements.saveAll(listOf(
             ChildPlacement(id = id("placement-aruna"), organizationId = tenant, childId = aruna.id, classroomId = classroom, learningLevelId = level, academicYearId = academicYear, startsOn = today.minusMonths(4)),

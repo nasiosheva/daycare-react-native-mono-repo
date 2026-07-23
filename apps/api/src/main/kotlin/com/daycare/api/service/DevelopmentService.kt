@@ -8,6 +8,7 @@ import com.daycare.api.persistence.DevelopmentEntry
 import com.daycare.api.persistence.DevelopmentEntryRepository
 import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.UserProfileRepository
+import com.daycare.api.realtime.RealtimeFlag
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.springframework.security.oauth2.jwt.Jwt
@@ -66,7 +67,7 @@ class DevelopmentService(
         ))
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "DEVELOPMENT_ENTRY", entityId = entry.id, action = "CREATED", source = "STAFF_NOTE"))
         guardians.findAllByChildId(child.id).forEach { guardian ->
-            notifications.notify(organizationId, guardian.userId, "Perkembangan ${child.firstName}", "${categoryLabel(entry.category)}: ${entry.title}")
+            notifications.notify(organizationId, guardian.userId, "Perkembangan ${child.firstName}", "${categoryLabel(entry.category)}: ${entry.title}", realtimeFlags = setOf(RealtimeFlag.DEVELOPMENT))
         }
         return toResponse(entry)
     }

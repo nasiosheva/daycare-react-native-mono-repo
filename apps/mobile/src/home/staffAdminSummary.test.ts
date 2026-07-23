@@ -12,6 +12,7 @@ describe("createStaffAdminSummary", () => {
         { role: "PARENT", status: "ACTIVE" },
       ] as never,
       pendingBookings: [{ status: "PENDING_APPROVAL" }, { status: "CONFIRMED" }] as never,
+      pendingEnrollments: [{}],
       invoices: [{ status: "PENDING" }, { status: "PAID" }] as never,
       entitlements: [
         { status: "ACTIVE", remainingCredits: 3 },
@@ -20,6 +21,6 @@ describe("createStaffAdminSummary", () => {
       ] as never,
     });
 
-    expect(summary).toEqual({ activeChildren: 2, activeStaff: 2, pendingApprovals: 1, pendingInvoices: 1, activeSubscriptions: 2, remainingCredits: 3 });
+    expect(summary).toEqual({ activeChildren: 2, activeStaff: 2, pendingApprovals: 2, pendingInvoices: 1, activeSubscriptions: 2, remainingCredits: 3 });
   });
 });

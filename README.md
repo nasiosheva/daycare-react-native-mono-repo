@@ -32,7 +32,7 @@ Umur Emas is a multi-tenant early-childhood platform for web, iOS, Android, and 
 - Main role Home layouts have no app bar; child and detail screens use an app bar with a back button. Navigation is role-specific: Staff Admin uses four bottom tabs—Home, Children, Classes, and Manage—and opens Profile from the toolbar icon on Home. Development, staff accounts, branches, finance, payments, subscriptions, and booking approvals are grouped in Manage. Platform Admin has tenant administration; Staff has classroom operations and approvals; Parent has development, attendance QR, and booking. Every role can access Profile, which is the sole location for signing out. Profile also manages display name and Firebase password; Platform Admin can create another Platform Admin with an email, username, and password.
 - Shared mobile UI includes an accessible bottom sheet with a drag handle and close button. Operational add, edit, assignment, and password forms begin from an explicit action instead of rendering immediately; short forms open in a Bottom Sheet, while checkout and other larger workflows use dedicated screens. Profile uses it to confirm logout before ending the session.
 - Date and time fields use one reusable picker: the platform-native picker on Android and iOS, and the browser's native inputs on web. Its values remain `YYYY-MM-DD` for dates and `HH:mm` for times.
-- Child management, manual or QR attendance, and development notes. Staff Admin adds a child through the reusable Bottom Sheet; the child detail screen is reserved for later profile, program, placement, and staff-assignment management. Operational child lists and classroom active-child totals count only children whose Parent enrollment has been approved; pending applications do not consume classroom capacity.
+- Child management, manual or QR attendance, development notes, and Goals. Staff Admin adds a child through the reusable Bottom Sheet with a required gender choice; the same required choice applies to Parent enrollment and child-profile updates. The child detail screen is reserved for later profile, program, placement, staff-assignment, and Goal access. Staff Admin creates a Goal template scoped to a learning level and optionally a class group, then assigns it to a child. Staff Admin and active Staff record or amend one daily Yes/No outcome and can manually finalize the active Goal with a required conclusion; Parent can read the daily history, calculation, and final conclusion only. Missing dates are excluded from the Yes percentage but break a consecutive-Yes streak. On **Children**, Staff Admin can stage filters in order by branch, learning level, and class group/rombel; each subsequent selector only offers compatible active records, and the list changes only after pressing **OK**. Operational child lists and classroom active-child totals count only children whose Parent enrollment has been approved; pending applications do not consume classroom capacity.
 - Service-plan purchase, invoice tracking, Parent-uploaded transfer proof, Staff Admin payment verification, booking approval, and remaining-credit management.
 - Firebase email/password, phone, and Google authentication; Firebase ID tokens secure the API.
 
@@ -66,6 +66,7 @@ Environment files are local-only and ignored by Git. Start from the correspondin
 | Variable | Used by | Required | Description |
 | --- | --- | --- | --- |
 | `EXPO_PUBLIC_API_URL` | Mobile/web | Yes | API base URL, including `/api/v1`. This value is bundled into the client and must not contain a secret. |
+| `EXPO_PUBLIC_REALTIME_URL` | Mobile/web | Optional | WebSocket override. When omitted, it is derived from `EXPO_PUBLIC_API_URL` as `/api/v1/realtime`. |
 | `EXPO_PUBLIC_APP_ENV` | Mobile/web | Simulation only | Set to `simulation` only in `.env.simulation` to enable the local role-preview buttons. |
 | `EXPO_PUBLIC_FIREBASE_API_KEY` | Mobile/web | Yes | Firebase web API key. |
 | `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN` | Mobile/web | Yes | Firebase Auth domain. |
@@ -171,7 +172,7 @@ For a physical device, replace `localhost` in `EXPO_PUBLIC_API_URL` with the dev
 
 ## Mobile and web launchers
 
-The launchers source the corresponding environment file before starting Expo. They automatically install workspace dependencies with the locked pnpm version when `node_modules` is missing. They also create a missing environment file from its `.example` template, then stop until its required Firebase and API values are filled.
+The launchers source the corresponding environment file before starting Expo. They synchronize workspace dependencies from the locked pnpm version whenever the lockfile has changed, so a newly added Expo module is available even when `node_modules` already exists. They also create a missing environment file from its `.example` template, then stop until its required Firebase and API values are filled.
 
 Copy and populate the file before using a launcher, or let the launcher create its local copy on first use:
 
@@ -241,10 +242,13 @@ All API routes are under `/api/v1` and require a Firebase bearer token except th
 | Void a pending tenant subscription payment | `POST /api/v1/platform/tenants/{organizationId}/payments/{paymentId}/void` |
 | Extend or cancel a pending Staff Admin invitation | `POST /api/v1/platform/tenants/{organizationId}/staff-admin-invitation/{refresh\|cancel}` |
 | Create, list, or deactivate tenant staff accounts | `POST` / `GET /api/v1/tenant-users`, `POST /api/v1/tenant-users/{userId}/deactivate` |
+| Grant or revoke a Staff account's child-program permission | `PATCH /api/v1/tenant-users/{userId}/child-program-permission` |
 | Invite a Parent to a tenant | `POST /api/v1/invitations` |
-| List or create children | `GET` / `POST /api/v1/children` |
+| List or create children | `GET` / `POST /api/v1/children` (`GET` accepts optional `branchId`, `learningLevelId`, and `classroomId` filters) |
 | Read or edit a child | `GET` / `PATCH /api/v1/children/{childId}` |
 | Deactivate a child without deleting history | `POST /api/v1/children/{childId}/deactivate` |
+| List or assign child Goals | `GET` / `POST /api/v1/children/{childId}/goals` |
+| Record or finalize a child Goal | `PUT /api/v1/child-goals/{goalId}/check-ins/{date}`, `POST /api/v1/child-goals/{goalId}/finalize` |
 | Add or remove a child's programs | `POST /api/v1/children/{childId}/programs`, `DELETE /api/v1/children/{childId}/programs/{programId}` |
 | Assign or remove a child's Staff Admin, staff, nurse, or miss | `POST /api/v1/children/{childId}/staff-assignments`, `DELETE /api/v1/children/{childId}/staff-assignments/{assignmentId}` |
 | Manage learning levels and templates | `GET` / `POST /api/v1/learning-levels`, `GET /api/v1/learning-level-templates`, `PATCH /api/v1/learning-levels/{id}`, `POST /api/v1/learning-levels/{id}/archive` |
@@ -253,6 +257,7 @@ All API routes are under `/api/v1` and require a Firebase bearer token except th
 | Record attendance | `POST /api/v1/children/{childId}/attendance` |
 | Issue attendance QR token | `GET /api/v1/children/{childId}/attendance-qr` |
 | List or create development entries | `GET` / `POST /api/v1/children/{childId}/development-entries` |
+| List or manage Goal templates | `GET` / `POST /api/v1/goal-templates`, `PATCH /api/v1/goal-templates/{templateId}`, `POST /api/v1/goal-templates/{templateId}/archive` |
 | List or create service plans | `GET` / `POST /api/v1/service-plans` |
 | Read or set a branch daily capacity | `GET /api/v1/branch-capacities`, `PUT /api/v1/branches/{branchId}/capacity` |
 | List, create, or deactivate a package discount/promo | `GET` / `POST /api/v1/service-plans/{planId}/discounts`, `POST /api/v1/service-plans/{planId}/discounts/{discountId}/deactivate` |
@@ -271,6 +276,12 @@ All API routes are under `/api/v1` and require a Firebase bearer token except th
 
 The mobile app exchanges Firebase ID tokens through `Authorization: Bearer <token>`. Its API client also sends `X-Organization-Id` after a tenant user selects an organization. `ADMIN` is a platform-level role bootstrapped by `PLATFORM_ADMIN_EMAILS`; tenant roles are `STAFF_ADMIN`, `STAFF`, and `PARENT`. The shared policy is defined in `packages/core` and is enforced by the API service layer. Language can only be changed from Login or Profile, and is intentionally stored locally rather than attached to the user account.
 
+### Realtime WebSocket
+
+The mobile and web client connect to `GET ws(s)://<api-host>/api/v1/realtime` after sign-in. The first frame is `{"type":"CONNECT","token":"<JWT>","organizationId":"<tenant UUID>"}`. Platform Admin and a Parent that has not yet been bound to a tenant omit `organizationId`; an unscoped session receives only events explicitly addressed to that user. The server validates the JWT and selected scope before registering the session. It emits transient `EVENT` envelopes with `id`, `organizationId`, `flags`, optional generic `payload`, and `occurredAt`. Flags may be combined in one event: `NOTIFICATIONS`, `PROFILE`, `PARENT_ENROLLMENTS`, `CHILDREN`, `ATTENDANCE`, `DEVELOPMENT`, `BOOKINGS`, `INVOICES`, `ENTITLEMENTS`, `SERVICE_PLANS`, `BRANCHES`, `TENANT_USERS`, `LEARNING`, `ACADEMIC`, `TENANTS`, `GLOBAL_CURRICULUM`, and `GOALS`.
+
+WebSocket payloads are not an entity source of truth. The client maps flags to React Query invalidations and reloads data from the protected REST API; it reconnects with backoff and refreshes scoped queries after reconnect. Notifications remain persisted and Expo push delivery remains unchanged, so temporary WebSocket disconnection cannot lose application state.
+
 The API test suite includes fast mock-based unit tests and a Spring integration baseline. `ApiIntegrationTest` uses a dedicated local PostgreSQL database, applies Flyway, uses local JWT authentication, and verifies platform-to-tenant HTTP access. It never uses Docker and is skipped unless these variables point to a non-production test database:
 
 ```sh
@@ -283,7 +294,7 @@ TASK_JAVA_HOME=/Users/morieshutapea/Library/Java/JavaVirtualMachines/jbr-21.0.8/
 
 Create `daycare_integration` separately from the application database; Flyway owns its schema during the test.
 
-`STAFF_ADMIN` uses the Staff Admin center to manage all staff accounts and passwords, confirm parent payments, monitor every child's parent subscription and remaining daily/weekly quota, configure service plans, plan templates, package discounts/promos, and branch booking capacity, then handle booking approvals. Staff accounts are not deleted: inactive `STAFF` and `STAFF_ADMIN` memberships retain read-only tenant access, while every tenant mutation remains limited to active memberships. An inactive Staff keeps the children already in their assignment scope; an inactive Staff Admin can review tenant-wide operational data. The Staff Admin who performs the action and the last active Staff Admin cannot be deactivated. From **Anak**, a Staff Admin can add or edit a child profile, attach one or more programs, and assign active Staff Admin/staff members with a Staff, Nurse, or Miss responsibility. Children are never deleted: a Staff Admin may deactivate a child, which removes the child from operational lists and capacity while retaining its history. Programs and assignments are stored in `child_programs` and `child_staff_assignments`. The entitlement list is parent-scoped for `PARENT` and tenant-scoped for `STAFF_ADMIN`; it includes the child and parent identity required for operational management.
+`STAFF_ADMIN` uses the Staff Admin center to manage all staff accounts and passwords, confirm parent payments, monitor every child's parent subscription and remaining daily/weekly quota, configure service plans, plan templates, package discounts/promos, and branch booking capacity, then handle booking approvals. Staff accounts are not deleted: inactive `STAFF` and `STAFF_ADMIN` memberships retain read-only tenant access, while every tenant mutation remains limited to active memberships. An inactive Staff keeps the children already in their assignment scope; an inactive Staff Admin can review tenant-wide operational data. The Staff Admin who performs the action and the last active Staff Admin cannot be deactivated. From **Akun tenant**, a Staff Admin can give or revoke a per-account child-program permission for each active `STAFF`; it is disabled by default and allows that Staff to add or remove programs only on children assigned directly or through an active class group. From **Anak**, a Staff Admin can add or edit a child profile, attach one or more programs, and assign active Staff Admin/staff members with a Staff, Nurse, or Miss responsibility. Children are never deleted: a Staff Admin may deactivate a child, which removes the child from operational lists and capacity while retaining its history. Programs and assignments are stored in `child_programs` and `child_staff_assignments`. The entitlement list is parent-scoped for `PARENT` and tenant-scoped for `STAFF_ADMIN`; it includes the child and parent identity required for operational management.
 
 ### Booking and billing lifecycle
 

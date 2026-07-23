@@ -16,6 +16,13 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.web.socket.TextMessage
+import org.springframework.web.socket.WebSocketSession
+import org.springframework.web.socket.client.standard.StandardWebSocketClient
+import org.springframework.web.socket.handler.TextWebSocketHandler
+import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 
 @EnabledIfEnvironmentVariable(named = "INTEGRATION_DATABASE_URL", matches = ".+")
 @SpringBootTest(
@@ -88,6 +95,42 @@ class ApiIntegrationTest(
         assertEquals(0, json.readTree(children.body).size())
         assertEquals(HttpStatus.OK, notifications.statusCode)
         assertEquals(0, json.readTree(notifications.body).size())
+    }
+
+    @Test
+    fun `authenticated tenant user receives realtime connection acknowledgement`() {
+        val platformToken = login("admin@integration.test", "integration-password")
+        val staffEmail = "realtime-${UUID.randomUUID()}@integration.test"
+        val tenant = rest.exchange(
+            url("/v1/platform/tenants"),
+            HttpMethod.POST,
+            authenticated(platformToken, mapOf(
+                "tenantName" to "Realtime Tenant",
+                "branchName" to "Realtime Branch",
+                "institutionTypes" to listOf("DAYCARE"),
+                "subscriptionPlan" to "STARTER",
+                "monthlyFee" to 250000,
+                "trialMonths" to 1,
+                "staffAdminName" to "Realtime Admin",
+                "staffAdminEmail" to staffEmail,
+                "staffAdminPassword" to "tenant-password",
+            )),
+            String::class.java,
+        )
+        assertEquals(HttpStatus.CREATED, tenant.statusCode)
+        val tenantId = json.readTree(tenant.body).path("id").asText()
+        val token = login(staffEmail, "tenant-password")
+        val received = CompletableFuture<String>()
+        val session = StandardWebSocketClient().execute(object : TextWebSocketHandler() {
+            override fun handleTextMessage(session: WebSocketSession, message: TextMessage) {
+                received.complete(message.payload)
+            }
+        }, "ws://localhost:$port/api/v1/realtime").get(5, TimeUnit.SECONDS)
+
+        session.sendMessage(TextMessage(json.writeValueAsString(mapOf("type" to "CONNECT", "token" to token, "organizationId" to tenantId))))
+
+        assertEquals("CONNECTED", json.readTree(received.get(5, TimeUnit.SECONDS)).path("type").asText())
+        session.close()
     }
 
     private fun login(identifier: String, password: String): String {

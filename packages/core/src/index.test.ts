@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { can, attendanceCommandSchema, capabilitiesForInstitutionTypes, developmentEntrySchema, hasInstitutionCapability, purchaseServiceSchema } from "./index";
+import { can, attendanceCommandSchema, capabilitiesForInstitutionTypes, childSchema, developmentEntrySchema, hasInstitutionCapability, purchaseServiceSchema } from "./index";
 
 describe("permissions", () => {
   it("only permits staff to record attendance", () => {
@@ -18,6 +18,12 @@ describe("permissions", () => {
   it("validates a parent-visible development entry", () => {
     expect(developmentEntrySchema.safeParse({ category: "OBSERVATION", title: "Komunikasi", content: "Mampu mengikuti instruksi sederhana." }).success).toBe(true);
     expect(developmentEntrySchema.safeParse({ category: "OTHER", title: "Catatan", content: "..." }).success).toBe(false);
+  });
+
+  it("requires a supported gender when creating a child", () => {
+    const child = { firstName: "Alya", gender: "FEMALE", dateOfBirth: "2022-01-01" };
+    expect(childSchema.safeParse(child).success).toBe(true);
+    expect(childSchema.safeParse({ ...child, gender: "UNSPECIFIED" }).success).toBe(false);
   });
 
   it("permits monthly purchases without booking dates and keeps booking permissions parent-only", () => {

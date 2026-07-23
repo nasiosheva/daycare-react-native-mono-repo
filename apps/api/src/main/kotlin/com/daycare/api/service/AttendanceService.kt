@@ -3,6 +3,7 @@ package com.daycare.api.service
 import com.daycare.api.domain.AttendanceAction
 import com.daycare.api.domain.AttendanceMethod
 import com.daycare.api.domain.InstitutionCapability
+import com.daycare.api.domain.Gender
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AttendanceRecord
 import com.daycare.api.persistence.AttendanceRepository
@@ -10,7 +11,10 @@ import com.daycare.api.persistence.AuditLog
 import com.daycare.api.persistence.AuditLogRepository
 import com.daycare.api.persistence.BranchRepository
 import com.daycare.api.persistence.Child
+import com.daycare.api.persistence.ClassroomRepository
 import com.daycare.api.persistence.GuardianLinkRepository
+import com.daycare.api.persistence.LearningLevelRepository
+import com.daycare.api.realtime.RealtimeFlag
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
@@ -21,7 +25,8 @@ import java.time.LocalDate
 import java.util.UUID
 
 class AttendanceConflict(message: String) : RuntimeException(message)
-data class ChildResponse(val id: UUID, val organizationId: UUID, val branchId: UUID, val classroomId: UUID?, val firstName: String, val lastName: String?, val nisn: String?, val dateOfBirth: LocalDate) { val fullName get() = listOfNotNull(firstName, lastName).joinToString(" ") }
+data class ChildResponse(val id: UUID, val organizationId: UUID, val branchId: UUID, val classroomId: UUID?, val firstName: String, val lastName: String?, val nisn: String?, val gender: Gender, val dateOfBirth: LocalDate) { val fullName get() = listOfNotNull(firstName, lastName).joinToString(" ") }
+data class ChildListFilter(val branchId: UUID? = null, val learningLevelId: UUID? = null, val classroomId: UUID? = null)
 data class AttendanceResponse(val id: UUID, val childId: UUID, val operationalDate: LocalDate, val checkedInAt: Instant?, val checkedOutAt: Instant?, val method: AttendanceMethod)
 
 @Service
@@ -30,6 +35,8 @@ class AttendanceService(
     private val guardians: GuardianLinkRepository,
     private val childScopes: ChildScopeService,
     private val branches: BranchRepository,
+    private val learningLevels: LearningLevelRepository,
+    private val classrooms: ClassroomRepository,
     private val attendance: AttendanceRepository,
     private val audits: AuditLogRepository,
     private val qr: AttendanceQrService,
@@ -37,9 +44,12 @@ class AttendanceService(
     private val bookingEligibility: BookingEligibilityService,
 ) {
     @Transactional
-    fun listChildren(jwt: Jwt, organizationId: UUID): List<ChildResponse> {
+    fun listChildren(jwt: Jwt, organizationId: UUID, filter: ChildListFilter = ChildListFilter()): List<ChildResponse> {
         val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
-        return childScopes.visibleChildren(scope, organizationId).map(::toResponse)
+        validateFilter(organizationId, filter)
+        return childScopes.visibleChildren(scope, organizationId)
+            .filter { child -> matchesFilter(child, filter) }
+            .map(::toResponse)
     }
 
     @Transactional
@@ -65,7 +75,7 @@ class AttendanceService(
         else { record.checkedOutAt = now; record.checkOutMethod = command.method.name }
         val saved = attendance.save(record)
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "ATTENDANCE", entityId = saved.id, action = command.action.name, source = command.method.name))
-        guardians.findAllByChildId(child.id).forEach { guardian -> notifications.notify(organizationId, guardian.userId, "Kehadiran ${child.firstName}", "${child.fullName()} berhasil ${if (command.action == AttendanceAction.CHECK_IN) "check-in" else "check-out"}.") }
+        guardians.findAllByChildId(child.id).forEach { guardian -> notifications.notify(organizationId, guardian.userId, "Kehadiran ${child.firstName}", "${child.fullName()} berhasil ${if (command.action == AttendanceAction.CHECK_IN) "check-in" else "check-out"}.", realtimeFlags = setOf(RealtimeFlag.ATTENDANCE)) }
         return toResponse(saved, command.method)
     }
 
@@ -76,9 +86,34 @@ class AttendanceService(
         return qr.issue(child.id, child.fullName())
     }
 
-    private fun toResponse(child: Child) = ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.nisn, child.dateOfBirth)
+    private fun toResponse(child: Child) = ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.nisn, child.gender, child.dateOfBirth)
     private fun toResponse(record: AttendanceRecord, method: AttendanceMethod) = AttendanceResponse(record.id, record.childId, record.operationalDate, record.checkedInAt, record.checkedOutAt, method)
     private fun Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")
+
+    private fun validateFilter(organizationId: UUID, filter: ChildListFilter) {
+        filter.branchId?.let { branchId ->
+            val branch = branches.findById(branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
+            require(branch.organizationId == organizationId) { "Branch belongs to a different organization" }
+        }
+        filter.learningLevelId?.let { levelId ->
+            val level = learningLevels.findById(levelId).orElseThrow { IllegalArgumentException("Learning level was not found") }
+            require(level.organizationId == organizationId) { "Learning level belongs to a different organization" }
+        }
+        filter.classroomId?.let { classroomId ->
+            val classroom = classrooms.findById(classroomId).orElseThrow { IllegalArgumentException("Classroom was not found") }
+            require(classroom.organizationId == organizationId) { "Classroom belongs to a different organization" }
+            require(filter.branchId == null || classroom.branchId == filter.branchId) { "Classroom does not belong to the selected branch" }
+            require(filter.learningLevelId == null || classroom.learningLevelId == filter.learningLevelId) { "Classroom does not belong to the selected learning level" }
+        }
+    }
+
+    private fun matchesFilter(child: Child, filter: ChildListFilter): Boolean {
+        if (filter.branchId != null && child.branchId != filter.branchId) return false
+        if (filter.classroomId != null && child.classroomId != filter.classroomId) return false
+        if (filter.learningLevelId == null) return true
+        val classroomId = child.classroomId ?: return false
+        return classrooms.findById(classroomId).orElse(null)?.learningLevelId == filter.learningLevelId
+    }
 }
 
 data class AttendanceCommand(val action: AttendanceAction, val method: AttendanceMethod, val qrToken: String? = null, val note: String? = null)

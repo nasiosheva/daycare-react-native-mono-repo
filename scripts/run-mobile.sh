@@ -81,15 +81,20 @@ ensure_corepack() {
 }
 
 ensure_workspace_dependencies() {
-  if [ -f "$repository_root/node_modules/.modules.yaml" ]; then
+  dependency_stamp="$repository_root/node_modules/.daycare-lockfile.sha256"
+  dependency_fingerprint=$(shasum -a 256 "$repository_root/pnpm-lock.yaml" | awk '{ print $1 }')
+  recorded_dependency_fingerprint=$(cat "$dependency_stamp" 2>/dev/null || true)
+
+  if [ -f "$repository_root/node_modules/.modules.yaml" ] && [ "$dependency_fingerprint" = "$recorded_dependency_fingerprint" ]; then
     return
   fi
 
-  echo "Workspace dependencies are missing; installing from pnpm-lock.yaml..."
+  echo "Synchronizing workspace dependencies from pnpm-lock.yaml..."
   (
     cd "$repository_root"
-    corepack pnpm install --frozen-lockfile
+    corepack pnpm install --frozen-lockfile --force
   )
+  printf '%s\n' "$dependency_fingerprint" >"$dependency_stamp"
 }
 
 ensure_environment_file() {

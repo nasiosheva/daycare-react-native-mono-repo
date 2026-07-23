@@ -18,6 +18,7 @@ import com.daycare.api.service.RegisterDeviceRequest
 import com.daycare.api.service.CreateTenantRequest
 import com.daycare.api.service.CreatePlatformAdminRequest
 import com.daycare.api.service.ChangeTenantUserPasswordRequest
+import com.daycare.api.service.UpdateTenantUserChildProgramPermissionRequest
 import com.daycare.api.service.AcademicService
 import com.daycare.api.service.LearningStructureService
 import com.daycare.api.service.UpsertLearningLevelRequest
@@ -25,6 +26,12 @@ import com.daycare.api.service.UpsertClassroomRequest
 import com.daycare.api.service.AssignClassroomStaffRequest
 import com.daycare.api.service.CreateClassroomProgramRequest
 import com.daycare.api.service.CreateChildPlacementRequest
+import com.daycare.api.service.ChildListFilter
+import com.daycare.api.service.GoalService
+import com.daycare.api.service.UpsertGoalTemplateRequest
+import com.daycare.api.service.AssignChildGoalRequest
+import com.daycare.api.service.GoalCheckInRequest
+import com.daycare.api.service.FinalizeChildGoalRequest
 import com.daycare.api.service.CreateAcademicYearRequest
 import com.daycare.api.service.CreateCurriculumProgramRequest
 import com.daycare.api.service.UpsertCurriculumActivityRequest
@@ -66,6 +73,7 @@ import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
@@ -175,9 +183,15 @@ class PlatformController(private val platformAdministration: PlatformAdministrat
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService) {
+class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService) {
     @GetMapping("/children")
-    fun children(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = attendance.listChildren(jwt, organizationId)
+    fun children(
+        @AuthenticationPrincipal jwt: Jwt,
+        @RequestHeader("X-Organization-Id") organizationId: UUID,
+        @RequestParam(required = false) branchId: UUID?,
+        @RequestParam(required = false) learningLevelId: UUID?,
+        @RequestParam(required = false) classroomId: UUID?,
+    ) = attendance.listChildren(jwt, organizationId, ChildListFilter(branchId, learningLevelId, classroomId))
 
     @PostMapping("/children") @ResponseStatus(HttpStatus.CREATED)
     fun createChild(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateChildRequest) = administration.createChild(jwt, organizationId, request)
@@ -215,6 +229,18 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @PostMapping("/children/{childId}/development-entries") @ResponseStatus(HttpStatus.CREATED)
     fun createDevelopmentEntry(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateDevelopmentEntryRequest) = development.create(jwt, organizationId, childId, request)
 
+    @GetMapping("/children/{childId}/goals")
+    fun childGoals(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = goalService.childGoals(jwt, organizationId, childId)
+
+    @PostMapping("/children/{childId}/goals") @ResponseStatus(HttpStatus.CREATED)
+    fun assignChildGoal(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: AssignChildGoalRequest) = goalService.assign(jwt, organizationId, childId, request)
+
+    @PutMapping("/child-goals/{goalId}/check-ins/{date}")
+    fun recordGoalCheckIn(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable goalId: UUID, @PathVariable date: java.time.LocalDate, @Valid @RequestBody request: GoalCheckInRequest) = goalService.recordCheckIn(jwt, organizationId, goalId, date, request)
+
+    @PostMapping("/child-goals/{goalId}/finalize")
+    fun finalizeGoal(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable goalId: UUID, @Valid @RequestBody request: FinalizeChildGoalRequest) = goalService.finalize(jwt, organizationId, goalId, request)
+
     @PostMapping("/invitations") @ResponseStatus(HttpStatus.CREATED)
     fun invite(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateInvitationRequest) = mapOf("id" to administration.invite(jwt, organizationId, request))
 
@@ -226,6 +252,9 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PostMapping("/tenant-users/{userId}/deactivate") @ResponseStatus(HttpStatus.NO_CONTENT)
     fun deactivateTenantUser(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable userId: UUID) = administration.deactivateTenantUser(jwt, organizationId, userId)
+
+    @PatchMapping("/tenant-users/{userId}/child-program-permission")
+    fun updateTenantUserChildProgramPermission(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable userId: UUID, @RequestBody request: UpdateTenantUserChildProgramPermissionRequest) = administration.updateTenantUserChildProgramPermission(jwt, organizationId, userId, request)
 
     @GetMapping("/branches")
     fun branches(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = branchManagement.branches(jwt, organizationId)
@@ -256,6 +285,18 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @GetMapping("/curriculum-activities")
     fun activities(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = academic.activities(jwt, organizationId)
+
+    @GetMapping("/goal-templates")
+    fun goalTemplates(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = goalService.templates(jwt, organizationId)
+
+    @PostMapping("/goal-templates") @ResponseStatus(HttpStatus.CREATED)
+    fun createGoalTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertGoalTemplateRequest) = goalService.createTemplate(jwt, organizationId, request)
+
+    @PatchMapping("/goal-templates/{templateId}")
+    fun updateGoalTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID, @Valid @RequestBody request: UpsertGoalTemplateRequest) = goalService.updateTemplate(jwt, organizationId, templateId, request)
+
+    @PostMapping("/goal-templates/{templateId}/archive")
+    fun archiveGoalTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID) = goalService.archiveTemplate(jwt, organizationId, templateId)
 
     @PostMapping("/curriculum-activities") @ResponseStatus(HttpStatus.CREATED)
     fun createActivity(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertCurriculumActivityRequest) = academic.createActivity(jwt, organizationId, request)

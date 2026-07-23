@@ -1,6 +1,7 @@
 package com.daycare.api.service
 
 import com.daycare.api.domain.ChildEnrollmentStatus
+import com.daycare.api.domain.Gender
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.ParentEnrollmentStatus
 import com.daycare.api.domain.InvoiceStatus
@@ -21,6 +22,7 @@ import com.daycare.api.persistence.ServicePlanRepository
 import com.daycare.api.persistence.InvoiceRepository
 import com.daycare.api.persistence.TenantSubscriptionRepository
 import com.daycare.api.persistence.UserProfileRepository
+import com.daycare.api.realtime.RealtimeFlag
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import jakarta.validation.Valid
@@ -32,7 +34,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
-data class ParentEnrollmentChildInput(@field:NotBlank @field:Size(max = 100) val firstName: String, @field:Size(max = 100) val lastName: String?, val dateOfBirth: LocalDate)
+data class ParentEnrollmentChildInput(@field:NotBlank @field:Size(max = 100) val firstName: String, @field:Size(max = 100) val lastName: String?, val gender: Gender, val dateOfBirth: LocalDate)
 data class ParentEnrollmentCheckoutRequest(
     val organizationId: UUID,
     val branchId: UUID,
@@ -91,7 +93,8 @@ class ParentEnrollmentService(
         val branch = branches.findById(request.branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
         require(branch.organizationId == request.organizationId && branch.active) { "Branch is not available for this organization" }
         val created = request.children.map { childInput ->
-            val child = children.save(Child(organizationId = request.organizationId, branchId = branch.id, firstName = childInput.firstName.trim(), lastName = childInput.lastName?.trim()?.ifBlank { null }, dateOfBirth = childInput.dateOfBirth, enrollmentStatus = ChildEnrollmentStatus.PENDING))
+            require(childInput.gender != Gender.UNSPECIFIED) { "Gender is required" }
+            val child = children.save(Child(organizationId = request.organizationId, branchId = branch.id, firstName = childInput.firstName.trim(), lastName = childInput.lastName?.trim()?.ifBlank { null }, gender = childInput.gender, dateOfBirth = childInput.dateOfBirth, enrollmentStatus = ChildEnrollmentStatus.PENDING))
             val purchase = billing.purchaseForEnrollment(parent, request.organizationId, child, PurchaseServiceRequest(request.planId, child.id, request.bookingDates, request.promoCode))
             val enrollment = enrollments.save(ParentEnrollment(userId = parent.id, organizationId = request.organizationId, branchId = branch.id, childId = child.id, invoiceId = purchase.invoice.id, entitlementId = purchase.entitlement.id))
             response(enrollment)
@@ -124,12 +127,12 @@ class ParentEnrollmentService(
             if (!guardians.existsByChildIdAndUserId(child.id, enrollment.userId)) guardians.save(GuardianLink(childId = child.id, userId = enrollment.userId))
             enrollment.status = ParentEnrollmentStatus.APPROVED
             enrollment.approvedAt = Instant.now()
-            notifications.notify(organizationId, enrollment.userId, "Pengajuan disetujui", "Pengajuan ${child.fullName()} disetujui. Anda sekarang dapat memakai dashboard Parent.", "/home")
+            notifications.notify(organizationId, enrollment.userId, "Pengajuan disetujui", "Pengajuan ${child.fullName()} disetujui. Anda sekarang dapat memakai dashboard Parent.", "/home", setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.PROFILE, RealtimeFlag.CHILDREN, RealtimeFlag.ENTITLEMENTS))
         } else {
             enrollment.status = ParentEnrollmentStatus.REJECTED
             enrollment.rejectionReason = request.rejectionReason?.trim()?.ifBlank { null }
             val entitlement = entitlements.findById(enrollment.entitlementId).orElseThrow { IllegalArgumentException("Service entitlement was not found") }
-            notifications.notify(organizationId, enrollment.userId, "Pengajuan ditolak", "Paket tetap tersimpan. Ajukan ulang untuk ditinjau kembali.", "/parent-enrollment")
+            notifications.notify(organizationId, enrollment.userId, "Pengajuan ditolak", "Paket tetap tersimpan. Ajukan ulang untuk ditinjau kembali.", "/parent-enrollment", setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.ENTITLEMENTS))
         }
         return response(enrollment)
     }
@@ -183,7 +186,7 @@ class ParentEnrollmentService(
 
     private fun billingBranchCapacity(organizationId: UUID, branchId: UUID): Int? = billing.branchCapacityForCatalog(organizationId, branchId)
     private fun notifyStaffAdmins(organizationId: UUID, title: String, body: String, actionPath: String) {
-        memberships.findAllByOrganizationId(organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.forEach { notifications.notify(organizationId, it.userId, title, body, actionPath) }
+        memberships.findAllByOrganizationId(organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.forEach { notifications.notify(organizationId, it.userId, title, body, actionPath, setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.BOOKINGS)) }
     }
     private fun response(enrollment: ParentEnrollment): ParentEnrollmentResponse {
         val child = children.findById(enrollment.childId).orElseThrow { IllegalArgumentException("Child was not found") }

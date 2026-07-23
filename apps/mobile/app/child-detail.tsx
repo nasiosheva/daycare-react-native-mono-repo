@@ -3,10 +3,12 @@ import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ChildGender } from "@daycare/core";
 import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAddChildProgram, useAssignChildStaff, useChildProfile, useDeactivateChild, useRemoveChildProgram, useUnassignChildStaff, useUpdateChild } from "@/children/useChildManagement";
+import { GenderPicker } from "@/children/GenderPicker";
 import { useI18n } from "@/i18n/I18nProvider";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate, isIsoDate } from "@/date-picker/date";
@@ -22,6 +24,7 @@ export default function ChildDetailScreen() {
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canManage = membership?.role === "STAFF_ADMIN" && membership.active;
+  const canManagePrograms = canManage || (membership?.role === "STAFF" && membership.active && membership.canManageChildPrograms);
   const canPlaceChild = membership?.active !== false;
   const childProfile = useChildProfile(childId);
   const updateChild = useUpdateChild(childId ?? "");
@@ -37,6 +40,7 @@ export default function ChildDetailScreen() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [nisn, setNisn] = useState("");
+  const [gender, setGender] = useState<ChildGender>();
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [programName, setProgramName] = useState("");
   const [programDescription, setProgramDescription] = useState("");
@@ -54,14 +58,15 @@ export default function ChildDetailScreen() {
     setFirstName(childProfile.data.child.firstName);
     setLastName(childProfile.data.child.lastName ?? "");
     setNisn(childProfile.data.child.nisn ?? "");
+    setGender(childProfile.data.child.gender === "UNSPECIFIED" ? undefined : childProfile.data.child.gender);
     setDateOfBirth(childProfile.data.child.dateOfBirth);
   }, [childProfile.data]);
 
   if (!profile) return null;
   if (!childId || !membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
   const saveChild = async () => {
-    if (!firstName.trim() || !isIsoDate(dateOfBirth)) return Alert.alert(t("children.required"));
-    const payload = { firstName: firstName.trim(), lastName: lastName.trim() || undefined, nisn: nisn.trim() || undefined, dateOfBirth };
+    if (!firstName.trim() || !gender || !isIsoDate(dateOfBirth)) return Alert.alert(t("children.required"));
+    const payload = { firstName: firstName.trim(), lastName: lastName.trim() || undefined, nisn: nisn.trim() || undefined, gender, dateOfBirth };
     try {
       await updateChild.mutateAsync(payload);
       setSheet(null);
@@ -89,8 +94,9 @@ export default function ChildDetailScreen() {
   return <AppScreen showBottomNavigation={false} title={t("children.detailTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {childProfile.isLoading ? <AppText>{t("children.loading")}</AppText> : childProfile.data && <View style={styles.form}>
       <AppText variant="h5">{childProfile.data.child.fullName}</AppText>
+      <AppText tone="muted">{childProfile.data.child.gender === "MALE" ? t("children.genderMale") : childProfile.data.child.gender === "FEMALE" ? t("children.genderFemale") : t("children.genderUnspecified")}</AppText>
       <AppText tone="muted">{childProfile.data.child.dateOfBirth}</AppText>
-      {canManage && <View style={styles.options}><Button variant="secondary" onPress={() => setSheet("edit")}>{t("children.edit")}</Button><Button variant="danger" loading={deactivateChild.isPending} onPress={deactivate}>{t("children.deactivate")}</Button></View>}
+      <View style={styles.options}><Button variant="secondary" onPress={() => router.push({ pathname: "/goals", params: { childId } })}>{t("goals.title")}</Button>{canManage && <><Button variant="secondary" onPress={() => setSheet("edit")}>{t("children.edit")}</Button><Button variant="danger" loading={deactivateChild.isPending} onPress={deactivate}>{t("children.deactivate")}</Button></>}</View>
     </View>}
     {childId && childProfile.data && <>
       <View style={styles.form}><AppText variant="h5">{t("learning.placements")}</AppText>
@@ -99,7 +105,7 @@ export default function ChildDetailScreen() {
         {placements.data?.map((placement) => <View key={placement.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{placement.learningLevelName ?? "–"} · {placement.classroomName}</AppText><AppText variant="bodySmall" tone="muted">{placement.startsOn}{placement.endedOn ? ` – ${placement.endedOn}` : ""}</AppText></View></View>)}
         {placements.data?.length === 0 && <AppText tone="muted">{t("learning.noPlacements")}</AppText>}
       </View>
-      {canManage && <View style={styles.form}><AppText variant="h5">{t("children.programs")}</AppText>
+      {canManagePrograms && <View style={styles.form}><AppText variant="h5">{t("children.programs")}</AppText>
         <Button variant="secondary" onPress={() => setSheet("program")}>{t("children.addProgram")}</Button>
         {childProfile.data.programs.map((program) => <View key={program.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{program.name}</AppText>{program.description && <AppText variant="bodySmall" tone="muted">{program.description}</AppText>}</View><Button variant="danger" onPress={() => void removeProgram.mutateAsync(program.id)}>{t("children.remove")}</Button></View>)}
         {childProfile.data.programs.length === 0 && <AppText tone="muted">{t("children.noPrograms")}</AppText>}
@@ -114,6 +120,7 @@ export default function ChildDetailScreen() {
       <TextInput style={styles.input} placeholder={t("children.firstName")} value={firstName} onChangeText={setFirstName} />
       <TextInput style={styles.input} placeholder={t("children.lastName")} value={lastName} onChangeText={setLastName} />
       <TextInput style={styles.input} inputMode="numeric" placeholder={t("children.nisn")} value={nisn} onChangeText={setNisn} />
+      <GenderPicker value={gender} onChange={setGender} />
       <DatePicker placeholder={t("children.birthDate")} value={dateOfBirth} onChange={setDateOfBirth} maximumDate={formatIsoDate(new Date())} />
     </BottomSheet>
     <BottomSheet visible={sheet === "placement"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("learning.placeChild")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("learning.placeChild"), loading: placeChild.isPending, disabled: !classroomId, onPress: () => { if (!classroomId) return; void placeChild.mutateAsync({ classroomId, startsOn: placementStart || undefined }).then((placement) => { if (placement.ageGuidanceWarning) Alert.alert(t("learning.ageGuidance")); setClassroomId(null); setPlacementStart(""); setSheet(null); }).catch((error: unknown) => Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"))); } }}>

@@ -3,6 +3,10 @@ package com.daycare.api.domain
 enum class Role { ADMIN, STAFF_ADMIN, STAFF, PARENT }
 enum class RegistrationRole { PARENT }
 enum class ChildEnrollmentStatus { PENDING, ACTIVE }
+enum class Gender { MALE, FEMALE, UNSPECIFIED }
+enum class GoalCheckInOutcome { YES, NO }
+enum class ChildGoalStatus { ACTIVE, COMPLETED }
+enum class ChildGoalOutcome { ACHIEVED, NOT_ACHIEVED }
 enum class ParentEnrollmentStatus { PENDING_PAYMENT, PENDING_APPROVAL, APPROVED, REJECTED, EXPIRED, CANCELLED }
 enum class ChildCareRole { STAFF, NURSE, MISS }
 enum class AttendanceMethod { MANUAL, QR }

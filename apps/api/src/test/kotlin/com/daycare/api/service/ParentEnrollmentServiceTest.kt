@@ -2,6 +2,7 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.ChildEnrollmentStatus
 import com.daycare.api.domain.EntitlementStatus
+import com.daycare.api.domain.Gender
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.InstitutionType
 import com.daycare.api.domain.InvoiceStatus
@@ -91,14 +92,15 @@ class ParentEnrollmentServiceTest {
         `when`(billing.purchaseForEnrollment(parent, additionalOrganizationId, thirdChild, PurchaseServiceRequest(additionalPlanId, thirdChild.id, emptyList()))).thenReturn(purchaseResponse(thirdChild))
         val service = ParentEnrollmentService(identity, access, organizations, subscriptions, capabilities, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications)
 
-        val response = service.checkout(jwt, ParentEnrollmentCheckoutRequest(organizationId, branch.id, planId, emptyList(), children = listOf(ParentEnrollmentChildInput("Alya", null, LocalDate.of(2022, 1, 1)), ParentEnrollmentChildInput("Bima", "Putra", LocalDate.of(2023, 2, 2)))))
-        val additionalTenantResponse = service.checkout(jwt, ParentEnrollmentCheckoutRequest(additionalOrganizationId, additionalBranch.id, additionalPlanId, emptyList(), children = listOf(ParentEnrollmentChildInput("Citra", null, LocalDate.of(2021, 3, 3)))))
+        val response = service.checkout(jwt, ParentEnrollmentCheckoutRequest(organizationId, branch.id, planId, emptyList(), children = listOf(ParentEnrollmentChildInput("Alya", null, Gender.FEMALE, LocalDate.of(2022, 1, 1)), ParentEnrollmentChildInput("Bima", "Putra", Gender.MALE, LocalDate.of(2023, 2, 2)))))
+        val additionalTenantResponse = service.checkout(jwt, ParentEnrollmentCheckoutRequest(additionalOrganizationId, additionalBranch.id, additionalPlanId, emptyList(), children = listOf(ParentEnrollmentChildInput("Citra", null, Gender.FEMALE, LocalDate.of(2021, 3, 3)))))
 
         assertEquals(listOf("Alya", "Bima Putra"), response.map { it.childName })
         assertEquals(listOf("Citra"), additionalTenantResponse.map { it.childName })
         val childCaptor = ArgumentCaptor.forClass(Child::class.java)
         verify(children, times(3)).save(childCaptor.capture())
         assertEquals(listOf(ChildEnrollmentStatus.PENDING, ChildEnrollmentStatus.PENDING, ChildEnrollmentStatus.PENDING), childCaptor.allValues.map { it.enrollmentStatus })
+        assertEquals(listOf(Gender.FEMALE, Gender.MALE, Gender.FEMALE), childCaptor.allValues.map { it.gender })
         assertEquals(listOf(organizationId, organizationId, additionalOrganizationId), childCaptor.allValues.map { it.organizationId })
         verify(billing).purchaseForEnrollment(parent, organizationId, firstChild, PurchaseServiceRequest(planId, firstChild.id, emptyList()))
         verify(billing).purchaseForEnrollment(parent, organizationId, secondChild, PurchaseServiceRequest(planId, secondChild.id, emptyList()))

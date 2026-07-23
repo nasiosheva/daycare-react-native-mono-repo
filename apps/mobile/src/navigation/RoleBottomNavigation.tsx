@@ -15,7 +15,6 @@ const navigationByRole: Record<Role, NavigationItem[]> = {
   ],
   STAFF_ADMIN: [
     { href: "/home", labelKey: "nav.home" },
-    { href: "/children", labelKey: "nav.children" },
     { href: "/academic", labelKey: "nav.academic" },
     { href: "/staff-admin", labelKey: "nav.management" },
   ],

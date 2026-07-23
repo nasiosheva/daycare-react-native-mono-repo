@@ -65,11 +65,13 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, i
   const children = useChildren(canLoadData);
   const users = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: Boolean(organizationId) && canLoadData });
   const pendingBookings = useBookings(true, canLoadData && hasDaycareOperations);
+  const pendingEnrollments = useQuery({ queryKey: ["parent-enrollments", organizationId, "pending"], queryFn: () => api.pendingParentEnrollments(), enabled: Boolean(organizationId) && canLoadData });
   const invoices = useInvoices(canLoadData && hasDaycareOperations);
   const entitlements = useEntitlements(canLoadData && hasDaycareOperations);
-  const summary = createStaffAdminSummary({ children: children.data ?? [], users: users.data ?? [], pendingBookings: pendingBookings.data ?? [], invoices: invoices.data ?? [], entitlements: entitlements.data ?? [] });
+  const summary = createStaffAdminSummary({ children: children.data ?? [], users: users.data ?? [], pendingBookings: pendingBookings.data ?? [], pendingEnrollments: pendingEnrollments.data ?? [], invoices: invoices.data ?? [], entitlements: entitlements.data ?? [] });
   const operationalUnavailable = isSimulationSession || children.isLoading || users.isLoading || children.isError || users.isError;
   const financialUnavailable = isSimulationSession || pendingBookings.isLoading || invoices.isLoading || entitlements.isLoading || pendingBookings.isError || invoices.isError || entitlements.isError;
+  const approvalsUnavailable = isSimulationSession || pendingBookings.isLoading || pendingEnrollments.isLoading || pendingBookings.isError || pendingEnrollments.isError;
 
   return <AppScreen><View style={styles.content}>
     <View style={styles.staffAdminToolbar}>
@@ -85,7 +87,7 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, i
     <SummarySection title={t("home.operationalSummary")}>
       <SummaryCard label={t("home.activeChildren")} value={operationalUnavailable ? undefined : summary.activeChildren} onPress={() => router.push("/children")} />
       <SummaryCard label={t("home.activeStaff")} value={operationalUnavailable ? undefined : summary.activeStaff} onPress={() => router.push("/tenant-users")} />
-      {hasDaycareOperations && <SummaryCard label={t("home.pendingApprovals")} value={financialUnavailable ? undefined : summary.pendingApprovals} onPress={() => router.push("/booking-approvals")} />}
+      <SummaryCard label={t("home.pendingApprovals")} value={approvalsUnavailable ? undefined : summary.pendingApprovals} onPress={() => router.push("/booking-approvals")} />
     </SummarySection>
     {hasDaycareOperations && <SummarySection title={t("home.financialSummary")}>
       <SummaryCard label={t("home.pendingInvoices")} value={financialUnavailable ? undefined : summary.pendingInvoices} onPress={() => router.push("/parent-payments")} />

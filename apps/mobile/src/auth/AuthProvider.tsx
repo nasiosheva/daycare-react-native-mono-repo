@@ -16,6 +16,7 @@ type AuthContextValue = {
   loading: boolean;
   isSimulationSession: boolean;
   api: ApiClient;
+  getRealtimeToken: () => Promise<string | null>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -163,7 +164,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
     await firebaseAuth.changePassword(newPassword);
   };
-  const value = { user, profile, organizationId, loading, isSimulationSession: Boolean(simulationSession), api, signInWithEmail: env.isLocalAuth ? signInWithLocalCredentials : firebaseAuth.signInWithEmail, signUpWithEmail: env.isLocalAuth ? signUpWithLocalCredentials : firebaseAuth.signUpWithEmail, signInWithGoogle: firebaseAuth.signInWithGoogle, sendPhoneCode, verifyPhoneCode, updateDisplayName, changePassword, refreshProfile, signInAsSimulationRole, selectOrganization: setOrganizationId, signOut };
+  const getRealtimeToken = useCallback(async () => {
+    if (simulationSession) return null;
+    return env.isLocalAuth ? localSession?.token ?? null : firebaseAuth.getIdToken();
+  }, [localSession, simulationSession]);
+  const value = { user, profile, organizationId, loading, isSimulationSession: Boolean(simulationSession), api, getRealtimeToken, signInWithEmail: env.isLocalAuth ? signInWithLocalCredentials : firebaseAuth.signInWithEmail, signUpWithEmail: env.isLocalAuth ? signUpWithLocalCredentials : firebaseAuth.signUpWithEmail, signInWithGoogle: firebaseAuth.signInWithGoogle, sendPhoneCode, verifyPhoneCode, updateDisplayName, changePassword, refreshProfile, signInAsSimulationRole, selectOrganization: setOrganizationId, signOut };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

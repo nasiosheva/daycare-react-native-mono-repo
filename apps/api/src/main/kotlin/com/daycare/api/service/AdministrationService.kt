@@ -1,6 +1,7 @@
 package com.daycare.api.service
 
 import com.daycare.api.domain.InvitationStatus
+import com.daycare.api.domain.Gender
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.BranchRepository
 import com.daycare.api.persistence.Child
@@ -22,18 +23,20 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.util.UUID
 
-data class CreateChildRequest(val firstName: String, val lastName: String?, val nisn: String?, val dateOfBirth: LocalDate, val branchId: UUID?, val classroomId: UUID?)
+data class CreateChildRequest(val firstName: String, val lastName: String?, val nisn: String?, val gender: Gender, val dateOfBirth: LocalDate, val branchId: UUID?, val classroomId: UUID?)
 data class CreateInvitationRequest(val email: String?, val phoneNumber: String?, val role: Role, val branchId: UUID?, val classroomId: UUID?)
 data class RegisterDeviceRequest(val token: String, val platform: String)
 data class NotificationResponse(val id: UUID, val title: String, val body: String, val actionPath: String?, val createdAt: java.time.Instant, val readAt: java.time.Instant?)
-data class TenantUserResponse(val id: UUID, val userId: UUID?, val displayName: String?, val email: String?, val role: Role, val status: String, val branchId: UUID?)
+data class TenantUserResponse(val id: UUID, val userId: UUID?, val displayName: String?, val email: String?, val role: Role, val status: String, val branchId: UUID?, val canManageChildPrograms: Boolean)
 data class ChangeTenantUserPasswordRequest(val password: String)
+data class UpdateTenantUserChildProgramPermissionRequest(val canManageChildPrograms: Boolean)
 data class CreateTenantUserRequest(
     @field:NotBlank @field:Size(min = 2, max = 100) val displayName: String,
     @field:Email @field:NotBlank val email: String,
     @field:NotBlank @field:Size(min = 6, max = 128) val password: String,
     val role: Role,
     val branchId: UUID? = null,
+    val canManageChildPrograms: Boolean = false,
 )
 
 @Service
@@ -52,11 +55,12 @@ class AdministrationService(
     fun createChild(jwt: Jwt, organizationId: UUID, request: CreateChildRequest): ChildResponse {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         require(request.firstName.isNotBlank()) { "First name is required" }
+        require(request.gender != Gender.UNSPECIFIED) { "Gender is required" }
         val branchId = request.branchId ?: branches.findByOrganizationIdAndPrimaryTrue(organizationId)?.id ?: throw IllegalArgumentException("Primary branch was not found")
         val branch = branches.findById(branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
         require(branch.organizationId == organizationId && branch.active) { "Branch is not available for this organization" }
-        val child = children.save(Child(organizationId = organizationId, branchId = branchId, classroomId = request.classroomId, firstName = request.firstName.trim(), lastName = request.lastName?.trim()?.ifBlank { null }, nisn = request.nisn?.trim()?.ifBlank { null }, dateOfBirth = request.dateOfBirth))
-        return ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.nisn, child.dateOfBirth)
+        val child = children.save(Child(organizationId = organizationId, branchId = branchId, classroomId = request.classroomId, firstName = request.firstName.trim(), lastName = request.lastName?.trim()?.ifBlank { null }, nisn = request.nisn?.trim()?.ifBlank { null }, gender = request.gender, dateOfBirth = request.dateOfBirth))
+        return ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.nisn, child.gender, child.dateOfBirth)
     }
 
     @Transactional
@@ -83,8 +87,8 @@ class AdministrationService(
             id
         } else null
         val user = tenantUserAccounts.create(request.displayName, request.email, request.password)
-        val membership = memberships.save(Membership(userId = user.id, organizationId = organizationId, role = request.role, branchId = branchId))
-        return TenantUserResponse(membership.id, user.id, user.displayName, user.email, membership.role, "ACTIVE", membership.branchId)
+        val membership = memberships.save(Membership(userId = user.id, organizationId = organizationId, role = request.role, branchId = branchId, canManageChildPrograms = request.role == Role.STAFF && request.canManageChildPrograms))
+        return tenantUserResponse(membership, user)
     }
 
     @Transactional(readOnly = true)
@@ -93,11 +97,11 @@ class AdministrationService(
         val activeUsers = users.findAllById(membershipsFor(organizationId).map { it.userId }).associateBy { it.id }
         val memberships = membershipsFor(organizationId).map { membership ->
             val user = activeUsers[membership.userId]
-            TenantUserResponse(membership.id, membership.userId, user?.displayName, user?.email, membership.role, if (membership.active) "ACTIVE" else "INACTIVE", membership.branchId)
+            tenantUserResponse(membership, user)
         }
         val invitations = invitations.findAllByOrganizationIdAndStatus(organizationId, InvitationStatus.PENDING)
             .filter { it.role in setOf(Role.STAFF, Role.PARENT) }
-            .map { invitation -> TenantUserResponse(invitation.id, null, null, invitation.email ?: invitation.phoneNumber, invitation.role, "PENDING", invitation.branchId) }
+            .map { invitation -> TenantUserResponse(invitation.id, null, null, invitation.email ?: invitation.phoneNumber, invitation.role, "PENDING", invitation.branchId, false) }
         return memberships + invitations
     }
 
@@ -119,6 +123,16 @@ class AdministrationService(
             ?: throw IllegalArgumentException("Only active Staff Admin or Staff users in this tenant can be deactivated")
         if (membership.role == Role.STAFF_ADMIN) require(membershipsFor(organizationId).count { it.active && it.role == Role.STAFF_ADMIN } > 1) { "At least one active Staff Admin is required" }
         membership.active = false
+    }
+
+    @Transactional
+    fun updateTenantUserChildProgramPermission(jwt: Jwt, organizationId: UUID, userId: UUID, request: UpdateTenantUserChildProgramPermissionRequest): TenantUserResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val membership = memberships.findAllByUserIdAndOrganizationId(userId, organizationId).firstOrNull { it.active && it.role == Role.STAFF }
+            ?: throw IllegalArgumentException("Only active Staff users in this tenant can have child program permission changed")
+        membership.canManageChildPrograms = request.canManageChildPrograms
+        val user = users.findById(membership.userId).orElseThrow { IllegalArgumentException("Tenant user was not found") }
+        return tenantUserResponse(membership, user)
     }
 
     @Transactional
@@ -149,6 +163,8 @@ class AdministrationService(
     }
 
     private fun notificationResponse(notification: com.daycare.api.persistence.Notification) = NotificationResponse(notification.id, notification.title, notification.body, notification.actionPath, notification.createdAt, notification.readAt)
+
+    private fun tenantUserResponse(membership: Membership, user: com.daycare.api.persistence.UserProfile?) = TenantUserResponse(membership.id, membership.userId, user?.displayName, user?.email, membership.role, if (membership.active) "ACTIVE" else "INACTIVE", membership.branchId, membership.canManageChildPrograms)
 
     private fun membershipsFor(organizationId: UUID) = memberships.findAllByOrganizationId(organizationId).filter { it.role in setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT) }
 }

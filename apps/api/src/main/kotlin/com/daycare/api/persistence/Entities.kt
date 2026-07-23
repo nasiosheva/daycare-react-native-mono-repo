@@ -6,6 +6,10 @@ import com.daycare.api.domain.DevelopmentCategory
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.ChildEnrollmentStatus
+import com.daycare.api.domain.Gender
+import com.daycare.api.domain.GoalCheckInOutcome
+import com.daycare.api.domain.ChildGoalStatus
+import com.daycare.api.domain.ChildGoalOutcome
 import com.daycare.api.domain.ParentEnrollmentStatus
 import com.daycare.api.domain.TenantPaymentStatus
 import com.daycare.api.domain.TenantSubscriptionPlan
@@ -201,6 +205,7 @@ class Membership(
     @Column(name = "branch_id") var branchId: UUID? = null,
     @Column(name = "classroom_id") var classroomId: UUID? = null,
     @Column(nullable = false) var active: Boolean = true,
+    @Column(name = "can_manage_child_programs", nullable = false) var canManageChildPrograms: Boolean = false,
 )
 
 @Entity @Table(name = "children")
@@ -212,9 +217,51 @@ class Child(
     @Column(name = "first_name", nullable = false) var firstName: String = "",
     @Column(name = "last_name") var lastName: String? = null,
     @Column(nullable = true) var nisn: String? = null,
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var gender: Gender = Gender.UNSPECIFIED,
     @Column(name = "date_of_birth", nullable = false) var dateOfBirth: LocalDate = LocalDate.now(),
     @Enumerated(EnumType.STRING) @Column(name = "enrollment_status", nullable = false) var enrollmentStatus: ChildEnrollmentStatus = ChildEnrollmentStatus.ACTIVE,
     @Column(nullable = false) var active: Boolean = true,
+)
+
+@Entity @Table(name = "goal_templates")
+class GoalTemplate(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "learning_level_id") var learningLevelId: UUID? = null,
+    @Column(name = "classroom_id") var classroomId: UUID? = null,
+    @Column(nullable = false) var name: String = "",
+    @Column(nullable = false) var description: String = "",
+    @Column(name = "duration_days", nullable = false) var durationDays: Int = 1,
+    @Column(name = "minimum_yes_percent", nullable = false) var minimumYesPercent: Int = 0,
+    @Column(name = "minimum_yes_streak", nullable = false) var minimumYesStreak: Int = 0,
+    @Column(nullable = false) var active: Boolean = true,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "child_goals")
+class ChildGoal(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "template_id", nullable = false) var templateId: UUID = UUID.randomUUID(),
+    @Column(name = "starts_on", nullable = false) var startsOn: LocalDate = LocalDate.now(),
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: ChildGoalStatus = ChildGoalStatus.ACTIVE,
+    @Enumerated(EnumType.STRING) @Column(name = "final_outcome") var finalOutcome: ChildGoalOutcome? = null,
+    @Column(name = "final_summary", length = 2000) var finalSummary: String? = null,
+    @Column(name = "finalized_by_user_id") var finalizedByUserId: UUID? = null,
+    @Column(name = "finalized_at") var finalizedAt: Instant? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "child_goal_check_ins", uniqueConstraints = [UniqueConstraint(columnNames = ["child_goal_id", "check_in_date"])])
+class ChildGoalCheckIn(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "child_goal_id", nullable = false) var childGoalId: UUID = UUID.randomUUID(),
+    @Column(name = "check_in_date", nullable = false) var checkInDate: LocalDate = LocalDate.now(),
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var outcome: GoalCheckInOutcome = GoalCheckInOutcome.NO,
+    @Column(name = "recorded_by_user_id", nullable = false) var recordedByUserId: UUID = UUID.randomUUID(),
+    @Column(name = "recorded_at", nullable = false) var recordedAt: Instant = Instant.now(),
 )
 
 @Entity @Table(name = "parent_enrollments")

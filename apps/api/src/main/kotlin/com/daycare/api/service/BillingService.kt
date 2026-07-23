@@ -34,6 +34,7 @@ import com.daycare.api.persistence.ParentEnrollmentRepository
 import com.daycare.api.persistence.PaymentProof
 import com.daycare.api.persistence.PaymentProofRepository
 import com.daycare.api.persistence.MembershipRepository
+import com.daycare.api.realtime.RealtimeFlag
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
@@ -276,7 +277,7 @@ class BillingService(
             proof.status = PaymentProofStatus.REJECTED
             proof.rejectionReason = reason
             invoice.status = InvoiceStatus.PENDING
-            notifications.notify(organizationId, invoice.payerUserId, "Bukti pembayaran ditolak", reason)
+            notifications.notify(organizationId, invoice.payerUserId, "Bukti pembayaran ditolak", reason, realtimeFlags = setOf(RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.PARENT_ENROLLMENTS))
         }
         return invoiceResponse(invoice, entitlement.childId, childName(entitlement.childId))
     }
@@ -304,7 +305,7 @@ class BillingService(
         val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found")
         entitlement.status = if (entitlement.validUntil.isBefore(LocalDate.now())) EntitlementStatus.EXPIRED else EntitlementStatus.ACTIVE
         bookings.findAllByInvoiceId(invoice.id).forEach { booking -> if (booking.status == BookingStatus.PENDING_PAYMENT) booking.status = if (entitlement.bookingRequiresApproval) BookingStatus.PENDING_APPROVAL else BookingStatus.CONFIRMED }
-        notifications.notify(invoice.organizationId, invoice.payerUserId, "Pembayaran diterima", "Tagihan ${invoice.invoiceNumber} telah dikonfirmasi.")
+        notifications.notify(invoice.organizationId, invoice.payerUserId, "Pembayaran diterima", "Tagihan ${invoice.invoiceNumber} telah dikonfirmasi.", realtimeFlags = setOf(RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.BOOKINGS, RealtimeFlag.PARENT_ENROLLMENTS))
         events.publishEvent(InvoicePaidEvent(invoice.id))
     }
 
@@ -331,7 +332,7 @@ class BillingService(
         booking.status = if (request.approved) BookingStatus.CONFIRMED else BookingStatus.REJECTED
         if (!request.approved) { entitlements.findById(booking.entitlementId).ifPresent { entitlement -> entitlement.reservedCredits = (entitlement.reservedCredits - 1).coerceAtLeast(0) }; capacity.releaseForBooking(booking.id) }
         val entitlement = entitlements.findById(booking.entitlementId).orElseThrow()
-        notifications.notify(organizationId, entitlement.ownerUserId, "Booking ${if (request.approved) "disetujui" else "ditolak"}", "Booking ${childName(booking.childId)} pada ${booking.bookingDate} ${if (request.approved) "disetujui" else "ditolak"}.")
+        notifications.notify(organizationId, entitlement.ownerUserId, "Booking ${if (request.approved) "disetujui" else "ditolak"}", "Booking ${childName(booking.childId)} pada ${booking.bookingDate} ${if (request.approved) "disetujui" else "ditolak"}.", realtimeFlags = setOf(RealtimeFlag.BOOKINGS, RealtimeFlag.ENTITLEMENTS))
         return bookingResponse(booking, childName(booking.childId))
     }
 
@@ -468,7 +469,7 @@ class BillingService(
         require(isJpeg || isPng) { "Payment proof image is invalid" }
         return bytes
     }
-    private fun notifyStaffAdmins(organizationId: UUID, title: String, body: String) { memberships.findAllByOrganizationId(organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.forEach { notifications.notify(organizationId, it.userId, title, body, "/parent-payments") } }
+    private fun notifyStaffAdmins(organizationId: UUID, title: String, body: String) { memberships.findAllByOrganizationId(organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.forEach { notifications.notify(organizationId, it.userId, title, body, "/parent-payments", setOf(RealtimeFlag.INVOICES, RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.BOOKINGS)) } }
     private fun requireInvoice(invoiceId: UUID, organizationId: UUID) = invoices.findById(invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }.also { require(it.organizationId == organizationId) { "Invoice belongs to a different organization" } }
     private fun childName(childId: UUID) = children.findById(childId).orElseThrow { IllegalArgumentException("Child was not found") }.fullName()
     private fun com.daycare.api.persistence.Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")

@@ -64,7 +64,7 @@ class AccessService(
         return CurrentUserResponse(user.id, user.displayName, user.registrationRole, platformAccess.isPlatformAdmin(user), memberships.findAllByUserId(user.id).filter { it.active || it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }.sortedByDescending { it.active }.map { membership ->
             val name = organizations.findById(membership.organizationId).map { it.name }.orElse("Unknown organization")
             val capabilities = organizationCapabilities.forOrganization(membership.organizationId)
-            MembershipResponse(membership.organizationId, name, membership.role, membership.active, membership.branchId, membership.classroomId, capabilities.types, capabilities.capabilities)
+            MembershipResponse(membership.organizationId, name, membership.role, membership.active, membership.branchId, membership.classroomId, membership.canManageChildPrograms, capabilities.types, capabilities.capabilities)
         })
     }
 
@@ -108,5 +108,5 @@ class PlatformAccessService(
     }
 }
 
-data class MembershipResponse(val organizationId: UUID, val organizationName: String, val role: Role, val active: Boolean, val branchId: UUID?, val classroomId: UUID?, val institutionTypes: Set<InstitutionType>, val capabilities: Set<InstitutionCapability>)
+data class MembershipResponse(val organizationId: UUID, val organizationName: String, val role: Role, val active: Boolean, val branchId: UUID?, val classroomId: UUID?, val canManageChildPrograms: Boolean, val institutionTypes: Set<InstitutionType>, val capabilities: Set<InstitutionCapability>)
 data class CurrentUserResponse(val id: UUID, val displayName: String, val registrationRole: RegistrationRole?, val isPlatformAdmin: Boolean, val memberships: List<MembershipResponse>)

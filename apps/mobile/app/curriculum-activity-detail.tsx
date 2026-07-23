@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Ionicons } from "@expo/vector-icons";
 import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -72,8 +73,8 @@ export default function CurriculumActivityDetailScreen() {
         {activity.description ? <AppText tone="muted">{activity.description}</AppText> : null}
         {!activity.active && <AppText tone="muted">{t("learning.activityArchived")}</AppText>}
         {canManage && <View style={styles.options}>
-          <Button variant="secondary" onPress={() => setSheet("edit")}>{t("learning.editActivity")}</Button>
-          {activity.active && <Button variant="danger" onPress={archive}>{t("learning.archive")}</Button>}
+          <IconButton icon="pencil-outline" tone="secondary" accessibilityLabel={t("learning.editActivity")} onPress={() => setSheet("edit")} />
+          {activity.active && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.archive")} onPress={archive} />}
         </View>}
       </View>
 
@@ -83,7 +84,7 @@ export default function CurriculumActivityDetailScreen() {
           <AppText variant="label">{assessment.name}</AppText>
           {assessment.description ? <AppText variant="bodySmall" tone="muted">{assessment.description}</AppText> : null}
         </View>
-        {canManage && <Button variant="danger" onPress={() => void removeAssessment.mutateAsync(assessment.id)}>{t("learning.removeAssessment")}</Button>}
+        {canManage && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.removeAssessment")} onPress={() => void removeAssessment.mutateAsync(assessment.id)} />}
       </View>)}
       {assessments.data?.length === 0 && <AppText tone="muted">{t("learning.noAssessments")}</AppText>}
       {canManage && <Button variant="secondary" onPress={() => setSheet("assessment")}>{t("learning.addAssessment")}</Button>}
@@ -101,11 +102,28 @@ export default function CurriculumActivityDetailScreen() {
   </AppScreen>;
 }
 
+function IconButton({ icon, tone = "secondary", onPress, accessibilityLabel, disabled }: { icon: keyof typeof Ionicons.glyphMap; tone?: "secondary" | "danger"; onPress: () => void; accessibilityLabel: string; disabled?: boolean }) {
+  return <Pressable
+    accessibilityRole="button"
+    accessibilityLabel={accessibilityLabel}
+    accessibilityState={{ disabled: Boolean(disabled) }}
+    disabled={disabled}
+    onPress={onPress}
+    style={({ pressed }) => [styles.iconButton, tone === "danger" && styles.iconButtonDanger, pressed && !disabled && styles.iconButtonPressed, disabled && styles.iconButtonDisabled]}
+  >
+    <Ionicons name={icon} size={18} color={tone === "danger" ? colors.danger : colors.primary} />
+  </Pressable>;
+}
+
 const styles = StyleSheet.create({
   content: { gap: spacing.md },
   card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, alignItems: "center" },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   item: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
   itemContent: { flex: 1, gap: spacing.xs },
+  iconButton: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  iconButtonDanger: { borderColor: colors.danger },
+  iconButtonPressed: { opacity: 0.82, backgroundColor: colors.surfaceTint },
+  iconButtonDisabled: { opacity: 0.5 },
 });

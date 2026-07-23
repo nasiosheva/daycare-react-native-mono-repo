@@ -55,7 +55,7 @@ class SecurityConfig {
         .cors { it.configurationSource(corsConfigurationSource) }
         .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
         .authorizeHttpRequests {
-            it.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/actuator/health", "/v1/auth/local/login", "/v1/auth/local/register").permitAll()
+            it.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/actuator/health", "/v1/auth/local/login", "/v1/auth/local/register", "/v1/realtime").permitAll()
                 .anyRequest().authenticated()
         }
         .oauth2ResourceServer { it.jwt {} }

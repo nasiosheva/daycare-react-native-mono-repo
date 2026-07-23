@@ -1,6 +1,7 @@
 package com.daycare.api.service
 
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.Gender
 import com.daycare.api.domain.ChildCareRole
 import com.daycare.api.persistence.ChildProgram
 import com.daycare.api.persistence.ChildProgramRepository
@@ -12,12 +13,13 @@ import com.daycare.api.persistence.UserProfileRepository
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.util.UUID
 
-data class UpdateChildRequest(@field:NotBlank @field:Size(max = 100) val firstName: String, @field:Size(max = 100) val lastName: String?, @field:Size(max = 20) val nisn: String?, val dateOfBirth: LocalDate)
+data class UpdateChildRequest(@field:NotBlank @field:Size(max = 100) val firstName: String, @field:Size(max = 100) val lastName: String?, @field:Size(max = 20) val nisn: String?, val gender: Gender, val dateOfBirth: LocalDate)
 data class CreateChildProgramRequest(@field:NotBlank @field:Size(max = 120) val name: String, @field:Size(max = 2_000) val description: String?)
 data class AssignChildStaffRequest(val userId: UUID, val assignmentRole: ChildCareRole)
 data class ChildProgramResponse(val id: UUID, val name: String, val description: String)
@@ -48,6 +50,8 @@ class ChildManagementService(
         child.firstName = request.firstName.trim()
         child.lastName = request.lastName?.trim()?.ifBlank { null }
         child.nisn = request.nisn?.trim()?.ifBlank { null }
+        require(request.gender != Gender.UNSPECIFIED) { "Gender is required" }
+        child.gender = request.gender
         child.dateOfBirth = request.dateOfBirth
         return childResponse(child)
     }
@@ -63,16 +67,14 @@ class ChildManagementService(
 
     @Transactional
     fun addProgram(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreateChildProgramRequest): ChildProgramResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
-        child(childId, organizationId)
+        requireProgramManagement(jwt, organizationId, childId)
         val saved = programs.save(ChildProgram(organizationId = organizationId, childId = childId, name = request.name.trim(), description = request.description?.trim().orEmpty()))
         return ChildProgramResponse(saved.id, saved.name, saved.description)
     }
 
     @Transactional
     fun removeProgram(jwt: Jwt, organizationId: UUID, childId: UUID, programId: UUID) {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
-        child(childId, organizationId)
+        requireProgramManagement(jwt, organizationId, childId)
         val program = programs.findById(programId).orElseThrow { IllegalArgumentException("Child program was not found") }
         require(program.organizationId == organizationId && program.childId == childId) { "Child program belongs to a different child" }
         programs.delete(program)
@@ -101,7 +103,14 @@ class ChildManagementService(
     }
 
     private fun child(childId: UUID, organizationId: UUID) = children.findById(childId).orElseThrow { IllegalArgumentException("Child was not found") }.also { require(it.organizationId == organizationId) { "Child belongs to a different organization" }; require(it.active) { "Child is inactive" } }
-    private fun childResponse(child: com.daycare.api.persistence.Child) = ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.nisn, child.dateOfBirth)
+    private fun requireProgramManagement(jwt: Jwt, organizationId: UUID, childId: UUID) {
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
+        if (scope.membership.role == Role.STAFF) {
+            if (!scope.membership.canManageChildPrograms) throw AccessDeniedException("You do not have permission to manage child programs")
+            childScopes.requireStaffManagedChild(scope, childId, organizationId)
+        } else child(childId, organizationId)
+    }
+    private fun childResponse(child: com.daycare.api.persistence.Child) = ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.nisn, child.gender, child.dateOfBirth)
     private fun programResponses(organizationId: UUID, childId: UUID) = programs.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId).map { ChildProgramResponse(it.id, it.name, it.description) }
     private fun assignmentResponses(organizationId: UUID, childId: UUID) = assignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId).mapNotNull { assignment -> users.findById(assignment.userId).map { user -> ChildStaffAssignmentResponse(assignment.id, user.id, user.displayName, user.email, assignment.assignmentRole) }.orElse(null) }
 }
