@@ -16,6 +16,7 @@ export default function ProfileScreen() {
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
+  const isStaffProfile = isStaffAdmin || membership?.role === "STAFF";
   const parentMemberships = profile?.memberships.filter((item) => item.role === "PARENT") ?? [];
   const [displayName, setDisplayName] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -77,8 +78,8 @@ export default function ProfileScreen() {
     finally { setCreatingAdmin(false); }
   };
 
-  return <AppScreen showBottomNavigation={!isStaffAdmin} title={isStaffAdmin ? t("profile.title") : undefined} header={isStaffAdmin ? <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} /> : undefined}>
-    {!isStaffAdmin && <AppText variant="title">{t("profile.title")}</AppText>}
+  return <AppScreen showBottomNavigation={!isStaffProfile} title={isStaffProfile ? t("profile.title") : undefined} header={isStaffProfile ? <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} /> : undefined}>
+    {!isStaffProfile && <AppText variant="title">{t("profile.title")}</AppText>}
     <View style={styles.card}>
       <AppText variant="heading">{profile?.displayName ?? user?.displayName ?? t("common.noData")}</AppText>
       {user?.email && <AppText tone="muted">{user.email}</AppText>}
@@ -102,6 +103,7 @@ export default function ProfileScreen() {
       <AppText variant="heading">{t("profile.personal")}</AppText>
       <LanguageSwitcher compact />
       {organizationId && <Button variant="secondary" onPress={() => router.push("/notifications" as never)}>{t("profile.notifications")}</Button>}
+      {membership?.role === "STAFF" && <Button variant="secondary" onPress={() => router.push("/staff-reminders" as never)}>{t("profile.reminders")}</Button>}
       <Button variant="secondary" onPress={() => setProfileSheet("profile")}>{t("profile.savePersonal")}</Button>
       <Button variant="secondary" disabled={isSimulationSession} onPress={() => setProfileSheet("password")}>{t("profile.changePassword")}</Button>
       {isSimulationSession && <AppText variant="caption" tone="muted">{t("profile.passwordSimulation")}</AppText>}

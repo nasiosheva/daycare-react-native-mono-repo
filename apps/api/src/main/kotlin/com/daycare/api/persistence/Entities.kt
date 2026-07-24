@@ -238,6 +238,17 @@ class GoalTemplate(
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
+@Entity @Table(name = "goal_template_indicators")
+class GoalTemplateIndicator(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "goal_template_id", nullable = false) var goalTemplateId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var name: String = "",
+    @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
+    @Column(nullable = false) var active: Boolean = true,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
 @Entity @Table(name = "child_goals")
 class ChildGoal(
     @Id var id: UUID = UUID.randomUUID(),
@@ -253,11 +264,12 @@ class ChildGoal(
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
-@Entity @Table(name = "child_goal_check_ins", uniqueConstraints = [UniqueConstraint(columnNames = ["child_goal_id", "check_in_date"])])
+@Entity @Table(name = "child_goal_check_ins", uniqueConstraints = [UniqueConstraint(columnNames = ["child_goal_id", "indicator_id", "check_in_date"])])
 class ChildGoalCheckIn(
     @Id var id: UUID = UUID.randomUUID(),
     @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
     @Column(name = "child_goal_id", nullable = false) var childGoalId: UUID = UUID.randomUUID(),
+    @Column(name = "indicator_id", nullable = false) var indicatorId: UUID = UUID.randomUUID(),
     @Column(name = "check_in_date", nullable = false) var checkInDate: LocalDate = LocalDate.now(),
     @Enumerated(EnumType.STRING) @Column(nullable = false) var outcome: GoalCheckInOutcome = GoalCheckInOutcome.NO,
     @Column(name = "recorded_by_user_id", nullable = false) var recordedByUserId: UUID = UUID.randomUUID(),
@@ -334,7 +346,34 @@ class Invitation(
 class Notification(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "recipient_user_id", nullable = false) var recipientUserId: UUID = UUID.randomUUID(), @Column(nullable = false) var title: String = "", @Column(nullable = false) var body: String = "", @Column(name = "action_path") var actionPath: String? = null, @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(), @Column(name = "read_at") var readAt: Instant? = null)
 
 @Entity @Table(name = "device_tokens")
-class DeviceToken(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(), @Column(nullable = false, unique = true) var token: String = "", @Column(nullable = false) var platform: String = "")
+class DeviceToken(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(), @Column(nullable = false, unique = true) var token: String = "", @Column(nullable = false) var platform: String = "", @Column(name = "installation_id") var installationId: String? = null, @Column(name = "time_zone") var timeZone: String? = null)
+
+@Entity @Table(name = "staff_reminders")
+class StaffReminder(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var title: String = "",
+    @Column(nullable = false) var description: String = "",
+    @Column(nullable = false) var hour: Int = 17,
+    @Column(nullable = false) var minute: Int = 0,
+    @Column(nullable = false) var weekdays: String = "1,2,3,4,5,6,7",
+    @Column(name = "target_code", nullable = false) var targetCode: String = "HOME",
+    @Column(name = "action_path", nullable = false) var actionPath: String = "/home",
+    @Column(nullable = false) var active: Boolean = true,
+    @Column(name = "rule_version", nullable = false) var ruleVersion: Int = 1,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "staff_reminder_device_schedules")
+class StaffReminderDeviceSchedule(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "reminder_id", nullable = false) var reminderId: UUID = UUID.randomUUID(),
+    @Column(name = "installation_id", nullable = false) var installationId: String = "",
+    @Column(name = "rule_version", nullable = false) var ruleVersion: Int = 0,
+    @Column(name = "scheduled_at", nullable = false) var scheduledAt: Instant = Instant.now(),
+)
 
 @Entity @Table(name = "development_entries")
 class DevelopmentEntry(

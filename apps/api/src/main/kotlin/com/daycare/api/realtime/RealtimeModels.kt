@@ -22,6 +22,7 @@ enum class RealtimeFlag {
     TENANTS,
     GLOBAL_CURRICULUM,
     GOALS,
+    STAFF_REMINDERS,
 }
 
 data class RealtimeConnectRequest(

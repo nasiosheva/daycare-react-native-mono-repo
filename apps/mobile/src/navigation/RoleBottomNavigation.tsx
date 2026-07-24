@@ -23,7 +23,6 @@ const navigationByRole: Record<Role, NavigationItem[]> = {
     { href: "/staff-operations", labelKey: "nav.staffFlow" },
     { href: "/academic", labelKey: "nav.academic" },
     { href: "/booking-approvals", labelKey: "nav.approvals", requiredCapability: "DAYCARE_OPERATIONS" },
-    { href: "/profile", labelKey: "nav.profile" },
   ],
   PARENT: [
     { href: "/home", labelKey: "nav.home" },

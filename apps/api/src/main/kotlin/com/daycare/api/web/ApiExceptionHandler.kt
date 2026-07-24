@@ -81,6 +81,11 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             "Staff member does not belong to this classroom's branch" to "error.classroomAssignmentBranch",
             "Curriculum activity was not found" to "error.activityNotFound", "Curriculum activity belongs to a different organization" to "error.activityOrganization",
             "Curriculum activity assessment was not found" to "error.activityAssessmentNotFound", "Curriculum activity assessment belongs to a different activity" to "error.activityAssessmentScope",
+            "Goal template needs a learning level or class" to "error.goalTemplateScopeRequired", "Goal template is inactive" to "error.goalTemplateInactive", "Goal template does not match the child's class" to "error.goalTemplateChildScope",
+            "Child already has this active goal" to "error.goalAlreadyActive", "Goal is already completed" to "error.goalCompleted", "Check-in date must be within the goal period" to "error.goalCheckInDateRange",
+            "Goal template was not found" to "error.goalTemplateNotFound", "Goal template belongs to a different organization" to "error.goalTemplateOrganization",
+            "Child goal was not found" to "error.goalNotFound", "Child goal belongs to a different organization" to "error.goalOrganization",
+            "Goal template needs at least one active indicator" to "error.goalIndicatorRequired", "Goal indicator was not found" to "error.goalIndicatorNotFound", "Goal indicator belongs to a different goal template" to "error.goalIndicatorScope", "Goal indicator is archived" to "error.goalIndicatorArchived",
         )
     }
 }

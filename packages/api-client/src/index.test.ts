@@ -63,9 +63,20 @@ describe("ApiClient", () => {
       getLanguage: () => "id",
     });
 
-    await client.recordGoalCheckIn("goal-id", "2026-07-23", "YES");
+    await client.recordGoalCheckIn("goal-id", "2026-07-23", "indicator-id", "YES");
 
-    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/child-goals/goal-id/check-ins/2026-07-23", expect.objectContaining({ method: "PUT", body: JSON.stringify({ outcome: "YES" }) }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/child-goals/goal-id/check-ins/2026-07-23", expect.objectContaining({ method: "PUT", body: JSON.stringify({ indicatorId: "indicator-id", outcome: "YES" }) }));
+  });
+
+  it("downloads a backend-built child report as a binary file", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, headers: new Headers({ "Content-Type": "application/pdf", "Content-Disposition": "attachment; filename=children.pdf" }), arrayBuffer: async () => Uint8Array.from([1, 2, 3]).buffer });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    const report = await client.downloadChildrenReport("PDF", { branchId: "branch-id" });
+
+    expect(report).toEqual({ fileName: "children.pdf", contentType: "application/pdf", dataBase64: "AQID" });
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/reports/children/export?format=PDF&branchId=branch-id", expect.anything());
   });
 
   it("derives a secure websocket endpoint from the API URL", () => {

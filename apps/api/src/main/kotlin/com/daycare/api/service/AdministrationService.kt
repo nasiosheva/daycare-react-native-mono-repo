@@ -25,7 +25,7 @@ import java.util.UUID
 
 data class CreateChildRequest(val firstName: String, val lastName: String?, val nisn: String?, val gender: Gender, val dateOfBirth: LocalDate, val branchId: UUID?, val classroomId: UUID?)
 data class CreateInvitationRequest(val email: String?, val phoneNumber: String?, val role: Role, val branchId: UUID?, val classroomId: UUID?)
-data class RegisterDeviceRequest(val token: String, val platform: String)
+data class RegisterDeviceRequest(@field:NotBlank val token: String, @field:NotBlank val platform: String, @field:NotBlank @field:Size(max = 128) val installationId: String, @field:NotBlank @field:Size(max = 64) val timeZone: String)
 data class NotificationResponse(val id: UUID, val title: String, val body: String, val actionPath: String?, val createdAt: java.time.Instant, val readAt: java.time.Instant?)
 data class TenantUserResponse(val id: UUID, val userId: UUID?, val displayName: String?, val email: String?, val role: Role, val status: String, val branchId: UUID?, val canManageChildPrograms: Boolean)
 data class ChangeTenantUserPasswordRequest(val password: String)
@@ -140,10 +140,13 @@ class AdministrationService(
         val scope = access.require(jwt, organizationId, Role.entries.toSet())
         access.requireWritable(scope)
         require(request.token.isNotBlank() && request.platform in setOf("ios", "android")) { "A valid native device token is required" }
-        val device = deviceTokens.findByToken(request.token) ?: DeviceToken(token = request.token)
+        val device = deviceTokens.findByInstallationId(request.installationId) ?: deviceTokens.findByToken(request.token) ?: DeviceToken(token = request.token)
         device.organizationId = organizationId
         device.userId = scope.user.id
+        device.token = request.token
         device.platform = request.platform
+        device.installationId = request.installationId
+        device.timeZone = request.timeZone
         deviceTokens.save(device)
     }
 

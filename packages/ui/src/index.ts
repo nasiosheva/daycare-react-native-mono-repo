@@ -4,6 +4,7 @@ export * from "./BackButton";
 export * from "./BottomSheet";
 export * from "./Button";
 export * from "./FloatingActionButton";
+export * from "./NavigationCard";
 export * from "./PasswordInput";
 export * from "./PinEntryScreen";
 export * from "./Screen";

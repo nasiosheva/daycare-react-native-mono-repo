@@ -19,6 +19,7 @@ const queryKeysByFlag: Record<RealtimeFlag, readonly string[]> = {
   TENANTS: ["platform-tenants", "platform-tenant"],
   GLOBAL_CURRICULUM: ["global-curriculum-programs"],
   GOALS: ["goal-templates", "child-goals"],
+  STAFF_REMINDERS: ["staff-reminders"],
 };
 
 export function invalidateRealtimeFlags(queryClient: QueryClient, flags: readonly RealtimeFlag[]): void {

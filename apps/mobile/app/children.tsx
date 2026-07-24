@@ -12,6 +12,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/auth/AuthProvider";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate, isIsoDate } from "@/date-picker/date";
+import { ChildrenReportActions } from "@/document-export/ChildrenReportActions";
 
 export default function ChildrenScreen() {
   const router = useRouter();
@@ -90,6 +91,7 @@ export default function ChildrenScreen() {
   };
   return <AppScreen showBottomNavigation={false} title={t("children.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {canManage && <View style={styles.actions}><Button variant="secondary" onPress={openFilters}>{t("children.filter")}</Button><Button onPress={() => setAddVisible(true)}>{t("children.add")}</Button></View>}
+    {canOpenDetail && <ChildrenReportActions filter={childFilter} />}
     {canManage && (branchId || learningLevelId || classroomId) && <AppText tone="muted">{t("children.filterActive")}</AppText>}
     {children.data?.map((child) => <View key={child.id} style={styles.card}><AppText variant="h5">{child.fullName}</AppText><AppText tone="muted">{child.dateOfBirth}</AppText>{canOpenDetail && <Button variant="secondary" onPress={() => router.push({ pathname: "/child-detail", params: { childId: child.id } })}>{t(canManage ? "children.edit" : "children.view")}</Button>}</View>)}
     {!children.isLoading && children.data?.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}

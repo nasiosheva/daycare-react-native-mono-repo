@@ -4,7 +4,7 @@ import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AppText, Button, colors, FloatingActionButton, radius, spacing } from "@daycare/ui";
+import { AppText, Button, colors, FloatingActionButton, NavigationCard, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren } from "@/attendance/useAttendance";
 import { useBookings, useEntitlements, useInvoices } from "@/booking/useBooking";
@@ -13,13 +13,15 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { can, hasInstitutionCapability } from "@daycare/core";
 import { useI18n } from "@/i18n/I18nProvider";
 import { roleKey, tenantPaymentStatusKey, tenantSubscriptionPlanKey } from "@/i18n/translations";
+import { useStaffDailyTasks } from "@/home/useStaffDailyTasks";
 
 export default function HomeScreen() {
   const router = useRouter();
   const { user, profile, organizationId, isSimulationSession, loading } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const staffChildren = useChildren(membership?.role === "STAFF");
+  const staffChildren = useChildren(membership?.role === "STAFF" && !isSimulationSession);
+  const staffDailyTasks = useStaffDailyTasks(staffChildren.data ?? [], membership?.role === "STAFF" && !isSimulationSession);
   if (loading || (user && !profile)) return <HomeLoadingState />;
   if (!user) return <Redirect href="/sign-in" />;
   if (!profile) return <HomeLoadingState />;
@@ -28,27 +30,37 @@ export default function HomeScreen() {
   const hasDaycareOperations = hasInstitutionCapability(membership.capabilities, "DAYCARE_OPERATIONS");
   const isStaffAdmin = membership.role === "STAFF_ADMIN";
   const isStaff = membership.role === "STAFF";
-  const hasStaffProfileMenu = membership.role === "STAFF_ADMIN" || membership.role === "STAFF";
   if (isStaffAdmin) return <StaffAdminHome displayName={profile.displayName} organizationName={membership.organizationName} hasDaycareOperations={hasDaycareOperations} isSimulationSession={isSimulationSession} />;
+  if (isStaff) return <StaffHome displayName={profile.displayName} organizationName={membership.organizationName} isSimulationSession={isSimulationSession} children={staffChildren} tasksByChildId={staffDailyTasks} />;
   return <AppScreen><View style={styles.content}>
-    <AppText variant="title">{t("home.greeting", { name: profile?.displayName ?? "" })}</AppText>
-    <AppText tone="muted">{membership.organizationName} · {t(roleKey(membership.role))}</AppText>
+    <><AppText variant="title">{t("home.greeting", { name: profile.displayName })}</AppText><AppText tone="muted">{membership.organizationName} · {t(roleKey(membership.role))}</AppText></>
     {isSimulationSession && <AppText variant="caption" tone="muted">{t("home.simulation")}</AppText>}
-    {isStaff && <View style={styles.managedChildren}>
-      <AppText variant="heading">{t("home.managedChildren")}</AppText>
-      {staffChildren.isLoading && <AppText tone="muted">{t("children.loading")}</AppText>}
-      {staffChildren.data?.map((child) => <AppText key={child.id}>{child.fullName}</AppText>)}
-      {!staffChildren.isLoading && staffChildren.data?.length === 0 && <AppText tone="muted">{t("home.noManagedChildren")}</AppText>}
-    </View>}
-    {isStaff && <Button onPress={() => router.push("/staff-operations")}>{t("nav.staffFlow")}</Button>}
-    {!isStaff && can(membership.role, "manageChildren") && <Button variant="secondary" onPress={() => router.push("/children")}>{t("children.title")}</Button>}
-    {!isStaff && can(membership.role, "viewChildDevelopment") && <Button variant="secondary" onPress={() => router.push("/development")}>{t("development.title")}</Button>}
+    {can(membership.role, "manageChildren") && <Button variant="secondary" onPress={() => router.push("/children")}>{t("children.title")}</Button>}
+    {can(membership.role, "viewChildDevelopment") && <Button variant="secondary" onPress={() => router.push("/development")}>{t("development.title")}</Button>}
     {can(membership.role, "viewOwnChildren") && <Button onPress={() => router.push("/parent-qr")}>{t("qr.title")}</Button>}
     {["STAFF_ADMIN", "STAFF"].includes(membership.role) && <Button variant="secondary" onPress={() => router.push("/academic")}>{t("nav.academic")}</Button>}
     {hasDaycareOperations && can(membership.role, "bookServices") && <Button onPress={() => router.push("/booking")}>{t("booking.title")}</Button>}
     {membership.role === "PARENT" && <Button variant="secondary" onPress={() => router.push("/parent-enrollment" as never)}>{t("parentEnrollment.manageTenants")}</Button>}
     {!isStaffAdmin && hasDaycareOperations && can(membership.role, "approveBookings") && <Button onPress={() => router.push("/booking-approvals")}>{t("home.bookingApprovals")}</Button>}
-    {hasStaffProfileMenu && <Button variant="secondary" onPress={() => router.push("/profile")}>{t("nav.profile")}</Button>}
+  </View></AppScreen>;
+}
+
+function StaffHome({ displayName, organizationName, isSimulationSession, children, tasksByChildId }: { displayName: string; organizationName: string; isSimulationSession: boolean; children: ReturnType<typeof useChildren>; tasksByChildId: ReturnType<typeof useStaffDailyTasks> }) {
+  const router = useRouter();
+  const { t } = useI18n();
+  return <AppScreen><View style={styles.content}>
+    <View style={styles.staffToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.STAFF")}</AppText></View><Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable></View>
+    {isSimulationSession && <AppText variant="caption" tone="muted">{t("home.simulation")}</AppText>}
+    <AppText variant="heading">{t("home.managedChildren")}</AppText>
+    {children.isLoading && <AppText tone="muted">{t("children.loading")}</AppText>}
+    {children.data?.map((child) => {
+      const tasks = tasksByChildId.get(child.id);
+      return <NavigationCard key={child.id} accessibilityLabel={t("home.openDailyTasks", { name: child.fullName })} onPress={() => router.push({ pathname: "/development", params: { childId: child.id } })}>
+        <AppText variant="h5">{child.fullName}</AppText>
+        {!tasks || tasks.isLoading ? <AppText tone="muted">{t("home.dailyStatusLoading")}</AppText> : tasks.isError ? <AppText tone="danger">{t("home.dailyStatusUnavailable")}</AppText> : <><AppText tone={tasks.developmentRecorded ? "muted" : "danger"}>{t(tasks.developmentRecorded ? "home.dailyDevelopmentDone" : "home.dailyDevelopmentPending")}</AppText>{tasks.activeGoalCount === 0 ? <AppText variant="caption" tone="muted">{t("home.noActiveGoals")}</AppText> : tasks.pendingGoalNames.length > 0 ? <AppText variant="caption" tone="danger">{t("home.dailyGoalsPending", { names: tasks.pendingGoalNames.join(", ") })}</AppText> : <AppText variant="caption" tone="muted">{t("home.dailyGoalsDone")}</AppText>}</>}
+      </NavigationCard>;
+    })}
+    {!children.isLoading && children.data?.length === 0 && <AppText tone="muted">{t("home.noManagedChildren")}</AppText>}
   </View></AppScreen>;
 }
 
@@ -143,9 +155,10 @@ const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm, minHeight: 240 },
   staffAdminToolbar: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   staffAdminHeading: { flex: 1, gap: spacing.xs },
+  staffToolbar: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  staffHeading: { flex: 1, gap: spacing.xs },
   profileButton: { padding: spacing.xs, borderRadius: radius.pill },
   profileButtonPressed: { opacity: 0.76, backgroundColor: colors.surfaceTint },
-  managedChildren: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   summarySection: { gap: spacing.sm },
   summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   summaryCard: { flexGrow: 1, minWidth: 150, gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTint },

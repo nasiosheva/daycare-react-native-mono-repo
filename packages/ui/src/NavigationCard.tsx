@@ -1,0 +1,35 @@
+import type { ReactNode } from "react";
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { AppText } from "./AppText";
+import { colors, radius, spacing } from "./theme";
+
+type NavigationCardProps = {
+  children: ReactNode;
+  onPress: () => void;
+  accessibilityLabel: string;
+  disabled?: boolean;
+  trailing?: ReactNode;
+  style?: StyleProp<ViewStyle>;
+};
+
+export function NavigationCard({ children, onPress, accessibilityLabel, disabled = false, trailing, style }: NavigationCardProps) {
+  return <Pressable
+    accessibilityRole="button"
+    accessibilityLabel={accessibilityLabel}
+    accessibilityState={{ disabled }}
+    disabled={disabled}
+    onPress={onPress}
+    style={({ pressed }) => [styles.card, pressed && !disabled && styles.pressed, disabled && styles.disabled, style]}
+  >
+    <View style={styles.content}><View style={styles.body}>{children}</View>{trailing ?? <AppText variant="h3" style={styles.chevron}>›</AppText>}</View>
+  </Pressable>;
+}
+
+const styles = StyleSheet.create({
+  card: { padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTint },
+  content: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  body: { flex: 1, gap: spacing.xs },
+  chevron: { color: colors.primary },
+  pressed: { opacity: 0.78, backgroundColor: colors.surface },
+  disabled: { opacity: 0.5 },
+});

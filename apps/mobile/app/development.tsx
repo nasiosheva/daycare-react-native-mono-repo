@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { developmentCategories, type DevelopmentCategory, can } from "@daycare/core";
@@ -12,10 +12,11 @@ import { developmentCategoryKey } from "@/i18n/translations";
 
 export default function DevelopmentScreen() {
   const router = useRouter();
+  const { childId: routeChildId } = useLocalSearchParams<{ childId?: string }>();
   const { profile, organizationId } = useAuth();
   const { t, formatDateTime } = useI18n();
   const children = useChildren();
-  const [childId, setChildId] = useState<string | null>(null);
+  const [childId, setChildId] = useState<string | null>(typeof routeChildId === "string" ? routeChildId : null);
   const [category, setCategory] = useState<DevelopmentCategory>("OBSERVATION");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -24,10 +25,10 @@ export default function DevelopmentScreen() {
   const entries = useDevelopmentEntries(childId);
   const createEntry = useCreateDevelopmentEntry(childId);
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const isStaffAdmin = membership?.role === "STAFF_ADMIN";
+  const isOperationalChildScreen = membership?.role === "STAFF_ADMIN" || membership?.role === "STAFF";
   const canRecord = membership ? can(membership.role, "recordDevelopment") && membership.active : false;
 
-  useEffect(() => { if (!childId && children.data?.[0]) setChildId(children.data[0].id); }, [childId, children.data]);
+  useEffect(() => { if (typeof routeChildId === "string" && children.data?.some((child) => child.id === routeChildId)) setChildId(routeChildId); else if (!childId && children.data?.[0]) setChildId(children.data[0].id); }, [childId, children.data, routeChildId]);
 
   const submit = async () => {
     try {
@@ -41,8 +42,8 @@ export default function DevelopmentScreen() {
     }
   };
 
-  return <AppScreen showBottomNavigation={!isStaffAdmin} title={isStaffAdmin ? t("development.title") : undefined} header={isStaffAdmin ? <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} /> : undefined}>
-    {!isStaffAdmin && <AppText variant="title">{t("development.title")}</AppText>}
+  return <AppScreen showBottomNavigation={!isOperationalChildScreen} title={isOperationalChildScreen ? t("development.title") : undefined} header={isOperationalChildScreen ? <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} /> : undefined}>
+    {!isOperationalChildScreen && <AppText variant="title">{t("development.title")}</AppText>}
     <AppText tone="muted">{t("development.subtitle")}</AppText>
     {membership?.active === false && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     <View style={styles.selector}>

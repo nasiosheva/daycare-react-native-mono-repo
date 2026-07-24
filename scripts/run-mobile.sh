@@ -411,14 +411,14 @@ ensure_local_backend() {
   ensure_local_backend_tools
   require_local_backend_values
 
-  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  if local_postgres_ready; then
+    echo "Using existing local PostgreSQL at ${POSTGRES_HOST:-localhost}:${POSTGRES_PORT:-5432}."
+  elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
     echo "Starting local PostgreSQL container..."
     (
       cd "$repository_root"
       docker compose up -d postgres
     )
-  elif local_postgres_ready; then
-    echo "Using existing local PostgreSQL at ${POSTGRES_HOST:-localhost}:${POSTGRES_PORT:-5432}."
   else
     echo "No PostgreSQL service is available for the local stack." >&2
     echo "Start PostgreSQL locally on ${POSTGRES_HOST:-localhost}:${POSTGRES_PORT:-5432} or install Docker Desktop, then run this launcher again." >&2

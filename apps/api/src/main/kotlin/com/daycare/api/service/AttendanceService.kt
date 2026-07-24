@@ -25,7 +25,7 @@ import java.time.LocalDate
 import java.util.UUID
 
 class AttendanceConflict(message: String) : RuntimeException(message)
-data class ChildResponse(val id: UUID, val organizationId: UUID, val branchId: UUID, val classroomId: UUID?, val firstName: String, val lastName: String?, val nisn: String?, val gender: Gender, val dateOfBirth: LocalDate) { val fullName get() = listOfNotNull(firstName, lastName).joinToString(" ") }
+data class ChildResponse(val id: UUID, val organizationId: UUID, val branchId: UUID, val classroomId: UUID?, val firstName: String, val lastName: String?, val nisn: String?, val gender: Gender, val dateOfBirth: LocalDate, val todayCheckedInAt: Instant? = null, val todayCheckedOutAt: Instant? = null) { val fullName get() = listOfNotNull(firstName, lastName).joinToString(" ") }
 data class ChildListFilter(val branchId: UUID? = null, val learningLevelId: UUID? = null, val classroomId: UUID? = null)
 data class AttendanceResponse(val id: UUID, val childId: UUID, val operationalDate: LocalDate, val checkedInAt: Instant?, val checkedOutAt: Instant?, val method: AttendanceMethod)
 
@@ -47,9 +47,12 @@ class AttendanceService(
     fun listChildren(jwt: Jwt, organizationId: UUID, filter: ChildListFilter = ChildListFilter()): List<ChildResponse> {
         val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
         validateFilter(organizationId, filter)
-        return childScopes.visibleChildren(scope, organizationId)
-            .filter { child -> matchesFilter(child, filter) }
-            .map(::toResponse)
+        val visibleChildren = childScopes.visibleChildren(scope, organizationId).filter { child -> matchesFilter(child, filter) }
+        val timezoneByBranch = branches.findAllById(visibleChildren.map { it.branchId }.distinct()).associate { it.id to it.timezone }
+        val operationalDateByChild = visibleChildren.associate { child -> child.id to LocalDate.now(ZoneId.of(timezoneByBranch[child.branchId] ?: "Asia/Jakarta")) }
+        val recordByChildAndDate = attendance.findAllByChildIdInAndOperationalDateIn(visibleChildren.map { it.id }, operationalDateByChild.values.distinct())
+            .associateBy { it.childId to it.operationalDate }
+        return visibleChildren.map { child -> toResponse(child, recordByChildAndDate[child.id to operationalDateByChild[child.id]]) }
     }
 
     @Transactional
@@ -86,7 +89,7 @@ class AttendanceService(
         return qr.issue(child.id, child.fullName())
     }
 
-    private fun toResponse(child: Child) = ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.nisn, child.gender, child.dateOfBirth)
+    private fun toResponse(child: Child, todayRecord: AttendanceRecord? = null) = ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.nisn, child.gender, child.dateOfBirth, todayRecord?.checkedInAt, todayRecord?.checkedOutAt)
     private fun toResponse(record: AttendanceRecord, method: AttendanceMethod) = AttendanceResponse(record.id, record.childId, record.operationalDate, record.checkedInAt, record.checkedOutAt, method)
     private fun Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")
 

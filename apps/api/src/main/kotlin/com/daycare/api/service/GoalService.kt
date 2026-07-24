@@ -12,6 +12,8 @@ import com.daycare.api.persistence.ChildGoalCheckInRepository
 import com.daycare.api.persistence.ChildGoalRepository
 import com.daycare.api.persistence.ClassroomRepository
 import com.daycare.api.persistence.GoalTemplate
+import com.daycare.api.persistence.GoalTemplateIndicator
+import com.daycare.api.persistence.GoalTemplateIndicatorRepository
 import com.daycare.api.persistence.GoalTemplateRepository
 import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.LearningLevelRepository
@@ -38,15 +40,18 @@ data class UpsertGoalTemplateRequest(
     @field:Min(0) @field:Max(100) val minimumYesPercent: Int,
     @field:Min(0) val minimumYesStreak: Int,
 )
-data class GoalTemplateResponse(val id: UUID, val learningLevelId: UUID?, val classroomId: UUID?, val name: String, val description: String, val durationDays: Int, val minimumYesPercent: Int, val minimumYesStreak: Int, val active: Boolean)
+data class GoalTemplateResponse(val id: UUID, val learningLevelId: UUID?, val classroomId: UUID?, val name: String, val description: String, val durationDays: Int, val minimumYesPercent: Int, val minimumYesStreak: Int, val active: Boolean, val indicators: List<GoalIndicatorResponse>)
 data class AssignChildGoalRequest(val templateId: UUID, val startsOn: LocalDate = LocalDate.now())
-data class GoalCheckInRequest(val outcome: GoalCheckInOutcome)
+data class UpsertGoalIndicatorRequest(@field:NotBlank @field:Size(max = 120) val name: String, val displayOrder: Int = 0)
+data class GoalIndicatorResponse(val id: UUID, val name: String, val displayOrder: Int, val active: Boolean)
+data class GoalCheckInRequest(val indicatorId: UUID, val outcome: GoalCheckInOutcome)
 data class FinalizeChildGoalRequest(val outcome: ChildGoalOutcome, @field:NotBlank @field:Size(max = 2_000) val summary: String)
-data class GoalCheckInResponse(val date: LocalDate, val outcome: GoalCheckInOutcome, val recordedAt: Instant)
+data class GoalIndicatorCheckInResponse(val indicatorId: UUID, val date: LocalDate, val outcome: GoalCheckInOutcome, val recordedAt: Instant)
 data class ChildGoalResponse(
     val id: UUID, val childId: UUID, val templateId: UUID, val name: String, val description: String, val startsOn: LocalDate, val targetEndsOn: LocalDate,
     val durationDays: Int, val minimumYesPercent: Int, val minimumYesStreak: Int, val status: ChildGoalStatus, val finalOutcome: ChildGoalOutcome?, val finalSummary: String?, val finalizedAt: Instant?,
-    val recordedDays: Int, val yesDays: Int, val noDays: Int, val yesPercent: Int?, val currentYesStreak: Int, val longestYesStreak: Int, val meetsYesPercent: Boolean, val meetsYesStreak: Boolean, val checkIns: List<GoalCheckInResponse>,
+    val recordedDays: Int, val yesDays: Int, val noDays: Int, val yesPercent: Int?, val currentYesStreak: Int, val longestYesStreak: Int, val meetsYesPercent: Boolean, val meetsYesStreak: Boolean,
+    val indicators: List<GoalIndicatorResponse>, val checkIns: List<GoalIndicatorCheckInResponse>,
 )
 
 @Service
@@ -54,6 +59,7 @@ class GoalService(
     private val access: AccessService,
     private val childScopes: ChildScopeService,
     private val templates: GoalTemplateRepository,
+    private val goalIndicators: GoalTemplateIndicatorRepository,
     private val goals: ChildGoalRepository,
     private val checkIns: ChildGoalCheckInRepository,
     private val levels: LearningLevelRepository,
@@ -72,7 +78,9 @@ class GoalService(
     fun createTemplate(jwt: Jwt, organizationId: UUID, request: UpsertGoalTemplateRequest): GoalTemplateResponse {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         validateTemplateScope(organizationId, request)
-        return templateResponse(templates.save(GoalTemplate(organizationId = organizationId, learningLevelId = request.learningLevelId, classroomId = request.classroomId, name = request.name.trim(), description = request.description.trim(), durationDays = request.durationDays, minimumYesPercent = request.minimumYesPercent, minimumYesStreak = request.minimumYesStreak)))
+        val template = templates.save(GoalTemplate(organizationId = organizationId, learningLevelId = request.learningLevelId, classroomId = request.classroomId, name = request.name.trim(), description = request.description.trim(), durationDays = request.durationDays, minimumYesPercent = request.minimumYesPercent, minimumYesStreak = request.minimumYesStreak))
+        goalIndicators.save(GoalTemplateIndicator(organizationId = organizationId, goalTemplateId = template.id, name = template.name, displayOrder = 0))
+        return templateResponse(template)
     }
 
     @Transactional
@@ -93,6 +101,37 @@ class GoalService(
         return templateResponse(template)
     }
 
+    @Transactional
+    fun createIndicator(jwt: Jwt, organizationId: UUID, templateId: UUID, request: UpsertGoalIndicatorRequest): GoalTemplateResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val template = template(templateId, organizationId)
+        val displayOrder = goalIndicators.findAllByGoalTemplateIdOrderByDisplayOrderAsc(template.id).size
+        goalIndicators.save(GoalTemplateIndicator(organizationId = organizationId, goalTemplateId = template.id, name = request.name.trim(), displayOrder = displayOrder))
+        realtime.publishToTenantRoles(organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), setOf(RealtimeFlag.GOALS))
+        return templateResponse(template)
+    }
+
+    @Transactional
+    fun updateIndicator(jwt: Jwt, organizationId: UUID, templateId: UUID, indicatorId: UUID, request: UpsertGoalIndicatorRequest): GoalTemplateResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val template = template(templateId, organizationId)
+        val indicator = indicator(indicatorId, template.id)
+        indicator.name = request.name.trim(); indicator.displayOrder = request.displayOrder
+        realtime.publishToTenantRoles(organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), setOf(RealtimeFlag.GOALS))
+        return templateResponse(template)
+    }
+
+    @Transactional
+    fun archiveIndicator(jwt: Jwt, organizationId: UUID, templateId: UUID, indicatorId: UUID): GoalTemplateResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val template = template(templateId, organizationId)
+        val indicator = indicator(indicatorId, template.id)
+        require(goalIndicators.findAllByGoalTemplateIdOrderByDisplayOrderAsc(template.id).count { it.active } > 1) { "Goal template needs at least one active indicator" }
+        indicator.active = false
+        realtime.publishToTenantRoles(organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), setOf(RealtimeFlag.GOALS))
+        return templateResponse(template)
+    }
+
     @Transactional(readOnly = true)
     fun childGoals(jwt: Jwt, organizationId: UUID, childId: UUID): List<ChildGoalResponse> {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), readOnly = true)
@@ -106,6 +145,7 @@ class GoalService(
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         val template = template(request.templateId, organizationId)
         require(template.active) { "Goal template is inactive" }
+        require(goalIndicators.findAllByGoalTemplateIdOrderByDisplayOrderAsc(template.id).any { it.active }) { "Goal template needs at least one active indicator" }
         require(matchesChildTemplate(child.classroomId, template)) { "Goal template does not match the child's class" }
         require(!goals.existsByChildIdAndTemplateIdAndStatus(childId, template.id, ChildGoalStatus.ACTIVE)) { "Child already has this active goal" }
         val goal = goals.save(ChildGoal(organizationId = organizationId, childId = childId, templateId = template.id, startsOn = request.startsOn))
@@ -119,9 +159,12 @@ class GoalService(
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF)); access.requireWritable(scope)
         val goal = goal(goalId, organizationId); require(goal.status == ChildGoalStatus.ACTIVE) { "Goal is already completed" }
         authorizeChild(scope, organizationId, goal.childId)
-        val targetEndsOn = goal.startsOn.plusDays(template(goal.templateId, organizationId).durationDays.toLong() - 1)
+        val template = template(goal.templateId, organizationId)
+        val indicator = indicator(request.indicatorId, template.id)
+        require(indicator.active) { "Goal indicator is archived" }
+        val targetEndsOn = goal.startsOn.plusDays(template.durationDays.toLong() - 1)
         require(!date.isBefore(goal.startsOn) && !date.isAfter(targetEndsOn)) { "Check-in date must be within the goal period" }
-        val checkIn = checkIns.findByChildGoalIdAndCheckInDate(goalId, date) ?: ChildGoalCheckIn(organizationId = organizationId, childGoalId = goalId, checkInDate = date, recordedByUserId = scope.user.id)
+        val checkIn = checkIns.findByChildGoalIdAndIndicatorIdAndCheckInDate(goalId, indicator.id, date) ?: ChildGoalCheckIn(organizationId = organizationId, childGoalId = goalId, indicatorId = indicator.id, checkInDate = date, recordedByUserId = scope.user.id)
         checkIn.outcome = request.outcome; checkIn.recordedByUserId = scope.user.id; checkIn.recordedAt = Instant.now(); checkIns.save(checkIn)
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "CHILD_GOAL_CHECK_IN", entityId = checkIn.id, action = request.outcome.name, source = "GOAL"))
         publishGoal(organizationId, goal.childId)
@@ -161,12 +204,27 @@ class GoalService(
     }
     private fun template(id: UUID, organizationId: UUID) = templates.findById(id).orElseThrow { IllegalArgumentException("Goal template was not found") }.also { require(it.organizationId == organizationId) { "Goal template belongs to a different organization" } }
     private fun goal(id: UUID, organizationId: UUID) = goals.findById(id).orElseThrow { IllegalArgumentException("Child goal was not found") }.also { require(it.organizationId == organizationId) { "Child goal belongs to a different organization" } }
-    private fun templateResponse(template: GoalTemplate) = GoalTemplateResponse(template.id, template.learningLevelId, template.classroomId, template.name, template.description, template.durationDays, template.minimumYesPercent, template.minimumYesStreak, template.active)
+    private fun indicator(id: UUID, templateId: UUID) = goalIndicators.findById(id).orElseThrow { IllegalArgumentException("Goal indicator was not found") }.also { require(it.goalTemplateId == templateId) { "Goal indicator belongs to a different goal template" } }
+    private fun templateResponse(template: GoalTemplate) = GoalTemplateResponse(template.id, template.learningLevelId, template.classroomId, template.name, template.description, template.durationDays, template.minimumYesPercent, template.minimumYesStreak, template.active, goalIndicators.findAllByGoalTemplateIdOrderByDisplayOrderAsc(template.id).map(::indicatorResponse))
+    private fun indicatorResponse(indicator: GoalTemplateIndicator) = GoalIndicatorResponse(indicator.id, indicator.name, indicator.displayOrder, indicator.active)
     private fun goalResponse(goal: ChildGoal): ChildGoalResponse {
         val template = template(goal.templateId, goal.organizationId)
+        val activeIndicators = goalIndicators.findAllByGoalTemplateIdOrderByDisplayOrderAsc(template.id).filter { it.active }
         val items = checkIns.findAllByChildGoalIdOrderByCheckInDateAsc(goal.id)
-        val progress = GoalProgressCalculator.calculate(items.map { GoalCheckInValue(it.checkInDate, it.outcome) })
-        return ChildGoalResponse(goal.id, goal.childId, template.id, template.name, template.description, goal.startsOn, goal.startsOn.plusDays(template.durationDays.toLong() - 1), template.durationDays, template.minimumYesPercent, template.minimumYesStreak, goal.status, goal.finalOutcome, goal.finalSummary, goal.finalizedAt, progress.recordedDays, progress.yesDays, progress.noDays, progress.yesPercent, progress.currentYesStreak, progress.longestYesStreak, progress.yesPercent != null && progress.yesPercent >= template.minimumYesPercent, progress.longestYesStreak >= template.minimumYesStreak, items.map { GoalCheckInResponse(it.checkInDate, it.outcome, it.recordedAt) })
+        val combinedValues = items.groupBy { it.checkInDate }.mapNotNull { (date, dayCheckIns) ->
+            if (activeIndicators.isEmpty()) return@mapNotNull null
+            val byIndicator = dayCheckIns.associateBy { it.indicatorId }
+            if (!activeIndicators.all { byIndicator.containsKey(it.id) }) return@mapNotNull null
+            val allYes = activeIndicators.all { byIndicator[it.id]?.outcome == GoalCheckInOutcome.YES }
+            GoalCheckInValue(date, if (allYes) GoalCheckInOutcome.YES else GoalCheckInOutcome.NO)
+        }
+        val progress = GoalProgressCalculator.calculate(combinedValues)
+        return ChildGoalResponse(
+            goal.id, goal.childId, template.id, template.name, template.description, goal.startsOn, goal.startsOn.plusDays(template.durationDays.toLong() - 1), template.durationDays, template.minimumYesPercent, template.minimumYesStreak,
+            goal.status, goal.finalOutcome, goal.finalSummary, goal.finalizedAt, progress.recordedDays, progress.yesDays, progress.noDays, progress.yesPercent, progress.currentYesStreak, progress.longestYesStreak,
+            progress.yesPercent != null && progress.yesPercent >= template.minimumYesPercent, progress.longestYesStreak >= template.minimumYesStreak,
+            goalIndicators.findAllByGoalTemplateIdOrderByDisplayOrderAsc(template.id).map(::indicatorResponse), items.map { GoalIndicatorCheckInResponse(it.indicatorId, it.checkInDate, it.outcome, it.recordedAt) },
+        )
     }
     private fun publishGoal(organizationId: UUID, childId: UUID) {
         guardians.findAllByChildId(childId).forEach { realtime.publishToUser(organizationId, it.userId, setOf(RealtimeFlag.GOALS)) }

@@ -1,6 +1,7 @@
 package com.daycare.api.service
 
 import com.daycare.api.persistence.DeviceTokenRepository
+import com.daycare.api.persistence.DeviceToken
 import com.daycare.api.persistence.Notification
 import com.daycare.api.persistence.NotificationRepository
 import com.daycare.api.realtime.RealtimeFlag
@@ -24,9 +25,11 @@ class NotificationService(
     fun notify(organizationId: UUID, recipientUserId: UUID, title: String, body: String, actionPath: String? = null, realtimeFlags: Set<RealtimeFlag> = emptySet()) {
         val notification = notifications.save(Notification(organizationId = organizationId, recipientUserId = recipientUserId, title = title, body = body, actionPath = actionPath))
         realtime.publishToUser(organizationId, recipientUserId, realtimeFlags + RealtimeFlag.NOTIFICATIONS, mapOf("notificationId" to notification.id, "actionPath" to actionPath))
-        deviceTokens.findAllByUserIdAndOrganizationId(recipientUserId, organizationId).forEach { token ->
-            runCatching { restClient.post().uri(expoPushUrl).body(mapOf("to" to token.token, "title" to title, "body" to body, "data" to mapOf("actionPath" to actionPath, "organizationId" to organizationId.toString()), "sound" to "default")).retrieve().toBodilessEntity() }
-                .onFailure { error -> logger.warn("Unable to deliver Expo push token {}: {}", token.id, error.message) }
-        }
+        deviceTokens.findAllByUserIdAndOrganizationId(recipientUserId, organizationId).forEach { token -> sendPush(token, organizationId, title, body, actionPath) }
+    }
+
+    fun sendPush(token: DeviceToken, organizationId: UUID, title: String, body: String, actionPath: String? = null) {
+        runCatching { restClient.post().uri(expoPushUrl).body(mapOf("to" to token.token, "title" to title, "body" to body, "data" to mapOf("actionPath" to actionPath, "organizationId" to organizationId.toString()), "sound" to "default")).retrieve().toBodilessEntity() }
+            .onFailure { error -> logger.warn("Unable to deliver Expo push token {}: {}", token.id, error.message) }
     }
 }

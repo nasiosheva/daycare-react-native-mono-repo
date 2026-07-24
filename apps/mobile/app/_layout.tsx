@@ -7,8 +7,13 @@ import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { bottomNavigationPaths } from "@/navigation/RoleBottomNavigation";
 import { RealtimeConnection } from "@/realtime/RealtimeConnection";
+import { getReminderInstallationId } from "@/reminders/installationId";
 
-const bottomNavigationScreenNames = ["home", "platform-tenants", "tenant-detail", "academic", "development", "booking-approvals", "billing-admin", "staff-admin", "staff-operations", "attendance", "parent-qr", "booking", "profile"];
+if (Platform.OS !== "web") {
+  Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }) });
+}
+
+const bottomNavigationScreenNames = ["home", "platform-tenants", "tenant-detail", "academic", "development", "booking-approvals", "billing-admin", "staff-admin", "staff-operations", "parent-qr", "booking", "profile"];
 
 function NotificationRouteHandler() {
   const { selectOrganization } = useAuth();
@@ -42,8 +47,9 @@ function NativeNotificationRegistration() {
         const permission = await Notifications.getPermissionsAsync();
         const status = permission.status === "granted" ? permission.status : (await Notifications.requestPermissionsAsync()).status;
         if (status !== "granted" || cancelled) return;
-        const token = await Notifications.getExpoPushTokenAsync();
-        if (!cancelled) await api.registerDevice({ token: token.data, platform });
+        const [token, installationId] = await Promise.all([Notifications.getExpoPushTokenAsync(), getReminderInstallationId()]);
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+        if (!cancelled) await api.registerDevice({ token: token.data, platform, installationId, timeZone });
       } catch {
         // A device may not support push tokens (for example, a simulator). The in-app inbox remains available.
       }
@@ -81,5 +87,5 @@ function BottomNavigationBackHandler({ children }: PropsWithChildren) {
 }
 
 export default function RootLayout() {
-  return <Providers><BottomNavigationBackHandler><Stack initialRouteName="home" screenOptions={{ headerShown: false }}>{bottomNavigationScreenNames.map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none"}} />)}<Stack.Screen name="add-tenant" options={{ animation: "none" }} /><Stack.Screen name="branches" options={{ animation: "none" }} /><Stack.Screen name="global-curriculum" options={{ animation: "none" }} /><Stack.Screen name="goals" options={{ animation: "none" }} /><Stack.Screen name="goal-template" options={{ animation: "none" }} /><Stack.Screen name="notifications" options={{ animation: "none" }} /><Stack.Screen name="parent-enrollment" options={{ animation: "none" }} /><Stack.Screen name="sign-up" options={{ animation: "none" }} /></Stack></BottomNavigationBackHandler></Providers>;
+  return <Providers><BottomNavigationBackHandler><Stack initialRouteName="home" screenOptions={{ headerShown: false }}>{bottomNavigationScreenNames.map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none"}} />)}<Stack.Screen name="add-tenant" options={{ animation: "none" }} /><Stack.Screen name="branches" options={{ animation: "none" }} /><Stack.Screen name="billing-plan-editor" options={{ animation: "none" }} /><Stack.Screen name="billing-discount-editor" options={{ animation: "none" }} /><Stack.Screen name="global-curriculum" options={{ animation: "none" }} /><Stack.Screen name="goals" options={{ animation: "none" }} /><Stack.Screen name="goal-template" options={{ animation: "none" }} /><Stack.Screen name="notifications" options={{ animation: "none" }} /><Stack.Screen name="staff-reminders" options={{ animation: "none" }} /><Stack.Screen name="staff-reminder-editor" options={{ animation: "none" }} /><Stack.Screen name="parent-enrollment" options={{ animation: "none" }} /><Stack.Screen name="sign-up" options={{ animation: "none" }} /></Stack></BottomNavigationBackHandler></Providers>;
 }

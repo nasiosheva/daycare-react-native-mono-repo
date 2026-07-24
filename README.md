@@ -13,7 +13,7 @@ Umur Emas is a multi-tenant early-childhood platform for web, iOS, Android, and 
 
 - Node.js 20 or newer, Corepack, and pnpm 10.
 - JDK 21 and `gradle` available on `PATH` for the API. This checkout does not include a Gradle wrapper.
-- Docker Desktop for local PostgreSQL.
+- A local PostgreSQL 17 server. Docker Desktop is optional, not required.
 - A Firebase project with Email/Password, Phone, and Google providers enabled.
 - Xcode for iOS development; Android Studio plus an emulator or device for Android development.
 
@@ -28,13 +28,14 @@ Umur Emas is a multi-tenant early-childhood platform for web, iOS, Android, and 
 
 ## Product capabilities
 
-- Platform `ADMIN` manages tenant lifecycle, tenant subscriptions, tenant payments, and global curriculum programs. Tenant `STAFF_ADMIN` (owner/head) manages the tenant's users and operational configuration; its Home shows linked operational and Daycare-financial summaries for children, staff, approvals, invoices, subscriptions, and credits. `STAFF` (teacher/miss) sees and records attendance, development, and booking decisions for children assigned directly or through an active class group; `PARENT` accesses only their own children.
-- Main role Home layouts have no app bar; child and detail screens use an app bar with a back button. Navigation is role-specific: Staff Admin uses four bottom tabs—Home, Children, Classes, and Manage—and opens Profile from the toolbar icon on Home. Development, staff accounts, branches, finance, payments, subscriptions, and booking approvals are grouped in Manage. Platform Admin has tenant administration; Staff has classroom operations and approvals; Parent has development, attendance QR, and booking. Every role can access Profile, which is the sole location for signing out. Profile also manages display name and Firebase password; Platform Admin can create another Platform Admin with an email, username, and password.
+- Platform `ADMIN` manages tenant lifecycle, tenant subscriptions, tenant payments, and global curriculum programs. Tenant `STAFF_ADMIN` (owner/head) manages the tenant's users and operational configuration; its Home shows linked operational and Daycare-financial summaries for children, staff, approvals, invoices, subscriptions, and credits. `STAFF` (teacher/miss) Home is limited to assigned-child cards. Each card shows whether today's development entry and each active Goal's indicators still need input, and opens that child's daily development flow; `PARENT` accesses only their own children.
+- Main role Home layouts have no app bar; child and detail screens use an app bar with a back button. Navigation is role-specific: Staff Admin uses four bottom tabs—Home, Children, Classes, and Manage—and opens Profile from the toolbar icon on Home. Development, staff accounts, branches, finance, payments, subscriptions, and booking approvals are grouped in Manage. Platform Admin has tenant administration; Staff has classroom operations, opens **Perkembangan Anak** as a child screen with a toolbar/back button, and opens Profile from the Home toolbar icon. Parent has development, attendance QR, and booking. Every role can access Profile, which is the sole location for signing out. Profile also manages display name and Firebase password; Platform Admin can create another Platform Admin with an email, username, and password.
 - Shared mobile UI includes an accessible bottom sheet with a drag handle and close button. Operational add, edit, assignment, and password forms begin from an explicit action instead of rendering immediately; short forms open in a Bottom Sheet, while checkout and other larger workflows use dedicated screens. Profile uses it to confirm logout before ending the session.
 - Date and time fields use one reusable picker: the platform-native picker on Android and iOS, and the browser's native inputs on web. Its values remain `YYYY-MM-DD` for dates and `HH:mm` for times.
-- Child management, manual or QR attendance, development notes, and Goals. Staff Admin adds a child through the reusable Bottom Sheet with a required gender choice; the same required choice applies to Parent enrollment and child-profile updates. The child detail screen is reserved for later profile, program, placement, staff-assignment, and Goal access. Staff Admin creates a Goal template scoped to a learning level and optionally a class group, then assigns it to a child. Staff Admin and active Staff record or amend one daily Yes/No outcome and can manually finalize the active Goal with a required conclusion; Parent can read the daily history, calculation, and final conclusion only. Missing dates are excluded from the Yes percentage but break a consecutive-Yes streak. On **Children**, Staff Admin can stage filters in order by branch, learning level, and class group/rombel; each subsequent selector only offers compatible active records, and the list changes only after pressing **OK**. Operational child lists and classroom active-child totals count only children whose Parent enrollment has been approved; pending applications do not consume classroom capacity.
+- Child management, manual or QR attendance, development notes, and Goals. Staff Admin adds a child through the reusable Bottom Sheet with a required gender choice; the same required choice applies to Parent enrollment and child-profile updates. The child detail screen is reserved for later profile, program, placement, staff-assignment, and Goal access. Staff Admin creates a Goal template scoped to a learning level and optionally a class group, then assigns it to a child. Every new template receives one active indicator; additional indicators can be added through the Goal-template API. Every Goal-template field has an Info toggle explaining its purpose and unit, including calendar days, percentages, and consecutive days. Staff Admin and active Staff record or amend one daily Yes/No outcome per active indicator and can manually finalize the active Goal with a required conclusion; a day counts as Yes only when every active indicator is Yes. Parent can read the daily history, calculation, and final conclusion only. Missing dates are excluded from the Yes percentage but break a consecutive-Yes streak. On **Children**, Staff Admin can stage filters in order by branch, learning level, and class group/rombel; each subsequent selector only offers compatible active records, and the list changes only after pressing **OK**. Operational child lists and classroom active-child totals count only children whose Parent enrollment has been approved; pending applications do not consume classroom capacity.
 - Service-plan purchase, invoice tracking, Parent-uploaded transfer proof, Staff Admin payment verification, booking approval, and remaining-credit management.
 - Firebase email/password, phone, and Google authentication; Firebase ID tokens secure the API.
+- PDF and XLSX reports are generated by the protected Spring API, never from frontend-provided rows or templates. The mobile/web client reads the scoped data for its view, then downloads the server-built attachment. The initial report is the currently filtered child list; the same report scope and authorization are enforced for preview data and the exported file.
 
 ## Institution types and shared core
 
@@ -48,7 +49,7 @@ Capabilities are derived from the selected institution types and drive both mobi
 | `ACADEMIC_CURRICULUM` | `PAUD`, `TK` | Academic curriculum capability; learning periods and curriculum programs are available to all tenant types through the shared learning structure. |
 
 An institution may select more than one type, for example a Daycare that also operates a TK program. Daycare remains the default for legacy tenants so existing operations continue unchanged.
-- In-app inbox and native notifications for payment, booking, and development events. Native iOS/Android devices register their Expo token after notification permission is granted; web users retain the in-app inbox.
+- In-app inbox and native notifications for payment, booking, and development events. Native iOS/Android devices register their Expo token after notification permission is granted; web users retain the in-app inbox. Active `STAFF` users can also create personal reminders in Profile. A reminder runs primarily as a native local schedule in the device's own time zone and opens the selected operational menu. The API stores the rule and the device's schedule acknowledgement; its minute scheduler sends an Expo fallback only when that installation has not acknowledged the current rule version. Reminder fallback pushes are not stored in the inbox and missed offline schedules are not replayed.
 
 ## Environment files
 
@@ -74,9 +75,10 @@ Environment files are local-only and ignored by Git. Start from the correspondin
 | `EXPO_PUBLIC_FIREBASE_APP_ID` | Mobile/web | Yes | Firebase application ID. |
 | `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | Native mobile | Required for Google sign-in | OAuth web client ID consumed by the native Google sign-in SDK. |
 | `IOS_DEVICE_UDID` | iOS launcher | Required for iOS launchers | UDID of the connected physical iPhone. Simulators are intentionally rejected. |
-| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Docker / default API | Yes for local database | Local PostgreSQL database and credentials. |
-| `POSTGRES_PORT` | Docker simulation | Simulation only | Host port for the simulation database; default is `5433`. |
-| `DATABASE_URL` | Default API | Optional | JDBC connection URL; overrides the default `jdbc:postgresql://localhost:5432/daycare`. |
+| `POSTGRES_DB` | Optional Docker Compose | Optional | Database name used only when the optional Compose PostgreSQL service is created. |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD` | API / optional Docker Compose | Yes for local database | Credentials for the default API connection and optional Compose service. |
+| `POSTGRES_HOST`, `POSTGRES_PORT` | Local launcher | Optional | Existing PostgreSQL server checked by local launchers; defaults to `localhost:5432`. They do not change Spring's JDBC URL. |
+| `DATABASE_URL` | Default API | Optional | JDBC connection URL; set this for a local server that is not `jdbc:postgresql://localhost:5432/daycare`. |
 | `FIREBASE_ISSUER_URI` | Default API | Yes | Firebase token issuer, for example `https://securetoken.google.com/<project-id>`. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | API | Required to create Platform Admin accounts | Firebase service-account JSON for the same Firebase project. Keep it only in a secret manager or ignored local environment file. |
 | `QR_SIGNING_SECRET` | Default API | Recommended | Secret used to sign attendance QR tokens. Use a random value of at least 32 characters outside local-only development. |
@@ -104,11 +106,7 @@ Environment files are local-only and ignored by Git. Start from the correspondin
    cp .env.example .env
    ```
 
-3. Start the default PostgreSQL database.
-
-   ```sh
-   docker compose up -d postgres
-   ```
+3. Ensure PostgreSQL is running locally and create a database and user matching `.env`. The default API connection is database `daycare`, user `daycare`, password `daycare`, on port `5432`; set `DATABASE_URL`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` when your local instance differs. `POSTGRES_DB` is used only by the optional Docker Compose service.
 
 4. Start the API. Spring Boot does not automatically load root `.env` files, so source it in the same command.
 
@@ -152,11 +150,7 @@ On its first startup, the simulation API seeds a complete demo dataset: an activ
    cp .env.simulation.example .env.simulation
    ```
 
-2. Start the isolated PostgreSQL project.
-
-   ```sh
-   docker compose --env-file .env.simulation -p daycare-simulation up -d postgres
-   ```
+2. Ensure a separate local PostgreSQL database is available for simulation. By default it is `daycare_simulation` on port `5433`; set `SIMULATION_DATABASE_URL`, `SIMULATION_POSTGRES_USER`, and `SIMULATION_POSTGRES_PASSWORD` if your local instance uses another connection. Docker Compose remains an optional alternative.
 
 3. Start the API with the `simulation` Spring profile.
 
@@ -191,7 +185,7 @@ cp .env.simulation.example .env.simulation
 
 `./run-android-local.sh` synchronizes the generated Android project with the Expo native configuration when needed, restores `android/local.properties` from `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or the standard macOS SDK location, then creates or refreshes and installs the Android development build before starting the local API and Metro. It can therefore be used as the one-command local Android launcher, including after an Android application-package or native-plugin change. The other Android launchers start an installed Expo development build using the selected service environment, and rebuild it automatically when the native configuration changes. iOS launchers only build and run on the physical iPhone identified by `IOS_DEVICE_UDID`; simulators are intentionally unsupported. The `prod` scripts point at production services but do not create a signed store/release build and do not deploy the API.
 
-The `local` launchers use `.env` and also start the default local stack for you. They prefer `docker compose up -d postgres` when Docker is available; otherwise they reuse a PostgreSQL server that is already accepting connections on `${POSTGRES_HOST:-localhost}:${POSTGRES_PORT:-5432}`. After the database is available, the launcher starts `gradle -p apps/api bootRun` in the background and waits until `http://localhost:8080/api/v3/api-docs` responds before starting Expo. The launcher must own that backend process so it can stop it on exit; if port `8080` is already occupied by the Java API process from this same repo, the launcher stops it and starts a fresh one. If another process owns port `8080`, the launcher fails and asks you to stop that process first. Backend logs are written to `daycare-api-local.log`, and the background API process is stopped when the launcher exits. For a connected Android device, `./run-android-local.sh` uses `adb reverse`, starts Metro on `localhost`, and explicitly opens the development client with the localhost URL. Its mobile API URL is `http://localhost:8080/api/v1`, so the API and bundle do not depend on Wi-Fi routing. It also streams the relevant React Native and Android runtime logs into the launcher terminal; this logger stops with the launcher.
+The `local` launchers use `.env` and also start the default local stack for you. They first reuse a PostgreSQL server already accepting connections on `${POSTGRES_HOST:-localhost}:${POSTGRES_PORT:-5432}`; when none is available, they can start the optional Docker Compose PostgreSQL service. After the database is available, the launcher starts `gradle -p apps/api bootRun` in the background and waits until `http://localhost:8080/api/v3/api-docs` responds before starting Expo. The launcher must own that backend process so it can stop it on exit; if port `8080` is already occupied by the Java API process from this same repo, the launcher stops it and starts a fresh one. If another process owns port `8080`, the launcher fails and asks you to stop that process first. Backend logs are written to `daycare-api-local.log`, and the background API process is stopped when the launcher exits. For a connected Android device, `./run-android-local.sh` uses `adb reverse`, starts Metro on `localhost`, and explicitly opens the development client with the localhost URL. Its mobile API URL is `http://localhost:8080/api/v1`, so the API and bundle do not depend on Wi-Fi routing. It also streams the relevant React Native and Android runtime logs into the launcher terminal; this logger stops with the launcher.
 
 Keep the local launcher terminal open while using the mobile application. If the API becomes unreachable during tenant creation, the app does not retry automatically because the request may already have completed; open the tenant list to check the result before submitting again.
 
@@ -224,6 +218,10 @@ To identify the connected iPhone UDID, run `xcrun xctrace list devices`, copy th
 
 `apps/mobile/src/image-picker` provides a generic `useImagePicker` hook for Android and iOS. It can select up to ten images from the gallery or take one photo with the camera, returning local metadata without base64, EXIF, crop UI, upload, or persistent storage. Images use 80% picker compression; callers own any later upload or persistence. The hook restores a pending Android picker result when the activity is recreated. Web callers receive an explicit unsupported result.
 
+### Document export module
+
+`apps/mobile/src/document-export` downloads protected, server-built PDF and Excel (`.xlsx`) attachments; it does not send report rows or layout from the client. The initial export is the scoped child list, using the same optional branch, learning-level, and classroom filters as the Children screen. Android and iOS write the downloaded attachment to cache with `expo-file-system` and offer the native share sheet through `expo-sharing`; web downloads the attachment in the browser. `DocumentExportViewer` and `useDocumentExport` remain reusable adapters for future server-backed report types.
+
 ## API contract and authentication
 
 Staff Admin's **Kelola** menu opens each operational destination as a dedicated child screen with an app bar and native back button. Their home and Kelola hub remain role-level navigation screens.
@@ -245,6 +243,7 @@ All API routes are under `/api/v1` and require a Firebase bearer token except th
 | Grant or revoke a Staff account's child-program permission | `PATCH /api/v1/tenant-users/{userId}/child-program-permission` |
 | Invite a Parent to a tenant | `POST /api/v1/invitations` |
 | List or create children | `GET` / `POST /api/v1/children` (`GET` accepts optional `branchId`, `learningLevelId`, and `classroomId` filters) |
+| Download the currently scoped child report | `GET /api/v1/reports/children/export?format=PDF\|XLSX` (accepts the same optional child filters) |
 | Read or edit a child | `GET` / `PATCH /api/v1/children/{childId}` |
 | Deactivate a child without deleting history | `POST /api/v1/children/{childId}/deactivate` |
 | List or assign child Goals | `GET` / `POST /api/v1/children/{childId}/goals` |
@@ -257,30 +256,33 @@ All API routes are under `/api/v1` and require a Firebase bearer token except th
 | Record attendance | `POST /api/v1/children/{childId}/attendance` |
 | Issue attendance QR token | `GET /api/v1/children/{childId}/attendance-qr` |
 | List or create development entries | `GET` / `POST /api/v1/children/{childId}/development-entries` |
-| List or manage Goal templates | `GET` / `POST /api/v1/goal-templates`, `PATCH /api/v1/goal-templates/{templateId}`, `POST /api/v1/goal-templates/{templateId}/archive` |
+| List or manage Goal templates and indicators | `GET` / `POST /api/v1/goal-templates`, `PATCH /api/v1/goal-templates/{templateId}`, `POST /api/v1/goal-templates/{templateId}/archive`, `POST /api/v1/goal-templates/{templateId}/indicators`, `PATCH /api/v1/goal-templates/{templateId}/indicators/{indicatorId}`, `POST /api/v1/goal-templates/{templateId}/indicators/{indicatorId}/archive` |
 | List or create service plans | `GET` / `POST /api/v1/service-plans` |
 | Read or set a branch daily capacity | `GET /api/v1/branch-capacities`, `PUT /api/v1/branches/{branchId}/capacity` |
 | List, create, or deactivate a package discount/promo | `GET` / `POST /api/v1/service-plans/{planId}/discounts`, `POST /api/v1/service-plans/{planId}/discounts/{discountId}/deactivate` |
 | List or manage package templates | `GET` / `POST /api/v1/service-plan-templates`, `PATCH` / `DELETE /api/v1/service-plan-templates/{templateId}` |
 | Purchase a service plan and create its invoice | `POST /api/v1/service-purchases` |
 | List parent service entitlements and use remaining credits | `GET /api/v1/service-entitlements`, `POST /api/v1/service-entitlements/{id}/bookings` |
-| Submit Parent enrollment for one or more children | `POST /api/v1/parent-enrollment/checkout` |
-| Cancel an unpaid Parent enrollment and void its invoice | `POST /api/v1/parent-enrollment/{enrollmentId}/cancel` |
+| Discover available tenants and read a Parent's enrollment applications | `GET /api/v1/parent-enrollment/catalog`, `GET /api/v1/parent-enrollment` |
+| Submit, retry, or cancel a Parent enrollment | `POST /api/v1/parent-enrollment/checkout`, `POST /api/v1/parent-enrollment/{enrollmentId}/retry`, `POST /api/v1/parent-enrollment/{enrollmentId}/cancel` |
+| List and decide paid Parent enrollment applications | `GET /api/v1/parent-enrollment/pending-approval`, `POST /api/v1/parent-enrollment/{enrollmentId}/approval` |
 | List bookings or pending branch approvals | `GET /api/v1/bookings`, `GET /api/v1/bookings/pending-approval` |
 | Approve or reject a paid booking | `POST /api/v1/bookings/{id}/approval` |
-| List invoices, upload a proof, or review it | `GET /api/v1/invoices`, `GET /api/v1/invoices/{id}`, `POST /api/v1/invoices/{id}/payment-proof`, `GET /api/v1/invoices/{id}/payment-proof`, `POST /api/v1/invoices/{id}/payment-proof/review` |
+| List invoices, upload a proof, review it, or mark it paid | `GET /api/v1/invoices`, `GET /api/v1/invoices/{id}`, `POST /api/v1/invoices/{id}/payment-proof`, `GET /api/v1/invoices/{id}/payment-proof`, `POST /api/v1/invoices/{id}/payment-proof/review`, `POST /api/v1/invoices/{id}/mark-paid` |
 | Create invitation | `POST /api/v1/invitations` |
 | List active tenant users and pending invitations | `GET /api/v1/tenant-users` |
 | Register device token | `POST /api/v1/device-tokens` |
+| List or manage personal Staff reminders | `GET` / `POST /api/v1/staff-reminders`, `PATCH` / `DELETE /api/v1/staff-reminders/{reminderId}`, `PATCH /api/v1/staff-reminders/{reminderId}/active` |
+| Acknowledge native local reminder schedules | `PUT /api/v1/staff-reminders/local-schedules` |
 | List or mark notifications as read | `GET /api/v1/notifications`, `PATCH /api/v1/notifications/{notificationId}/read` |
 
 The mobile app exchanges Firebase ID tokens through `Authorization: Bearer <token>`. Its API client also sends `X-Organization-Id` after a tenant user selects an organization. `ADMIN` is a platform-level role bootstrapped by `PLATFORM_ADMIN_EMAILS`; tenant roles are `STAFF_ADMIN`, `STAFF`, and `PARENT`. The shared policy is defined in `packages/core` and is enforced by the API service layer. Language can only be changed from Login or Profile, and is intentionally stored locally rather than attached to the user account.
 
 ### Realtime WebSocket
 
-The mobile and web client connect to `GET ws(s)://<api-host>/api/v1/realtime` after sign-in. The first frame is `{"type":"CONNECT","token":"<JWT>","organizationId":"<tenant UUID>"}`. Platform Admin and a Parent that has not yet been bound to a tenant omit `organizationId`; an unscoped session receives only events explicitly addressed to that user. The server validates the JWT and selected scope before registering the session. It emits transient `EVENT` envelopes with `id`, `organizationId`, `flags`, optional generic `payload`, and `occurredAt`. Flags may be combined in one event: `NOTIFICATIONS`, `PROFILE`, `PARENT_ENROLLMENTS`, `CHILDREN`, `ATTENDANCE`, `DEVELOPMENT`, `BOOKINGS`, `INVOICES`, `ENTITLEMENTS`, `SERVICE_PLANS`, `BRANCHES`, `TENANT_USERS`, `LEARNING`, `ACADEMIC`, `TENANTS`, `GLOBAL_CURRICULUM`, and `GOALS`.
+The mobile and web client connect to `GET ws(s)://<api-host>/api/v1/realtime` after sign-in. The first frame is `{"type":"CONNECT","token":"<JWT>","organizationId":"<tenant UUID>"}`. Platform Admin and a Parent that has not yet been bound to a tenant omit `organizationId`; an unscoped session receives only events explicitly addressed to that user. The server validates the JWT and selected scope before registering the session. It emits transient `EVENT` envelopes with `id`, `organizationId`, `flags`, optional generic `payload`, and `occurredAt`. Flags may be combined in one event: `NOTIFICATIONS`, `PROFILE`, `PARENT_ENROLLMENTS`, `CHILDREN`, `ATTENDANCE`, `DEVELOPMENT`, `BOOKINGS`, `INVOICES`, `ENTITLEMENTS`, `SERVICE_PLANS`, `BRANCHES`, `TENANT_USERS`, `LEARNING`, `ACADEMIC`, `TENANTS`, `GLOBAL_CURRICULUM`, `GOALS`, and `STAFF_REMINDERS`.
 
-WebSocket payloads are not an entity source of truth. The client maps flags to React Query invalidations and reloads data from the protected REST API; it reconnects with backoff and refreshes scoped queries after reconnect. Notifications remain persisted and Expo push delivery remains unchanged, so temporary WebSocket disconnection cannot lose application state.
+WebSocket payloads are not an entity source of truth. The client maps flags to React Query invalidations and reloads data from the protected REST API; it reconnects with backoff and refreshes scoped queries after reconnect. Notifications remain persisted and Expo push delivery remains unchanged, so temporary WebSocket disconnection cannot lose application state. `STAFF_REMINDERS` invalidates only the authenticated Staff user's reminder list.
 
 The API test suite includes fast mock-based unit tests and a Spring integration baseline. `ApiIntegrationTest` uses a dedicated local PostgreSQL database, applies Flyway, uses local JWT authentication, and verifies platform-to-tenant HTTP access. It never uses Docker and is skipped unless these variables point to a non-production test database:
 
@@ -294,7 +296,7 @@ TASK_JAVA_HOME=/Users/morieshutapea/Library/Java/JavaVirtualMachines/jbr-21.0.8/
 
 Create `daycare_integration` separately from the application database; Flyway owns its schema during the test.
 
-`STAFF_ADMIN` uses the Staff Admin center to manage all staff accounts and passwords, confirm parent payments, monitor every child's parent subscription and remaining daily/weekly quota, configure service plans, plan templates, package discounts/promos, and branch booking capacity, then handle booking approvals. Staff accounts are not deleted: inactive `STAFF` and `STAFF_ADMIN` memberships retain read-only tenant access, while every tenant mutation remains limited to active memberships. An inactive Staff keeps the children already in their assignment scope; an inactive Staff Admin can review tenant-wide operational data. The Staff Admin who performs the action and the last active Staff Admin cannot be deactivated. From **Akun tenant**, a Staff Admin can give or revoke a per-account child-program permission for each active `STAFF`; it is disabled by default and allows that Staff to add or remove programs only on children assigned directly or through an active class group. From **Anak**, a Staff Admin can add or edit a child profile, attach one or more programs, and assign active Staff Admin/staff members with a Staff, Nurse, or Miss responsibility. Children are never deleted: a Staff Admin may deactivate a child, which removes the child from operational lists and capacity while retaining its history. Programs and assignments are stored in `child_programs` and `child_staff_assignments`. The entitlement list is parent-scoped for `PARENT` and tenant-scoped for `STAFF_ADMIN`; it includes the child and parent identity required for operational management.
+`STAFF_ADMIN` uses the Staff Admin center to manage all staff accounts and passwords, confirm parent payments, monitor every child's parent subscription and remaining daily/weekly quota, configure service plans, plan templates, package discounts/promos, and branch booking capacity, then handle booking approvals. **Paket dan tagihan** is a list and operational overview; creating a plan, template, or discount opens a dedicated child screen with an app bar, while the one-field branch-capacity change uses a bottom sheet. Staff accounts are not deleted: inactive `STAFF` and `STAFF_ADMIN` memberships retain read-only tenant access, while every tenant mutation remains limited to active memberships. An inactive Staff keeps the children already in their assignment scope; an inactive Staff Admin can review tenant-wide operational data. The Staff Admin who performs the action and the last active Staff Admin cannot be deactivated. From **Akun tenant**, a Staff Admin can give or revoke a per-account child-program permission for each active `STAFF`; it is disabled by default and allows that Staff to add or remove programs only on children assigned directly or through an active class group. From **Anak**, a Staff Admin can add or edit a child profile, attach one or more programs, and assign active Staff Admin/staff members with a Staff, Nurse, or Miss responsibility. Children are never deleted: a Staff Admin may deactivate a child, which removes the child from operational lists and capacity while retaining its history. Programs and assignments are stored in `child_programs` and `child_staff_assignments`. The entitlement list is parent-scoped for `PARENT` and tenant-scoped for `STAFF_ADMIN`; it includes the child and parent identity required for operational management.
 
 ### Booking and billing lifecycle
 

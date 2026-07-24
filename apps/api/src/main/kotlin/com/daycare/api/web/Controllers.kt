@@ -29,6 +29,7 @@ import com.daycare.api.service.CreateChildPlacementRequest
 import com.daycare.api.service.ChildListFilter
 import com.daycare.api.service.GoalService
 import com.daycare.api.service.UpsertGoalTemplateRequest
+import com.daycare.api.service.UpsertGoalIndicatorRequest
 import com.daycare.api.service.AssignChildGoalRequest
 import com.daycare.api.service.GoalCheckInRequest
 import com.daycare.api.service.FinalizeChildGoalRequest
@@ -57,11 +58,21 @@ import com.daycare.api.service.ParentEnrollmentRetryRequest
 import com.daycare.api.service.CreateTenantBranchRequest
 import com.daycare.api.service.UpdateTenantBranchRequest
 import com.daycare.api.service.BranchManagementService
+import com.daycare.api.service.StaffReminderService
+import com.daycare.api.service.UpsertStaffReminderRequest
+import com.daycare.api.service.UpdateStaffReminderActiveRequest
+import com.daycare.api.service.SyncStaffReminderSchedulesRequest
+import com.daycare.api.service.ChildReportExportService
+import com.daycare.api.service.ReportExportFormat
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.springframework.http.HttpStatus
+import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
+import org.springframework.http.ContentDisposition
+import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.GetMapping
@@ -183,7 +194,7 @@ class PlatformController(private val platformAdministration: PlatformAdministrat
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService) {
+class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService) {
     @GetMapping("/children")
     fun children(
         @AuthenticationPrincipal jwt: Jwt,
@@ -192,6 +203,15 @@ class InstitutionController(private val attendance: AttendanceService, private v
         @RequestParam(required = false) learningLevelId: UUID?,
         @RequestParam(required = false) classroomId: UUID?,
     ) = attendance.listChildren(jwt, organizationId, ChildListFilter(branchId, learningLevelId, classroomId))
+
+    @GetMapping("/reports/children/export")
+    fun exportChildren(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam format: ReportExportFormat, @RequestParam(required = false) branchId: UUID?, @RequestParam(required = false) learningLevelId: UUID?, @RequestParam(required = false) classroomId: UUID?): ResponseEntity<ByteArray> {
+        val report = childReports.children(jwt, organizationId, format, ChildListFilter(branchId, learningLevelId, classroomId))
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(report.contentType))
+            .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(report.fileName).build().toString())
+            .body(report.bytes)
+    }
 
     @PostMapping("/children") @ResponseStatus(HttpStatus.CREATED)
     fun createChild(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateChildRequest) = administration.createChild(jwt, organizationId, request)
@@ -298,6 +318,15 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @PostMapping("/goal-templates/{templateId}/archive")
     fun archiveGoalTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID) = goalService.archiveTemplate(jwt, organizationId, templateId)
 
+    @PostMapping("/goal-templates/{templateId}/indicators") @ResponseStatus(HttpStatus.CREATED)
+    fun createGoalIndicator(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID, @Valid @RequestBody request: UpsertGoalIndicatorRequest) = goalService.createIndicator(jwt, organizationId, templateId, request)
+
+    @PatchMapping("/goal-templates/{templateId}/indicators/{indicatorId}")
+    fun updateGoalIndicator(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID, @PathVariable indicatorId: UUID, @Valid @RequestBody request: UpsertGoalIndicatorRequest) = goalService.updateIndicator(jwt, organizationId, templateId, indicatorId, request)
+
+    @PostMapping("/goal-templates/{templateId}/indicators/{indicatorId}/archive")
+    fun archiveGoalIndicator(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID, @PathVariable indicatorId: UUID) = goalService.archiveIndicator(jwt, organizationId, templateId, indicatorId)
+
     @PostMapping("/curriculum-activities") @ResponseStatus(HttpStatus.CREATED)
     fun createActivity(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertCurriculumActivityRequest) = academic.createActivity(jwt, organizationId, request)
 
@@ -381,6 +410,24 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PatchMapping("/notifications/{notificationId}/read")
     fun markNotificationRead(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable notificationId: UUID) = administration.markNotificationRead(jwt, organizationId, notificationId)
+
+    @GetMapping("/staff-reminders")
+    fun staffReminders(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = staffReminders.list(jwt, organizationId)
+
+    @PostMapping("/staff-reminders") @ResponseStatus(HttpStatus.CREATED)
+    fun createStaffReminder(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertStaffReminderRequest) = staffReminders.create(jwt, organizationId, request)
+
+    @PatchMapping("/staff-reminders/{reminderId}")
+    fun updateStaffReminder(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable reminderId: UUID, @Valid @RequestBody request: UpsertStaffReminderRequest) = staffReminders.update(jwt, organizationId, reminderId, request)
+
+    @PatchMapping("/staff-reminders/{reminderId}/active")
+    fun setStaffReminderActive(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable reminderId: UUID, @RequestBody request: UpdateStaffReminderActiveRequest) = staffReminders.setActive(jwt, organizationId, reminderId, request)
+
+    @DeleteMapping("/staff-reminders/{reminderId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteStaffReminder(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable reminderId: UUID) = staffReminders.delete(jwt, organizationId, reminderId)
+
+    @PutMapping("/staff-reminders/local-schedules") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun syncStaffReminderSchedules(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: SyncStaffReminderSchedulesRequest) = staffReminders.syncLocalSchedules(jwt, organizationId, request)
 }
 
 @RestController

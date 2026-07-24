@@ -43,6 +43,8 @@ export const institutionTypes = ["DAYCARE", "PAUD", "TK"] as const;
 export type InstitutionType = (typeof institutionTypes)[number];
 export const institutionCapabilities = ["DAYCARE_OPERATIONS", "ACADEMIC_CURRICULUM"] as const;
 export type InstitutionCapability = (typeof institutionCapabilities)[number];
+export const staffReminderTargets = ["HOME", "ATTENDANCE", "DEVELOPMENT", "CHILDREN", "BOOKING_APPROVALS"] as const;
+export type StaffReminderTarget = (typeof staffReminderTargets)[number];
 
 const capabilitiesByInstitutionType: Record<InstitutionType, readonly InstitutionCapability[]> = {
   DAYCARE: ["DAYCARE_OPERATIONS"],

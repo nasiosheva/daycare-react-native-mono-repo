@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { Alert, StyleSheet, TextInput } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, colors, NavigationCard, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -34,11 +34,9 @@ export default function CurriculumActivitiesScreen() {
 
   return <AppScreen showBottomNavigation={false} title={t("learning.activities")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {canManage && <Button onPress={() => setVisible(true)}>{t("learning.addActivity")}</Button>}
-    {activities.data?.map((activity) => <View key={activity.id} style={styles.card}>
-      <AppText variant="label">{activity.name}</AppText>
-      {!activity.active && <AppText tone="muted">{t("learning.activityArchived")}</AppText>}
-      <Button variant="secondary" onPress={() => router.push({ pathname: "/curriculum-activity-detail", params: { activityId: activity.id } })}>{t(canManage ? "learning.editActivity" : "learning.viewActivity")}</Button>
-    </View>)}
+    {activities.data?.map((activity) => <NavigationCard key={activity.id} accessibilityLabel={t(canManage ? "learning.editActivity" : "learning.viewActivity")} onPress={() => router.push({ pathname: "/curriculum-activity-detail", params: { activityId: activity.id } })}>
+      <AppText variant="label">{activity.name}</AppText>{!activity.active && <AppText tone="muted">{t("learning.activityArchived")}</AppText>}
+    </NavigationCard>)}
     {activities.data?.length === 0 && <AppText tone="muted">{t("learning.noActivities")}</AppText>}
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t("learning.addActivity")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t("learning.addActivity"), loading: createActivity.isPending, onPress: () => void save() }}>
@@ -49,6 +47,5 @@ export default function CurriculumActivitiesScreen() {
 }
 
 const styles = StyleSheet.create({
-  card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTint },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
 });
