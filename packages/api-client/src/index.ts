@@ -96,9 +96,10 @@ export type PaymentProofImage = { fileName: string; contentType: string; dataBas
 export type SubmitPaymentProofInput = { fileName: string; contentType: "image/jpeg" | "image/png"; imageBase64: string; note?: string };
 export type Invoice = { id: string; invoiceNumber: string; branchId: string; childId: string; childName: string; parentName?: string | null; parentEmail?: string | null; subtotalAmount: number; discountAmount: number; discountName?: string | null; discountCode?: string | null; totalAmount: number; status: InvoiceStatus; dueDate: string; createdAt: string; paymentProof?: PaymentProof | null };
 export type TenantPayment = { id: string; amount: number; status: TenantPaymentStatus; dueDate: string; paidAt: string | null };
-export type TenantStaffAdmin = { id: string; email: string | null; displayName: string | null; status: "ACTIVE" | "PENDING" };
+export type TenantStaffAdmin = { id: string; email: string | null; displayName: string | null; status: "ACTIVE" | "INACTIVE" | "PENDING"; primary: boolean };
 export type TenantBranch = { id: string; name: string; timezone: string; active: boolean; primary: boolean };
-export type Tenant = { id: string; name: string; branchName: string | null; branches: TenantBranch[]; institutionTypes: InstitutionType[]; capabilities: InstitutionCapability[]; subscriptionPlan: TenantSubscriptionPlan | null; subscriptionStatus: TenantSubscriptionStatus | null; periodStart: string | null; periodEnd: string | null; trialEndsAt: string | null; monthlyFee: number | null; staffAdmin: TenantStaffAdmin | null; payments: TenantPayment[] };
+export type InstitutionTypeDefinition = { code: string; name: string };
+export type Tenant = { id: string; name: string; branchName: string | null; branches: TenantBranch[]; institutionTypes: InstitutionType[]; capabilities: InstitutionCapability[]; subscriptionPlan: TenantSubscriptionPlan | null; subscriptionStatus: TenantSubscriptionStatus | null; periodStart: string | null; periodEnd: string | null; trialEndsAt: string | null; monthlyFee: number | null; staffAdmin: TenantStaffAdmin | null; staffAdmins: TenantStaffAdmin[]; payments: TenantPayment[] };
 export type CreateTenantInput = { tenantName: string; branchName: string; institutionTypes: InstitutionType[]; subscriptionPlan: TenantSubscriptionPlan; monthlyFee?: number; trialMonths?: number; staffAdminName: string; staffAdminEmail: string; staffAdminPassword: string };
 export type UpdateTenantInput = { tenantName: string; institutionTypes: InstitutionType[]; subscriptionPlan: TenantSubscriptionPlan; monthlyFee?: number };
 export type CreatePlatformAdminInput = { email: string; username: string; password: string };
@@ -172,9 +173,16 @@ export class ApiClient {
   async cancelParentEnrollment(enrollmentId: string): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/cancel`, { method: "POST" }); }
 
   async tenants(): Promise<Tenant[]> { return this.request("/platform/tenants"); }
+  async institutionTypes(): Promise<InstitutionTypeDefinition[]> { return this.request("/platform/institution-types"); }
+  async createInstitutionType(input: { name: string }): Promise<InstitutionTypeDefinition> { return this.request("/platform/institution-types", { method: "POST", body: JSON.stringify(input) }); }
+  async updateInstitutionType(code: string, input: { name: string }): Promise<InstitutionTypeDefinition> { return this.request(`/platform/institution-types/${code}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async deleteInstitutionType(code: string): Promise<void> { await this.request<void>(`/platform/institution-types/${code}`, { method: "DELETE" }); }
   async tenant(organizationId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}`); }
   async createTenant(input: CreateTenantInput): Promise<Tenant> { return this.request("/platform/tenants", { method: "POST", body: JSON.stringify(input) }); }
   async updateTenant(organizationId: string, input: UpdateTenantInput): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async createTenantStaffAdmin(organizationId: string, input: { displayName: string; email: string; password: string }): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/staff-admins`, { method: "POST", body: JSON.stringify(input) }); }
+  async updateTenantStaffAdmin(organizationId: string, membershipId: string, input: { displayName: string }): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/staff-admins/${membershipId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async removeTenantStaffAdmin(organizationId: string, membershipId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/staff-admins/${membershipId}/remove`, { method: "POST" }); }
   async branches(): Promise<TenantBranch[]> { return this.request("/branches"); }
   async createBranch(input: { name: string; timezone?: string }): Promise<TenantBranch> { return this.request("/branches", { method: "POST", body: JSON.stringify(input) }); }
   async updateBranch(branchId: string, input: { name: string; timezone: string }): Promise<TenantBranch> { return this.request(`/branches/${branchId}`, { method: "PATCH", body: JSON.stringify(input) }); }

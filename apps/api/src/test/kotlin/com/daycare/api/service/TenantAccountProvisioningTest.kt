@@ -1,6 +1,6 @@
 package com.daycare.api.service
 
-import com.daycare.api.domain.InstitutionType
+import com.daycare.api.domain.InstitutionTypeCodes
 import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.PushNotificationMuteDuration
@@ -36,6 +36,7 @@ import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.oauth2.jwt.Jwt
+import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.Instant
 import java.util.Optional
@@ -106,6 +107,7 @@ class TenantAccountProvisioningTest {
         val platformAdministrators = mock(PlatformAdministratorRepository::class.java)
         val firebase = mock(FirebaseAdminIdentityService::class.java)
         val tenantAccounts = mock(TenantUserAccountService::class.java)
+        val institutionTypes = mock(InstitutionTypeCatalogService::class.java)
         val organization = Organization(name = "Tenant Baru")
         val staffAdmin = UserProfile(displayName = "Owner Tenant", email = "owner@tenant.test")
         val membership = Membership(userId = staffAdmin.id, organizationId = organization.id, role = Role.STAFF_ADMIN)
@@ -117,21 +119,81 @@ class TenantAccountProvisioningTest {
         `when`(tenantAccounts.create("Owner Tenant", "owner@tenant.test", "123123")).thenReturn(staffAdmin)
         `when`(memberships.save(any(Membership::class.java))).thenReturn(membership)
         `when`(subscriptions.findByOrganizationId(organization.id)).thenReturn(subscription)
-        `when`(capabilities.forOrganization(organization.id)).thenReturn(OrganizationCapabilities(setOf(InstitutionType.DAYCARE), emptySet()))
+        `when`(capabilities.forOrganization(organization.id)).thenReturn(OrganizationCapabilities(setOf(InstitutionTypeCodes.DAYCARE), emptySet()))
         `when`(memberships.findAllByOrganizationId(organization.id)).thenReturn(listOf(membership))
         `when`(users.findById(staffAdmin.id)).thenReturn(Optional.of(staffAdmin))
         `when`(branches.findFirstByOrganizationId(organization.id)).thenReturn(Branch(organizationId = organization.id, name = "Cabang Utama"))
         `when`(invitations.findAllByOrganizationIdAndStatus(organization.id, InvitationStatus.PENDING)).thenReturn(emptyList())
         `when`(payments.findAllByOrganizationIdOrderByCreatedAtDesc(organization.id)).thenReturn(emptyList())
-        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, firebase, tenantAccounts)
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, firebase, tenantAccounts, institutionTypes)
 
-        val response = service.createTenant(jwt, CreateTenantRequest("Tenant Baru", "Cabang Utama", setOf(InstitutionType.DAYCARE), TenantSubscriptionPlan.STARTER, null, 1, "Owner Tenant", "owner@tenant.test", "123123"))
+        val response = service.createTenant(jwt, CreateTenantRequest("Tenant Baru", "Cabang Utama", setOf(InstitutionTypeCodes.DAYCARE), TenantSubscriptionPlan.STARTER, null, 1, "Owner Tenant", "owner@tenant.test", "123123"))
 
         assertEquals("ACTIVE", response.staffAdmin?.status)
         assertEquals("owner@tenant.test", response.staffAdmin?.email)
         val membershipCaptor = ArgumentCaptor.forClass(Membership::class.java)
         verify(memberships).save(membershipCaptor.capture())
         assertEquals(Role.STAFF_ADMIN, membershipCaptor.value.role)
+        assertTrue(membershipCaptor.value.primaryStaffAdmin)
+    }
+
+    @Test
+    fun `primary Staff Admin cannot be removed from a tenant`() {
+        val platformAccess = mock(PlatformAccessService::class.java)
+        val organizations = mock(OrganizationRepository::class.java)
+        val organizationTypes = mock(OrganizationTypeAssignmentRepository::class.java)
+        val capabilities = mock(OrganizationCapabilitiesService::class.java)
+        val branches = mock(BranchRepository::class.java)
+        val subscriptions = mock(TenantSubscriptionRepository::class.java)
+        val payments = mock(TenantPaymentRepository::class.java)
+        val invitations = mock(InvitationRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val platformAdministrators = mock(PlatformAdministratorRepository::class.java)
+        val firebase = mock(FirebaseAdminIdentityService::class.java)
+        val tenantAccounts = mock(TenantUserAccountService::class.java)
+        val institutionTypes = mock(InstitutionTypeCatalogService::class.java)
+        val organization = Organization(name = "Tenant")
+        val primaryMembership = Membership(organizationId = organization.id, role = Role.STAFF_ADMIN, primaryStaffAdmin = true)
+        val jwt = mock(Jwt::class.java)
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
+        `when`(organizations.findById(organization.id)).thenReturn(Optional.of(organization))
+        `when`(memberships.findById(primaryMembership.id)).thenReturn(Optional.of(primaryMembership))
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, firebase, tenantAccounts, institutionTypes)
+
+        assertThrows(IllegalArgumentException::class.java) { service.removeTenantStaffAdmin(jwt, organization.id, primaryMembership.id) }
+        assertTrue(primaryMembership.active)
+    }
+
+    @Test
+    fun `tenant trial cannot be updated with a monthly fee`() {
+        val platformAccess = mock(PlatformAccessService::class.java)
+        val organizations = mock(OrganizationRepository::class.java)
+        val organizationTypes = mock(OrganizationTypeAssignmentRepository::class.java)
+        val capabilities = mock(OrganizationCapabilitiesService::class.java)
+        val branches = mock(BranchRepository::class.java)
+        val subscriptions = mock(TenantSubscriptionRepository::class.java)
+        val payments = mock(TenantPaymentRepository::class.java)
+        val invitations = mock(InvitationRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val platformAdministrators = mock(PlatformAdministratorRepository::class.java)
+        val firebase = mock(FirebaseAdminIdentityService::class.java)
+        val tenantAccounts = mock(TenantUserAccountService::class.java)
+        val institutionTypes = mock(InstitutionTypeCatalogService::class.java)
+        val organization = Organization(name = "Tenant Trial")
+        val subscription = TenantSubscription(organizationId = organization.id, plan = TenantSubscriptionPlan.STARTER, status = TenantSubscriptionStatus.TRIAL, periodStart = LocalDate.now(), periodEnd = LocalDate.now().plusMonths(1))
+        val jwt = mock(Jwt::class.java)
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
+        `when`(organizations.findById(organization.id)).thenReturn(Optional.of(organization))
+        `when`(subscriptions.findByOrganizationId(organization.id)).thenReturn(subscription)
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, firebase, tenantAccounts, institutionTypes)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            service.updateTenant(jwt, organization.id, UpdateTenantRequest("Tenant Trial", setOf(InstitutionTypeCodes.DAYCARE), TenantSubscriptionPlan.STARTER, BigDecimal("100000")))
+        }
+
+        verify(organizationTypes, never()).deleteAll(any())
     }
 
     @Test

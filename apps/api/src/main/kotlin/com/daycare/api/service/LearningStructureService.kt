@@ -2,7 +2,7 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.ChildCareRole
 import com.daycare.api.domain.ChildEnrollmentStatus
-import com.daycare.api.domain.InstitutionType
+import com.daycare.api.domain.InstitutionTypeCodes
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AcademicYearRepository
 import com.daycare.api.persistence.BranchCapacitySettingRepository
@@ -86,9 +86,9 @@ class LearningStructureService(
     fun templates(jwt: Jwt, organizationId: UUID): List<LearningLevelTemplateResponse> {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
         return buildList {
-            if (InstitutionType.DAYCARE in scope.institutionTypes) addAll(daycareTemplates)
-            if (InstitutionType.PAUD in scope.institutionTypes) add(LearningLevelTemplateResponse("PAUD", "PAUD", 36, 72))
-            if (InstitutionType.TK in scope.institutionTypes) addAll(tkTemplates)
+            if (InstitutionTypeCodes.DAYCARE in scope.institutionTypes) addAll(daycareTemplates)
+            if (InstitutionTypeCodes.PAUD in scope.institutionTypes) add(LearningLevelTemplateResponse("PAUD", "PAUD", 36, 72))
+            if (InstitutionTypeCodes.TK in scope.institutionTypes) addAll(tkTemplates)
         }.distinctBy { it.code }
     }
 

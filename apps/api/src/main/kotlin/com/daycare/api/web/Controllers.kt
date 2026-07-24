@@ -12,6 +12,8 @@ import com.daycare.api.service.CreateServicePlanDiscountRequest
 import com.daycare.api.service.CreateChildRequest
 import com.daycare.api.service.CreateInvitationRequest
 import com.daycare.api.service.CreateTenantUserRequest
+import com.daycare.api.service.CreateTenantStaffAdminRequest
+import com.daycare.api.service.UpdateTenantStaffAdminRequest
 import com.daycare.api.service.CreateDevelopmentEntryRequest
 import com.daycare.api.service.CreateDevelopmentCategoryRequest
 import com.daycare.api.service.DevelopmentService
@@ -46,6 +48,8 @@ import com.daycare.api.service.ChangePlatformAdminPinRequest
 import com.daycare.api.service.PlatformAdminPinService
 import com.daycare.api.service.PlatformAdministrationService
 import com.daycare.api.service.PlatformCurriculumService
+import com.daycare.api.service.InstitutionTypeCatalogService
+import com.daycare.api.service.CreateInstitutionTypeDefinitionRequest
 import com.daycare.api.service.CreateGlobalCurriculumProgramRequest
 import com.daycare.api.service.UpdateTenantRequest
 import com.daycare.api.service.RenewTenantSubscriptionRequest
@@ -152,7 +156,24 @@ class ParentEnrollmentController(private val enrollments: ParentEnrollmentServic
 @RestController
 @RequestMapping("/v1/platform")
 @SecurityRequirement(name = "bearerAuth")
-class PlatformController(private val platformAdministration: PlatformAdministrationService, private val platformAdminPin: PlatformAdminPinService, private val platformCurriculum: PlatformCurriculumService) {
+class PlatformController(
+    private val platformAdministration: PlatformAdministrationService,
+    private val platformAdminPin: PlatformAdminPinService,
+    private val platformCurriculum: PlatformCurriculumService,
+    private val institutionTypes: InstitutionTypeCatalogService,
+) {
+    @GetMapping("/institution-types")
+    fun institutionTypes(@AuthenticationPrincipal jwt: Jwt) = institutionTypes.list(jwt)
+
+    @PostMapping("/institution-types") @ResponseStatus(HttpStatus.CREATED)
+    fun createInstitutionType(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: CreateInstitutionTypeDefinitionRequest) = institutionTypes.create(jwt, request)
+
+    @PatchMapping("/institution-types/{code}")
+    fun updateInstitutionType(@AuthenticationPrincipal jwt: Jwt, @PathVariable code: String, @Valid @RequestBody request: CreateInstitutionTypeDefinitionRequest) = institutionTypes.update(jwt, code, request)
+
+    @DeleteMapping("/institution-types/{code}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteInstitutionType(@AuthenticationPrincipal jwt: Jwt, @PathVariable code: String) = institutionTypes.delete(jwt, code)
+
     @GetMapping("/tenants")
     fun tenants(@AuthenticationPrincipal jwt: Jwt) = platformAdministration.tenants(jwt)
 
@@ -164,6 +185,15 @@ class PlatformController(private val platformAdministration: PlatformAdministrat
 
     @PatchMapping("/tenants/{organizationId}")
     fun updateTenant(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @Valid @RequestBody request: UpdateTenantRequest) = platformAdministration.updateTenant(jwt, organizationId, request)
+
+    @PostMapping("/tenants/{organizationId}/staff-admins") @ResponseStatus(HttpStatus.CREATED)
+    fun createTenantStaffAdmin(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @Valid @RequestBody request: CreateTenantStaffAdminRequest) = platformAdministration.createTenantStaffAdmin(jwt, organizationId, request)
+
+    @PostMapping("/tenants/{organizationId}/staff-admins/{membershipId}/remove")
+    fun removeTenantStaffAdmin(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable membershipId: UUID) = platformAdministration.removeTenantStaffAdmin(jwt, organizationId, membershipId)
+
+    @PatchMapping("/tenants/{organizationId}/staff-admins/{membershipId}")
+    fun updateTenantStaffAdmin(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable membershipId: UUID, @Valid @RequestBody request: UpdateTenantStaffAdminRequest) = platformAdministration.updateTenantStaffAdmin(jwt, organizationId, membershipId, request)
 
     @PostMapping("/tenants/{organizationId}/subscription/renew")
     fun renewSubscription(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @Valid @RequestBody request: RenewTenantSubscriptionRequest) = platformAdministration.renewSubscription(jwt, organizationId, request)

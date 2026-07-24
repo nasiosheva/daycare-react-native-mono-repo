@@ -39,21 +39,21 @@ export type TenantSubscriptionStatus = (typeof tenantSubscriptionStatuses)[numbe
 export const tenantPaymentStatuses = ["PENDING", "PAID", "VOID"] as const;
 export type TenantPaymentStatus = (typeof tenantPaymentStatuses)[number];
 
-export const institutionTypes = ["DAYCARE", "PAUD", "TK"] as const;
-export type InstitutionType = (typeof institutionTypes)[number];
+export const builtInInstitutionTypes = ["DAYCARE", "PAUD", "TK"] as const;
+export type InstitutionType = string;
 export const institutionCapabilities = ["DAYCARE_OPERATIONS", "ACADEMIC_CURRICULUM"] as const;
 export type InstitutionCapability = (typeof institutionCapabilities)[number];
 export const staffReminderTargets = ["HOME", "ATTENDANCE", "DEVELOPMENT", "CHILDREN", "BOOKING_APPROVALS"] as const;
 export type StaffReminderTarget = (typeof staffReminderTargets)[number];
 
-const capabilitiesByInstitutionType: Record<InstitutionType, readonly InstitutionCapability[]> = {
+const capabilitiesByInstitutionType: Record<string, readonly InstitutionCapability[]> = {
   DAYCARE: ["DAYCARE_OPERATIONS"],
   PAUD: ["ACADEMIC_CURRICULUM"],
   TK: ["ACADEMIC_CURRICULUM"],
 };
 
 export function capabilitiesForInstitutionTypes(types: readonly InstitutionType[]): InstitutionCapability[] {
-  return Array.from(new Set(types.flatMap((type) => capabilitiesByInstitutionType[type])));
+  return Array.from(new Set(types.flatMap((type) => capabilitiesByInstitutionType[type] ?? [])));
 }
 
 export function hasInstitutionCapability(capabilities: readonly InstitutionCapability[] | undefined, capability: InstitutionCapability): boolean {

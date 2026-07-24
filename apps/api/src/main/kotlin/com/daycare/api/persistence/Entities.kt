@@ -1,7 +1,7 @@
 package com.daycare.api.persistence
 
 import com.daycare.api.domain.InvitationStatus
-import com.daycare.api.domain.InstitutionType
+import com.daycare.api.domain.InstitutionTypeCodes
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.ChildEnrollmentStatus
@@ -45,7 +45,14 @@ class Organization(@Id var id: UUID = UUID.randomUUID(), @Column(nullable = fals
 class OrganizationTypeAssignment(
     @Id var id: UUID = UUID.randomUUID(),
     @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
-    @Enumerated(EnumType.STRING) @Column(name = "type_code", nullable = false) var type: InstitutionType = InstitutionType.DAYCARE,
+    @Column(name = "type_code", nullable = false) var type: String = InstitutionTypeCodes.DAYCARE,
+)
+
+@Entity @Table(name = "institution_type_definitions")
+class InstitutionTypeDefinition(
+    @Id @Column(name = "code", nullable = false, updatable = false) var code: String = "",
+    @Column(name = "name", nullable = false) var name: String = "",
+    @Column(name = "active", nullable = false) var active: Boolean = true,
 )
 
 @Entity @Table(name = "academic_years")
@@ -204,6 +211,7 @@ class Membership(
     @Column(name = "branch_id") var branchId: UUID? = null,
     @Column(name = "classroom_id") var classroomId: UUID? = null,
     @Column(nullable = false) var active: Boolean = true,
+    @Column(name = "primary_staff_admin", nullable = false) var primaryStaffAdmin: Boolean = false,
     @Column(name = "can_manage_child_programs", nullable = false) var canManageChildPrograms: Boolean = false,
     @Column(name = "can_manage_development_categories", nullable = false) var canManageDevelopmentCategories: Boolean = false,
 )

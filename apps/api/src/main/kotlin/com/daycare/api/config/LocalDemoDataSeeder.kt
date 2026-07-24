@@ -81,9 +81,9 @@ class LocalDemoDataSeeder(
 
         organizations.saveAll(listOf(Organization(id = tenant, name = "Daycare Pelangi"), Organization(id = pendingTenant, name = "PAUD Mentari"), Organization(id = trialTenant, name = "TK Angkasa")))
         organizationTypes.saveAll(listOf(
-            OrganizationTypeAssignment(id = id("type-daycare"), organizationId = tenant, type = InstitutionType.DAYCARE),
-            OrganizationTypeAssignment(id = id("type-paud"), organizationId = pendingTenant, type = InstitutionType.PAUD),
-            OrganizationTypeAssignment(id = id("type-tk"), organizationId = trialTenant, type = InstitutionType.TK),
+            OrganizationTypeAssignment(id = id("type-daycare"), organizationId = tenant, type = InstitutionTypeCodes.DAYCARE),
+            OrganizationTypeAssignment(id = id("type-paud"), organizationId = pendingTenant, type = InstitutionTypeCodes.PAUD),
+            OrganizationTypeAssignment(id = id("type-tk"), organizationId = trialTenant, type = InstitutionTypeCodes.TK),
         ))
         branches.saveAll(listOf(
             Branch(id = branch, organizationId = tenant, name = "Cabang Kemang", primary = true),

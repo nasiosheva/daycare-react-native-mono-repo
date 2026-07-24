@@ -132,7 +132,10 @@ class AdministrationService(
         require(scope.user.id != userId) { "You cannot deactivate your own tenant access" }
         val membership = memberships.findAllByUserIdAndOrganizationId(userId, organizationId).firstOrNull { it.active && it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }
             ?: throw IllegalArgumentException("Only active Staff Admin or Staff users in this tenant can be deactivated")
-        if (membership.role == Role.STAFF_ADMIN) require(membershipsFor(organizationId).count { it.active && it.role == Role.STAFF_ADMIN } > 1) { "At least one active Staff Admin is required" }
+        if (membership.role == Role.STAFF_ADMIN) {
+            require(!membership.primaryStaffAdmin) { "Primary Staff Admin cannot be removed" }
+            require(membershipsFor(organizationId).count { it.active && it.role == Role.STAFF_ADMIN } > 1) { "At least one active Staff Admin is required" }
+        }
         membership.active = false
     }
 

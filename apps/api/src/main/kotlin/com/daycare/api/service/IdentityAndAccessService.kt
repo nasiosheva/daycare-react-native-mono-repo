@@ -2,7 +2,6 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.InstitutionCapability
-import com.daycare.api.domain.InstitutionType
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.TenantSubscriptionStatus
@@ -47,7 +46,7 @@ class IdentityService(
     }
 }
 
-data class AccessScope(val user: UserProfile, val membership: Membership, val institutionTypes: Set<InstitutionType>, val capabilities: Set<InstitutionCapability>)
+data class AccessScope(val user: UserProfile, val membership: Membership, val institutionTypes: Set<String>, val capabilities: Set<InstitutionCapability>)
 
 @Service
 class AccessService(
@@ -108,5 +107,5 @@ class PlatformAccessService(
     }
 }
 
-data class MembershipResponse(val organizationId: UUID, val organizationName: String, val role: Role, val active: Boolean, val branchId: UUID?, val classroomId: UUID?, val canManageChildPrograms: Boolean, val canManageDevelopmentCategories: Boolean, val institutionTypes: Set<InstitutionType>, val capabilities: Set<InstitutionCapability>)
+data class MembershipResponse(val organizationId: UUID, val organizationName: String, val role: Role, val active: Boolean, val branchId: UUID?, val classroomId: UUID?, val canManageChildPrograms: Boolean, val canManageDevelopmentCategories: Boolean, val institutionTypes: Set<String>, val capabilities: Set<InstitutionCapability>)
 data class CurrentUserResponse(val id: UUID, val displayName: String, val registrationRole: RegistrationRole?, val isPlatformAdmin: Boolean, val memberships: List<MembershipResponse>)

@@ -26,10 +26,16 @@ enum class PushNotificationMuteDuration { ONE_HOUR, ONE_WEEK, ONE_MONTH }
 enum class TenantSubscriptionPlan { STARTER, STANDARD, PREMIUM }
 enum class TenantSubscriptionStatus { TRIAL, PENDING_PAYMENT, ACTIVE, SUSPENDED, EXPIRED }
 enum class TenantPaymentStatus { PENDING, PAID, VOID }
-enum class InstitutionType { DAYCARE, PAUD, TK }
 enum class InstitutionCapability { DAYCARE_OPERATIONS, ACADEMIC_CURRICULUM }
 
-fun institutionCapabilities(types: Set<InstitutionType>): Set<InstitutionCapability> = buildSet {
-    if (InstitutionType.DAYCARE in types) add(InstitutionCapability.DAYCARE_OPERATIONS)
-    if (InstitutionType.PAUD in types || InstitutionType.TK in types) add(InstitutionCapability.ACADEMIC_CURRICULUM)
+object InstitutionTypeCodes {
+    const val DAYCARE = "DAYCARE"
+    const val PAUD = "PAUD"
+    const val TK = "TK"
+    val builtIn = setOf(DAYCARE, PAUD, TK)
+}
+
+fun institutionCapabilities(types: Set<String>): Set<InstitutionCapability> = buildSet {
+    if (InstitutionTypeCodes.DAYCARE in types) add(InstitutionCapability.DAYCARE_OPERATIONS)
+    if (InstitutionTypeCodes.PAUD in types || InstitutionTypeCodes.TK in types) add(InstitutionCapability.ACADEMIC_CURRICULUM)
 }

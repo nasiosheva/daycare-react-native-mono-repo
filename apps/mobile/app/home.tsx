@@ -4,16 +4,17 @@ import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AppText, Button, colors, FloatingActionButton, NavigationCard, radius, spacing } from "@daycare/ui";
+import { AppText, Button, colors, NavigationCard, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren } from "@/attendance/useAttendance";
 import { useBookings, useEntitlements, useInvoices } from "@/booking/useBooking";
 import { createStaffAdminSummary } from "@/home/staffAdminSummary";
 import { AppScreen } from "@/navigation/AppScreen";
-import { can, hasInstitutionCapability } from "@daycare/core";
+import { hasInstitutionCapability } from "@daycare/core";
 import { useI18n } from "@/i18n/I18nProvider";
-import { roleKey, tenantPaymentStatusKey, tenantSubscriptionPlanKey } from "@/i18n/translations";
+import { tenantPaymentStatusKey, tenantSubscriptionPlanKey } from "@/i18n/translations";
 import { useStaffDailyTasks } from "@/home/useStaffDailyTasks";
+import { createParentHomeSummary } from "@/home/parentHomeSummary";
 import { authErrorMessage } from "@/auth/authErrorMessage";
 import { unreadNotificationBadge, unreadNotificationCount } from "@/notifications/unreadBadge";
 
@@ -34,17 +35,7 @@ export default function HomeScreen() {
   const isStaff = membership.role === "STAFF";
   if (isStaffAdmin) return <StaffAdminHome displayName={profile.displayName} organizationName={membership.organizationName} hasDaycareOperations={hasDaycareOperations} isSimulationSession={isSimulationSession} />;
   if (isStaff) return <StaffHome displayName={profile.displayName} organizationName={membership.organizationName} isSimulationSession={isSimulationSession} managedChildren={staffChildren} tasksByChildId={staffDailyTasks} />;
-  return <AppScreen><View style={styles.content}>
-    <><AppText variant="title">{t("home.greeting", { name: profile.displayName })}</AppText><AppText tone="muted">{membership.organizationName} · {t(roleKey(membership.role))}</AppText></>
-    {isSimulationSession && <AppText variant="caption" tone="muted">{t("home.simulation")}</AppText>}
-    {can(membership.role, "manageChildren") && <Button variant="secondary" onPress={() => router.push("/children")}>{t("children.title")}</Button>}
-    {can(membership.role, "viewChildDevelopment") && <Button variant="secondary" onPress={() => router.push("/development")}>{t("development.title")}</Button>}
-    {can(membership.role, "viewOwnChildren") && <Button onPress={() => router.push("/parent-qr")}>{t("qr.title")}</Button>}
-    {["STAFF_ADMIN", "STAFF"].includes(membership.role) && <Button variant="secondary" onPress={() => router.push("/academic")}>{t("nav.academic")}</Button>}
-    {hasDaycareOperations && can(membership.role, "bookServices") && <Button onPress={() => router.push("/booking")}>{t("booking.title")}</Button>}
-    {membership.role === "PARENT" && <Button variant="secondary" onPress={() => router.push("/parent-enrollment" as never)}>{t("parentEnrollment.manageTenants")}</Button>}
-    {!isStaffAdmin && hasDaycareOperations && can(membership.role, "approveBookings") && <Button onPress={() => router.push("/booking-approvals")}>{t("home.bookingApprovals")}</Button>}
-  </View></AppScreen>;
+  return <ParentHome displayName={profile.displayName} organizationName={membership.organizationName} hasDaycareOperations={hasDaycareOperations} isSimulationSession={isSimulationSession} />;
 }
 
 function ProfileLoadFailure({ error }: { error: Error }) {
@@ -76,6 +67,53 @@ function StaffHome({ displayName, organizationName, isSimulationSession, managed
       </NavigationCard>;
     })}
     {!managedChildren.isLoading && managedChildren.data?.length === 0 && <AppText tone="muted">{t("home.noManagedChildren")}</AppText>}
+  </View></AppScreen>;
+}
+
+function ParentHome({ displayName, organizationName, hasDaycareOperations, isSimulationSession }: { displayName: string; organizationName: string; hasDaycareOperations: boolean; isSimulationSession: boolean }) {
+  const router = useRouter();
+  const { t, formatCurrency, formatDate } = useI18n();
+  const canLoadData = !isSimulationSession;
+  const children = useChildren(canLoadData);
+  const entitlements = useEntitlements(canLoadData && hasDaycareOperations);
+  const invoices = useInvoices(canLoadData && hasDaycareOperations);
+  const summary = createParentHomeSummary(children.data ?? [], entitlements.data ?? [], invoices.data ?? []);
+  const childrenUnavailable = isSimulationSession || children.isLoading || children.isError;
+  const servicesUnavailable = hasDaycareOperations && (entitlements.isLoading || entitlements.isError);
+  const paymentsUnavailable = isSimulationSession || invoices.isLoading || invoices.isError;
+
+  return <AppScreen><View style={styles.content}>
+    <AppText variant="title">{t("home.greeting", { name: displayName })}</AppText>
+    <AppText tone="muted">{organizationName} · {t("role.PARENT")}</AppText>
+    {isSimulationSession && <AppText variant="caption" tone="muted">{t("home.simulation")}</AppText>}
+    <SummarySection title={t("home.parentChildren")}>
+      {!isSimulationSession && children.isLoading && <AppText tone="muted">{t("home.parentSummaryLoading")}</AppText>}
+      {!isSimulationSession && children.isError && <Button variant="secondary" onPress={() => children.refetch()}>{t("common.retry")}</Button>}
+      {!childrenUnavailable && summary.children.map(({ child, activeEntitlements }) => <View key={child.id} style={styles.parentCard}>
+        <AppText variant="heading">{child.fullName}</AppText>
+        <AppText tone="muted">{t(child.todayCheckedOutAt ? "attendance.statusCheckedOut" : child.todayCheckedInAt ? "attendance.statusCheckedIn" : "attendance.statusNotYet")}</AppText>
+        {hasDaycareOperations && (servicesUnavailable ? <AppText variant="caption" tone="muted">{t("home.parentSummaryLoading")}</AppText> : <>{activeEntitlements.length === 0 && <AppText variant="caption" tone="muted">{t("home.parentNoActiveServices")}</AppText>}{activeEntitlements.map((entitlement) => <View key={entitlement.id} style={styles.parentService}>
+          <AppText variant="label">{entitlement.planName}</AppText>
+          <AppText variant="caption" tone="muted">{entitlement.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: entitlement.remainingCredits })} · {t("booking.validUntil", { date: formatDate(entitlement.validUntil) })}</AppText>
+        </View>)}</>)}
+        <View style={styles.parentActions}>
+          <Button variant="secondary" onPress={() => router.push({ pathname: "/development", params: { childId: child.id } })}>{t("development.title")}</Button>
+          <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-qr", params: { childId: child.id } })}>{t("qr.title")}</Button>
+        </View>
+      </View>)}
+      {!childrenUnavailable && summary.children.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
+    </SummarySection>
+    {hasDaycareOperations && <SummarySection title={t("home.parentPayments")}>
+      {!isSimulationSession && invoices.isLoading && <AppText tone="muted">{t("home.parentSummaryLoading")}</AppText>}
+      {!isSimulationSession && invoices.isError && <Button variant="secondary" onPress={() => invoices.refetch()}>{t("common.retry")}</Button>}
+      {!paymentsUnavailable && summary.actionableInvoices.map((invoice) => <View key={invoice.id} style={styles.parentCard}>
+        <AppText variant="heading">{invoice.invoiceNumber}</AppText>
+        <AppText>{invoice.childName} · {formatCurrency(invoice.totalAmount)}</AppText>
+        <AppText tone="muted">{t(`status.${invoice.status}` as Parameters<typeof t>[0])} · {t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>
+        {invoice.status === "PENDING" ? <Button onPress={() => router.push({ pathname: "/payment-proof", params: { invoiceId: invoice.id } })}>{t("paymentProof.submit")}</Button> : <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
+      </View>)}
+      {!paymentsUnavailable && summary.actionableInvoices.length === 0 && <AppText tone="muted">{t("home.noActionablePayments")}</AppText>}
+    </SummarySection>}
   </View></AppScreen>;
 }
 
@@ -151,7 +189,7 @@ function PlatformAdminHome() {
   const activeTenants = tenants.data?.filter((tenant) => tenant.subscriptionStatus === "ACTIVE") ?? [];
   const pendingTenants = tenants.data?.filter((tenant) => tenant.subscriptionStatus === "PENDING_PAYMENT") ?? [];
 
-  return <AppScreen floatingAction={<FloatingActionButton accessibilityLabel={t("home.addTenant")} onPress={() => router.push("/add-tenant")}>+ {t("home.addTenant")}</FloatingActionButton>}><View style={styles.content}>
+  return <AppScreen><View style={styles.content}>
     <AppText variant="title">{t("home.platformAdmin")}</AppText>
     <AppText tone="muted">{t("home.platformSubtitle")}</AppText>
     <Button variant="secondary" onPress={() => router.push("/global-curriculum")}>{t("globalCurriculum.menu")}</Button>
@@ -191,6 +229,9 @@ const styles = StyleSheet.create({
   summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   summaryCard: { flexGrow: 1, minWidth: 150, gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTint },
   summaryCardPressed: { opacity: 0.76 },
+  parentCard: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  parentService: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
+  parentActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   section: { gap: spacing.sm },
   tenant: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
 });

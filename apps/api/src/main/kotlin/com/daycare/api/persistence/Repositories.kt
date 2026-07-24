@@ -12,7 +12,8 @@ import java.util.UUID
 interface UserProfileRepository : JpaRepository<UserProfile, UUID> { fun findByFirebaseUid(firebaseUid: String): UserProfile?; fun findByEmailIgnoreCase(email: String): UserProfile?; fun findByUsernameIgnoreCase(username: String): UserProfile? }
 interface MembershipRepository : JpaRepository<Membership, UUID> { fun findAllByUserIdAndOrganizationId(userId: UUID, organizationId: UUID): List<Membership>; fun findAllByUserId(userId: UUID): List<Membership>; fun findAllByOrganizationId(organizationId: UUID): List<Membership> }
 interface OrganizationRepository : JpaRepository<Organization, UUID>
-interface OrganizationTypeAssignmentRepository : JpaRepository<OrganizationTypeAssignment, UUID> { fun findAllByOrganizationId(organizationId: UUID): List<OrganizationTypeAssignment> }
+interface OrganizationTypeAssignmentRepository : JpaRepository<OrganizationTypeAssignment, UUID> { fun findAllByOrganizationId(organizationId: UUID): List<OrganizationTypeAssignment>; fun existsByType(type: String): Boolean }
+interface InstitutionTypeDefinitionRepository : JpaRepository<InstitutionTypeDefinition, String> { fun findAllByActiveTrueOrderByNameAsc(): List<InstitutionTypeDefinition>; fun existsByNameIgnoreCase(name: String): Boolean; fun findByNameIgnoreCase(name: String): InstitutionTypeDefinition? }
 interface AcademicYearRepository : JpaRepository<AcademicYear, UUID> { fun findAllByOrganizationIdOrderByStartsOnDesc(organizationId: UUID): List<AcademicYear> }
 interface CurriculumProgramRepository : JpaRepository<CurriculumProgram, UUID> {
     fun findAllByOrganizationIdOrderByNameAsc(organizationId: UUID): List<CurriculumProgram>

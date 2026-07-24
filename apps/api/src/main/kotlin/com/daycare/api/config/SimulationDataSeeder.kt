@@ -5,7 +5,7 @@ import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.Gender
 import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.InvoiceStatus
-import com.daycare.api.domain.InstitutionType
+import com.daycare.api.domain.InstitutionTypeCodes
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.ServicePlanType
@@ -121,9 +121,9 @@ class SimulationDataSeeder(
             Organization(id = Ids.trialTenant, name = "Daycare Angkasa"),
         ))
         organizationTypes.saveAll(listOf(
-            OrganizationTypeAssignment(id = Ids.activeTenantType, organizationId = Ids.activeTenant, type = InstitutionType.DAYCARE),
-            OrganizationTypeAssignment(id = Ids.pendingTenantType, organizationId = Ids.pendingTenant, type = InstitutionType.PAUD),
-            OrganizationTypeAssignment(id = Ids.trialTenantType, organizationId = Ids.trialTenant, type = InstitutionType.TK),
+            OrganizationTypeAssignment(id = Ids.activeTenantType, organizationId = Ids.activeTenant, type = InstitutionTypeCodes.DAYCARE),
+            OrganizationTypeAssignment(id = Ids.pendingTenantType, organizationId = Ids.pendingTenant, type = InstitutionTypeCodes.PAUD),
+            OrganizationTypeAssignment(id = Ids.trialTenantType, organizationId = Ids.trialTenant, type = InstitutionTypeCodes.TK),
         ))
         academicYears.save(AcademicYear(id = Ids.paudAcademicYear, organizationId = Ids.pendingTenant, name = "${academicYearStart.year}/${academicYearEnd.year}", startsOn = academicYearStart, endsOn = academicYearEnd))
         curriculumPrograms.save(CurriculumProgram(id = Ids.paudCurriculum, organizationId = Ids.pendingTenant, academicYearId = Ids.paudAcademicYear, name = "Kurikulum PAUD 2026/2027", description = "Program pembelajaran fondasi untuk kelompok usia dini."))

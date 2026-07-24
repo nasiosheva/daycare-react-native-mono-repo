@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Button, colors, FloatingActionButton, radius, spacing } from "@daycare/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { tenantSubscriptionStatuses, type TenantSubscriptionStatus } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
@@ -16,30 +16,39 @@ export default function PlatformTenantsScreen() {
   const { t, formatCurrency, formatDate } = useI18n();
   const queryClient = useQueryClient();
   const tenants = useQuery({ queryKey: ["platform-tenants"], queryFn: () => api.tenants(), enabled: Boolean(profile?.isPlatformAdmin) });
+  const institutionTypes = useQuery({ queryKey: ["platform-institution-types"], queryFn: () => api.institutionTypes(), enabled: Boolean(profile?.isPlatformAdmin) });
   const markPaymentPaid = useMutation({ mutationFn: ({ organizationId, paymentId }: { organizationId: string; paymentId: string }) => api.markTenantPaymentPaid(organizationId, paymentId), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["platform-tenants"] }) });
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<TenantSubscriptionStatus | null>(null);
+  const [institutionType, setInstitutionType] = useState<string | null>(null);
+  const institutionTypeNames = useMemo(() => new Map(institutionTypes.data?.map((type) => [type.code, type.name])), [institutionTypes.data]);
   const visibleTenants = useMemo(() => tenants.data?.filter((tenant) => {
     const query = search.trim().toLowerCase();
-    const matchesSearch = !query || [tenant.name, tenant.staffAdmin?.email, tenant.staffAdmin?.displayName, ...tenant.institutionTypes].filter(Boolean).some((value) => value!.toLowerCase().includes(query));
-    return matchesSearch && (!status || tenant.subscriptionStatus === status);
-  }) ?? [], [search, status, tenants.data]);
+    const matchesSearch = !query || [tenant.name, tenant.staffAdmin?.email, tenant.staffAdmin?.displayName, ...tenant.institutionTypes.map((type) => institutionTypeNames.get(type) ?? type)].filter(Boolean).some((value) => value!.toLowerCase().includes(query));
+    return matchesSearch && (!status || tenant.subscriptionStatus === status) && (!institutionType || tenant.institutionTypes.includes(institutionType));
+  }) ?? [], [search, status, institutionType, tenants.data, institutionTypeNames]);
   if (!profile) return null;
   if (!profile.isPlatformAdmin) return <Redirect href="/home" />;
 
-  return <AppScreen><AppText variant="title">{t("tenant.title")}</AppText>
+  return <AppScreen floatingAction={<FloatingActionButton accessibilityLabel={t("institutionCatalog.add")} onPress={() => router.push("/institution-types")}>+ {t("institutionCatalog.add")}</FloatingActionButton>}><AppText variant="title">{t("tenant.title")}</AppText>
     <AppText variant="heading">{t("tenant.list")}</AppText>
     <TextInput style={styles.input} placeholder={t("tenant.search")} value={search} onChangeText={setSearch} />
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+    <AppText variant="label">{t("tenant.filterStatus")}</AppText>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
       <StatusTab label={t("tenant.filterAll")} selected={!status} onPress={() => setStatus(null)} />
       {tenantSubscriptionStatuses.map((item) => <StatusTab key={item} label={t(tenantSubscriptionFilterKey(item))} selected={status === item} onPress={() => setStatus(item)} />)}
+    </ScrollView>
+    <AppText variant="label">{t("tenant.institutionTypes")}</AppText>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
+      <StatusTab label={t("tenant.filterAll")} selected={!institutionType} onPress={() => setInstitutionType(null)} />
+      {institutionTypes.data?.map((item) => <StatusTab key={item.code} label={item.name} selected={institutionType === item.code} onPress={() => setInstitutionType(item.code)} />)}
     </ScrollView>
     {tenants.isLoading && <AppText>{t("tenant.load")}</AppText>}
     {tenants.isError && <Button variant="secondary" onPress={() => tenants.refetch()}>{t("tenant.reload")}</Button>}
     {!tenants.isLoading && !tenants.isError && visibleTenants.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     {visibleTenants.map((tenant) => <View key={tenant.id} style={styles.card}>
       <AppText variant="heading">{tenant.name}</AppText>
-      <AppText tone="muted">{tenant.institutionTypes.join(" + ")}</AppText>
+      <AppText tone="muted">{tenant.institutionTypes.map((type) => institutionTypeNames.get(type) ?? type).join(" + ")}</AppText>
       <AppText tone="muted">{tenant.subscriptionPlan ? t(tenantSubscriptionPlanKey(tenant.subscriptionPlan)) : t("tenant.noSubscription")} · {tenant.subscriptionStatus ? t(tenantSubscriptionStatusKey(tenant.subscriptionStatus)) : t("tenant.noStatus")}</AppText>
       {tenant.staffAdmin && <AppText variant="caption" tone="muted">{t("tenant.staffAdmin")} · {tenant.staffAdmin.email ?? tenant.staffAdmin.displayName ?? t("common.noData")}</AppText>}
       {tenant.trialEndsAt && <AppText variant="caption" tone="muted">{t("tenant.trialUntil", { date: formatDate(tenant.trialEndsAt) })}</AppText>}
@@ -61,6 +70,7 @@ function StatusTab({ label, selected, onPress }: { label: string; selected: bool
 
 const styles = StyleSheet.create({
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  tabsScroll: { flexGrow: 0, flexShrink: 0 },
   tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" },
   activeTab: { borderBottomColor: colors.primary },

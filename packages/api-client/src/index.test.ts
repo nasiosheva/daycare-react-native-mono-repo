@@ -52,6 +52,22 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/tenant-users/staff-id/child-program-permission", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ canManageChildPrograms: true }) }));
   });
 
+  it("lists and creates Platform-managed institution types", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
+
+    await client.institutionTypes();
+    await client.createInstitutionType({ name: "Taman Bermain" });
+    await client.updateInstitutionType("TAMAN_BERMAIN", { name: "Kelompok Bermain" });
+    await client.deleteInstitutionType("TAMAN_BERMAIN");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types", expect.anything());
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types", expect.objectContaining({ method: "POST", body: JSON.stringify({ name: "Taman Bermain" }) }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types/TAMAN_BERMAIN", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ name: "Kelompok Bermain" }) }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types/TAMAN_BERMAIN", expect.objectContaining({ method: "DELETE" }));
+  });
+
   it("updates a native device push-notification mute preference", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);

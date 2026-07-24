@@ -13,7 +13,7 @@ export function Screen({ children, title, header, headerAction, footer, floating
       <AppText variant="heading" numberOfLines={1} style={styles.title}>{title ?? "Umur Emas"}</AppText>
       {headerAction && <View style={styles.headerAction}>{headerAction}</View>}
     </View>}
-    <ScrollView contentContainerStyle={styles.content}>{children}</ScrollView>
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>{children}</ScrollView>
     {floatingAction && <View pointerEvents="box-none" style={[styles.floatingAction, footer ? styles.floatingActionWithFooter : undefined]}>{floatingAction}</View>}
     {footer && <View style={styles.footer}>{footer}</View>}
   </SafeAreaView>;
@@ -25,6 +25,7 @@ const styles = StyleSheet.create({
   leading: { flexShrink: 0 },
   title: { flex: 1 },
   headerAction: { flexShrink: 0 },
+  scroll: { flex: 1 },
   content: { flexGrow: 1, padding: spacing.md, gap: spacing.md, width: "100%", maxWidth: 1080, alignSelf: "center" },
   floatingAction: { position: "absolute", right: spacing.md, bottom: spacing.md },
   floatingActionWithFooter: { bottom: 76 },

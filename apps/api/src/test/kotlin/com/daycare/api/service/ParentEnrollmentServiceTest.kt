@@ -4,7 +4,7 @@ import com.daycare.api.domain.ChildEnrollmentStatus
 import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.Gender
 import com.daycare.api.domain.InstitutionCapability
-import com.daycare.api.domain.InstitutionType
+import com.daycare.api.domain.InstitutionTypeCodes
 import com.daycare.api.domain.InvoiceStatus
 import com.daycare.api.domain.ServicePlanType
 import com.daycare.api.domain.TenantSubscriptionStatus
@@ -75,8 +75,8 @@ class ParentEnrollmentServiceTest {
         `when`(memberships.findAllByUserIdAndOrganizationId(parent.id, additionalOrganizationId)).thenReturn(emptyList())
         `when`(subscriptions.findByOrganizationId(organizationId)).thenReturn(TenantSubscription(organizationId = organizationId, status = TenantSubscriptionStatus.ACTIVE))
         `when`(subscriptions.findByOrganizationId(additionalOrganizationId)).thenReturn(TenantSubscription(organizationId = additionalOrganizationId, status = TenantSubscriptionStatus.ACTIVE))
-        `when`(capabilities.forOrganization(organizationId)).thenReturn(OrganizationCapabilities(setOf(InstitutionType.DAYCARE), setOf(InstitutionCapability.DAYCARE_OPERATIONS)))
-        `when`(capabilities.forOrganization(additionalOrganizationId)).thenReturn(OrganizationCapabilities(setOf(InstitutionType.DAYCARE), setOf(InstitutionCapability.DAYCARE_OPERATIONS)))
+        `when`(capabilities.forOrganization(organizationId)).thenReturn(OrganizationCapabilities(setOf(InstitutionTypeCodes.DAYCARE), setOf(InstitutionCapability.DAYCARE_OPERATIONS)))
+        `when`(capabilities.forOrganization(additionalOrganizationId)).thenReturn(OrganizationCapabilities(setOf(InstitutionTypeCodes.DAYCARE), setOf(InstitutionCapability.DAYCARE_OPERATIONS)))
         `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
         `when`(branches.findById(additionalBranch.id)).thenReturn(Optional.of(additionalBranch))
         `when`(children.save(any(Child::class.java))).thenReturn(firstChild, secondChild, thirdChild)

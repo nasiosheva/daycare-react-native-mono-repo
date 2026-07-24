@@ -2,7 +2,7 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.InstitutionCapability
-import com.daycare.api.domain.InstitutionType
+import com.daycare.api.domain.InstitutionTypeCodes
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.TenantPaymentStatus
 import com.daycare.api.domain.TenantSubscriptionPlan
@@ -42,7 +42,7 @@ import java.util.UUID
 data class CreateTenantRequest(
     @field:NotBlank @field:Size(max = 200) val tenantName: String,
     @field:NotBlank @field:Size(max = 200) val branchName: String,
-    val institutionTypes: Set<InstitutionType>?,
+    val institutionTypes: Set<String>?,
     val subscriptionPlan: TenantSubscriptionPlan,
     @field:DecimalMin("1") val monthlyFee: BigDecimal?,
     @field:Min(1) @field:Max(12) val trialMonths: Int?,
@@ -52,13 +52,13 @@ data class CreateTenantRequest(
 )
 
 data class TenantPaymentResponse(val id: UUID, val amount: BigDecimal, val status: TenantPaymentStatus, val dueDate: LocalDate, val paidAt: Instant?)
-data class TenantStaffAdminResponse(val id: UUID, val email: String?, val displayName: String?, val status: String)
+data class TenantStaffAdminResponse(val id: UUID, val email: String?, val displayName: String?, val status: String, val primary: Boolean)
 data class TenantResponse(
     val id: UUID,
     val name: String,
     val branchName: String?,
     val branches: List<TenantBranchResponse>,
-    val institutionTypes: Set<InstitutionType>,
+    val institutionTypes: Set<String>,
     val capabilities: Set<InstitutionCapability>,
     val subscriptionPlan: TenantSubscriptionPlan?,
     val subscriptionStatus: TenantSubscriptionStatus?,
@@ -67,15 +67,24 @@ data class TenantResponse(
     val trialEndsAt: LocalDate?,
     val monthlyFee: BigDecimal?,
     val staffAdmin: TenantStaffAdminResponse?,
+    val staffAdmins: List<TenantStaffAdminResponse>,
     val payments: List<TenantPaymentResponse>,
 )
 data class UpdateTenantRequest(
     @field:NotBlank @field:Size(max = 200) val tenantName: String,
-    val institutionTypes: Set<InstitutionType>,
+    val institutionTypes: Set<String>,
     val subscriptionPlan: TenantSubscriptionPlan,
     @field:DecimalMin("1") val monthlyFee: BigDecimal?,
 )
 data class RenewTenantSubscriptionRequest(@field:DecimalMin("1") val monthlyFee: BigDecimal?)
+data class CreateTenantStaffAdminRequest(
+    @field:NotBlank @field:Size(min = 2, max = 100) val displayName: String,
+    @field:Email @field:NotBlank val email: String,
+    @field:NotBlank @field:Size(min = 6, max = 128) val password: String,
+)
+data class UpdateTenantStaffAdminRequest(
+    @field:NotBlank @field:Size(min = 2, max = 100) val displayName: String,
+)
 data class CreatePlatformAdminRequest(
     @field:Email @field:NotBlank val email: String,
     @field:NotBlank @field:Size(min = 2, max = 100) val username: String,
@@ -97,6 +106,7 @@ class PlatformAdministrationService(
     private val platformAdministrators: PlatformAdministratorRepository,
     private val firebaseAdminIdentity: FirebaseAdminIdentityService,
     private val tenantUserAccounts: TenantUserAccountService,
+    private val institutionTypeCatalog: InstitutionTypeCatalogService,
 ) {
     @Transactional
     fun tenants(jwt: Jwt): List<TenantResponse> {
@@ -114,7 +124,8 @@ class PlatformAdministrationService(
     fun createTenant(jwt: Jwt, request: CreateTenantRequest): TenantResponse {
         platformAccess.requirePlatformAdmin(jwt)
         val organization = organizations.save(Organization(name = request.tenantName.trim()))
-        val institutionTypes = request.institutionTypes?.takeIf { it.isNotEmpty() } ?: setOf(InstitutionType.DAYCARE)
+        val institutionTypes = request.institutionTypes?.takeIf { it.isNotEmpty() } ?: setOf(InstitutionTypeCodes.DAYCARE)
+        institutionTypeCatalog.requireActiveCodes(institutionTypes)
         organizationTypes.saveAll(institutionTypes.map { type -> OrganizationTypeAssignment(organizationId = organization.id, type = type) })
         branches.save(Branch(organizationId = organization.id, name = request.branchName.trim(), primary = true))
         val today = LocalDate.now()
@@ -133,20 +144,54 @@ class PlatformAdministrationService(
         ))
         if (!isTrial) payments.save(TenantPayment(subscriptionId = subscription.id, organizationId = organization.id, amount = request.monthlyFee!!, dueDate = today))
         val staffAdmin = tenantUserAccounts.create(request.staffAdminName, request.staffAdminEmail, request.staffAdminPassword)
-        memberships.save(Membership(userId = staffAdmin.id, organizationId = organization.id, role = Role.STAFF_ADMIN))
+        memberships.save(Membership(userId = staffAdmin.id, organizationId = organization.id, role = Role.STAFF_ADMIN, primaryStaffAdmin = true))
+        return tenantResponse(organization)
+    }
+
+    @Transactional
+    fun createTenantStaffAdmin(jwt: Jwt, organizationId: UUID, request: CreateTenantStaffAdminRequest): TenantResponse {
+        platformAccess.requirePlatformAdmin(jwt)
+        val organization = requireOrganization(organizationId)
+        val user = tenantUserAccounts.create(request.displayName, request.email, request.password)
+        memberships.save(Membership(userId = user.id, organizationId = organizationId, role = Role.STAFF_ADMIN))
+        return tenantResponse(organization)
+    }
+
+    @Transactional
+    fun removeTenantStaffAdmin(jwt: Jwt, organizationId: UUID, membershipId: UUID): TenantResponse {
+        platformAccess.requirePlatformAdmin(jwt)
+        val organization = requireOrganization(organizationId)
+        val membership = memberships.findById(membershipId).orElseThrow { IllegalArgumentException("Staff Admin account was not found") }
+        require(membership.organizationId == organizationId && membership.role == Role.STAFF_ADMIN) { "Staff Admin account was not found" }
+        require(!membership.primaryStaffAdmin) { "Primary Staff Admin cannot be removed" }
+        membership.active = false
+        return tenantResponse(organization)
+    }
+
+    @Transactional
+    fun updateTenantStaffAdmin(jwt: Jwt, organizationId: UUID, membershipId: UUID, request: UpdateTenantStaffAdminRequest): TenantResponse {
+        platformAccess.requirePlatformAdmin(jwt)
+        val organization = requireOrganization(organizationId)
+        val membership = memberships.findById(membershipId).orElseThrow { IllegalArgumentException("Staff Admin account was not found") }
+        require(membership.organizationId == organizationId && membership.role == Role.STAFF_ADMIN) { "Staff Admin account was not found" }
+        require(!membership.primaryStaffAdmin) { "Primary Staff Admin cannot be edited" }
+        val user = users.findById(membership.userId).orElseThrow { IllegalArgumentException("Staff Admin account was not found") }
+        user.displayName = request.displayName.trim()
         return tenantResponse(organization)
     }
 
     @Transactional
     fun updateTenant(jwt: Jwt, organizationId: UUID, request: UpdateTenantRequest): TenantResponse {
         platformAccess.requirePlatformAdmin(jwt)
-        require(request.institutionTypes.isNotEmpty()) { "At least one institution type is required" }
+        institutionTypeCatalog.requireActiveCodes(request.institutionTypes)
         val organization = requireOrganization(organizationId)
+        val subscription = subscriptions.findByOrganizationId(organizationId)
+        require(subscription?.status != TenantSubscriptionStatus.TRIAL || request.monthlyFee == null) { "Monthly fee must not be set when tenant uses a trial" }
         organization.name = request.tenantName.trim()
         organizationTypes.deleteAll(organizationTypes.findAllByOrganizationId(organizationId))
         organizationTypes.flush()
         organizationTypes.saveAll(request.institutionTypes.map { OrganizationTypeAssignment(organizationId = organizationId, type = it) })
-        subscriptions.findByOrganizationId(organizationId)?.let { subscription ->
+        subscription?.let {
             subscription.plan = request.subscriptionPlan
             if (request.monthlyFee != null) subscription.monthlyFee = request.monthlyFee
         }
@@ -241,14 +286,19 @@ class PlatformAdministrationService(
         if (subscription?.status == TenantSubscriptionStatus.TRIAL && subscription.trialEndsAt?.isBefore(LocalDate.now()) == true) subscription.status = TenantSubscriptionStatus.PENDING_PAYMENT
         if (subscription?.status == TenantSubscriptionStatus.ACTIVE && subscription.periodEnd.isBefore(LocalDate.now())) subscription.status = TenantSubscriptionStatus.EXPIRED
         val capabilities = organizationCapabilities.forOrganization(organization.id)
-        val activeStaffAdmin = memberships.findAllByOrganizationId(organization.id).firstOrNull { it.active && it.role == Role.STAFF_ADMIN }?.let { membership ->
-            users.findById(membership.userId).orElse(null)?.let { user -> TenantStaffAdminResponse(membership.id, user.email, user.displayName, "ACTIVE") }
+        val staffAdminMemberships = memberships.findAllByOrganizationId(organization.id)
+            .filter { it.role == Role.STAFF_ADMIN }
+            .sortedWith(compareByDescending<Membership> { it.primaryStaffAdmin }.thenBy { it.userId })
+        val staffAdmins = staffAdminMemberships.map { membership ->
+            val user = users.findById(membership.userId).orElse(null)
+            TenantStaffAdminResponse(membership.id, user?.email, user?.displayName, if (membership.active) "ACTIVE" else "INACTIVE", membership.primaryStaffAdmin)
         }
+        val activeStaffAdmin = staffAdmins.firstOrNull { it.status == "ACTIVE" }
         val pendingStaffAdmin = invitations.findAllByOrganizationIdAndStatus(organization.id, InvitationStatus.PENDING)
             .firstOrNull { it.role == Role.STAFF_ADMIN }
-            ?.let { invitation -> TenantStaffAdminResponse(invitation.id, invitation.email ?: invitation.phoneNumber, null, "PENDING") }
+            ?.let { invitation -> TenantStaffAdminResponse(invitation.id, invitation.email ?: invitation.phoneNumber, null, "PENDING", true) }
         val tenantBranches = branches.findAllByOrganizationId(organization.id).sortedWith(compareByDescending<Branch> { it.primary }.thenBy { it.name })
-        return TenantResponse(organization.id, organization.name, tenantBranches.firstOrNull { it.primary }?.name, tenantBranches.map(::branchResponse), capabilities.types, capabilities.capabilities, subscription?.plan, subscription?.status, subscription?.periodStart, subscription?.periodEnd, subscription?.trialEndsAt, subscription?.monthlyFee, activeStaffAdmin ?: pendingStaffAdmin, payments.findAllByOrganizationIdOrderByCreatedAtDesc(organization.id).map { TenantPaymentResponse(it.id, it.amount, it.status, it.dueDate, it.paidAt) })
+        return TenantResponse(organization.id, organization.name, tenantBranches.firstOrNull { it.primary }?.name, tenantBranches.map(::branchResponse), capabilities.types, capabilities.capabilities, subscription?.plan, subscription?.status, subscription?.periodStart, subscription?.periodEnd, subscription?.trialEndsAt, subscription?.monthlyFee, activeStaffAdmin ?: pendingStaffAdmin, staffAdmins, payments.findAllByOrganizationIdOrderByCreatedAtDesc(organization.id).map { TenantPaymentResponse(it.id, it.amount, it.status, it.dueDate, it.paidAt) })
     }
 
     private fun requireOrganization(organizationId: UUID) = organizations.findById(organizationId).orElseThrow { IllegalArgumentException("Tenant was not found") }
