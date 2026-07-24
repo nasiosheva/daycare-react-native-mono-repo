@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Platform } from "react-native";
 import type { StaffReminder } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
-import { getReminderInstallationId } from "./installationId";
+import { getDeviceInstallationId } from "@/device/installationId";
 import { reconcileLocalReminderSchedules } from "./localReminderScheduler";
 
 export const staffReminderQueryKey = (organizationId: string | null) => ["staff-reminders", organizationId] as const;
@@ -18,8 +18,8 @@ export function useStaffReminders(enabled = true) {
   return query;
 }
 
-export async function syncLocalSchedules(api: { syncStaffReminderSchedules(input: { installationId: string; schedules: Array<{ reminderId: string; ruleVersion: number; scheduled: boolean }> }): Promise<void> }, organizationId: string, reminders: readonly StaffReminder[]): Promise<void> {
-  const [installationId, schedules] = await Promise.all([getReminderInstallationId(), reconcileLocalReminderSchedules(reminders, organizationId)]);
+export async function syncLocalSchedules(api: { syncStaffReminderSchedules(input: { installationId: string; schedules: { reminderId: string; ruleVersion: number; scheduled: boolean }[] }): Promise<void> }, organizationId: string, reminders: readonly StaffReminder[]): Promise<void> {
+  const [installationId, schedules] = await Promise.all([getDeviceInstallationId(), reconcileLocalReminderSchedules(reminders, organizationId)]);
   await api.syncStaffReminderSchedules({ installationId, schedules });
 }
 

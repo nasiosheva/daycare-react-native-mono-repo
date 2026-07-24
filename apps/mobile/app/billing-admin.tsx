@@ -28,6 +28,7 @@ export default function BillingAdminScreen() {
   const [selectedPlanId, setSelectedPlanId] = useState<string>();
   const [capacityBranchId, setCapacityBranchId] = useState<string>();
   const [capacity, setCapacity] = useState("");
+  const [listSheet, setListSheet] = useState<"plans" | "templates" | "capacity" | "discounts" | "invoices" | null>(null);
   const discounts = useQuery({ queryKey: ["service-plan-discounts", organizationId, selectedPlanId], queryFn: () => api.servicePlanDiscounts(selectedPlanId!), enabled: membership?.role === "STAFF_ADMIN" && Boolean(selectedPlanId) });
   const refreshCapacities = () => { void queryClient.invalidateQueries({ queryKey: ["branch-capacities", organizationId] }); };
   const refreshTemplates = () => { void queryClient.invalidateQueries({ queryKey: ["service-plan-templates", organizationId] }); };
@@ -39,28 +40,59 @@ export default function BillingAdminScreen() {
   if (!profile) return null;
   if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
 
-  const openCapacity = (branchId: string, current?: number | null) => { setCapacityBranchId(branchId); setCapacity(current?.toString() ?? ""); };
+  const openCapacity = (branchId: string, current?: number | null) => { setListSheet(null); setCapacityBranchId(branchId); setCapacity(current?.toString() ?? ""); };
   const saveCapacity = async () => {
     const dailyCapacity = Number(capacity);
     if (!capacityBranchId || !Number.isInteger(dailyCapacity) || dailyCapacity < 1) return Alert.alert(t("billing.invalidCapacity"));
     try { await setBranchCapacity.mutateAsync({ branchId: capacityBranchId, dailyCapacity }); setCapacityBranchId(undefined); } catch (error) { Alert.alert(t("billing.capacityFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
+  const closeListSheet = () => setListSheet(null);
+  const pendingInvoices = invoices.data?.filter((invoice) => invoice.status === "PENDING") ?? [];
 
   return <AppScreen showBottomNavigation={false} title={t("billing.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {!canManage && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     <BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />
-    {canManage && <Button onPress={() => router.push("/billing-plan-editor")}>{t("billing.createPlan")}</Button>}
-    <AppText variant="heading">{t("billing.activePlans")}</AppText>
-    {plans.data?.map((plan) => <View key={plan.id} style={styles.card}><AppText variant="label">{plan.name}</AppText><AppText>{t(servicePlanTypeKey(plan.type))} · {formatCurrency(plan.price)}</AppText></View>)}
-    <AppText variant="heading">{t("billing.templates")}</AppText><AppText tone="muted">{t("billing.templatesDescription")}</AppText>
-    {templates.data?.map((template) => <View key={template.id} style={styles.card}><AppText variant="label">{template.name}</AppText><AppText tone="muted">{t(servicePlanTypeKey(template.type))}{template.suggestedPrice ? ` · ${formatCurrency(template.suggestedPrice)}` : ""}</AppText>{canManage && <View style={styles.row}><Button variant="secondary" onPress={() => router.push({ pathname: "/billing-plan-editor", params: { templateId: template.id } })}>{t("billing.useTemplate")}</Button>{template.source === "TENANT" && <Button variant="secondary" onPress={() => router.push({ pathname: "/billing-plan-editor", params: { mode: "template", templateId: template.id } })}>{t("billing.editTemplate")}</Button>}{template.source === "TENANT" && <Button variant="danger" loading={deleteTemplate.isPending} onPress={() => void deleteTemplate.mutateAsync(template.id)}>{t("billing.deleteTemplate")}</Button>}</View>}</View>)}
-    {canManage && <Button variant="secondary" onPress={() => router.push({ pathname: "/billing-plan-editor", params: { mode: "template" } })}>{t("billing.createTemplate")}</Button>}
-    <AppText variant="heading">{t("billing.branchCapacity")}</AppText><AppText tone="muted">{t("billing.branchCapacityDescription")}</AppText>
-    {branches.data?.filter((branch) => branch.active).map((branch) => { const configured = capacities.data?.find((item) => item.branchId === branch.id)?.dailyCapacity; return <View key={branch.id} style={styles.card}><AppText variant="label">{branch.name}</AppText><AppText tone="muted">{configured ?? "–"}</AppText>{canManage && <Button variant="secondary" onPress={() => openCapacity(branch.id, configured)}>{t("common.edit")}</Button>}</View>; })}
-    <AppText variant="heading">{t("billing.discounts")}</AppText><AppText tone="muted">{t("billing.discountsDescription")}</AppText><View style={styles.row}>{plans.data?.map((plan) => <Button key={plan.id} variant={plan.id === selectedPlanId ? "primary" : "secondary"} onPress={() => setSelectedPlanId(plan.id)}>{plan.name}</Button>)}</View>
-    {canManage && selectedPlanId && <Button variant="secondary" onPress={() => router.push({ pathname: "/billing-discount-editor", params: { planId: selectedPlanId } })}>{t("billing.createDiscount")}</Button>}
-    {discounts.data?.map((discount) => <View key={discount.id} style={styles.card}><AppText variant="label">{discount.name}{discount.promoCode ? ` · ${discount.promoCode}` : ""}</AppText><AppText tone="muted">{discount.type === "PERCENTAGE" ? `${discount.value}%` : formatCurrency(discount.value)} · {discount.active ? t("status.ACTIVE") : t("billing.inactive")}</AppText>{canManage && discount.active && selectedPlanId && <Button variant="danger" loading={deactivateDiscount.isPending} onPress={() => void deactivateDiscount.mutateAsync({ planId: selectedPlanId, discountId: discount.id })}>{t("billing.deactivate")}</Button>}</View>)}
-    <AppText variant="heading">{t("billing.pendingInvoices")}</AppText>{invoices.data?.filter((invoice) => invoice.status === "PENDING").map((invoice) => <View key={invoice.id} style={styles.card}><AppText variant="label">{invoice.invoiceNumber} · {invoice.childName}</AppText><AppText>{formatCurrency(invoice.totalAmount)} · {t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>{canManage && <Button loading={markPaid.isPending} onPress={() => void markPaid.mutateAsync(invoice.id)}>{t("billing.markPaid")}</Button>}</View>)}
+    <View style={styles.row}>
+      <Button variant="secondary" onPress={() => setListSheet("plans")}>{t("billing.activePlans")}</Button>
+      <Button variant="secondary" onPress={() => setListSheet("templates")}>{t("billing.templates")}</Button>
+      <Button variant="secondary" onPress={() => setListSheet("capacity")}>{t("billing.branchCapacity")}</Button>
+      <Button variant="secondary" onPress={() => setListSheet("discounts")}>{t("billing.discounts")}</Button>
+      <Button variant="secondary" onPress={() => setListSheet("invoices")}>{t("billing.pendingInvoices")}</Button>
+    </View>
+
+    <BottomSheet visible={listSheet === "plans"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.activePlans")}>
+      <AppText tone="muted">{t("billing.activePlansDescription")}</AppText>
+      {canManage && <Button onPress={() => router.push("/billing-plan-editor")}>{t("billing.createPlan")}</Button>}
+      {plans.data?.map((plan) => <View key={plan.id} style={styles.card}><AppText variant="label">{plan.name}</AppText><AppText>{t(servicePlanTypeKey(plan.type))} · {formatCurrency(plan.price)}</AppText></View>)}
+      {plans.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+    </BottomSheet>
+
+    <BottomSheet visible={listSheet === "templates"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.templates")}>
+      <AppText tone="muted">{t("billing.templatesDescription")}</AppText>
+      {canManage && <Button onPress={() => router.push({ pathname: "/billing-plan-editor", params: { mode: "template" } })}>{t("billing.createTemplate")}</Button>}
+      {templates.data?.map((template) => <View key={template.id} style={styles.card}><AppText variant="label">{template.name}</AppText><AppText tone="muted">{t(servicePlanTypeKey(template.type))}{template.suggestedPrice ? ` · ${formatCurrency(template.suggestedPrice)}` : ""}</AppText>{canManage && <View style={styles.row}><Button variant="secondary" onPress={() => router.push({ pathname: "/billing-plan-editor", params: { templateId: template.id } })}>{t("billing.useTemplate")}</Button>{template.source === "TENANT" && <Button variant="secondary" onPress={() => router.push({ pathname: "/billing-plan-editor", params: { mode: "template", templateId: template.id } })}>{t("billing.editTemplate")}</Button>}{template.source === "TENANT" && <Button variant="danger" loading={deleteTemplate.isPending} onPress={() => void deleteTemplate.mutateAsync(template.id)}>{t("billing.deleteTemplate")}</Button>}</View>}</View>)}
+      {templates.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+    </BottomSheet>
+
+    <BottomSheet visible={listSheet === "capacity"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.branchCapacity")}>
+      <AppText tone="muted">{t("billing.branchCapacityDescription")}</AppText>
+      {branches.data?.filter((branch) => branch.active).map((branch) => { const configured = capacities.data?.find((item) => item.branchId === branch.id)?.dailyCapacity; return <View key={branch.id} style={styles.card}><AppText variant="label">{branch.name}</AppText><AppText tone="muted">{configured ?? "–"}</AppText>{canManage && <Button variant="secondary" onPress={() => openCapacity(branch.id, configured)}>{t("common.edit")}</Button>}</View>; })}
+    </BottomSheet>
+
+    <BottomSheet visible={listSheet === "discounts"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.discounts")}>
+      <AppText tone="muted">{t("billing.discountsDescription")}</AppText>
+      <View style={styles.row}>{plans.data?.map((plan) => <Button key={plan.id} variant={plan.id === selectedPlanId ? "primary" : "secondary"} onPress={() => setSelectedPlanId(plan.id)}>{plan.name}</Button>)}</View>
+      {canManage && selectedPlanId && <Button variant="secondary" onPress={() => router.push({ pathname: "/billing-discount-editor", params: { planId: selectedPlanId } })}>{t("billing.createDiscount")}</Button>}
+      {discounts.data?.map((discount) => <View key={discount.id} style={styles.card}><AppText variant="label">{discount.name}{discount.promoCode ? ` · ${discount.promoCode}` : ""}</AppText><AppText tone="muted">{discount.type === "PERCENTAGE" ? `${discount.value}%` : formatCurrency(discount.value)} · {discount.active ? t("status.ACTIVE") : t("billing.inactive")}</AppText>{canManage && discount.active && selectedPlanId && <Button variant="danger" loading={deactivateDiscount.isPending} onPress={() => void deactivateDiscount.mutateAsync({ planId: selectedPlanId, discountId: discount.id })}>{t("billing.deactivate")}</Button>}</View>)}
+      {selectedPlanId && discounts.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+    </BottomSheet>
+
+    <BottomSheet visible={listSheet === "invoices"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.pendingInvoices")}>
+      <AppText tone="muted">{t("billing.pendingInvoicesDescription")}</AppText>
+      {pendingInvoices.map((invoice) => <View key={invoice.id} style={styles.card}><AppText variant="label">{invoice.invoiceNumber} · {invoice.childName}</AppText><AppText>{formatCurrency(invoice.totalAmount)} · {t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>{canManage && <Button loading={markPaid.isPending} onPress={() => void markPaid.mutateAsync(invoice.id)}>{t("billing.markPaid")}</Button>}</View>)}
+      {pendingInvoices.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+    </BottomSheet>
+
     <BottomSheet visible={Boolean(capacityBranchId)} onClose={() => setCapacityBranchId(undefined)} closeAccessibilityLabel={t("common.close")} title={t("billing.branchCapacity")} negativeAction={{ label: t("common.cancel"), onPress: () => setCapacityBranchId(undefined) }} positiveAction={{ label: t("billing.saveCapacity"), loading: setBranchCapacity.isPending, onPress: () => void saveCapacity() }}><TextInput style={styles.input} placeholder={t("billing.dailyCapacity")} keyboardType="numeric" value={capacity} onChangeText={setCapacity} /></BottomSheet>
   </AppScreen>;
 }

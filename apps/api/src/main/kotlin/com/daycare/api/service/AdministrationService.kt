@@ -2,6 +2,7 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.Gender
+import com.daycare.api.domain.PushNotificationMuteDuration
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.BranchRepository
 import com.daycare.api.persistence.Child
@@ -21,11 +22,15 @@ import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
+import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 
 data class CreateChildRequest(val firstName: String, val lastName: String?, val nisn: String?, val gender: Gender, val dateOfBirth: LocalDate, val branchId: UUID?, val classroomId: UUID?)
 data class CreateInvitationRequest(val email: String?, val phoneNumber: String?, val role: Role, val branchId: UUID?, val classroomId: UUID?)
 data class RegisterDeviceRequest(@field:NotBlank val token: String, @field:NotBlank val platform: String, @field:NotBlank @field:Size(max = 128) val installationId: String, @field:NotBlank @field:Size(max = 64) val timeZone: String)
+data class UpdateDeviceNotificationPreferenceRequest(@field:NotBlank @field:Size(max = 128) val installationId: String, val muteDuration: PushNotificationMuteDuration?)
+data class DeviceNotificationPreferenceResponse(val pushMutedUntil: Instant?)
 data class NotificationResponse(val id: UUID, val title: String, val body: String, val actionPath: String?, val createdAt: java.time.Instant, val readAt: java.time.Instant?)
 data class TenantUserResponse(val id: UUID, val userId: UUID?, val displayName: String?, val email: String?, val role: Role, val status: String, val branchId: UUID?, val canManageChildPrograms: Boolean, val canManageDevelopmentCategories: Boolean)
 data class ChangeTenantUserPasswordRequest(val password: String)
@@ -167,6 +172,18 @@ class AdministrationService(
     }
 
     @Transactional(readOnly = true)
+    fun deviceNotificationPreference(jwt: Jwt, organizationId: UUID, installationId: String): DeviceNotificationPreferenceResponse {
+        return DeviceNotificationPreferenceResponse(currentDevice(jwt, organizationId, installationId).pushMutedUntil?.takeIf { it.isAfter(Instant.now()) })
+    }
+
+    @Transactional
+    fun updateDeviceNotificationPreference(jwt: Jwt, organizationId: UUID, request: UpdateDeviceNotificationPreferenceRequest): DeviceNotificationPreferenceResponse {
+        val device = currentDevice(jwt, organizationId, request.installationId)
+        device.pushMutedUntil = request.muteDuration?.let { duration -> Instant.now().plus(muteDuration(duration)) }
+        return DeviceNotificationPreferenceResponse(device.pushMutedUntil)
+    }
+
+    @Transactional(readOnly = true)
     fun notifications(jwt: Jwt, organizationId: UUID): List<NotificationResponse> {
         val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
         return notifications.findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDesc(scope.user.id, organizationId).map(::notificationResponse)
@@ -179,6 +196,19 @@ class AdministrationService(
         require(notification.organizationId == organizationId && notification.recipientUserId == scope.user.id) { "Notification is not available" }
         if (notification.readAt == null) notification.readAt = java.time.Instant.now()
         return notificationResponse(notification)
+    }
+
+    private fun currentDevice(jwt: Jwt, organizationId: UUID, installationId: String): DeviceToken {
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
+        val device = deviceTokens.findByInstallationId(installationId) ?: throw IllegalArgumentException("Device notification preference is not available")
+        require(device.organizationId == organizationId && device.userId == scope.user.id) { "Device notification preference is not available" }
+        return device
+    }
+
+    private fun muteDuration(duration: PushNotificationMuteDuration): Duration = when (duration) {
+        PushNotificationMuteDuration.ONE_HOUR -> Duration.ofHours(1)
+        PushNotificationMuteDuration.ONE_WEEK -> Duration.ofDays(7)
+        PushNotificationMuteDuration.ONE_MONTH -> Duration.ofDays(30)
     }
 
     private fun notificationResponse(notification: com.daycare.api.persistence.Notification) = NotificationResponse(notification.id, notification.title, notification.body, notification.actionPath, notification.createdAt, notification.readAt)

@@ -15,6 +15,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { roleKey, tenantPaymentStatusKey, tenantSubscriptionPlanKey } from "@/i18n/translations";
 import { useStaffDailyTasks } from "@/home/useStaffDailyTasks";
 import { authErrorMessage } from "@/auth/authErrorMessage";
+import { unreadNotificationBadge, unreadNotificationCount } from "@/notifications/unreadBadge";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -32,7 +33,7 @@ export default function HomeScreen() {
   const isStaffAdmin = membership.role === "STAFF_ADMIN";
   const isStaff = membership.role === "STAFF";
   if (isStaffAdmin) return <StaffAdminHome displayName={profile.displayName} organizationName={membership.organizationName} hasDaycareOperations={hasDaycareOperations} isSimulationSession={isSimulationSession} />;
-  if (isStaff) return <StaffHome displayName={profile.displayName} organizationName={membership.organizationName} isSimulationSession={isSimulationSession} children={staffChildren} tasksByChildId={staffDailyTasks} />;
+  if (isStaff) return <StaffHome displayName={profile.displayName} organizationName={membership.organizationName} isSimulationSession={isSimulationSession} managedChildren={staffChildren} tasksByChildId={staffDailyTasks} />;
   return <AppScreen><View style={styles.content}>
     <><AppText variant="title">{t("home.greeting", { name: profile.displayName })}</AppText><AppText tone="muted">{membership.organizationName} · {t(roleKey(membership.role))}</AppText></>
     {isSimulationSession && <AppText variant="caption" tone="muted">{t("home.simulation")}</AppText>}
@@ -59,22 +60,22 @@ function ProfileLoadFailure({ error }: { error: Error }) {
   </View></AppScreen>;
 }
 
-function StaffHome({ displayName, organizationName, isSimulationSession, children, tasksByChildId }: { displayName: string; organizationName: string; isSimulationSession: boolean; children: ReturnType<typeof useChildren>; tasksByChildId: ReturnType<typeof useStaffDailyTasks> }) {
+function StaffHome({ displayName, organizationName, isSimulationSession, managedChildren, tasksByChildId }: { displayName: string; organizationName: string; isSimulationSession: boolean; managedChildren: ReturnType<typeof useChildren>; tasksByChildId: ReturnType<typeof useStaffDailyTasks> }) {
   const router = useRouter();
   const { t } = useI18n();
   return <AppScreen><View style={styles.content}>
     <View style={styles.staffToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.STAFF")}</AppText></View><Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable></View>
     {isSimulationSession && <AppText variant="caption" tone="muted">{t("home.simulation")}</AppText>}
     <AppText variant="heading">{t("home.managedChildren")}</AppText>
-    {children.isLoading && <AppText tone="muted">{t("children.loading")}</AppText>}
-    {children.data?.map((child) => {
+    {managedChildren.isLoading && <AppText tone="muted">{t("children.loading")}</AppText>}
+    {managedChildren.data?.map((child) => {
       const tasks = tasksByChildId.get(child.id);
       return <NavigationCard key={child.id} accessibilityLabel={t("home.openDailyTasks", { name: child.fullName })} onPress={() => router.push({ pathname: "/development", params: { childId: child.id } })}>
         <AppText variant="h5">{child.fullName}</AppText>
         {!tasks || tasks.isLoading ? <AppText tone="muted">{t("home.dailyStatusLoading")}</AppText> : tasks.isError ? <AppText tone="danger">{t("home.dailyStatusUnavailable")}</AppText> : <><AppText tone={tasks.developmentRecorded ? "muted" : "danger"}>{t(tasks.developmentRecorded ? "home.dailyDevelopmentDone" : "home.dailyDevelopmentPending")}</AppText>{tasks.activeGoalCount === 0 ? <AppText variant="caption" tone="muted">{t("home.noActiveGoals")}</AppText> : tasks.pendingGoalNames.length > 0 ? <AppText variant="caption" tone="danger">{t("home.dailyGoalsPending", { names: tasks.pendingGoalNames.join(", ") })}</AppText> : <AppText variant="caption" tone="muted">{t("home.dailyGoalsDone")}</AppText>}</>}
       </NavigationCard>;
     })}
-    {!children.isLoading && children.data?.length === 0 && <AppText tone="muted">{t("home.noManagedChildren")}</AppText>}
+    {!managedChildren.isLoading && managedChildren.data?.length === 0 && <AppText tone="muted">{t("home.noManagedChildren")}</AppText>}
   </View></AppScreen>;
 }
 
@@ -94,6 +95,11 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, i
   const pendingEnrollments = useQuery({ queryKey: ["parent-enrollments", organizationId, "pending"], queryFn: () => api.pendingParentEnrollments(), enabled: Boolean(organizationId) && canLoadData });
   const invoices = useInvoices(canLoadData && hasDaycareOperations);
   const entitlements = useEntitlements(canLoadData && hasDaycareOperations);
+  const notifications = useQuery({ queryKey: ["notifications", organizationId], queryFn: () => api.notifications(), enabled: Boolean(organizationId) && canLoadData });
+  const unreadNotifications = notifications.data ?? [];
+  const unreadNotificationsCount = unreadNotificationCount(unreadNotifications);
+  const unreadNotificationBadgeLabel = unreadNotificationBadge(unreadNotificationsCount);
+  const unreadNotificationsLabel = unreadNotificationBadgeLabel ? t("notifications.unreadCount", { count: unreadNotificationsCount }) : t("notifications.title");
   const summary = createStaffAdminSummary({ children: children.data ?? [], users: users.data ?? [], pendingBookings: pendingBookings.data ?? [], pendingEnrollments: pendingEnrollments.data ?? [], invoices: invoices.data ?? [], entitlements: entitlements.data ?? [] });
   const operationalUnavailable = isSimulationSession || children.isLoading || users.isLoading || children.isError || users.isError;
   const financialUnavailable = isSimulationSession || pendingBookings.isLoading || invoices.isLoading || entitlements.isLoading || pendingBookings.isError || invoices.isError || entitlements.isError;
@@ -105,6 +111,10 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, i
         <AppText variant="title">{t("home.greeting", { name: displayName })}</AppText>
         <AppText tone="muted">{organizationName} · {t("role.STAFF_ADMIN")}</AppText>
       </View>
+      <Pressable accessibilityRole="button" accessibilityLabel={unreadNotificationsLabel} hitSlop={spacing.sm} onPress={() => router.push("/notifications")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}>
+        <Ionicons name="notifications-outline" size={28} color={colors.primary} />
+        {unreadNotificationBadgeLabel && <View pointerEvents="none" style={styles.notificationBadge}><AppText variant="caption" style={styles.notificationBadgeText}>{unreadNotificationBadgeLabel}</AppText></View>}
+      </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}>
         <Ionicons name="person-circle-outline" size={32} color={colors.primary} />
       </Pressable>
@@ -175,6 +185,8 @@ const styles = StyleSheet.create({
   staffHeading: { flex: 1, gap: spacing.xs },
   profileButton: { padding: spacing.xs, borderRadius: radius.pill },
   profileButtonPressed: { opacity: 0.76, backgroundColor: colors.surfaceTint },
+  notificationBadge: { position: "absolute", top: -spacing.xs, right: -spacing.xs, minWidth: spacing.lg, height: spacing.lg, paddingHorizontal: spacing.xs, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: colors.danger },
+  notificationBadgeText: { color: colors.surface },
   summarySection: { gap: spacing.sm },
   summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   summaryCard: { flexGrow: 1, minWidth: 150, gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTint },

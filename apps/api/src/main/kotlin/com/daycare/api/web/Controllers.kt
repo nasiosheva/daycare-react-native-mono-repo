@@ -17,6 +17,7 @@ import com.daycare.api.service.CreateDevelopmentCategoryRequest
 import com.daycare.api.service.DevelopmentService
 import com.daycare.api.service.UpdateDevelopmentCategoryRequest
 import com.daycare.api.service.RegisterDeviceRequest
+import com.daycare.api.service.UpdateDeviceNotificationPreferenceRequest
 import com.daycare.api.service.CreateTenantRequest
 import com.daycare.api.service.CreatePlatformAdminRequest
 import com.daycare.api.service.ChangeTenantUserPasswordRequest
@@ -262,6 +263,9 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @PatchMapping("/development-categories/{categoryId}")
     fun updateDevelopmentCategory(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable categoryId: UUID, @Valid @RequestBody request: UpdateDevelopmentCategoryRequest) = development.updateCategory(jwt, organizationId, categoryId, request)
 
+    @DeleteMapping("/development-categories/{categoryId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteDevelopmentCategory(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable categoryId: UUID) = development.deleteCategory(jwt, organizationId, categoryId)
+
     @GetMapping("/children/{childId}/goals")
     fun childGoals(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = goalService.childGoals(jwt, organizationId, childId)
 
@@ -420,6 +424,12 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PostMapping("/device-tokens") @ResponseStatus(HttpStatus.NO_CONTENT)
     fun registerDevice(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: RegisterDeviceRequest) = administration.registerDevice(jwt, organizationId, request)
+
+    @GetMapping("/device-notification-preference")
+    fun deviceNotificationPreference(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam installationId: String) = administration.deviceNotificationPreference(jwt, organizationId, installationId)
+
+    @PatchMapping("/device-notification-preference")
+    fun updateDeviceNotificationPreference(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpdateDeviceNotificationPreferenceRequest) = administration.updateDeviceNotificationPreference(jwt, organizationId, request)
 
     @GetMapping("/notifications")
     fun notifications(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = administration.notifications(jwt, organizationId)

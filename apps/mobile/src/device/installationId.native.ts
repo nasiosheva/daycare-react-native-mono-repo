@@ -1,6 +1,5 @@
 import * as SecureStore from "expo-secure-store";
-
-const storageKey = "umur-emas.reminders.installation-id";
+import { DEVICE_INSTALLATION_ID_STORAGE_KEY } from "./installationIdConstants";
 
 function createInstallationId(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
@@ -9,10 +8,10 @@ function createInstallationId(): string {
   });
 }
 
-export async function getReminderInstallationId(): Promise<string> {
-  const existing = await SecureStore.getItemAsync(storageKey);
+export async function getDeviceInstallationId(): Promise<string> {
+  const existing = await SecureStore.getItemAsync(DEVICE_INSTALLATION_ID_STORAGE_KEY);
   if (existing) return existing;
   const installationId = createInstallationId();
-  await SecureStore.setItemAsync(storageKey, installationId);
+  await SecureStore.setItemAsync(DEVICE_INSTALLATION_ID_STORAGE_KEY, installationId);
   return installationId;
 }

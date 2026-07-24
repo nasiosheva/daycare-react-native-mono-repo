@@ -76,6 +76,7 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             "Only active Staff Admin or Staff users in this tenant can have their password changed" to "error.staffPasswordAccess", "Tenant user was not found" to "error.tenantUserNotFound", "Platform administrator record was not found" to "error.platformAdminNotFound",
             "Tenant staff administrators can create only STAFF_ADMIN or STAFF users" to "error.staffAccountRole",
             "Branch is not available for this organization" to "error.branchUnavailable",
+            "Device notification preference is not available" to "error.deviceNotificationPreferenceUnavailable",
             "A branch is required for Staff accounts" to "error.staffBranchRequired",
             "Staff member does not belong to this child's branch" to "error.childAssignmentBranch",
             "Staff member does not belong to this classroom's branch" to "error.classroomAssignmentBranch",
@@ -86,6 +87,8 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             "Goal template was not found" to "error.goalTemplateNotFound", "Goal template belongs to a different organization" to "error.goalTemplateOrganization",
             "Child goal was not found" to "error.goalNotFound", "Child goal belongs to a different organization" to "error.goalOrganization",
             "Goal template needs at least one active indicator" to "error.goalIndicatorRequired", "Goal indicator was not found" to "error.goalIndicatorNotFound", "Goal indicator belongs to a different goal template" to "error.goalIndicatorScope", "Goal indicator is archived" to "error.goalIndicatorArchived",
+            "Development category was not found" to "error.developmentCategoryNotFound", "Development category is not available" to "error.developmentCategoryScope", "This category is used by existing development entries" to "error.developmentCategoryInUse",
+            "Category name is required" to "error.developmentCategoryNameRequired", "This is already a built-in category" to "error.developmentCategoryBuiltIn", "A category with this name already exists" to "error.developmentCategoryDuplicate", "Staff Admin permission is required to add development categories" to "error.developmentCategoryPermission",
         )
     }
 }

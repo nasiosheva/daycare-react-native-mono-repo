@@ -62,8 +62,7 @@ class DevelopmentService(
 
     @Transactional
     fun updateCategory(jwt: Jwt, organizationId: UUID, categoryId: UUID, request: UpdateDevelopmentCategoryRequest): DevelopmentCategoryResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
-        access.requireWritable(scope)
+        val scope = requireCategoryCreator(jwt, organizationId)
         val category = categories.findById(categoryId).orElseThrow { IllegalArgumentException("Development category was not found") }
         require(category.organizationId == organizationId) { "Development category is not available" }
         request.name?.trim()?.let { name ->
@@ -75,6 +74,17 @@ class DevelopmentService(
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "DEVELOPMENT_CATEGORY", entityId = category.id, action = "UPDATED", source = "TENANT_CONFIGURATION"))
         realtime.publishToTenantRoles(organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), setOf(RealtimeFlag.DEVELOPMENT_CATEGORIES))
         return DevelopmentCategoryResponse(category.id.toString(), category.name, category.active, false)
+    }
+
+    @Transactional
+    fun deleteCategory(jwt: Jwt, organizationId: UUID, categoryId: UUID) {
+        val scope = requireCategoryCreator(jwt, organizationId)
+        val category = categories.findById(categoryId).orElseThrow { IllegalArgumentException("Development category was not found") }
+        require(category.organizationId == organizationId) { "Development category is not available" }
+        require(!entries.existsByOrganizationIdAndCategory(organizationId, category.id.toString())) { "This category is used by existing development entries" }
+        categories.delete(category)
+        audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "DEVELOPMENT_CATEGORY", entityId = category.id, action = "DELETED", source = "TENANT_CONFIGURATION"))
+        realtime.publishToTenantRoles(organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), setOf(RealtimeFlag.DEVELOPMENT_CATEGORIES))
     }
 
     @Transactional

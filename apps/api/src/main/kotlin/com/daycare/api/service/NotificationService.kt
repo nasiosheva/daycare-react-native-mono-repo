@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.web.client.RestClient
+import java.time.Instant
 import java.util.UUID
 
 @Service
@@ -25,7 +26,10 @@ class NotificationService(
     fun notify(organizationId: UUID, recipientUserId: UUID, title: String, body: String, actionPath: String? = null, realtimeFlags: Set<RealtimeFlag> = emptySet()) {
         val notification = notifications.save(Notification(organizationId = organizationId, recipientUserId = recipientUserId, title = title, body = body, actionPath = actionPath))
         realtime.publishToUser(organizationId, recipientUserId, realtimeFlags + RealtimeFlag.NOTIFICATIONS, mapOf("notificationId" to notification.id, "actionPath" to actionPath))
-        deviceTokens.findAllByUserIdAndOrganizationId(recipientUserId, organizationId).forEach { token -> sendPush(token, organizationId, title, body, actionPath) }
+        val now = Instant.now()
+        deviceTokens.findAllByUserIdAndOrganizationId(recipientUserId, organizationId)
+            .filter { token -> token.pushMutedUntil?.isAfter(now) != true }
+            .forEach { token -> sendPush(token, organizationId, title, body, actionPath) }
     }
 
     fun sendPush(token: DeviceToken, organizationId: UUID, title: String, body: String, actionPath: String? = null) {

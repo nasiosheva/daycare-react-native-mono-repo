@@ -346,7 +346,7 @@ class Invitation(
 class Notification(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "recipient_user_id", nullable = false) var recipientUserId: UUID = UUID.randomUUID(), @Column(nullable = false) var title: String = "", @Column(nullable = false) var body: String = "", @Column(name = "action_path") var actionPath: String? = null, @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(), @Column(name = "read_at") var readAt: Instant? = null)
 
 @Entity @Table(name = "device_tokens")
-class DeviceToken(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(), @Column(nullable = false, unique = true) var token: String = "", @Column(nullable = false) var platform: String = "", @Column(name = "installation_id") var installationId: String? = null, @Column(name = "time_zone") var timeZone: String? = null)
+class DeviceToken(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(), @Column(nullable = false, unique = true) var token: String = "", @Column(nullable = false) var platform: String = "", @Column(name = "installation_id") var installationId: String? = null, @Column(name = "time_zone") var timeZone: String? = null, @Column(name = "push_muted_until") var pushMutedUntil: Instant? = null)
 
 @Entity @Table(name = "staff_reminders")
 class StaffReminder(

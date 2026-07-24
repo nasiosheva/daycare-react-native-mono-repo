@@ -1,0 +1,87 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [production]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      EXPO_PUBLIC_API_URL: ${{ vars.PRODUCTION_API_URL }}
+      EXPO_PUBLIC_REALTIME_URL: ${{ vars.PRODUCTION_REALTIME_URL }}
+      EXPO_PUBLIC_FIREBASE_API_KEY: ${{ vars.PRODUCTION_FIREBASE_API_KEY }}
+      EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ vars.PRODUCTION_FIREBASE_AUTH_DOMAIN }}
+      EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ vars.PRODUCTION_FIREBASE_PROJECT_ID }}
+      EXPO_PUBLIC_FIREBASE_APP_ID: ${{ vars.PRODUCTION_FIREBASE_APP_ID }}
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.PRODUCTION_GOOGLE_WEB_CLIENT_ID }}
+      VPS_APP_DIR: ${{ vars.VPS_APP_DIR }}
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+      VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "8.13"
+          cache-provider: basic
+      - name: Validate deployment configuration
+        run: |
+          test -n "$EXPO_PUBLIC_API_URL"
+          test -n "$EXPO_PUBLIC_FIREBASE_API_KEY"
+          test -n "$EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN"
+          test -n "$EXPO_PUBLIC_FIREBASE_PROJECT_ID"
+          test -n "$EXPO_PUBLIC_FIREBASE_APP_ID"
+          test -n "$VPS_APP_DIR"
+          test -n "$VPS_HOST"
+          test -n "$VPS_KNOWN_HOSTS"
+          test -n "$VPS_SSH_PRIVATE_KEY"
+          test -n "$VPS_USER"
+      - run: corepack pnpm install --frozen-lockfile
+      - name: Build web release
+        run: corepack pnpm --filter @daycare/app exec expo export --platform web
+      - name: Build API release
+        run: gradle -p apps/api bootJar --no-daemon
+      - name: Configure deploy SSH identity
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Upload immutable release
+        env:
+          RELEASE_ID: ${{ github.sha }}
+        run: |
+          api_jar="$(find apps/api/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' -print -quit)"
+          test -n "$api_jar"
+          release_directory="$VPS_APP_DIR/releases/$RELEASE_ID"
+          ssh "$VPS_USER@$VPS_HOST" "install -d -m 755 '$release_directory/web'"
+          scp "$api_jar" "$VPS_USER@$VPS_HOST:$release_directory/api.jar"
+          rsync -az --delete apps/mobile/dist/ "$VPS_USER@$VPS_HOST:$release_directory/web/"
+      - name: Activate release
+        env:
+          RELEASE_ID: ${{ github.sha }}
+        run: ssh "$VPS_USER@$VPS_HOST" "sudo /usr/local/sbin/umur-emas-activate-release '$RELEASE_ID'"

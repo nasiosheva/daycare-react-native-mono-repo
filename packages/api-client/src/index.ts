@@ -135,6 +135,8 @@ export type ParentEnrollmentStatus = "PENDING_PAYMENT" | "PENDING_APPROVAL" | "A
 export type ParentEnrollment = { id: string; organizationId: string; branchId: string; childId: string; childName: string; invoiceId: string; entitlementId: string; status: ParentEnrollmentStatus; invoiceStatus: InvoiceStatus; rejectionReason?: string | null; createdAt: string };
 export type ParentEnrollmentCheckoutInput = { organizationId: string; branchId: string; planId: string; bookingDates: string[]; promoCode?: string; children: Array<{ firstName: string; lastName?: string; gender: ChildGender; dateOfBirth: string }> };
 export type AppNotification = { id: string; title: string; body: string; actionPath?: string | null; createdAt: string; readAt?: string | null };
+export type PushNotificationMuteDuration = "ONE_HOUR" | "ONE_WEEK" | "ONE_MONTH";
+export type DeviceNotificationPreference = { pushMutedUntil?: string | null };
 export type DownloadedReport = { fileName: string; contentType: string; dataBase64: string };
 export type StaffReminder = { id: string; title: string; description: string; hour: number; minute: number; weekdays: number[]; target: StaffReminderTarget; active: boolean; ruleVersion: number };
 export type UpsertStaffReminderInput = Omit<StaffReminder, "id" | "active" | "ruleVersion">;
@@ -196,6 +198,8 @@ export class ApiClient {
   async updateTenantUserDevelopmentCategoryPermission(userId: string, canManageDevelopmentCategories: boolean): Promise<TenantUser> { return this.request(`/tenant-users/${userId}/development-category-permission`, { method: "PATCH", body: JSON.stringify({ canManageDevelopmentCategories }) }); }
   async changeTenantUserPassword(userId: string, password: string): Promise<void> { await this.request<void>(`/tenant-users/${userId}/password`, { method: "POST", body: JSON.stringify({ password }) }); }
   async registerDevice(input: { token: string; platform: "ios" | "android"; installationId: string; timeZone: string }): Promise<void> { await this.request<void>("/device-tokens", { method: "POST", body: JSON.stringify(input) }); }
+  async deviceNotificationPreference(installationId: string): Promise<DeviceNotificationPreference> { return this.request(`/device-notification-preference?${new URLSearchParams({ installationId }).toString()}`); }
+  async updateDeviceNotificationPreference(input: { installationId: string; muteDuration: PushNotificationMuteDuration | null }): Promise<DeviceNotificationPreference> { return this.request("/device-notification-preference", { method: "PATCH", body: JSON.stringify(input) }); }
   async notifications(): Promise<AppNotification[]> { return this.request("/notifications"); }
   async markNotificationRead(notificationId: string): Promise<AppNotification> { return this.request(`/notifications/${notificationId}/read`, { method: "PATCH" }); }
   async staffReminders(): Promise<StaffReminder[]> { return this.request("/staff-reminders"); }
@@ -277,6 +281,7 @@ export class ApiClient {
   async developmentCategories(): Promise<DevelopmentCategoryOption[]> { return this.request("/development-categories"); }
   async createDevelopmentCategory(input: { name: string }): Promise<DevelopmentCategoryOption> { return this.request("/development-categories", { method: "POST", body: JSON.stringify(input) }); }
   async updateDevelopmentCategory(categoryId: string, input: { name?: string; active?: boolean }): Promise<DevelopmentCategoryOption> { return this.request(`/development-categories/${categoryId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async deleteDevelopmentCategory(categoryId: string): Promise<void> { await this.request<void>(`/development-categories/${categoryId}`, { method: "DELETE" }); }
 
   async downloadChildrenReport(format: "PDF" | "XLSX", filter: ChildListFilter = {}): Promise<DownloadedReport> {
     const params = new URLSearchParams({ format });

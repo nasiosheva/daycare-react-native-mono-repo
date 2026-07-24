@@ -52,6 +52,16 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/tenant-users/staff-id/child-program-permission", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ canManageChildPrograms: true }) }));
   });
 
+  it("updates a native device push-notification mute preference", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await client.updateDeviceNotificationPreference({ installationId: "installation-id", muteDuration: "ONE_HOUR" });
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/device-notification-preference", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ installationId: "installation-id", muteDuration: "ONE_HOUR" }) }));
+  });
+
   it("sends the selected child hierarchy filters to the tenant endpoint", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
     vi.stubGlobal("fetch", fetchMock);

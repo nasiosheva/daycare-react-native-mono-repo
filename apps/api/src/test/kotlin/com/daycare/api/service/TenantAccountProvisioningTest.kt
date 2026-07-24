@@ -3,12 +3,14 @@ package com.daycare.api.service
 import com.daycare.api.domain.InstitutionType
 import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.PushNotificationMuteDuration
 import com.daycare.api.domain.TenantSubscriptionPlan
 import com.daycare.api.domain.TenantSubscriptionStatus
 import com.daycare.api.persistence.Branch
 import com.daycare.api.persistence.BranchRepository
 import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.DeviceTokenRepository
+import com.daycare.api.persistence.DeviceToken
 import com.daycare.api.persistence.InvitationRepository
 import com.daycare.api.persistence.Membership
 import com.daycare.api.persistence.MembershipRepository
@@ -24,6 +26,7 @@ import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.UserProfileRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentCaptor
 import org.mockito.Mockito.any
@@ -34,6 +37,7 @@ import org.mockito.Mockito.`when`
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.oauth2.jwt.Jwt
 import java.time.LocalDate
+import java.time.Instant
 import java.util.Optional
 import java.util.UUID
 
@@ -157,5 +161,32 @@ class TenantAccountProvisioningTest {
         assertEquals("ACTIVE", response.status)
         assertEquals("admin-baru@tenant.test", response.email)
         assertThrows(IllegalArgumentException::class.java) { service.createTenantUser(jwt, organizationId, CreateTenantUserRequest("Parent", "parent@tenant.test", "123123", Role.PARENT)) }
+    }
+
+    @Test
+    fun `device notification preference mutes and restores only the authenticated device`() {
+        val access = mock(AccessService::class.java)
+        val branches = mock(BranchRepository::class.java)
+        val children = mock(ChildRepository::class.java)
+        val invitations = mock(InvitationRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val deviceTokens = mock(DeviceTokenRepository::class.java)
+        val notifications = mock(NotificationRepository::class.java)
+        val tenantAccounts = mock(TenantUserAccountService::class.java)
+        val branchFilters = mock(BranchListFilterService::class.java)
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val user = UserProfile()
+        val device = DeviceToken(organizationId = organizationId, userId = user.id, installationId = "installation-id")
+        `when`(access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)).thenReturn(AccessScope(user, Membership(userId = user.id, organizationId = organizationId), emptySet(), emptySet()))
+        `when`(deviceTokens.findByInstallationId("installation-id")).thenReturn(device)
+        val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts, branchFilters)
+
+        val muted = service.updateDeviceNotificationPreference(jwt, organizationId, UpdateDeviceNotificationPreferenceRequest("installation-id", PushNotificationMuteDuration.ONE_HOUR))
+        val restored = service.updateDeviceNotificationPreference(jwt, organizationId, UpdateDeviceNotificationPreferenceRequest("installation-id", null))
+
+        assertTrue(muted.pushMutedUntil?.isAfter(Instant.now()) == true)
+        assertEquals(null, restored.pushMutedUntil)
     }
 }

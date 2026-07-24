@@ -22,6 +22,7 @@ enum class BookingStatus { PENDING_PAYMENT, PENDING_APPROVAL, CONFIRMED, REJECTE
 enum class InvoiceStatus { PENDING, PAYMENT_SUBMITTED, PAID, OVERDUE, VOID }
 enum class PaymentProofStatus { SUBMITTED, VERIFIED, REJECTED }
 enum class InvitationStatus { PENDING, ACCEPTED, EXPIRED }
+enum class PushNotificationMuteDuration { ONE_HOUR, ONE_WEEK, ONE_MONTH }
 enum class TenantSubscriptionPlan { STARTER, STANDARD, PREMIUM }
 enum class TenantSubscriptionStatus { TRIAL, PENDING_PAYMENT, ACTIVE, SUSPENDED, EXPIRED }
 enum class TenantPaymentStatus { PENDING, PAID, VOID }

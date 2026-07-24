@@ -1,16 +1,18 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { realtimeUrl, type RealtimeConnectRequest, type RealtimeEvent } from "@daycare/api-client";
+import { Platform } from "react-native";
 import { useAuth } from "@/auth/AuthProvider";
 import { env } from "@/config/env";
 import { allRealtimeFlags, invalidateRealtimeFlags } from "./queryInvalidation";
+import { showBrowserNotification } from "../notifications/browserNotifications";
 
 const INITIAL_RECONNECT_DELAY_MILLIS = 1_000;
 const MAX_RECONNECT_DELAY_MILLIS = 30_000;
 
 export function RealtimeConnection() {
   const queryClient = useQueryClient();
-  const { getRealtimeToken, isSimulationSession, organizationId, profile, refreshProfile } = useAuth();
+  const { api, getRealtimeToken, isSimulationSession, organizationId, profile, refreshProfile } = useAuth();
 
   useEffect(() => {
     if (isSimulationSession || !profile) return;
@@ -36,6 +38,7 @@ export function RealtimeConnection() {
         const event = parseRealtimeEvent(message.data);
         if (!event) return;
         invalidateRealtimeFlags(queryClient, event.flags);
+        if (Platform.OS === "web" && event.flags.includes("NOTIFICATIONS")) void showBrowserNotification(() => api.notifications(), notificationId(event));
         if (event.flags.includes("PROFILE")) void refreshProfile();
       };
       socket.onclose = () => {
@@ -53,9 +56,15 @@ export function RealtimeConnection() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, [getRealtimeToken, isSimulationSession, organizationId, profile, queryClient, refreshProfile]);
+  }, [api, getRealtimeToken, isSimulationSession, organizationId, profile, queryClient, refreshProfile]);
 
   return null;
+}
+
+function notificationId(event: RealtimeEvent): string | undefined {
+  if (!event.payload || typeof event.payload !== "object") return undefined;
+  const value = (event.payload as { notificationId?: unknown }).notificationId;
+  return typeof value === "string" ? value : undefined;
 }
 
 function isConnectedMessage(value: unknown): boolean {

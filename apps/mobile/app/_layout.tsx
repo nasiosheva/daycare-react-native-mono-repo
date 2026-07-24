@@ -7,7 +7,7 @@ import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { bottomNavigationPaths } from "@/navigation/RoleBottomNavigation";
 import { RealtimeConnection } from "@/realtime/RealtimeConnection";
-import { getReminderInstallationId } from "@/reminders/installationId";
+import { getDeviceInstallationId } from "@/device/installationId";
 
 if (Platform.OS !== "web") {
   Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }) });
@@ -47,7 +47,7 @@ function NativeNotificationRegistration() {
         const permission = await Notifications.getPermissionsAsync();
         const status = permission.status === "granted" ? permission.status : (await Notifications.requestPermissionsAsync()).status;
         if (status !== "granted" || cancelled) return;
-        const [token, installationId] = await Promise.all([Notifications.getExpoPushTokenAsync(), getReminderInstallationId()]);
+        const [token, installationId] = await Promise.all([Notifications.getExpoPushTokenAsync(), getDeviceInstallationId()]);
         const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
         if (!cancelled) await api.registerDevice({ token: token.data, platform, installationId, timeZone });
       } catch {
