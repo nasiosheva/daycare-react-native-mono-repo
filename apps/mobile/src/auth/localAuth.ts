@@ -1,4 +1,4 @@
-import { ApiError } from "@daycare/api-client";
+import { ApiError, ApiNetworkError, fetchWithTimeout, isApiTimeoutError } from "@daycare/api-client";
 import type { AuthUser } from "./types";
 
 export type LocalAuthSession = { token: string; user: AuthUser };
@@ -6,10 +6,16 @@ export type LocalAuthSession = { token: string; user: AuthUser };
 type LocalAuthResponse = { token: string; user: { uid: string; email: string | null; displayName: string } };
 
 async function request<T>(apiUrl: string, path: string, init: RequestInit, fallbackMessage: string): Promise<T> {
-  const response = await fetch(`${apiUrl}${path}`, {
-    ...init,
-    headers: { Accept: "application/json", "Content-Type": "application/json", ...init.headers },
-  });
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(`${apiUrl}${path}`, {
+      ...init,
+      headers: { Accept: "application/json", "Content-Type": "application/json", ...init.headers },
+    });
+  } catch (error) {
+    if (isApiTimeoutError(error)) throw error;
+    throw new ApiNetworkError();
+  }
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { code?: string; detail?: string };
     throw new ApiError(response.status, body.code ?? "LOCAL_AUTH_FAILED", body.detail ?? fallbackMessage);

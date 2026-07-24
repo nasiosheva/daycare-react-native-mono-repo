@@ -1,4 +1,4 @@
-import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentCategory, DevelopmentEntryInput, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffReminderTarget, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
+import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffReminderTarget, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -13,8 +13,40 @@ export class ApiNetworkError extends Error {
   }
 }
 
+export class ApiTimeoutError extends Error {
+  constructor() {
+    super("The API server took too long to respond");
+    this.name = "ApiTimeoutError";
+  }
+}
+
 export function isApiNetworkError(error: unknown): error is ApiNetworkError {
   return error instanceof ApiNetworkError;
+}
+
+export function isApiTimeoutError(error: unknown): error is ApiTimeoutError {
+  return error instanceof ApiTimeoutError;
+}
+
+export const API_REQUEST_TIMEOUT_MS = 15_000;
+
+export async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = API_REQUEST_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  let timedOut = false;
+  const callerSignal = init.signal;
+  if (callerSignal?.aborted) controller.abort();
+  else callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (timedOut) throw new ApiTimeoutError();
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    callerSignal?.removeEventListener("abort", abortFromCaller);
+  }
 }
 
 export type ApiClientOptions = {
@@ -25,6 +57,7 @@ export type ApiClientOptions = {
 };
 
 export type Child = Omit<ChildInput, "gender"> & { id: string; fullName: string; organizationId: string; branchId: string; gender: ChildGender | "UNSPECIFIED"; todayCheckedInAt?: string | null; todayCheckedOutAt?: string | null };
+export type BranchListFilter = { branchId?: string };
 export type ChildListFilter = { branchId?: string; learningLevelId?: string; classroomId?: string };
 export type UpdateChildInput = Omit<ChildInput, "classroomId">;
 export type ChildProgram = { id: string; name: string; description: string };
@@ -42,7 +75,8 @@ export type Attendance = {
 export type DevelopmentEntry = {
   id: string;
   childId: string;
-  category: DevelopmentCategory;
+  category: string;
+  categoryName: string;
   title: string;
   content: string;
   recordedAt: string;
@@ -54,13 +88,13 @@ export type ServicePlanDiscount = { id: string; planId: string; kind: ServicePla
 export type CreateServicePlanDiscountInput = Omit<ServicePlanDiscount, "id" | "planId" | "active">;
 export type ServicePlanTemplate = { id: string; source: "SYSTEM" | "TENANT"; name: string; type: ServicePlanType; suggestedPrice?: number | null; creditCount?: number | null; unusedCreditPolicy?: UnusedCreditPolicy | null; carryForwardDays?: number | null; bookingRequiresApproval: boolean; dailyCapacity?: number | null };
 export type UpsertServicePlanTemplateInput = Omit<ServicePlanTemplate, "id" | "source">;
-export type ServiceEntitlement = { id: string; childId: string; childName: string; parentName?: string | null; parentEmail?: string | null; planName: string; type: ServicePlanType; status: "PENDING_PAYMENT" | "ACTIVE" | "EXPIRED" | "EXHAUSTED"; totalCredits?: number | null; remainingCredits?: number | null; validUntil: string };
-export type Booking = { id: string; childId: string; childName: string; bookingDate: string; status: BookingStatus; planName: string; invoiceId: string };
+export type ServiceEntitlement = { id: string; branchId: string; childId: string; childName: string; parentName?: string | null; parentEmail?: string | null; planName: string; type: ServicePlanType; status: "PENDING_PAYMENT" | "ACTIVE" | "EXPIRED" | "EXHAUSTED"; totalCredits?: number | null; remainingCredits?: number | null; validUntil: string };
+export type Booking = { id: string; branchId: string; childId: string; childName: string; bookingDate: string; status: BookingStatus; planName: string; invoiceId: string };
 export type PaymentProofStatus = "SUBMITTED" | "VERIFIED" | "REJECTED";
 export type PaymentProof = { status: PaymentProofStatus; fileName: string; note?: string | null; submittedAt: string; rejectionReason?: string | null };
 export type PaymentProofImage = { fileName: string; contentType: string; dataBase64: string; note?: string | null };
 export type SubmitPaymentProofInput = { fileName: string; contentType: "image/jpeg" | "image/png"; imageBase64: string; note?: string };
-export type Invoice = { id: string; invoiceNumber: string; childId: string; childName: string; parentName?: string | null; parentEmail?: string | null; subtotalAmount: number; discountAmount: number; discountName?: string | null; discountCode?: string | null; totalAmount: number; status: InvoiceStatus; dueDate: string; createdAt: string; paymentProof?: PaymentProof | null };
+export type Invoice = { id: string; invoiceNumber: string; branchId: string; childId: string; childName: string; parentName?: string | null; parentEmail?: string | null; subtotalAmount: number; discountAmount: number; discountName?: string | null; discountCode?: string | null; totalAmount: number; status: InvoiceStatus; dueDate: string; createdAt: string; paymentProof?: PaymentProof | null };
 export type TenantPayment = { id: string; amount: number; status: TenantPaymentStatus; dueDate: string; paidAt: string | null };
 export type TenantStaffAdmin = { id: string; email: string | null; displayName: string | null; status: "ACTIVE" | "PENDING" };
 export type TenantBranch = { id: string; name: string; timezone: string; active: boolean; primary: boolean };
@@ -92,8 +126,9 @@ export type GoalIndicatorCheckIn = { indicatorId: string; date: string; outcome:
 export type ChildGoal = { id: string; childId: string; templateId: string; name: string; description: string; startsOn: string; targetEndsOn: string; durationDays: number; minimumYesPercent: number; minimumYesStreak: number; status: "ACTIVE" | "COMPLETED"; finalOutcome?: ChildGoalOutcome | null; finalSummary?: string | null; finalizedAt?: string | null; recordedDays: number; yesDays: number; noDays: number; yesPercent?: number | null; currentYesStreak: number; longestYesStreak: number; meetsYesPercent: boolean; meetsYesStreak: boolean; indicators: GoalIndicator[]; checkIns: GoalIndicatorCheckIn[] };
 export type ChildPlacement = { id: string; classroomId: string; classroomName: string; learningLevelId?: string | null; learningLevelName?: string | null; learningPeriodId?: string | null; startsOn: string; endedOn?: string | null; ageGuidanceWarning: boolean };
 export type TenantInvitationInput = { email?: string; phoneNumber?: string; role: Extract<Role, "STAFF" | "PARENT">; branchId?: string; classroomId?: string };
-export type CreateTenantUserInput = { displayName: string; email: string; password: string; role: Extract<Role, "STAFF_ADMIN" | "STAFF">; branchId?: string; canManageChildPrograms?: boolean };
-export type TenantUser = { id: string; userId: string | null; displayName: string | null; email: string | null; role: Extract<Role, "STAFF_ADMIN" | "STAFF" | "PARENT">; status: "ACTIVE" | "INACTIVE" | "PENDING"; branchId: string | null; canManageChildPrograms: boolean };
+export type CreateTenantUserInput = { displayName: string; email: string; password: string; role: Extract<Role, "STAFF_ADMIN" | "STAFF">; branchId?: string; canManageChildPrograms?: boolean; canManageDevelopmentCategories?: boolean };
+export type TenantUser = { id: string; userId: string | null; displayName: string | null; email: string | null; role: Extract<Role, "STAFF_ADMIN" | "STAFF" | "PARENT">; status: "ACTIVE" | "INACTIVE" | "PENDING"; branchId: string | null; canManageChildPrograms: boolean; canManageDevelopmentCategories: boolean };
+export type DevelopmentCategoryOption = { id: string; name: string; active: boolean; system: boolean };
 export type ParentTenantPlan = { id: string; name: string; type: ServicePlanType; price: number; creditCount?: number | null; bookingRequiresApproval: boolean; dailyCapacity?: number | null };
 export type ParentTenantCatalog = { organizationId: string; organizationName: string; branches: Array<{ id: string; name: string; dailyCapacity?: number | null }>; plans: ParentTenantPlan[] };
 export type ParentEnrollmentStatus = "PENDING_PAYMENT" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "EXPIRED" | "CANCELLED";
@@ -103,9 +138,14 @@ export type AppNotification = { id: string; title: string; body: string; actionP
 export type DownloadedReport = { fileName: string; contentType: string; dataBase64: string };
 export type StaffReminder = { id: string; title: string; description: string; hour: number; minute: number; weekdays: number[]; target: StaffReminderTarget; active: boolean; ruleVersion: number };
 export type UpsertStaffReminderInput = Omit<StaffReminder, "id" | "active" | "ruleVersion">;
-export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "DEVELOPMENT" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS";
+export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS";
 export type RealtimeEvent<TPayload = unknown> = { type: "EVENT"; id: string; organizationId?: string | null; flags: RealtimeFlag[]; payload?: TPayload | null; occurredAt: string };
 export type RealtimeConnectRequest = { type: "CONNECT"; token: string; organizationId?: string | null };
+
+function withBranchFilter(path: string, filter: BranchListFilter) {
+  if (!filter.branchId) return path;
+  return `${path}?${new URLSearchParams({ branchId: filter.branchId }).toString()}`;
+}
 
 export function realtimeUrl(apiUrl: string, override?: string): string {
   if (override) return override;
@@ -124,7 +164,7 @@ export class ApiClient {
   async parentEnrollmentCatalog(): Promise<ParentTenantCatalog[]> { return this.request("/parent-enrollment/catalog"); }
   async parentEnrollments(): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment"); }
   async checkoutParentEnrollment(input: ParentEnrollmentCheckoutInput): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment/checkout", { method: "POST", body: JSON.stringify(input) }); }
-  async pendingParentEnrollments(): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment/pending-approval"); }
+  async pendingParentEnrollments(filter: BranchListFilter = {}): Promise<ParentEnrollment[]> { return this.request(withBranchFilter("/parent-enrollment/pending-approval", filter)); }
   async approveParentEnrollment(enrollmentId: string, approved: boolean, rejectionReason?: string): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/approval`, { method: "POST", body: JSON.stringify({ approved, rejectionReason }) }); }
   async retryParentEnrollment(enrollmentId: string, bookingDates: string[]): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/retry`, { method: "POST", body: JSON.stringify({ bookingDates }) }); }
   async cancelParentEnrollment(enrollmentId: string): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/cancel`, { method: "POST" }); }
@@ -150,9 +190,10 @@ export class ApiClient {
   async cancelTenantStaffAdminInvitation(organizationId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/staff-admin-invitation/cancel`, { method: "POST" }); }
   async inviteTenantUser(input: TenantInvitationInput): Promise<{ id: string }> { return this.request("/invitations", { method: "POST", body: JSON.stringify(input) }); }
   async createTenantUser(input: CreateTenantUserInput): Promise<TenantUser> { return this.request("/tenant-users", { method: "POST", body: JSON.stringify(input) }); }
-  async tenantUsers(): Promise<TenantUser[]> { return this.request("/tenant-users"); }
+  async tenantUsers(filter: BranchListFilter = {}): Promise<TenantUser[]> { return this.request(withBranchFilter("/tenant-users", filter)); }
   async deactivateTenantUser(userId: string): Promise<void> { await this.request<void>(`/tenant-users/${userId}/deactivate`, { method: "POST" }); }
   async updateTenantUserChildProgramPermission(userId: string, canManageChildPrograms: boolean): Promise<TenantUser> { return this.request(`/tenant-users/${userId}/child-program-permission`, { method: "PATCH", body: JSON.stringify({ canManageChildPrograms }) }); }
+  async updateTenantUserDevelopmentCategoryPermission(userId: string, canManageDevelopmentCategories: boolean): Promise<TenantUser> { return this.request(`/tenant-users/${userId}/development-category-permission`, { method: "PATCH", body: JSON.stringify({ canManageDevelopmentCategories }) }); }
   async changeTenantUserPassword(userId: string, password: string): Promise<void> { await this.request<void>(`/tenant-users/${userId}/password`, { method: "POST", body: JSON.stringify({ password }) }); }
   async registerDevice(input: { token: string; platform: "ios" | "android"; installationId: string; timeZone: string }): Promise<void> { await this.request<void>("/device-tokens", { method: "POST", body: JSON.stringify(input) }); }
   async notifications(): Promise<AppNotification[]> { return this.request("/notifications"); }
@@ -180,7 +221,7 @@ export class ApiClient {
   async createLearningLevel(input: UpsertLearningLevelInput): Promise<LearningLevel> { return this.request("/learning-levels", { method: "POST", body: JSON.stringify(input) }); }
   async updateLearningLevel(levelId: string, input: UpsertLearningLevelInput): Promise<LearningLevel> { return this.request(`/learning-levels/${levelId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async archiveLearningLevel(levelId: string): Promise<LearningLevel> { return this.request(`/learning-levels/${levelId}/archive`, { method: "POST" }); }
-  async classrooms(): Promise<Classroom[]> { return this.request("/classrooms"); }
+  async classrooms(filter: BranchListFilter = {}): Promise<Classroom[]> { return this.request(withBranchFilter("/classrooms", filter)); }
   async createClassroom(input: UpsertClassroomInput): Promise<Classroom> { return this.request("/classrooms", { method: "POST", body: JSON.stringify(input) }); }
   async updateClassroom(classroomId: string, input: UpsertClassroomInput): Promise<Classroom> { return this.request(`/classrooms/${classroomId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async archiveClassroom(classroomId: string): Promise<Classroom> { return this.request(`/classrooms/${classroomId}/archive`, { method: "POST" }); }
@@ -233,6 +274,10 @@ export class ApiClient {
     return this.request(`/children/${childId}/development-entries`);
   }
 
+  async developmentCategories(): Promise<DevelopmentCategoryOption[]> { return this.request("/development-categories"); }
+  async createDevelopmentCategory(input: { name: string }): Promise<DevelopmentCategoryOption> { return this.request("/development-categories", { method: "POST", body: JSON.stringify(input) }); }
+  async updateDevelopmentCategory(categoryId: string, input: { name?: string; active?: boolean }): Promise<DevelopmentCategoryOption> { return this.request(`/development-categories/${categoryId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+
   async downloadChildrenReport(format: "PDF" | "XLSX", filter: ChildListFilter = {}): Promise<DownloadedReport> {
     const params = new URLSearchParams({ format });
     if (filter.branchId) params.set("branchId", filter.branchId);
@@ -257,12 +302,12 @@ export class ApiClient {
   async updateServicePlanTemplate(templateId: string, input: UpsertServicePlanTemplateInput): Promise<ServicePlanTemplate> { return this.request(`/service-plan-templates/${templateId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async deleteServicePlanTemplate(templateId: string): Promise<void> { await this.request<void>(`/service-plan-templates/${templateId}`, { method: "DELETE" }); }
   async purchaseService(input: PurchaseServiceInput): Promise<{ entitlement: ServiceEntitlement; invoice: Invoice; bookings: Booking[] }> { return this.request("/service-purchases", { method: "POST", body: JSON.stringify(input) }); }
-  async entitlements(): Promise<ServiceEntitlement[]> { return this.request("/service-entitlements"); }
+  async entitlements(filter: BranchListFilter = {}): Promise<ServiceEntitlement[]> { return this.request(withBranchFilter("/service-entitlements", filter)); }
   async bookEntitlement(entitlementId: string, bookingDates: string[]): Promise<Booking[]> { return this.request(`/service-entitlements/${entitlementId}/bookings`, { method: "POST", body: JSON.stringify({ bookingDates }) }); }
-  async bookings(): Promise<Booking[]> { return this.request("/bookings"); }
-  async pendingBookings(): Promise<Booking[]> { return this.request("/bookings/pending-approval"); }
+  async bookings(filter: BranchListFilter = {}): Promise<Booking[]> { return this.request(withBranchFilter("/bookings", filter)); }
+  async pendingBookings(filter: BranchListFilter = {}): Promise<Booking[]> { return this.request(withBranchFilter("/bookings/pending-approval", filter)); }
   async approveBooking(bookingId: string, approved: boolean): Promise<Booking> { return this.request(`/bookings/${bookingId}/approval`, { method: "POST", body: JSON.stringify({ approved }) }); }
-  async invoices(): Promise<Invoice[]> { return this.request("/invoices"); }
+  async invoices(filter: BranchListFilter = {}): Promise<Invoice[]> { return this.request(withBranchFilter("/invoices", filter)); }
   async invoice(invoiceId: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}`); }
   async submitPaymentProof(invoiceId: string, input: SubmitPaymentProofInput): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/payment-proof`, { method: "POST", body: JSON.stringify(input) }); }
   async paymentProof(invoiceId: string): Promise<PaymentProofImage> { return this.request(`/invoices/${invoiceId}/payment-proof`); }
@@ -288,7 +333,7 @@ export class ApiClient {
     const token = await this.options.getToken();
     const organizationId = this.options.getOrganizationId();
     try {
-      return await fetch(`${this.options.baseUrl}${path}`, {
+      return await fetchWithTimeout(`${this.options.baseUrl}${path}`, {
         ...init,
         headers: {
           Accept: "application/json",
@@ -299,7 +344,8 @@ export class ApiClient {
           ...init.headers,
         },
       });
-    } catch {
+    } catch (error) {
+      if (isApiTimeoutError(error)) throw error;
       throw new ApiNetworkError();
     }
   }

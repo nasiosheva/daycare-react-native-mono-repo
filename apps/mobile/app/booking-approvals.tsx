@@ -8,18 +8,21 @@ import { useBookingApproval, useBookings } from "@/booking/useBooking";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/auth/AuthProvider";
 import { downloadPaymentProofImage } from "@/payment-proof/downloadImage";
+import { BranchFilterControl } from "@/branches/BranchFilterSheet";
 
 type PendingConfirm = { kind: "booking" | "enrollment"; id: string; approved: boolean; name: string };
 
 export default function BookingApprovalsScreen() {
   const router = useRouter();
-  const bookings = useBookings(true); const approval = useBookingApproval(); const { api, organizationId, profile } = useAuth(); const client = useQueryClient();
+  const approval = useBookingApproval(); const { api, organizationId, profile } = useAuth(); const client = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
+  const [filterBranchId, setFilterBranchId] = useState<string>();
+  const bookings = useBookings(true, isStaffAdmin ? { branchId: filterBranchId } : {});
   const readOnly = membership?.active === false;
   const canDecideEnrollment = isStaffAdmin && !readOnly;
   const canDecideBooking = (membership?.role === "STAFF_ADMIN" || membership?.role === "STAFF") && !readOnly;
-  const enrollments = useQuery({ queryKey: ["parent-enrollments", organizationId, "pending"], queryFn: () => api.pendingParentEnrollments(), enabled: Boolean(organizationId) && isStaffAdmin });
+  const enrollments = useQuery({ queryKey: ["parent-enrollments", organizationId, "pending", filterBranchId], queryFn: () => api.pendingParentEnrollments({ branchId: filterBranchId }), enabled: Boolean(organizationId) && isStaffAdmin });
   const enrollmentApproval = useMutation({ mutationFn: ({ enrollmentId, approved }: { enrollmentId: string; approved: boolean }) => api.approveParentEnrollment(enrollmentId, approved), onSuccess: () => { void client.invalidateQueries({ queryKey: ["parent-enrollments", organizationId] }); void client.invalidateQueries({ queryKey: ["bookings", organizationId] }); void client.invalidateQueries({ queryKey: ["children", organizationId] }); void client.invalidateQueries({ queryKey: ["classrooms", organizationId] }); } });
   const { t, formatDate } = useI18n();
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
@@ -49,6 +52,7 @@ export default function BookingApprovalsScreen() {
     {!isStaffAdmin && <AppText variant="title">{t("approval.title")}</AppText>}
     <AppText tone="muted">{t("approval.subtitle")}</AppText>
     {readOnly && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
+    {isStaffAdmin && <BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />}
     {isStaffAdmin && enrollments.data?.map((enrollment) => <ApprovalCard
       key={enrollment.id}
       title={enrollment.childName}

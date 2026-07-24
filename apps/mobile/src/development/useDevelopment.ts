@@ -7,6 +7,11 @@ export function useDevelopmentEntries(childId: string | null) {
   return useQuery({ queryKey: ["development-entries", organizationId, childId], queryFn: () => api.developmentEntries(childId as string), enabled: Boolean(childId && organizationId) });
 }
 
+export function useDevelopmentCategories() {
+  const { api, organizationId } = useAuth();
+  return useQuery({ queryKey: ["development-categories", organizationId], queryFn: () => api.developmentCategories(), enabled: Boolean(organizationId) });
+}
+
 export function useCreateDevelopmentEntry(childId: string | null) {
   const { api, organizationId } = useAuth();
   const queryClient = useQueryClient();

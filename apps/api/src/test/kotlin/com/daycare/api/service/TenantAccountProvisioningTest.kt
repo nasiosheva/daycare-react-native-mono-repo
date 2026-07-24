@@ -148,7 +148,8 @@ class TenantAccountProvisioningTest {
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(), emptySet(), emptySet()))
         `when`(tenantAccounts.create("Admin Baru", "admin-baru@tenant.test", "123123")).thenReturn(user)
         `when`(memberships.save(any(Membership::class.java))).thenReturn(membership)
-        val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts)
+        val branchFilters = mock(BranchListFilterService::class.java)
+        val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts, branchFilters)
 
         val response = service.createTenantUser(jwt, organizationId, CreateTenantUserRequest("Admin Baru", "admin-baru@tenant.test", "123123", Role.STAFF_ADMIN))
 

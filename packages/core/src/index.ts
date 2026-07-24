@@ -104,7 +104,7 @@ export const attendanceCommandSchema = z.object({
 });
 
 export const developmentEntrySchema = z.object({
-  category: z.enum(developmentCategories),
+  category: z.union([z.enum(developmentCategories), z.string().uuid()]),
   title: z.string().trim().min(1).max(120),
   content: z.string().trim().min(1).max(2_000),
 });
@@ -133,6 +133,7 @@ export type CurrentUser = {
     role: Role;
     active: boolean;
     canManageChildPrograms: boolean;
+    canManageDevelopmentCategories: boolean;
     institutionTypes: InstitutionType[];
     capabilities: InstitutionCapability[];
   }>;

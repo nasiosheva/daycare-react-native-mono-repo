@@ -1,18 +1,25 @@
+import { useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
+import type { ChildListFilter } from "@daycare/api-client";
 import { AppText, BackButton, Button, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useChildren, useRecordAttendance } from "@/attendance/useAttendance";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
+import { ChildFilterSheet } from "@/children/ChildFilterSheet";
 
 export default function AttendanceScreen() {
   const router = useRouter();
-  const children = useChildren();
-  const record = useRecordAttendance();
   const { profile, organizationId } = useAuth();
   const { t } = useI18n();
-  const readOnly = profile?.memberships.find((item) => item.organizationId === organizationId)?.active === false;
+  const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const isStaffAdmin = membership?.role === "STAFF_ADMIN";
+  const readOnly = membership?.active === false;
+  const [filterVisible, setFilterVisible] = useState(false);
+  const [childFilter, setChildFilter] = useState<ChildListFilter>({});
+  const children = useChildren(isStaffAdmin ? childFilter : {});
+  const record = useRecordAttendance();
   const submit = async (childId: string, action: "CHECK_IN" | "CHECK_OUT") => {
     try { const actionLabel = action === "CHECK_IN" ? t("attendance.checkIn") : t("attendance.checkOut"); await record.mutateAsync({ childId, action, method: "MANUAL" }); Alert.alert(t("attendance.success"), t("attendance.recorded", { action: actionLabel })); }
     catch (error) { Alert.alert(t("attendance.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
@@ -20,6 +27,8 @@ export default function AttendanceScreen() {
   const isPending = (childId: string, action: "CHECK_IN" | "CHECK_OUT") => record.isPending && record.variables?.childId === childId && record.variables?.action === action;
   return <AppScreen showBottomNavigation={false} title={t("attendance.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {readOnly && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
+    {isStaffAdmin && <Button variant="secondary" onPress={() => setFilterVisible(true)}>{t("children.filter")}</Button>}
+    {isStaffAdmin && (childFilter.branchId || childFilter.learningLevelId || childFilter.classroomId) && <AppText tone="muted">{t("children.filterActive")}</AppText>}
     {!readOnly && <Button variant="secondary" onPress={() => router.push("/attendance-scan")}>{t("attendance.scan")}</Button>}
     {children.isLoading && <AppText>{t("attendance.loading")}</AppText>}
     {children.isError && <Button onPress={() => children.refetch()}>{t("common.retry")}</Button>}
@@ -39,6 +48,7 @@ export default function AttendanceScreen() {
         </View>}
       </View>;
     })}
+    {isStaffAdmin && <ChildFilterSheet visible={filterVisible} filter={childFilter} onClose={() => setFilterVisible(false)} onApply={(filter) => { setChildFilter(filter); setFilterVisible(false); }} />}
   </AppScreen>;
 }
 const styles = StyleSheet.create({

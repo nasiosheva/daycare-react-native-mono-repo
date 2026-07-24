@@ -48,6 +48,7 @@ class LearningStructureServiceTest {
     private val branchCapacities = mock(BranchCapacitySettingRepository::class.java)
     private val branches = mock(BranchRepository::class.java)
     private val childScopes = mock(ChildScopeService::class.java)
+    private val branchFilters = mock(BranchListFilterService::class.java)
     private val organizationId = UUID.randomUUID()
     private val jwt = mock(Jwt::class.java)
 
@@ -109,6 +110,6 @@ class LearningStructureServiceTest {
 
     private fun service() = LearningStructureService(
         access, levels, levelPrograms, programs, classrooms, placements, children, academicYears,
-        memberships, users, classroomAssignments, classroomPrograms, branchCapacities, branches, childScopes,
+        memberships, users, classroomAssignments, classroomPrograms, branchCapacities, branches, childScopes, branchFilters,
     )
 }

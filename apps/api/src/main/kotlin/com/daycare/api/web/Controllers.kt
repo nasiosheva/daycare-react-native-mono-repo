@@ -13,12 +13,15 @@ import com.daycare.api.service.CreateChildRequest
 import com.daycare.api.service.CreateInvitationRequest
 import com.daycare.api.service.CreateTenantUserRequest
 import com.daycare.api.service.CreateDevelopmentEntryRequest
+import com.daycare.api.service.CreateDevelopmentCategoryRequest
 import com.daycare.api.service.DevelopmentService
+import com.daycare.api.service.UpdateDevelopmentCategoryRequest
 import com.daycare.api.service.RegisterDeviceRequest
 import com.daycare.api.service.CreateTenantRequest
 import com.daycare.api.service.CreatePlatformAdminRequest
 import com.daycare.api.service.ChangeTenantUserPasswordRequest
 import com.daycare.api.service.UpdateTenantUserChildProgramPermissionRequest
+import com.daycare.api.service.UpdateTenantUserDevelopmentCategoryPermissionRequest
 import com.daycare.api.service.AcademicService
 import com.daycare.api.service.LearningStructureService
 import com.daycare.api.service.UpsertLearningLevelRequest
@@ -27,6 +30,7 @@ import com.daycare.api.service.AssignClassroomStaffRequest
 import com.daycare.api.service.CreateClassroomProgramRequest
 import com.daycare.api.service.CreateChildPlacementRequest
 import com.daycare.api.service.ChildListFilter
+import com.daycare.api.service.BranchListFilter
 import com.daycare.api.service.GoalService
 import com.daycare.api.service.UpsertGoalTemplateRequest
 import com.daycare.api.service.UpsertGoalIndicatorRequest
@@ -132,7 +136,7 @@ class ParentEnrollmentController(private val enrollments: ParentEnrollmentServic
     fun mine(@AuthenticationPrincipal jwt: Jwt) = enrollments.mine(jwt)
 
     @GetMapping("/pending-approval")
-    fun pendingApprovals(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = enrollments.pendingApprovals(jwt, organizationId)
+    fun pendingApprovals(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?) = enrollments.pendingApprovals(jwt, organizationId, BranchListFilter(branchId))
 
     @PostMapping("/{enrollmentId}/approval")
     fun decide(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable enrollmentId: UUID, @Valid @RequestBody request: ParentEnrollmentApprovalRequest) = enrollments.decide(jwt, organizationId, enrollmentId, request)
@@ -249,6 +253,15 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @PostMapping("/children/{childId}/development-entries") @ResponseStatus(HttpStatus.CREATED)
     fun createDevelopmentEntry(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateDevelopmentEntryRequest) = development.create(jwt, organizationId, childId, request)
 
+    @GetMapping("/development-categories")
+    fun developmentCategories(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = development.categories(jwt, organizationId)
+
+    @PostMapping("/development-categories") @ResponseStatus(HttpStatus.CREATED)
+    fun createDevelopmentCategory(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateDevelopmentCategoryRequest) = development.createCategory(jwt, organizationId, request)
+
+    @PatchMapping("/development-categories/{categoryId}")
+    fun updateDevelopmentCategory(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable categoryId: UUID, @Valid @RequestBody request: UpdateDevelopmentCategoryRequest) = development.updateCategory(jwt, organizationId, categoryId, request)
+
     @GetMapping("/children/{childId}/goals")
     fun childGoals(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = goalService.childGoals(jwt, organizationId, childId)
 
@@ -268,13 +281,16 @@ class InstitutionController(private val attendance: AttendanceService, private v
     fun createTenantUser(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateTenantUserRequest) = administration.createTenantUser(jwt, organizationId, request)
 
     @GetMapping("/tenant-users")
-    fun tenantUsers(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = administration.tenantUsers(jwt, organizationId)
+    fun tenantUsers(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?) = administration.tenantUsers(jwt, organizationId, BranchListFilter(branchId))
 
     @PostMapping("/tenant-users/{userId}/deactivate") @ResponseStatus(HttpStatus.NO_CONTENT)
     fun deactivateTenantUser(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable userId: UUID) = administration.deactivateTenantUser(jwt, organizationId, userId)
 
     @PatchMapping("/tenant-users/{userId}/child-program-permission")
     fun updateTenantUserChildProgramPermission(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable userId: UUID, @RequestBody request: UpdateTenantUserChildProgramPermissionRequest) = administration.updateTenantUserChildProgramPermission(jwt, organizationId, userId, request)
+
+    @PatchMapping("/tenant-users/{userId}/development-category-permission")
+    fun updateTenantUserDevelopmentCategoryPermission(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable userId: UUID, @RequestBody request: UpdateTenantUserDevelopmentCategoryPermissionRequest) = administration.updateTenantUserDevelopmentCategoryPermission(jwt, organizationId, userId, request)
 
     @GetMapping("/branches")
     fun branches(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = branchManagement.branches(jwt, organizationId)
@@ -364,7 +380,7 @@ class InstitutionController(private val attendance: AttendanceService, private v
     fun archiveLearningLevel(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable levelId: UUID) = learning.archiveLevel(jwt, organizationId, levelId)
 
     @GetMapping("/classrooms")
-    fun classrooms(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = learning.classrooms(jwt, organizationId)
+    fun classrooms(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?) = learning.classrooms(jwt, organizationId, BranchListFilter(branchId))
 
     @PostMapping("/classrooms") @ResponseStatus(HttpStatus.CREATED)
     fun createClassroom(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertClassroomRequest) = learning.createClassroom(jwt, organizationId, request)
@@ -471,22 +487,22 @@ class BillingController(private val billing: BillingService) {
     fun purchaseService(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: com.daycare.api.service.PurchaseServiceRequest) = billing.purchase(jwt, organizationId, request)
 
     @GetMapping("/service-entitlements")
-    fun entitlements(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = billing.entitlements(jwt, organizationId)
+    fun entitlements(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?) = billing.entitlements(jwt, organizationId, BranchListFilter(branchId))
 
     @PostMapping("/service-entitlements/{entitlementId}/bookings") @ResponseStatus(HttpStatus.CREATED)
     fun createEntitlementBookings(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable entitlementId: UUID, @Valid @RequestBody request: CreateEntitlementBookingsRequest) = billing.createBookingsFromEntitlement(jwt, organizationId, entitlementId, request)
 
     @GetMapping("/bookings")
-    fun bookings(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = billing.bookings(jwt, organizationId, false)
+    fun bookings(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?) = billing.bookings(jwt, organizationId, false, BranchListFilter(branchId))
 
     @GetMapping("/bookings/pending-approval")
-    fun pendingBookings(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = billing.bookings(jwt, organizationId, true)
+    fun pendingBookings(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?) = billing.bookings(jwt, organizationId, true, BranchListFilter(branchId))
 
     @PostMapping("/bookings/{bookingId}/approval")
     fun approveBooking(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable bookingId: UUID, @Valid @RequestBody request: BookingApprovalRequest) = billing.approveBooking(jwt, organizationId, bookingId, request)
 
     @GetMapping("/invoices")
-    fun invoices(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = billing.invoices(jwt, organizationId)
+    fun invoices(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?) = billing.invoices(jwt, organizationId, BranchListFilter(branchId))
 
     @GetMapping("/invoices/{invoiceId}")
     fun invoice(@AuthenticationPrincipal jwt: Jwt, @PathVariable invoiceId: UUID) = billing.invoice(jwt, invoiceId)

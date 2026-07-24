@@ -8,6 +8,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useI18n } from "@/i18n/I18nProvider";
 import { roleKey } from "@/i18n/translations";
+import { BranchFilterControl } from "@/branches/BranchFilterSheet";
 
 export default function StaffPasswordsScreen() {
   const router = useRouter();
@@ -15,7 +16,8 @@ export default function StaffPasswordsScreen() {
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canManage = membership?.active !== false;
-  const users = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: membership?.role === "STAFF_ADMIN" });
+  const [filterBranchId, setFilterBranchId] = useState<string>();
+  const users = useQuery({ queryKey: ["tenant-users", organizationId, filterBranchId], queryFn: () => api.tenantUsers({ branchId: filterBranchId }), enabled: membership?.role === "STAFF_ADMIN" });
   const changePassword = useMutation({ mutationFn: ({ userId, password }: { userId: string; password: string }) => api.changeTenantUserPassword(userId, password) });
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [password, setPassword] = useState("");
@@ -37,6 +39,7 @@ export default function StaffPasswordsScreen() {
   return <AppScreen showBottomNavigation={false} title={t("tenantUsers.staffPasswords")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("tenantUsers.staffPasswordSubtitle")}</AppText>
     {!canManage && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
+    <BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />
     {users.isLoading && <AppText>{t("tenantUsers.loadingStaff")}</AppText>}
     {users.isError && <Button variant="secondary" onPress={() => users.refetch()}>{t("common.retry")}</Button>}
     {canManage && !selectedUser && eligibleUsers.map((user) => <View key={user.id} style={styles.user}>

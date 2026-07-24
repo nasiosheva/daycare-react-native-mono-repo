@@ -2,7 +2,6 @@ package com.daycare.api.persistence
 
 import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.InstitutionType
-import com.daycare.api.domain.DevelopmentCategory
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.ChildEnrollmentStatus
@@ -206,6 +205,7 @@ class Membership(
     @Column(name = "classroom_id") var classroomId: UUID? = null,
     @Column(nullable = false) var active: Boolean = true,
     @Column(name = "can_manage_child_programs", nullable = false) var canManageChildPrograms: Boolean = false,
+    @Column(name = "can_manage_development_categories", nullable = false) var canManageDevelopmentCategories: Boolean = false,
 )
 
 @Entity @Table(name = "children")
@@ -382,8 +382,18 @@ class DevelopmentEntry(
     @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(),
     @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
     @Column(name = "author_user_id", nullable = false) var authorUserId: UUID = UUID.randomUUID(),
-    @Enumerated(EnumType.STRING) @Column(nullable = false) var category: DevelopmentCategory = DevelopmentCategory.OBSERVATION,
+    @Column(nullable = false, length = 64) var category: String = "OBSERVATION",
     @Column(nullable = false) var title: String = "",
     @Column(nullable = false) var content: String = "",
     @Column(name = "recorded_at", nullable = false) var recordedAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "development_categories")
+class DevelopmentCategoryConfig(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(nullable = false, length = 120) var name: String = "",
+    @Column(nullable = false) var active: Boolean = true,
+    @Column(name = "created_by_user_id", nullable = false) var createdByUserId: UUID = UUID.randomUUID(),
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )

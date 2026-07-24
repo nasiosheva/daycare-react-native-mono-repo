@@ -1,7 +1,6 @@
 package com.daycare.api.config
 
 import com.daycare.api.domain.BookingStatus
-import com.daycare.api.domain.DevelopmentCategory
 import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.Gender
 import com.daycare.api.domain.InvitationStatus
@@ -162,7 +161,7 @@ class SimulationDataSeeder(
         paymentProofs.save(PaymentProof(id = Ids.paymentProof, invoiceId = invoice.id, status = com.daycare.api.domain.PaymentProofStatus.VERIFIED, fileName = "simulasi-bukti.png", contentType = "image/png", imageData = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9D6H8AAAAASUVORK5CYII="), note = "Bukti pembayaran simulasi", submittedAt = now.minusSeconds(25 * 60 * 60L), reviewedAt = now.minusSeconds(24 * 60 * 60L), reviewedByUserId = Ids.staffAdmin))
         val entitlement = entitlements.save(ServiceEntitlement(id = Ids.entitlement, organizationId = Ids.activeTenant, branchId = Ids.activeBranch, childId = child.id, ownerUserId = Ids.parent, planId = monthlyPlan.id, invoiceId = invoice.id, planName = monthlyPlan.name, planType = monthlyPlan.type, status = EntitlementStatus.ACTIVE, bookingRequiresApproval = false, periodStart = today.withDayOfMonth(1), periodEnd = today.plusMonths(1).minusDays(1), validUntil = today.plusMonths(1).minusDays(1)))
         bookings.save(Booking(id = Ids.booking, organizationId = Ids.activeTenant, branchId = Ids.activeBranch, childId = child.id, entitlementId = entitlement.id, invoiceId = invoice.id, bookingDate = today.plusDays(1), status = BookingStatus.CONFIRMED, planName = monthlyPlan.name))
-        developmentEntries.save(DevelopmentEntry(id = Ids.developmentEntry, organizationId = Ids.activeTenant, branchId = Ids.activeBranch, childId = child.id, authorUserId = Ids.teacher, category = DevelopmentCategory.ACTIVITY, title = "Kolase warna", content = "Aruna mengikuti aktivitas kolase dengan antusias.", recordedAt = now.minusSeconds(3600)))
+        developmentEntries.save(DevelopmentEntry(id = Ids.developmentEntry, organizationId = Ids.activeTenant, branchId = Ids.activeBranch, childId = child.id, authorUserId = Ids.teacher, category = "ACTIVITY", title = "Kolase warna", content = "Aruna mengikuti aktivitas kolase dengan antusias.", recordedAt = now.minusSeconds(3600)))
         attendance.save(AttendanceRecord(id = Ids.attendanceRecord, organizationId = Ids.activeTenant, branchId = Ids.activeBranch, childId = child.id, operationalDate = today, checkedInAt = now.minusSeconds(7200), checkInMethod = "MANUAL"))
         invitations.save(Invitation(id = Ids.pendingTeacherInvitation, organizationId = Ids.activeTenant, email = "guru-baru@pelangi.simulation.local", role = Role.STAFF, branchId = Ids.activeBranch, classroomId = Ids.activeClassroom, status = InvitationStatus.PENDING))
         invitations.save(Invitation(id = Ids.trialStaffAdminInvitation, organizationId = Ids.trialTenant, email = "owner@angkasa.simulation.local", role = Role.STAFF_ADMIN, status = InvitationStatus.PENDING))

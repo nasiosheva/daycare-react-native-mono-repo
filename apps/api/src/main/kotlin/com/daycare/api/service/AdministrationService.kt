@@ -27,9 +27,10 @@ data class CreateChildRequest(val firstName: String, val lastName: String?, val 
 data class CreateInvitationRequest(val email: String?, val phoneNumber: String?, val role: Role, val branchId: UUID?, val classroomId: UUID?)
 data class RegisterDeviceRequest(@field:NotBlank val token: String, @field:NotBlank val platform: String, @field:NotBlank @field:Size(max = 128) val installationId: String, @field:NotBlank @field:Size(max = 64) val timeZone: String)
 data class NotificationResponse(val id: UUID, val title: String, val body: String, val actionPath: String?, val createdAt: java.time.Instant, val readAt: java.time.Instant?)
-data class TenantUserResponse(val id: UUID, val userId: UUID?, val displayName: String?, val email: String?, val role: Role, val status: String, val branchId: UUID?, val canManageChildPrograms: Boolean)
+data class TenantUserResponse(val id: UUID, val userId: UUID?, val displayName: String?, val email: String?, val role: Role, val status: String, val branchId: UUID?, val canManageChildPrograms: Boolean, val canManageDevelopmentCategories: Boolean)
 data class ChangeTenantUserPasswordRequest(val password: String)
 data class UpdateTenantUserChildProgramPermissionRequest(val canManageChildPrograms: Boolean)
+data class UpdateTenantUserDevelopmentCategoryPermissionRequest(val canManageDevelopmentCategories: Boolean)
 data class CreateTenantUserRequest(
     @field:NotBlank @field:Size(min = 2, max = 100) val displayName: String,
     @field:Email @field:NotBlank val email: String,
@@ -37,6 +38,7 @@ data class CreateTenantUserRequest(
     val role: Role,
     val branchId: UUID? = null,
     val canManageChildPrograms: Boolean = false,
+    val canManageDevelopmentCategories: Boolean = false,
 )
 
 @Service
@@ -50,6 +52,7 @@ class AdministrationService(
     private val deviceTokens: DeviceTokenRepository,
     private val notifications: NotificationRepository,
     private val tenantUserAccounts: TenantUserAccountService,
+    private val branchFilters: BranchListFilterService,
 ) {
     @Transactional
     fun createChild(jwt: Jwt, organizationId: UUID, request: CreateChildRequest): ChildResponse {
@@ -87,21 +90,24 @@ class AdministrationService(
             id
         } else null
         val user = tenantUserAccounts.create(request.displayName, request.email, request.password)
-        val membership = memberships.save(Membership(userId = user.id, organizationId = organizationId, role = request.role, branchId = branchId, canManageChildPrograms = request.role == Role.STAFF && request.canManageChildPrograms))
+        val membership = memberships.save(Membership(userId = user.id, organizationId = organizationId, role = request.role, branchId = branchId, canManageChildPrograms = request.role == Role.STAFF && request.canManageChildPrograms, canManageDevelopmentCategories = request.role == Role.STAFF && request.canManageDevelopmentCategories))
         return tenantUserResponse(membership, user)
     }
 
     @Transactional(readOnly = true)
-    fun tenantUsers(jwt: Jwt, organizationId: UUID): List<TenantUserResponse> {
+    fun tenantUsers(jwt: Jwt, organizationId: UUID, filter: BranchListFilter = BranchListFilter()): List<TenantUserResponse> {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
-        val activeUsers = users.findAllById(membershipsFor(organizationId).map { it.userId }).associateBy { it.id }
-        val memberships = membershipsFor(organizationId).map { membership ->
+        branchFilters.validate(organizationId, filter)
+        val scopedMemberships = membershipsFor(organizationId).filter { filter.branchId == null || it.branchId == filter.branchId }
+        val activeUsers = users.findAllById(scopedMemberships.map { it.userId }).associateBy { it.id }
+        val memberships = scopedMemberships.map { membership ->
             val user = activeUsers[membership.userId]
             tenantUserResponse(membership, user)
         }
         val invitations = invitations.findAllByOrganizationIdAndStatus(organizationId, InvitationStatus.PENDING)
             .filter { it.role in setOf(Role.STAFF, Role.PARENT) }
-            .map { invitation -> TenantUserResponse(invitation.id, null, null, invitation.email ?: invitation.phoneNumber, invitation.role, "PENDING", invitation.branchId, false) }
+            .filter { filter.branchId == null || it.branchId == filter.branchId }
+            .map { invitation -> TenantUserResponse(invitation.id, null, null, invitation.email ?: invitation.phoneNumber, invitation.role, "PENDING", invitation.branchId, false, false) }
         return memberships + invitations
     }
 
@@ -131,6 +137,16 @@ class AdministrationService(
         val membership = memberships.findAllByUserIdAndOrganizationId(userId, organizationId).firstOrNull { it.active && it.role == Role.STAFF }
             ?: throw IllegalArgumentException("Only active Staff users in this tenant can have child program permission changed")
         membership.canManageChildPrograms = request.canManageChildPrograms
+        val user = users.findById(membership.userId).orElseThrow { IllegalArgumentException("Tenant user was not found") }
+        return tenantUserResponse(membership, user)
+    }
+
+    @Transactional
+    fun updateTenantUserDevelopmentCategoryPermission(jwt: Jwt, organizationId: UUID, userId: UUID, request: UpdateTenantUserDevelopmentCategoryPermissionRequest): TenantUserResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val membership = memberships.findAllByUserIdAndOrganizationId(userId, organizationId).firstOrNull { it.active && it.role == Role.STAFF }
+            ?: throw IllegalArgumentException("Only active Staff users in this tenant can have development category permission changed")
+        membership.canManageDevelopmentCategories = request.canManageDevelopmentCategories
         val user = users.findById(membership.userId).orElseThrow { IllegalArgumentException("Tenant user was not found") }
         return tenantUserResponse(membership, user)
     }
@@ -167,7 +183,7 @@ class AdministrationService(
 
     private fun notificationResponse(notification: com.daycare.api.persistence.Notification) = NotificationResponse(notification.id, notification.title, notification.body, notification.actionPath, notification.createdAt, notification.readAt)
 
-    private fun tenantUserResponse(membership: Membership, user: com.daycare.api.persistence.UserProfile?) = TenantUserResponse(membership.id, membership.userId, user?.displayName, user?.email, membership.role, if (membership.active) "ACTIVE" else "INACTIVE", membership.branchId, membership.canManageChildPrograms)
+    private fun tenantUserResponse(membership: Membership, user: com.daycare.api.persistence.UserProfile?) = TenantUserResponse(membership.id, membership.userId, user?.displayName, user?.email, membership.role, if (membership.active) "ACTIVE" else "INACTIVE", membership.branchId, membership.canManageChildPrograms, membership.canManageDevelopmentCategories)
 
     private fun membershipsFor(organizationId: UUID) = memberships.findAllByOrganizationId(organizationId).filter { it.role in setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT) }
 }

@@ -74,6 +74,7 @@ class LearningStructureService(
     private val branchCapacities: BranchCapacitySettingRepository,
     private val branches: BranchRepository,
     private val childScopes: ChildScopeService,
+    private val branchFilters: BranchListFilterService,
 ) {
     @Transactional(readOnly = true)
     fun branches(jwt: Jwt, organizationId: UUID): List<LearningBranchResponse> {
@@ -125,9 +126,10 @@ class LearningStructureService(
     }
 
     @Transactional(readOnly = true)
-    fun classrooms(jwt: Jwt, organizationId: UUID): List<ClassroomResponse> {
+    fun classrooms(jwt: Jwt, organizationId: UUID, filter: BranchListFilter = BranchListFilter()): List<ClassroomResponse> {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
-        return classrooms.findAllByOrganizationIdOrderByNameAsc(organizationId).map(::classroomResponse)
+        branchFilters.validate(organizationId, filter)
+        return classrooms.findAllByOrganizationIdOrderByNameAsc(organizationId).filter { filter.branchId == null || it.branchId == filter.branchId }.map(::classroomResponse)
     }
 
     @Transactional

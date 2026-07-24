@@ -90,7 +90,8 @@ class ParentEnrollmentServiceTest {
         `when`(billing.purchaseForEnrollment(parent, organizationId, firstChild, PurchaseServiceRequest(planId, firstChild.id, emptyList()))).thenReturn(purchaseResponse(firstChild))
         `when`(billing.purchaseForEnrollment(parent, organizationId, secondChild, PurchaseServiceRequest(planId, secondChild.id, emptyList()))).thenReturn(purchaseResponse(secondChild))
         `when`(billing.purchaseForEnrollment(parent, additionalOrganizationId, thirdChild, PurchaseServiceRequest(additionalPlanId, thirdChild.id, emptyList()))).thenReturn(purchaseResponse(thirdChild))
-        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, capabilities, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications)
+        val branchFilters = mock(BranchListFilterService::class.java)
+        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, capabilities, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters)
 
         val response = service.checkout(jwt, ParentEnrollmentCheckoutRequest(organizationId, branch.id, planId, emptyList(), children = listOf(ParentEnrollmentChildInput("Alya", null, Gender.FEMALE, LocalDate.of(2022, 1, 1)), ParentEnrollmentChildInput("Bima", "Putra", Gender.MALE, LocalDate.of(2023, 2, 2)))))
         val additionalTenantResponse = service.checkout(jwt, ParentEnrollmentCheckoutRequest(additionalOrganizationId, additionalBranch.id, additionalPlanId, emptyList(), children = listOf(ParentEnrollmentChildInput("Citra", null, Gender.FEMALE, LocalDate.of(2021, 3, 3)))))
@@ -110,8 +111,8 @@ class ParentEnrollmentServiceTest {
     private fun purchaseResponse(child: Child): PurchaseServiceResponse {
         val invoiceId = UUID.randomUUID()
         return PurchaseServiceResponse(
-            EntitlementResponse(UUID.randomUUID(), child.id, child.firstName, null, null, "Paket", ServicePlanType.MONTHLY, EntitlementStatus.PENDING_PAYMENT, null, null, LocalDate.now()),
-            InvoiceResponse(invoiceId, "INV-TEST", child.id, child.firstName, null, null, BigDecimal.ONE, BigDecimal.ZERO, null, null, BigDecimal.ONE, InvoiceStatus.PENDING, LocalDate.now(), Instant.now(), null),
+            EntitlementResponse(id = UUID.randomUUID(), branchId = UUID.randomUUID(), childId = child.id, childName = child.firstName, parentName = null, parentEmail = null, planName = "Paket", type = ServicePlanType.MONTHLY, status = EntitlementStatus.PENDING_PAYMENT, totalCredits = null, remainingCredits = null, validUntil = LocalDate.now()),
+            InvoiceResponse(id = invoiceId, invoiceNumber = "INV-TEST", branchId = UUID.randomUUID(), childId = child.id, childName = child.firstName, parentName = null, parentEmail = null, subtotalAmount = BigDecimal.ONE, discountAmount = BigDecimal.ZERO, discountName = null, discountCode = null, totalAmount = BigDecimal.ONE, status = InvoiceStatus.PENDING, dueDate = LocalDate.now(), createdAt = Instant.now(), paymentProof = null),
             emptyList(),
         )
     }

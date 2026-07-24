@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PurchaseServiceInput } from "@daycare/core";
-import type { ServicePlan } from "@daycare/api-client";
+import type { BranchListFilter, ServicePlan } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
 
 export function useServicePlans() { const { api, organizationId } = useAuth(); return useQuery({ queryKey: ["service-plans", organizationId], queryFn: () => api.servicePlans(), enabled: Boolean(organizationId) }); }
-export function useEntitlements(enabled = true) { const { api, organizationId } = useAuth(); return useQuery({ queryKey: ["entitlements", organizationId], queryFn: () => api.entitlements(), enabled: Boolean(organizationId) && enabled }); }
-export function useBookings(pendingOnly = false, enabled = true) { const { api, organizationId } = useAuth(); return useQuery({ queryKey: ["bookings", organizationId, pendingOnly], queryFn: () => pendingOnly ? api.pendingBookings() : api.bookings(), enabled: Boolean(organizationId) && enabled }); }
-export function useInvoices(enabled = true) { const { api, organizationId } = useAuth(); return useQuery({ queryKey: ["invoices", organizationId], queryFn: () => api.invoices(), enabled: Boolean(organizationId) && enabled }); }
+export function useEntitlements(filterOrEnabled: BranchListFilter | boolean = {}, enabled = true) { const { api, organizationId } = useAuth(); const filter = typeof filterOrEnabled === "boolean" ? {} : filterOrEnabled; const queryEnabled = typeof filterOrEnabled === "boolean" ? filterOrEnabled : enabled; return useQuery({ queryKey: ["entitlements", organizationId, filter], queryFn: () => api.entitlements(filter), enabled: Boolean(organizationId) && queryEnabled }); }
+export function useBookings(pendingOnly = false, filterOrEnabled: BranchListFilter | boolean = {}, enabled = true) { const { api, organizationId } = useAuth(); const filter = typeof filterOrEnabled === "boolean" ? {} : filterOrEnabled; const queryEnabled = typeof filterOrEnabled === "boolean" ? filterOrEnabled : enabled; return useQuery({ queryKey: ["bookings", organizationId, pendingOnly, filter], queryFn: () => pendingOnly ? api.pendingBookings(filter) : api.bookings(filter), enabled: Boolean(organizationId) && queryEnabled }); }
+export function useInvoices(filterOrEnabled: BranchListFilter | boolean = {}, enabled = true) { const { api, organizationId } = useAuth(); const filter = typeof filterOrEnabled === "boolean" ? {} : filterOrEnabled; const queryEnabled = typeof filterOrEnabled === "boolean" ? filterOrEnabled : enabled; return useQuery({ queryKey: ["invoices", organizationId, filter], queryFn: () => api.invoices(filter), enabled: Boolean(organizationId) && queryEnabled }); }
 
 function useBookingMutation<TVariables>(mutationFn: (variables: TVariables) => Promise<unknown>) {
   const { organizationId } = useAuth(); const client = useQueryClient();

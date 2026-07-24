@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
+import { BranchFilterControl } from "@/branches/BranchFilterSheet";
 import { AppScreen } from "@/navigation/AppScreen";
 import type { Classroom } from "@daycare/api-client";
 
@@ -18,10 +19,12 @@ export default function ClassroomsScreen() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const canManage = membership?.role === "STAFF_ADMIN" && membership.active;
+  const isStaffAdmin = membership?.role === "STAFF_ADMIN";
+  const canManage = isStaffAdmin && membership.active;
+  const [filterBranchId, setFilterBranchId] = useState<string>();
   const periods = useQuery({ queryKey: ["learning-periods", organizationId], queryFn: () => api.academicYears(), enabled: Boolean(membership) });
   const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: Boolean(membership) });
-  const classrooms = useQuery({ queryKey: ["classrooms", organizationId], queryFn: () => api.classrooms(), enabled: Boolean(membership) });
+  const classrooms = useQuery({ queryKey: ["classrooms", organizationId, filterBranchId], queryFn: () => api.classrooms({ branchId: isStaffAdmin ? filterBranchId : undefined }), enabled: Boolean(membership) });
   const branches = useQuery({ queryKey: ["learning-branches", organizationId], queryFn: () => api.learningBranches(), enabled: Boolean(membership) });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ["classrooms", organizationId] });
   const createClassroom = useMutation({ mutationFn: api.createClassroom.bind(api), onSuccess: refresh });
@@ -51,7 +54,7 @@ export default function ClassroomsScreen() {
   };
 
   return <AppScreen showBottomNavigation={false} title={t("learning.classroom")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    {canManage && <Button onPress={openCreate}>{t("learning.addClassroom")}</Button>}
+    {isStaffAdmin && <View style={styles.options}><BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />{canManage && <Button onPress={openCreate}>{t("learning.addClassroom")}</Button>}</View>}
     {classrooms.data?.map((classroom) => <ClassroomCard key={classroom.id} classroom={classroom} levelName={levels.data?.find((level) => level.id === classroom.learningLevelId)?.name} branchName={branches.data?.find((branch) => branch.id === classroom.branchId)?.name} periodName={periods.data?.find((period) => period.id === classroom.learningPeriodId)?.name} canManage={canManage} onEdit={() => openEdit(classroom)} onArchive={() => void archiveClassroom.mutateAsync(classroom.id)} />)}
     {classrooms.data?.length === 0 && <AppText tone="muted">{t("learning.noClassrooms")}</AppText>}
 

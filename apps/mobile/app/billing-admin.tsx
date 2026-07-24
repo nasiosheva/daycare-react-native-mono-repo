@@ -9,6 +9,7 @@ import { useInvoices, useMarkInvoicePaid, useServicePlans } from "@/booking/useB
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { servicePlanTypeKey } from "@/i18n/translations";
+import { BranchFilterControl } from "@/branches/BranchFilterSheet";
 
 export default function BillingAdminScreen() {
   const router = useRouter();
@@ -18,7 +19,8 @@ export default function BillingAdminScreen() {
   const canManage = membership?.active === true;
   const queryClient = useQueryClient();
   const plans = useServicePlans();
-  const invoices = useInvoices();
+  const [filterBranchId, setFilterBranchId] = useState<string>();
+  const invoices = useInvoices({ branchId: filterBranchId });
   const markPaid = useMarkInvoicePaid();
   const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: membership?.role === "STAFF_ADMIN" });
   const capacities = useQuery({ queryKey: ["branch-capacities", organizationId], queryFn: () => api.branchCapacities(), enabled: membership?.role === "STAFF_ADMIN" });
@@ -46,6 +48,7 @@ export default function BillingAdminScreen() {
 
   return <AppScreen showBottomNavigation={false} title={t("billing.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {!canManage && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
+    <BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />
     {canManage && <Button onPress={() => router.push("/billing-plan-editor")}>{t("billing.createPlan")}</Button>}
     <AppText variant="heading">{t("billing.activePlans")}</AppText>
     {plans.data?.map((plan) => <View key={plan.id} style={styles.card}><AppText variant="label">{plan.name}</AppText><AppText>{t(servicePlanTypeKey(plan.type))} · {formatCurrency(plan.price)}</AppText></View>)}

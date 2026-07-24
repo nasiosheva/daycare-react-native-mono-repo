@@ -62,13 +62,13 @@ data class ServicePlanDiscountResponse(val id: UUID, val planId: UUID, val kind:
 data class UpsertServicePlanTemplateRequest(@field:NotBlank @field:Size(max = 120) val name: String, val type: ServicePlanType, val suggestedPrice: BigDecimal?, val creditCount: Int?, val unusedCreditPolicy: UnusedCreditPolicy?, val carryForwardDays: Int?, val bookingRequiresApproval: Boolean, val dailyCapacity: Int?)
 data class ServicePlanTemplateResponse(val id: String, val source: String, val name: String, val type: ServicePlanType, val suggestedPrice: BigDecimal?, val creditCount: Int?, val unusedCreditPolicy: UnusedCreditPolicy?, val carryForwardDays: Int?, val bookingRequiresApproval: Boolean, val dailyCapacity: Int?)
 data class ServicePlanResponse(val id: UUID, val name: String, val type: ServicePlanType, val price: BigDecimal, val creditCount: Int?, val unusedCreditPolicy: UnusedCreditPolicy?, val carryForwardDays: Int?, val bookingRequiresApproval: Boolean, val dailyCapacity: Int?)
-data class EntitlementResponse(val id: UUID, val childId: UUID, val childName: String, val parentName: String?, val parentEmail: String?, val planName: String, val type: ServicePlanType, val status: EntitlementStatus, val totalCredits: Int?, val remainingCredits: Int?, val validUntil: LocalDate)
-data class BookingResponse(val id: UUID, val childId: UUID, val childName: String, val bookingDate: LocalDate, val status: BookingStatus, val planName: String, val invoiceId: UUID)
+data class EntitlementResponse(val id: UUID, val branchId: UUID, val childId: UUID, val childName: String, val parentName: String?, val parentEmail: String?, val planName: String, val type: ServicePlanType, val status: EntitlementStatus, val totalCredits: Int?, val remainingCredits: Int?, val validUntil: LocalDate)
+data class BookingResponse(val id: UUID, val branchId: UUID, val childId: UUID, val childName: String, val bookingDate: LocalDate, val status: BookingStatus, val planName: String, val invoiceId: UUID)
 data class PaymentProofResponse(val status: PaymentProofStatus, val fileName: String, val note: String?, val submittedAt: Instant, val rejectionReason: String?)
 data class PaymentProofImageResponse(val fileName: String, val contentType: String, val dataBase64: String, val note: String?)
 data class SubmitPaymentProofRequest(@field:NotBlank @field:Size(max = 255) val fileName: String, @field:NotBlank @field:Size(max = 100) val contentType: String, @field:NotBlank @field:Size(max = 7_000_000) val imageBase64: String, @field:Size(max = 500) val note: String? = null)
 data class ReviewPaymentProofRequest(val approved: Boolean, @field:Size(max = 500) val rejectionReason: String? = null)
-data class InvoiceResponse(val id: UUID, val invoiceNumber: String, val childId: UUID, val childName: String, val parentName: String?, val parentEmail: String?, val subtotalAmount: BigDecimal, val discountAmount: BigDecimal, val discountName: String?, val discountCode: String?, val totalAmount: BigDecimal, val status: InvoiceStatus, val dueDate: LocalDate, val createdAt: Instant, val paymentProof: PaymentProofResponse?)
+data class InvoiceResponse(val id: UUID, val invoiceNumber: String, val branchId: UUID, val childId: UUID, val childName: String, val parentName: String?, val parentEmail: String?, val subtotalAmount: BigDecimal, val discountAmount: BigDecimal, val discountName: String?, val discountCode: String?, val totalAmount: BigDecimal, val status: InvoiceStatus, val dueDate: LocalDate, val createdAt: Instant, val paymentProof: PaymentProofResponse?)
 data class PurchaseServiceResponse(val entitlement: EntitlementResponse, val invoice: InvoiceResponse, val bookings: List<BookingResponse>)
 
 @Service
@@ -92,6 +92,7 @@ class BillingService(
     private val parentEnrollments: ParentEnrollmentRepository,
     private val memberships: MembershipRepository,
     private val identity: IdentityService,
+    private val branchFilters: BranchListFilterService,
 ) {
     @Transactional
     fun plans(jwt: Jwt, organizationId: UUID): List<ServicePlanResponse> {
@@ -208,7 +209,7 @@ class BillingService(
         val createdBookings = if (deferBookings) emptyList() else dates.map { date -> bookings.save(Booking(organizationId = organizationId, branchId = child.branchId, childId = child.id, entitlementId = entitlement.id, invoiceId = invoice.id, bookingDate = date, planName = plan.name)) }
         if (!deferBookings) capacity.reserve(organizationId, child.branchId, plan.id, entitlement.id, capacityDates(plan.type, dates, today, periodEnd), createdBookings.associate { it.bookingDate to it.id })
         if (appliedDiscount?.discount?.kind == ServicePlanDiscountKind.PROMO_CODE) discountRedemptions.save(ServicePlanDiscountRedemption(discountId = appliedDiscount.discount.id, invoiceId = invoice.id))
-        return PurchaseServiceResponse(entitlementResponse(entitlement), invoiceResponse(invoice, child.id, child.fullName()), createdBookings.map { bookingResponse(it, child.fullName()) })
+        return PurchaseServiceResponse(entitlementResponse(entitlement), invoiceResponse(invoice, entitlement.branchId, child.id, child.fullName()), createdBookings.map { bookingResponse(it, child.fullName()) })
     }
 
     @Transactional
@@ -229,7 +230,7 @@ class BillingService(
         require(invoice.status == InvoiceStatus.PENDING) { "Invoice is not awaiting payment" }
         val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found")
         completeInvoicePayment(invoice)
-        return invoiceResponse(invoice, entitlement.childId, childName(entitlement.childId))
+        return invoiceResponse(invoice, entitlement.branchId, entitlement.childId, childName(entitlement.childId))
     }
 
     @Transactional
@@ -254,7 +255,7 @@ class BillingService(
         invoice.status = InvoiceStatus.PAYMENT_SUBMITTED
         notifyStaffAdmins(invoice.organizationId, "Bukti pembayaran baru", "Tagihan ${invoice.invoiceNumber} menunggu verifikasi.")
         val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found")
-        return invoiceResponse(invoice, entitlement.childId, childName(entitlement.childId))
+        return invoiceResponse(invoice, entitlement.branchId, entitlement.childId, childName(entitlement.childId))
     }
 
     @Transactional
@@ -279,7 +280,7 @@ class BillingService(
             invoice.status = InvoiceStatus.PENDING
             notifications.notify(organizationId, invoice.payerUserId, "Bukti pembayaran ditolak", reason, realtimeFlags = setOf(RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.PARENT_ENROLLMENTS))
         }
-        return invoiceResponse(invoice, entitlement.childId, childName(entitlement.childId))
+        return invoiceResponse(invoice, entitlement.branchId, entitlement.childId, childName(entitlement.childId))
     }
 
     @Transactional(readOnly = true)
@@ -288,7 +289,7 @@ class BillingService(
         val invoice = invoices.findById(invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }
         if (invoice.payerUserId != user.id) access.require(jwt, invoice.organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
         val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found")
-        return invoiceResponse(invoice, entitlement.childId, childName(entitlement.childId))
+        return invoiceResponse(invoice, entitlement.branchId, entitlement.childId, childName(entitlement.childId))
     }
 
     @Transactional(readOnly = true)
@@ -337,29 +338,36 @@ class BillingService(
     }
 
     @Transactional
-    fun entitlements(jwt: Jwt, organizationId: UUID): List<EntitlementResponse> {
+    fun entitlements(jwt: Jwt, organizationId: UUID, filter: BranchListFilter = BranchListFilter()): List<EntitlementResponse> {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
+        branchFilters.validate(organizationId, filter)
         reconcileExpiredInvoices(organizationId)
         val source = if (scope.membership.role == Role.STAFF_ADMIN) entitlements.findAllByOrganizationId(organizationId) else entitlements.findAllByOrganizationIdAndOwnerUserId(organizationId, scope.user.id)
-        return source.onEach(::expireIfNeeded).sortedByDescending { it.validUntil }.map(::entitlementResponse)
+        return source.filter { filter.branchId == null || it.branchId == filter.branchId }.onEach(::expireIfNeeded).sortedByDescending { it.validUntil }.map(::entitlementResponse)
     }
 
     @Transactional
-    fun bookings(jwt: Jwt, organizationId: UUID, pendingOnly: Boolean): List<BookingResponse> {
+    fun bookings(jwt: Jwt, organizationId: UUID, pendingOnly: Boolean, filter: BranchListFilter = BranchListFilter()): List<BookingResponse> {
         val scope = access.require(jwt, organizationId, if (pendingOnly) setOf(Role.STAFF_ADMIN, Role.STAFF) else setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
+        branchFilters.validate(organizationId, filter)
         val source = if (pendingOnly) bookings.findAllByOrganizationIdAndStatusOrderByBookingDateAsc(organizationId, BookingStatus.PENDING_APPROVAL) else bookings.findAllByOrganizationIdOrderByBookingDateDesc(organizationId)
         return source.filter { booking ->
-            (!pendingOnly || parentEnrollments.findByInvoiceId(booking.invoiceId) == null) &&
+            (filter.branchId == null || booking.branchId == filter.branchId) &&
+                (!pendingOnly || parentEnrollments.findByInvoiceId(booking.invoiceId) == null) &&
                 if (scope.membership.role == Role.PARENT) entitlements.findById(booking.entitlementId).map { it.ownerUserId == scope.user.id }.orElse(false) else childScopes.isStaffManagedChild(scope, booking.childId, organizationId)
         }.map { bookingResponse(it, childName(it.childId)) }
     }
 
     @Transactional
-    fun invoices(jwt: Jwt, organizationId: UUID): List<InvoiceResponse> {
+    fun invoices(jwt: Jwt, organizationId: UUID, filter: BranchListFilter = BranchListFilter()): List<InvoiceResponse> {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
+        branchFilters.validate(organizationId, filter)
         reconcileExpiredInvoices(organizationId)
         val source = if (scope.membership.role == Role.STAFF_ADMIN) invoices.findAllByOrganizationIdOrderByCreatedAtDesc(organizationId) else invoices.findAllByOrganizationIdAndPayerUserIdOrderByCreatedAtDesc(organizationId, scope.user.id)
-        return source.map { invoice -> val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found"); invoiceResponse(invoice, entitlement.childId, childName(entitlement.childId)) }
+        return source.mapNotNull { invoice ->
+            val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found")
+            if (filter.branchId != null && entitlement.branchId != filter.branchId) null else invoiceResponse(invoice, entitlement.branchId, entitlement.childId, childName(entitlement.childId))
+        }
     }
 
     private fun validatePlanConfiguration(type: ServicePlanType, price: BigDecimal?, creditCount: Int?, unusedCreditPolicy: UnusedCreditPolicy?, carryForwardDays: Int?, dailyCapacity: Int?) {
@@ -456,9 +464,9 @@ class BillingService(
     private fun discountResponse(discount: ServicePlanDiscount) = ServicePlanDiscountResponse(discount.id, discount.servicePlanId, discount.kind, discount.name, discount.promoCode, discount.type, discount.value, discount.startsOn, discount.endsOn, discount.usageLimit, discount.active)
     private fun templateResponse(template: ServicePlanTemplate) = ServicePlanTemplateResponse(template.id.toString(), "TENANT", template.name, template.type, template.suggestedPrice, template.creditCount, template.unusedCreditPolicy, template.carryForwardDays, template.bookingRequiresApproval, template.dailyCapacity)
     private fun templateFromRequest(organizationId: UUID, request: UpsertServicePlanTemplateRequest) = ServicePlanTemplate(organizationId = organizationId, name = request.name.trim(), type = request.type, suggestedPrice = request.suggestedPrice, creditCount = request.creditCount, unusedCreditPolicy = request.unusedCreditPolicy, carryForwardDays = request.carryForwardDays, bookingRequiresApproval = request.bookingRequiresApproval, dailyCapacity = request.dailyCapacity)
-    private fun entitlementResponse(entitlement: ServiceEntitlement): EntitlementResponse { val parent = users.findById(entitlement.ownerUserId).orElse(null); return EntitlementResponse(entitlement.id, entitlement.childId, childName(entitlement.childId), parent?.displayName, parent?.email, entitlement.planName, entitlement.planType, entitlement.status, entitlement.totalCredits, entitlement.totalCredits?.let { remainingCredits(entitlement) }, entitlement.validUntil) }
-    private fun bookingResponse(booking: Booking, childName: String) = BookingResponse(booking.id, booking.childId, childName, booking.bookingDate, booking.status, booking.planName, booking.invoiceId)
-    private fun invoiceResponse(invoice: Invoice, childId: UUID, childName: String): InvoiceResponse { val parent = users.findById(invoice.payerUserId).orElse(null); return InvoiceResponse(invoice.id, invoice.invoiceNumber, childId, childName, parent?.displayName, parent?.email, invoice.subtotalAmount, invoice.discountAmount, invoice.discountName, invoice.discountCode, invoice.totalAmount, invoice.status, invoice.dueDate, invoice.createdAt, paymentProofs.findByInvoiceId(invoice.id)?.let(::paymentProofResponse)) }
+    private fun entitlementResponse(entitlement: ServiceEntitlement): EntitlementResponse { val parent = users.findById(entitlement.ownerUserId).orElse(null); return EntitlementResponse(entitlement.id, entitlement.branchId, entitlement.childId, childName(entitlement.childId), parent?.displayName, parent?.email, entitlement.planName, entitlement.planType, entitlement.status, entitlement.totalCredits, entitlement.totalCredits?.let { remainingCredits(entitlement) }, entitlement.validUntil) }
+    private fun bookingResponse(booking: Booking, childName: String) = BookingResponse(booking.id, booking.branchId, booking.childId, childName, booking.bookingDate, booking.status, booking.planName, booking.invoiceId)
+    private fun invoiceResponse(invoice: Invoice, branchId: UUID, childId: UUID, childName: String): InvoiceResponse { val parent = users.findById(invoice.payerUserId).orElse(null); return InvoiceResponse(invoice.id, invoice.invoiceNumber, branchId, childId, childName, parent?.displayName, parent?.email, invoice.subtotalAmount, invoice.discountAmount, invoice.discountName, invoice.discountCode, invoice.totalAmount, invoice.status, invoice.dueDate, invoice.createdAt, paymentProofs.findByInvoiceId(invoice.id)?.let(::paymentProofResponse)) }
     private fun paymentProofResponse(proof: PaymentProof) = PaymentProofResponse(proof.status, proof.fileName, proof.note, proof.submittedAt, proof.rejectionReason)
     private fun decodePaymentProof(request: SubmitPaymentProofRequest): ByteArray {
         require(request.contentType.lowercase() in setOf("image/jpeg", "image/png")) { "Payment proof must be a JPEG or PNG image" }

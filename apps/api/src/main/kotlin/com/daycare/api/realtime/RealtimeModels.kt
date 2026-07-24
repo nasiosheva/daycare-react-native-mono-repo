@@ -11,6 +11,7 @@ enum class RealtimeFlag {
     CHILDREN,
     ATTENDANCE,
     DEVELOPMENT,
+    DEVELOPMENT_CATEGORIES,
     BOOKINGS,
     INVOICES,
     ENTITLEMENTS,

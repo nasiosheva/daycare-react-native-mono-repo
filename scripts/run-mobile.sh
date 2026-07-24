@@ -407,6 +407,11 @@ run_android_local_client_through_adb() {
   exit 1
 }
 
+run_web_local_client() {
+  export EXPO_PUBLIC_API_URL="http://localhost:8080/api/v1"
+  corepack pnpm --filter @daycare/app exec expo start --web --clear
+}
+
 ensure_local_backend() {
   ensure_local_backend_tools
   require_local_backend_values
@@ -493,7 +498,11 @@ run_client() {
       corepack pnpm --filter @daycare/app exec expo run:ios --device "$ios_device_udid"
       ;;
     web)
-      corepack pnpm --filter @daycare/app exec expo start --web
+      if [ "$environment" = "local" ]; then
+        run_web_local_client
+      else
+        corepack pnpm --filter @daycare/app exec expo start --web
+      fi
       ;;
     *)
       echo "Unsupported platform: $platform" >&2

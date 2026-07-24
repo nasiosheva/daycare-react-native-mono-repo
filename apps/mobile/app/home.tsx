@@ -14,17 +14,18 @@ import { can, hasInstitutionCapability } from "@daycare/core";
 import { useI18n } from "@/i18n/I18nProvider";
 import { roleKey, tenantPaymentStatusKey, tenantSubscriptionPlanKey } from "@/i18n/translations";
 import { useStaffDailyTasks } from "@/home/useStaffDailyTasks";
+import { authErrorMessage } from "@/auth/authErrorMessage";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { user, profile, organizationId, isSimulationSession, loading } = useAuth();
+  const { user, profile, organizationId, isSimulationSession, loading, profileError } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const staffChildren = useChildren(membership?.role === "STAFF" && !isSimulationSession);
   const staffDailyTasks = useStaffDailyTasks(staffChildren.data ?? [], membership?.role === "STAFF" && !isSimulationSession);
-  if (loading || (user && !profile)) return <HomeLoadingState />;
+  if (loading) return <HomeLoadingState />;
   if (!user) return <Redirect href="/sign-in" />;
-  if (!profile) return <HomeLoadingState />;
+  if (!profile) return profileError ? <ProfileLoadFailure error={profileError} /> : <HomeLoadingState />;
   if (profile.isPlatformAdmin) return <PlatformAdminHome />;
   if (!membership) return <Redirect href={"/parent-enrollment" as never} />;
   const hasDaycareOperations = hasInstitutionCapability(membership.capabilities, "DAYCARE_OPERATIONS");
@@ -42,6 +43,19 @@ export default function HomeScreen() {
     {hasDaycareOperations && can(membership.role, "bookServices") && <Button onPress={() => router.push("/booking")}>{t("booking.title")}</Button>}
     {membership.role === "PARENT" && <Button variant="secondary" onPress={() => router.push("/parent-enrollment" as never)}>{t("parentEnrollment.manageTenants")}</Button>}
     {!isStaffAdmin && hasDaycareOperations && can(membership.role, "approveBookings") && <Button onPress={() => router.push("/booking-approvals")}>{t("home.bookingApprovals")}</Button>}
+  </View></AppScreen>;
+}
+
+function ProfileLoadFailure({ error }: { error: Error }) {
+  const { refreshProfile, signOut } = useAuth();
+  const { t } = useI18n();
+  return <AppScreen showBottomNavigation={false}><View style={styles.profileError}>
+    <AppText variant="heading">{t("auth.profileLoadFailed")}</AppText>
+    <AppText tone="muted">{authErrorMessage(error, t)}</AppText>
+    <View style={styles.profileErrorActions}>
+      <Button onPress={() => void refreshProfile().catch(() => undefined)}>{t("common.retry")}</Button>
+      <Button variant="secondary" onPress={() => void signOut().catch(() => undefined)}>{t("auth.signOut")}</Button>
+    </View>
   </View></AppScreen>;
 }
 
@@ -153,6 +167,8 @@ function TenantSection({ title, tenants, emptyMessage, formatCurrency, t }: { ti
 const styles = StyleSheet.create({
   content: { gap: spacing.md },
   loading: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm, minHeight: 240 },
+  profileError: { flex: 1, justifyContent: "center", gap: spacing.md, minHeight: 240 },
+  profileErrorActions: { gap: spacing.sm },
   staffAdminToolbar: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   staffAdminHeading: { flex: 1, gap: spacing.xs },
   staffToolbar: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },

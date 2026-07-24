@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useQuery } from "@tanstack/react-query";
-import { AppText, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, colors, NavigationCard, radius, spacing } from "@daycare/ui";
 import { StyleSheet, View } from "react-native";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -47,12 +47,10 @@ function Metric({ label, value }: { label: string; value: number }) {
 }
 
 function MenuItem({ title, description, onPress }: { title: string; description: string; onPress: () => void }) {
-  return <View style={styles.menuItem}><View style={styles.menuContent}><AppText variant="h5">{title}</AppText><AppText variant="bodySmall" tone="muted">{description}</AppText></View><Button variant="secondary" onPress={onPress}>›</Button></View>;
+  return <NavigationCard accessibilityLabel={title} onPress={onPress}><AppText variant="h5">{title}</AppText><AppText variant="bodySmall" tone="muted">{description}</AppText></NavigationCard>;
 }
 
 const styles = StyleSheet.create({
   metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   metric: { flexGrow: 1, minWidth: 140, gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint },
-  menuItem: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  menuContent: { flex: 1, gap: spacing.xs },
 });

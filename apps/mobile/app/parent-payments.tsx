@@ -8,6 +8,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useInvoices, useMarkInvoicePaid } from "@/booking/useBooking";
 import { useI18n } from "@/i18n/I18nProvider";
+import { BranchFilterControl } from "@/branches/BranchFilterSheet";
 
 export default function ParentPaymentsScreen() {
   const router = useRouter();
@@ -15,7 +16,8 @@ export default function ParentPaymentsScreen() {
   const { t, formatCurrency, formatDate } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canManage = membership?.active === true;
-  const invoices = useInvoices();
+  const [filterBranchId, setFilterBranchId] = useState<string>();
+  const invoices = useInvoices({ branchId: filterBranchId });
   const markPaid = useMarkInvoicePaid();
   const client = useQueryClient();
   const [reviewInvoiceId, setReviewInvoiceId] = useState<string | null>(null);
@@ -43,6 +45,7 @@ export default function ParentPaymentsScreen() {
   return <AppScreen showBottomNavigation={false} title={t("staffAdmin.paymentsTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("staffAdmin.paymentsSubtitle")}</AppText>
     {!canManage && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
+    <BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />
     {pendingInvoices.map((invoice) => <View key={invoice.id} style={styles.card}>
       <AppText variant="h5">{invoice.childName}</AppText>
       <AppText tone="muted">{t("staffAdmin.parent")}: {invoice.parentName ?? invoice.parentEmail ?? t("common.noData")}</AppText>
