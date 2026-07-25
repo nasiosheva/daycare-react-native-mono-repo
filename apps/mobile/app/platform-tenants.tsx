@@ -31,7 +31,10 @@ export default function PlatformTenantsScreen() {
   if (!profile) return null;
   if (!profile.isPlatformAdmin) return <Redirect href="/home" />;
 
-  return <AppScreen floatingAction={<FloatingActionButton accessibilityLabel={t("institutionCatalog.add")} onPress={() => router.push("/institution-types")}>+ {t("institutionCatalog.add")}</FloatingActionButton>}><AppText variant="title">{t("tenant.title")}</AppText>
+  return <AppScreen floatingAction={<View style={styles.floatingActions}>
+    <FloatingActionButton accessibilityLabel={t("tenant.addTitle")} onPress={() => router.push("/add-tenant")}>+ {t("tenant.addTitle")}</FloatingActionButton>
+    <FloatingActionButton accessibilityLabel={t("institutionCatalog.add")} onPress={() => router.push("/institution-types")}>+ {t("institutionCatalog.add")}</FloatingActionButton>
+  </View>}><AppText variant="title">{t("tenant.title")}</AppText>
     <AppText variant="heading">{t("tenant.list")}</AppText>
     <TextInput style={styles.input} placeholder={t("tenant.search")} value={search} onChangeText={setSearch} />
     <AppText variant="label">{t("tenant.filterStatus")}</AppText>
@@ -77,6 +80,7 @@ function StatusTab({ label, selected, onPress }: { label: string; selected: bool
 }
 
 const styles = StyleSheet.create({
+  floatingActions: { alignItems: "flex-end", gap: spacing.sm },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   tabsScroll: { flexGrow: 0, flexShrink: 0 },
   tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
