@@ -7,7 +7,7 @@ import type { ServicePlan } from "@daycare/api-client";
 import { useChildren } from "@/attendance/useAttendance";
 import { useBookEntitlement, useBookings, useEntitlements, useInvoices, usePurchaseService, useServicePlans } from "@/booking/useBooking";
 import { useI18n } from "@/i18n/I18nProvider";
-import { bookingStatusKey, invoiceStatusKey, servicePlanTypeKey } from "@/i18n/translations";
+import { bookingStatusKey, invoiceSourceKey, invoiceStatusKey, servicePlanTypeKey } from "@/i18n/translations";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate, isIsoDate } from "@/date-picker/date";
 
@@ -81,7 +81,7 @@ export default function BookingScreen() {
 
     <BottomSheet visible={listSheet === "invoices"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.invoices")}>
       <AppText tone="muted">{t("booking.invoicesDescription")}</AppText>
-      {invoices.data?.map((item) => <View key={item.id} style={styles.card}><AppText variant="label">{item.invoiceNumber} · {formatCurrency(item.totalAmount)}</AppText><AppText>{t("booking.dueDate", { status: t(invoiceStatusKey(item.status)), date: formatDate(item.dueDate) })}</AppText>{item.status === "PENDING" && <Button variant="secondary" onPress={() => router.push({ pathname: "/payment-proof", params: { invoiceId: item.id } })}>{t("paymentProof.submit")}</Button>}{item.status === "PAYMENT_SUBMITTED" && <AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>}</View>)}
+      {invoices.data?.map((item) => <View key={item.id} style={styles.card}><AppText variant="label">{item.invoiceNumber} · {formatCurrency(item.totalAmount)}</AppText><AppText tone="muted">{item.description ?? t(invoiceSourceKey(item.source))}</AppText><AppText>{t("booking.dueDate", { status: t(invoiceStatusKey(item.status)), date: formatDate(item.dueDate) })}</AppText>{item.status === "PENDING" && <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: item.id } })}>{t("parentEnrollment.pay")}</Button>}{item.status === "PAYMENT_SUBMITTED" && <AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>}</View>)}
       {invoices.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     </BottomSheet>
 

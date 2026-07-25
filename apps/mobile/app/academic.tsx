@@ -24,7 +24,7 @@ export default function AcademicScreen() {
       <ActionCard title={t("children.title")} description={t("children.menuDescription")} onPress={() => router.push("/children")} />
       <ActionCard title={t("academic.year")} description={t("academic.addYearDescription")} onPress={() => router.push("/academic-years")} />
       <ActionCard title={t("academic.program")} description={t("academic.addProgramDescription")} onPress={() => router.push("/curriculum-programs")} />
-      <ActionCard title={t("learning.level")} description={t("learning.addLevelDescription")} onPress={() => router.push("/learning-levels")} />
+      {membership.role === "STAFF_ADMIN" && <ActionCard title={t("learning.level")} description={t("learning.addLevelDescription")} onPress={() => router.push("/learning-levels")} />}
       <ActionCard title={t("learning.classroom")} description={t("learning.addClassroomDescription")} onPress={() => router.push("/classrooms")} />
       <ActionCard title={t("learning.activities")} description={t("learning.addActivityDescription")} onPress={() => router.push("/curriculum-activities")} />
     </View>

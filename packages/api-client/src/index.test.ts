@@ -117,6 +117,16 @@ describe("ApiClient", () => {
     ]));
   });
 
+  it("sends the curriculum-program search query to the tenant endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await client.curriculumPrograms("  fondasi anak  ");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/curriculum-programs?search=fondasi+anak", expect.anything());
+  });
+
   it("records a daily child-goal outcome through the tenant-scoped endpoint", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);

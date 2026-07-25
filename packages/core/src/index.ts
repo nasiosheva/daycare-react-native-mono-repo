@@ -13,6 +13,8 @@ export type AttendanceAction = (typeof attendanceActions)[number];
 
 export const developmentCategories = ["ACTIVITY", "MEAL", "NAP", "OBSERVATION"] as const;
 export type DevelopmentCategory = (typeof developmentCategories)[number];
+export const goalCategories = ["KEMANDIRIAN", "BAHASA_KOMUNIKASI", "KOGNITIF", "MOTORIK_HALUS", "MOTORIK_KASAR", "SOSIAL_EMOSI"] as const;
+export type GoalCategory = (typeof goalCategories)[number];
 export const childGenders = ["MALE", "FEMALE"] as const;
 export type ChildGender = (typeof childGenders)[number];
 export type PersonGender = ChildGender | "UNSPECIFIED";

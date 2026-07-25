@@ -16,6 +16,7 @@ jobs:
     name: Build and deploy
     runs-on: ubuntu-latest
     env:
+      EXPO_PUBLIC_APP_ENV: production
       EXPO_PUBLIC_API_URL: ${{ vars.PRODUCTION_API_URL || secrets.PRODUCTION_API_URL }}
       EXPO_PUBLIC_REALTIME_URL: ${{ vars.PRODUCTION_REALTIME_URL || secrets.PRODUCTION_REALTIME_URL }}
       EXPO_PUBLIC_FIREBASE_API_KEY: ${{ vars.PRODUCTION_FIREBASE_API_KEY || secrets.PRODUCTION_FIREBASE_API_KEY }}

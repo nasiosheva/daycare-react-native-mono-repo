@@ -7,6 +7,7 @@ import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.ChildEnrollmentStatus
 import com.daycare.api.domain.Gender
 import com.daycare.api.domain.GoalCheckInOutcome
+import com.daycare.api.domain.GoalCategory
 import com.daycare.api.domain.ChildGoalStatus
 import com.daycare.api.domain.ChildGoalOutcome
 import com.daycare.api.domain.ParentEnrollmentStatus
@@ -238,7 +239,7 @@ class Child(
 @Entity @Table(name = "goal_templates")
 class GoalTemplate(
     @Id var id: UUID = UUID.randomUUID(),
-    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id") var organizationId: UUID? = null,
     @Column(name = "learning_level_id") var learningLevelId: UUID? = null,
     @Column(name = "classroom_id") var classroomId: UUID? = null,
     @Column(nullable = false) var name: String = "",
@@ -246,6 +247,9 @@ class GoalTemplate(
     @Column(name = "duration_days", nullable = false) var durationDays: Int = 1,
     @Column(name = "minimum_yes_percent", nullable = false) var minimumYesPercent: Int = 0,
     @Column(name = "minimum_yes_streak", nullable = false) var minimumYesStreak: Int = 0,
+    @Column(name = "min_age_months") var minAgeMonths: Int? = null,
+    @Column(name = "max_age_months") var maxAgeMonths: Int? = null,
+    @Enumerated(EnumType.STRING) @Column var category: GoalCategory? = null,
     @Column(nullable = false) var active: Boolean = true,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
@@ -253,7 +257,7 @@ class GoalTemplate(
 @Entity @Table(name = "goal_template_indicators")
 class GoalTemplateIndicator(
     @Id var id: UUID = UUID.randomUUID(),
-    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id") var organizationId: UUID? = null,
     @Column(name = "goal_template_id", nullable = false) var goalTemplateId: UUID = UUID.randomUUID(),
     @Column(nullable = false) var name: String = "",
     @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
@@ -428,9 +432,9 @@ class DevelopmentEntry(
 @Entity @Table(name = "development_categories")
 class DevelopmentCategoryConfig(
     @Id var id: UUID = UUID.randomUUID(),
-    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id") var organizationId: UUID? = null,
     @Column(nullable = false, length = 120) var name: String = "",
     @Column(nullable = false) var active: Boolean = true,
-    @Column(name = "created_by_user_id", nullable = false) var createdByUserId: UUID = UUID.randomUUID(),
+    @Column(name = "created_by_user_id") var createdByUserId: UUID? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )

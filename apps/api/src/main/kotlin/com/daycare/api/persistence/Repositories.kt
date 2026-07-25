@@ -32,6 +32,16 @@ interface AcademicYearRepository : JpaRepository<AcademicYear, UUID> { fun findA
 interface CurriculumProgramRepository : JpaRepository<CurriculumProgram, UUID> {
     fun findAllByOrganizationIdOrderByNameAsc(organizationId: UUID): List<CurriculumProgram>
     fun findAllByOrganizationIdIsNullOrderByNameAsc(): List<CurriculumProgram>
+
+    @Query("""
+        select program
+        from CurriculumProgram program
+        where (program.organizationId is null or program.organizationId = :organizationId)
+          and (lower(program.name) like lower(concat('%', :search, '%'))
+            or lower(program.description) like lower(concat('%', :search, '%')))
+        order by case when program.organizationId is null then 0 else 1 end, program.name asc
+    """)
+    fun searchAvailableForOrganization(@Param("organizationId") organizationId: UUID, @Param("search") search: String): List<CurriculumProgram>
 }
 interface CurriculumActivityRepository : JpaRepository<CurriculumActivity, UUID> { fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<CurriculumActivity> }
 interface CurriculumActivityAssessmentRepository : JpaRepository<CurriculumActivityAssessment, UUID> { fun findAllByOrganizationIdAndActivityIdOrderByCreatedAtDesc(organizationId: UUID, activityId: UUID): List<CurriculumActivityAssessment> }
@@ -41,6 +51,10 @@ interface PlatformAdministratorRepository : JpaRepository<PlatformAdministrator,
 interface TenantSubscriptionRepository : JpaRepository<TenantSubscription, UUID> { fun findByOrganizationId(organizationId: UUID): TenantSubscription? }
 interface TenantPaymentRepository : JpaRepository<TenantPayment, UUID> { fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<TenantPayment> }
 interface BranchRepository : JpaRepository<Branch, UUID> { fun findFirstByOrganizationId(organizationId: UUID): Branch?; fun findByOrganizationIdAndPrimaryTrue(organizationId: UUID): Branch?; fun findAllByOrganizationId(organizationId: UUID): List<Branch>; fun findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId: UUID): List<Branch>; @Lock(LockModeType.PESSIMISTIC_WRITE) fun findWithLockById(id: UUID): Branch? }
+interface BranchOperatingHourRepository : JpaRepository<BranchOperatingHour, UUID> { fun findAllByBranchIdOrderByDayOfWeekAsc(branchId: UUID): List<BranchOperatingHour>; fun deleteAllByBranchId(branchId: UUID) }
+interface BranchOvertimeRateTierRepository : JpaRepository<BranchOvertimeRateTier, UUID> { fun findAllByBranchIdOrderByDisplayOrderAsc(branchId: UUID): List<BranchOvertimeRateTier>; fun deleteAllByBranchId(branchId: UUID) }
+interface OvertimeChargeRepository : JpaRepository<OvertimeCharge, UUID> { fun findAllByOrganizationIdOrderByOperationalDateDesc(organizationId: UUID): List<OvertimeCharge>; fun findByInvoiceId(invoiceId: UUID): OvertimeCharge?; fun findAllByOrganizationIdAndChildIdAndOperationalDate(organizationId: UUID, childId: UUID, operationalDate: LocalDate): List<OvertimeCharge> }
+interface OvertimeChargeTierSnapshotRepository : JpaRepository<OvertimeChargeTierSnapshot, UUID> { fun findAllByOvertimeChargeIdOrderByDisplayOrderAsc(overtimeChargeId: UUID): List<OvertimeChargeTierSnapshot>; fun deleteAllByOvertimeChargeId(overtimeChargeId: UUID) }
 interface ClassroomRepository : JpaRepository<Classroom, UUID> { fun findAllByOrganizationIdOrderByNameAsc(organizationId: UUID): List<Classroom>; fun findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId: UUID): List<Classroom> }
 interface ChildPlacementRepository : JpaRepository<ChildPlacement, UUID> {
     fun findByChildIdAndEndedOnIsNull(childId: UUID): ChildPlacement?
@@ -91,9 +105,24 @@ interface NotificationRepository : JpaRepository<Notification, UUID> {
 interface DeviceTokenRepository : JpaRepository<DeviceToken, UUID> { fun findAllByUserIdAndOrganizationId(userId: UUID, organizationId: UUID): List<DeviceToken>; fun findByToken(token: String): DeviceToken?; fun findByInstallationId(installationId: String): DeviceToken? }
 interface StaffReminderRepository : JpaRepository<StaffReminder, UUID> { fun findAllByOrganizationIdAndUserIdOrderByCreatedAtDesc(organizationId: UUID, userId: UUID): List<StaffReminder>; fun findAllByActiveTrue(): List<StaffReminder> }
 interface StaffReminderDeviceScheduleRepository : JpaRepository<StaffReminderDeviceSchedule, UUID> { fun findByReminderIdAndInstallationId(reminderId: UUID, installationId: String): StaffReminderDeviceSchedule? }
-interface DevelopmentEntryRepository : JpaRepository<DevelopmentEntry, UUID> { fun findAllByOrganizationIdAndChildIdOrderByRecordedAtDesc(organizationId: UUID, childId: UUID): List<DevelopmentEntry>; fun existsByOrganizationIdAndCategory(organizationId: UUID, category: String): Boolean }
-interface DevelopmentCategoryConfigRepository : JpaRepository<DevelopmentCategoryConfig, UUID> { fun findAllByOrganizationIdOrderByNameAsc(organizationId: UUID): List<DevelopmentCategoryConfig>; fun existsByOrganizationIdAndNameIgnoreCase(organizationId: UUID, name: String): Boolean }
-interface GoalTemplateRepository : JpaRepository<GoalTemplate, UUID> { fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<GoalTemplate> }
+interface DevelopmentEntryRepository : JpaRepository<DevelopmentEntry, UUID> { fun findAllByOrganizationIdAndChildIdOrderByRecordedAtDesc(organizationId: UUID, childId: UUID): List<DevelopmentEntry>; fun existsByOrganizationIdAndCategory(organizationId: UUID, category: String): Boolean; fun existsByCategory(category: String): Boolean }
+interface DevelopmentCategoryConfigRepository : JpaRepository<DevelopmentCategoryConfig, UUID> {
+    fun findAllByOrganizationIdOrderByNameAsc(organizationId: UUID): List<DevelopmentCategoryConfig>
+    fun findAllByOrganizationIdIsNullOrderByNameAsc(): List<DevelopmentCategoryConfig>
+    fun existsByOrganizationIdAndNameIgnoreCase(organizationId: UUID, name: String): Boolean
+    fun existsByOrganizationIdIsNullAndNameIgnoreCase(name: String): Boolean
+}
+interface GoalTemplateRepository : JpaRepository<GoalTemplate, UUID> {
+    fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<GoalTemplate>
+
+    @Query("""
+        select template
+        from GoalTemplate template
+        where template.organizationId is null or template.organizationId = :organizationId
+        order by case when template.organizationId is null then 0 else 1 end, template.createdAt desc
+    """)
+    fun findVisibleToOrganization(@Param("organizationId") organizationId: UUID): List<GoalTemplate>
+}
 interface GoalTemplateIndicatorRepository : JpaRepository<GoalTemplateIndicator, UUID> { fun findAllByGoalTemplateIdOrderByDisplayOrderAsc(goalTemplateId: UUID): List<GoalTemplateIndicator> }
 interface ChildGoalRepository : JpaRepository<ChildGoal, UUID> { fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildGoal>; fun existsByChildIdAndTemplateIdAndStatus(childId: UUID, templateId: UUID, status: com.daycare.api.domain.ChildGoalStatus): Boolean }
 interface ChildGoalCheckInRepository : JpaRepository<ChildGoalCheckIn, UUID> { fun findAllByChildGoalIdOrderByCheckInDateAsc(childGoalId: UUID): List<ChildGoalCheckIn>; fun findByChildGoalIdAndIndicatorIdAndCheckInDate(childGoalId: UUID, indicatorId: UUID, checkInDate: LocalDate): ChildGoalCheckIn? }

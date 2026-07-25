@@ -75,6 +75,9 @@ import com.daycare.api.service.UpdateStaffReminderActiveRequest
 import com.daycare.api.service.SyncStaffReminderSchedulesRequest
 import com.daycare.api.service.ChildReportExportService
 import com.daycare.api.service.ReportExportFormat
+import com.daycare.api.service.OvertimeService
+import com.daycare.api.service.UpdateBranchOperatingHoursRequest
+import com.daycare.api.service.CreateOvertimeChargeRequest
 import com.daycare.api.domain.Gender
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import jakarta.validation.Valid
@@ -190,7 +193,20 @@ class PlatformController(
     private val platformAdminPin: PlatformAdminPinService,
     private val platformCurriculum: PlatformCurriculumService,
     private val institutionTypes: InstitutionTypeCatalogService,
+    private val development: DevelopmentService,
 ) {
+
+    @GetMapping("/development-categories")
+    fun globalDevelopmentCategories(@AuthenticationPrincipal jwt: Jwt) = development.globalCategories(jwt)
+
+    @PostMapping("/development-categories") @ResponseStatus(HttpStatus.CREATED)
+    fun createGlobalDevelopmentCategory(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: CreateDevelopmentCategoryRequest) = development.createGlobalCategory(jwt, request)
+
+    @PatchMapping("/development-categories/{categoryId}")
+    fun updateGlobalDevelopmentCategory(@AuthenticationPrincipal jwt: Jwt, @PathVariable categoryId: UUID, @Valid @RequestBody request: UpdateDevelopmentCategoryRequest) = development.updateGlobalCategory(jwt, categoryId, request)
+
+    @DeleteMapping("/development-categories/{categoryId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteGlobalDevelopmentCategory(@AuthenticationPrincipal jwt: Jwt, @PathVariable categoryId: UUID) = development.deleteGlobalCategory(jwt, categoryId)
 
     @GetMapping("/institution-types")
     fun institutionTypes(@AuthenticationPrincipal jwt: Jwt) = institutionTypes.list(jwt)
@@ -378,7 +394,7 @@ class InstitutionController(private val attendance: AttendanceService, private v
     fun createAcademicYear(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateAcademicYearRequest) = academic.createAcademicYear(jwt, organizationId, request)
 
     @GetMapping("/curriculum-programs")
-    fun curriculumPrograms(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = academic.curriculumPrograms(jwt, organizationId)
+    fun curriculumPrograms(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) search: String?) = academic.curriculumPrograms(jwt, organizationId, search)
 
     @PostMapping("/curriculum-programs") @ResponseStatus(HttpStatus.CREATED)
     fun createCurriculumProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateCurriculumProgramRequest) = academic.createCurriculumProgram(jwt, organizationId, request)
@@ -519,7 +535,7 @@ class InstitutionController(private val attendance: AttendanceService, private v
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class BillingController(private val billing: BillingService) {
+class BillingController(private val billing: BillingService, private val overtime: OvertimeService) {
     @GetMapping("/service-plans")
     fun servicePlans(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = billing.plans(jwt, organizationId)
 
@@ -531,6 +547,27 @@ class BillingController(private val billing: BillingService) {
 
     @PutMapping("/branches/{branchId}/capacity")
     fun setBranchCapacity(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable branchId: UUID, @Valid @RequestBody request: SetBranchCapacityRequest) = billing.setBranchCapacity(jwt, organizationId, branchId, request)
+
+    @GetMapping("/branches/{branchId}/operating-hours")
+    fun branchOperatingHours(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable branchId: UUID) = overtime.branchHours(jwt, organizationId, branchId)
+
+    @PutMapping("/branches/{branchId}/operating-hours")
+    fun updateBranchOperatingHours(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable branchId: UUID, @Valid @RequestBody request: UpdateBranchOperatingHoursRequest) = overtime.updateBranchHours(jwt, organizationId, branchId, request)
+
+    @GetMapping("/parent/operating-hours")
+    fun parentOperatingHours(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = overtime.parentHours(jwt, organizationId)
+
+    @GetMapping("/overtime-charges")
+    fun overtimeCharges(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = overtime.charges(jwt, organizationId)
+
+    @PostMapping("/overtime-charges") @ResponseStatus(HttpStatus.CREATED)
+    fun createOvertimeCharge(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateOvertimeChargeRequest) = overtime.createCharge(jwt, organizationId, request)
+
+    @PatchMapping("/overtime-charges/{chargeId}")
+    fun updateOvertimeCharge(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable chargeId: UUID, @Valid @RequestBody request: CreateOvertimeChargeRequest) = overtime.updateCharge(jwt, organizationId, chargeId, request)
+
+    @PostMapping("/overtime-charges/{chargeId}/void") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun voidOvertimeCharge(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable chargeId: UUID) = overtime.voidCharge(jwt, organizationId, chargeId)
 
     @GetMapping("/service-plans/{planId}/discounts")
     fun planDiscounts(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable planId: UUID) = billing.planDiscounts(jwt, organizationId, planId)

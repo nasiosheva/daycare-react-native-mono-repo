@@ -12,7 +12,7 @@ import { createStaffAdminSummary } from "@/home/staffAdminSummary";
 import { AppScreen } from "@/navigation/AppScreen";
 import { hasInstitutionCapability } from "@daycare/core";
 import { useI18n } from "@/i18n/I18nProvider";
-import { tenantPaymentStatusKey, tenantSubscriptionPlanKey } from "@/i18n/translations";
+import { invoiceSourceKey, tenantPaymentStatusKey, tenantSubscriptionPlanKey } from "@/i18n/translations";
 import { useStaffDailyTasks } from "@/home/useStaffDailyTasks";
 import { createParentHomeSummary } from "@/home/parentHomeSummary";
 import { authErrorMessage } from "@/auth/authErrorMessage";
@@ -109,7 +109,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations, isSim
       {!isSimulationSession && invoices.isError && <Button variant="secondary" onPress={() => invoices.refetch()}>{t("common.retry")}</Button>}
       {!paymentsUnavailable && summary.actionableInvoices.map((invoice) => <View key={invoice.id} style={styles.parentCard}>
         <AppText variant="heading">{invoice.invoiceNumber}</AppText>
-        <AppText>{invoice.childName} · {formatCurrency(invoice.totalAmount)}</AppText>
+        <AppText>{invoice.description ?? t(invoiceSourceKey(invoice.source))} · {formatCurrency(invoice.totalAmount)}</AppText><AppText tone="muted">{invoice.childName}</AppText>
         <AppText tone="muted">{t(`status.${invoice.status}` as Parameters<typeof t>[0])} · {t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>
         {invoice.status === "PENDING" ? <Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: invoice.id } })}>{t("parentEnrollment.pay")}</Button> : <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
       </View>)}
@@ -236,7 +236,7 @@ function PlatformAdminHome() {
     <AppText variant="title">{t("home.platformAdmin")}</AppText>
     <AppText tone="muted">{t("home.platformSubtitle")}</AppText>
     <Button variant="secondary" onPress={() => router.push("/global-curriculum")}>{t("globalCurriculum.menu")}</Button>
-    <Button variant="secondary" onPress={() => router.push({ pathname: "/global-curriculum", params: { openAdd: "1" } })}>{t("globalCurriculum.add")}</Button>
+    <Button variant="secondary" onPress={() => router.push("/global-development-categories")}>{t("development.globalCategories")}</Button>
     {tenants.isLoading && <AppText>{t("home.tenantsLoading")}</AppText>}
     {tenants.isError && <AppText tone="danger">{t("home.tenantsError")}</AppText>}
     <TenantSection title={t("home.activeTenants")} tenants={activeTenants} emptyMessage={t("home.noActiveTenants")} formatCurrency={formatCurrency} t={t} />

@@ -32,6 +32,7 @@ data class DevelopmentEntryResponse(val id: UUID, val childId: UUID, val categor
 @Service
 class DevelopmentService(
     private val access: AccessService,
+    private val platformAccess: PlatformAccessService,
     private val childScopes: ChildScopeService,
     private val entries: DevelopmentEntryRepository,
     private val categories: DevelopmentCategoryConfigRepository,
@@ -44,7 +45,8 @@ class DevelopmentService(
     @Transactional(readOnly = true)
     fun categories(jwt: Jwt, organizationId: UUID): List<DevelopmentCategoryResponse> {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
-        return systemCategories + categories.findAllByOrganizationIdOrderByNameAsc(organizationId).map { DevelopmentCategoryResponse(it.id.toString(), it.name, it.active, false) }
+        return categories.findAllByOrganizationIdIsNullOrderByNameAsc().map { response(it, global = true) } +
+            categories.findAllByOrganizationIdOrderByNameAsc(organizationId).map { response(it, global = false) }
     }
 
     @Transactional
@@ -52,12 +54,12 @@ class DevelopmentService(
         val scope = requireCategoryCreator(jwt, organizationId)
         val name = request.name.trim()
         require(name.isNotBlank()) { "Category name is required" }
-        require(!systemCategories.any { it.name.equals(name, ignoreCase = true) }) { "This is already a built-in category" }
+        require(!categories.existsByOrganizationIdIsNullAndNameIgnoreCase(name)) { "This is already a built-in category" }
         require(!categories.existsByOrganizationIdAndNameIgnoreCase(organizationId, name)) { "A category with this name already exists" }
         val category = categories.save(DevelopmentCategoryConfig(organizationId = organizationId, name = name, createdByUserId = scope.user.id))
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "DEVELOPMENT_CATEGORY", entityId = category.id, action = "CREATED", source = "TENANT_CONFIGURATION"))
         realtime.publishToTenantRoles(organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), setOf(RealtimeFlag.DEVELOPMENT_CATEGORIES))
-        return DevelopmentCategoryResponse(category.id.toString(), category.name, category.active, false)
+        return response(category, global = false)
     }
 
     @Transactional
@@ -73,7 +75,7 @@ class DevelopmentService(
         request.active?.let { category.active = it }
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "DEVELOPMENT_CATEGORY", entityId = category.id, action = "UPDATED", source = "TENANT_CONFIGURATION"))
         realtime.publishToTenantRoles(organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), setOf(RealtimeFlag.DEVELOPMENT_CATEGORIES))
-        return DevelopmentCategoryResponse(category.id.toString(), category.name, category.active, false)
+        return response(category, global = false)
     }
 
     @Transactional
@@ -86,6 +88,47 @@ class DevelopmentService(
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "DEVELOPMENT_CATEGORY", entityId = category.id, action = "DELETED", source = "TENANT_CONFIGURATION"))
         realtime.publishToTenantRoles(organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), setOf(RealtimeFlag.DEVELOPMENT_CATEGORIES))
     }
+
+    @Transactional(readOnly = true)
+    fun globalCategories(jwt: Jwt): List<DevelopmentCategoryResponse> {
+        platformAccess.requirePlatformAdmin(jwt)
+        return categories.findAllByOrganizationIdIsNullOrderByNameAsc().map { response(it, global = true) }
+    }
+
+    @Transactional
+    fun createGlobalCategory(jwt: Jwt, request: CreateDevelopmentCategoryRequest): DevelopmentCategoryResponse {
+        val admin = platformAccess.requirePlatformAdmin(jwt)
+        val name = request.name.trim()
+        require(name.isNotBlank()) { "Category name is required" }
+        require(!categories.existsByOrganizationIdIsNullAndNameIgnoreCase(name)) { "A global category with this name already exists" }
+        val category = categories.save(DevelopmentCategoryConfig(organizationId = null, name = name, createdByUserId = admin.id))
+        return response(category, global = true)
+    }
+
+    @Transactional
+    fun updateGlobalCategory(jwt: Jwt, categoryId: UUID, request: UpdateDevelopmentCategoryRequest): DevelopmentCategoryResponse {
+        platformAccess.requirePlatformAdmin(jwt)
+        val category = categories.findById(categoryId).orElseThrow { IllegalArgumentException("Development category was not found") }
+        require(category.organizationId == null) { "This category is not a global category" }
+        request.name?.trim()?.let { name ->
+            require(name.isNotBlank()) { "Category name is required" }
+            require(!categories.existsByOrganizationIdIsNullAndNameIgnoreCase(name) || category.name.equals(name, ignoreCase = true)) { "A global category with this name already exists" }
+            category.name = name
+        }
+        request.active?.let { category.active = it }
+        return response(category, global = true)
+    }
+
+    @Transactional
+    fun deleteGlobalCategory(jwt: Jwt, categoryId: UUID) {
+        platformAccess.requirePlatformAdmin(jwt)
+        val category = categories.findById(categoryId).orElseThrow { IllegalArgumentException("Development category was not found") }
+        require(category.organizationId == null) { "This category is not a global category" }
+        require(!entries.existsByCategory(category.id.toString())) { "This category is used by existing development entries" }
+        categories.delete(category)
+    }
+
+    private fun response(category: DevelopmentCategoryConfig, global: Boolean) = DevelopmentCategoryResponse(category.id.toString(), category.name, category.active, global)
 
     @Transactional
     fun list(jwt: Jwt, organizationId: UUID, childId: UUID): List<DevelopmentEntryResponse> {
@@ -120,18 +163,8 @@ class DevelopmentService(
     }
 
     private fun categoryName(organizationId: UUID, id: String, requireActive: Boolean): String {
-        systemCategories.firstOrNull { it.id == id }?.let { return it.name }
         val category = runCatching { categories.findById(UUID.fromString(id)).orElse(null) }.getOrNull()
-        require(category != null && category.organizationId == organizationId && (!requireActive || category.active)) { "Development category is not available" }
+        require(category != null && (category.organizationId == null || category.organizationId == organizationId) && (!requireActive || category.active)) { "Development category is not available" }
         return category.name
-    }
-
-    private companion object {
-        val systemCategories = listOf(
-            DevelopmentCategoryResponse("ACTIVITY", "Aktivitas", true, true),
-            DevelopmentCategoryResponse("MEAL", "Makan", true, true),
-            DevelopmentCategoryResponse("NAP", "Tidur", true, true),
-            DevelopmentCategoryResponse("OBSERVATION", "Observasi", true, true),
-        )
     }
 }

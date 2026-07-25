@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { AppText, Button, colors, PasswordInput, radius, Screen, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
@@ -64,6 +64,7 @@ export default function SignInScreen() {
     <View style={styles.topBar}>
       <LanguageSwitcher compact />
     </View>
+    <Image source={require("../assets/images/login-icon.png")} style={styles.logo} resizeMode="contain" />
     <AppText variant="title">Umur Emas</AppText>
     {env.isSimulation && <View style={styles.simulationSection}>
       <AppText variant="label">{t("auth.simulation")}</AppText>
@@ -85,7 +86,7 @@ export default function SignInScreen() {
     </Pressable>
     <Button loading={loading} onPress={submitEmail}>{t("auth.signIn")}</Button>
     <Button variant="secondary" disabled={loading} onPress={() => router.push("/sign-up" as never)}>{t("auth.createParentAccount")}</Button>
-    {!env.isLocalAuth && <>
+    {!env.isLocalAuth && !env.isProduction && <>
       <Button variant="secondary" loading={loading} onPress={submitGoogle}>{t("auth.google")}</Button>
       <Button variant="secondary" onPress={() => router.push("/verify-phone")}>{t("auth.phone")}</Button>
     </>}
@@ -94,6 +95,7 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   container: { width: "100%", maxWidth: 420, alignSelf: "center", gap: spacing.sm, paddingTop: 40 },
   topBar: { alignItems: "flex-end", marginBottom: spacing.sm },
+  logo: { width: 96, height: 96, alignSelf: "center", marginBottom: spacing.sm },
   simulationSection: { gap: spacing.sm, paddingVertical: spacing.sm },
   input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 12, backgroundColor: colors.surface },
   errorMessage: { padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.dangerSoft },

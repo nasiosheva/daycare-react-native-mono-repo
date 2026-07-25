@@ -12,6 +12,7 @@ enum class ChildCareRole { STAFF, NURSE, MISS }
 enum class AttendanceMethod { MANUAL, QR }
 enum class AttendanceAction { CHECK_IN, CHECK_OUT }
 enum class DevelopmentCategory { ACTIVITY, MEAL, NAP, OBSERVATION }
+enum class GoalCategory { KEMANDIRIAN, BAHASA_KOMUNIKASI, KOGNITIF, MOTORIK_HALUS, MOTORIK_KASAR, SOSIAL_EMOSI }
 enum class ServicePlanType { DAILY, WEEKLY, MONTHLY }
 enum class UnusedCreditPolicy { CARRY_FORWARD, EXPIRE }
 enum class ServicePlanDiscountKind { AUTOMATIC, PROMO_CODE }
@@ -20,6 +21,7 @@ enum class CapacityReservationStatus { HELD, RELEASED }
 enum class EntitlementStatus { PENDING_PAYMENT, ACTIVE, EXPIRED, EXHAUSTED }
 enum class BookingStatus { PENDING_PAYMENT, PENDING_APPROVAL, CONFIRMED, REJECTED, CANCELLED, COMPLETED }
 enum class InvoiceStatus { PENDING, PAYMENT_SUBMITTED, PAID, OVERDUE, VOID }
+enum class InvoiceSource { SERVICE, OVERTIME }
 enum class PaymentProofStatus { SUBMITTED, VERIFIED, REJECTED }
 enum class InvitationStatus { PENDING, ACCEPTED, EXPIRED }
 enum class PushNotificationMuteDuration { ONE_HOUR, ONE_WEEK, ONE_MONTH }

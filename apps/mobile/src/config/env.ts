@@ -10,6 +10,7 @@ export const env = {
   apiUrl: required(process.env.EXPO_PUBLIC_API_URL, "EXPO_PUBLIC_API_URL"),
   realtimeUrl: process.env.EXPO_PUBLIC_REALTIME_URL,
   isSimulation: process.env.EXPO_PUBLIC_APP_ENV === "simulation",
+  isProduction: process.env.EXPO_PUBLIC_APP_ENV === "production",
   isLocalAuth,
   firebase: {
     apiKey: firebaseValue(process.env.EXPO_PUBLIC_FIREBASE_API_KEY, "EXPO_PUBLIC_FIREBASE_API_KEY"),
