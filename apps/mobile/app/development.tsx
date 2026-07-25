@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import type { ChildListFilter } from "@daycare/api-client";
-import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { can } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
@@ -28,6 +28,7 @@ export default function DevelopmentScreen() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [entryVisible, setEntryVisible] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const selectedChild = useMemo(() => children.data?.find((child) => child.id === childId) ?? null, [children.data, childId]);
   const entries = useDevelopmentEntries(childId);
   const developmentCategories = useDevelopmentCategories();
@@ -79,15 +80,20 @@ export default function DevelopmentScreen() {
       <TextInput style={styles.input} placeholder={t("development.shortTitle")} value={title} onChangeText={setTitle} maxLength={120} />
       <TextInput style={[styles.input, styles.contentInput]} placeholder={t("development.note")} value={content} onChangeText={setContent} multiline maxLength={2_000} textAlignVertical="top" />
     </BottomSheet>
-    <AppText variant="heading">{t("development.history")}</AppText>
-    {entries.isLoading && <AppText>{t("development.loading")}</AppText>}
-    {entries.isError && <Button onPress={() => entries.refetch()}>{t("common.retry")}</Button>}
-    {entries.data?.map((entry) => <View key={entry.id} style={styles.entry}>
-      <AppText variant="label">{entry.categoryName} · {entry.title}</AppText>
-      <AppText>{entry.content}</AppText>
-      <AppText variant="caption" tone="muted">{formatDateTime(entry.recordedAt)} · {entry.recordedBy}</AppText>
-    </View>)}
-    {selectedChild && !entries.isLoading && entries.data?.length === 0 && <AppText tone="muted">{t("development.empty")}</AppText>}
+    {selectedChild && <NavigationCard accessibilityLabel={t("development.history")} onPress={() => setHistoryOpen(true)}>
+      <AppText variant="h5">{t("development.history")}</AppText>
+      <AppText tone={entries.data?.length ? "default" : "muted"}>{entries.isLoading ? t("development.loading") : entries.data?.length ? t("development.entriesSummary", { count: entries.data.length }) : t("development.empty")}</AppText>
+    </NavigationCard>}
+    <BottomSheet visible={historyOpen} onClose={() => setHistoryOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("development.history")}>
+      {entries.isLoading && <AppText>{t("development.loading")}</AppText>}
+      {entries.isError && <Button onPress={() => entries.refetch()}>{t("common.retry")}</Button>}
+      {entries.data?.map((entry) => <View key={entry.id} style={styles.entry}>
+        <AppText variant="label">{entry.categoryName} · {entry.title}</AppText>
+        <AppText>{entry.content}</AppText>
+        <AppText variant="caption" tone="muted">{formatDateTime(entry.recordedAt)} · {entry.recordedBy}</AppText>
+      </View>)}
+      {selectedChild && !entries.isLoading && entries.data?.length === 0 && <AppText tone="muted">{t("development.empty")}</AppText>}
+    </BottomSheet>
     {isStaffAdmin && <ChildFilterSheet visible={filterVisible} filter={childFilter} onClose={() => setFilterVisible(false)} onApply={(filter) => { setChildFilter(filter); setFilterVisible(false); }} />}
   </AppScreen>;
 }

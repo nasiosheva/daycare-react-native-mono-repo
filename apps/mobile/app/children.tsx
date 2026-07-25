@@ -3,7 +3,7 @@ import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import type { ChildListFilter } from "@daycare/api-client";
 import type { ChildGender } from "@daycare/core";
-import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useChildren } from "@/attendance/useAttendance";
 import { useCreateChild } from "@/children/useChildManagement";
@@ -24,6 +24,7 @@ export default function ChildrenScreen() {
   const canManage = isStaffAdmin && membership.active;
   const canOpenDetail = membership?.role === "STAFF_ADMIN" || membership?.role === "STAFF";
   const [filterVisible, setFilterVisible] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
   const [childFilter, setChildFilter] = useState<ChildListFilter>({});
   const children = useChildren(isStaffAdmin ? childFilter : {});
   const createChild = useCreateChild();
@@ -49,12 +50,20 @@ export default function ChildrenScreen() {
       Alert.alert(t("children.created"));
     } catch (error) { Alert.alert(t("children.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
+  const openChild = (childId: string) => { setListOpen(false); router.push({ pathname: "/child-detail", params: { childId } }); };
   return <AppScreen showBottomNavigation={false} title={t("children.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {isStaffAdmin && <View style={styles.actions}><Button variant="secondary" onPress={() => setFilterVisible(true)}>{t("children.filter")}</Button>{canManage && <Button onPress={() => setAddVisible(true)}>{t("children.add")}</Button>}</View>}
     {canOpenDetail && <ChildrenReportActions filter={childFilter} />}
     {isStaffAdmin && (childFilter.branchId || childFilter.learningLevelId || childFilter.classroomId) && <AppText tone="muted">{t("children.filterActive")}</AppText>}
-    {children.data?.map((child) => <View key={child.id} style={styles.card}><AppText variant="h5">{child.fullName}</AppText><AppText tone="muted">{child.dateOfBirth}</AppText>{canOpenDetail && <Button variant="secondary" onPress={() => router.push({ pathname: "/child-detail", params: { childId: child.id } })}>{t(canManage ? "children.edit" : "children.view")}</Button>}</View>)}
-    {!children.isLoading && children.data?.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
+    <NavigationCard accessibilityLabel={t("children.title")} onPress={() => setListOpen(true)}>
+      <AppText variant="h5">{t("children.title")}</AppText>
+      <AppText variant="bodySmall" tone="muted">{t("children.menuDescription")}</AppText>
+      <AppText tone={children.data?.length ? "default" : "muted"}>{children.isLoading ? t("common.loading") : children.data?.length ? t("children.countSummary", { count: children.data.length }) : t("children.empty")}</AppText>
+    </NavigationCard>
+    <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("children.title")}>
+      {children.data?.map((child) => <View key={child.id} style={styles.card}><AppText variant="h5">{child.fullName}</AppText><AppText tone="muted">{child.dateOfBirth}</AppText>{canOpenDetail && <Button variant="secondary" onPress={() => openChild(child.id)}>{t(canManage ? "children.edit" : "children.view")}</Button>}</View>)}
+      {!children.isLoading && children.data?.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
+    </BottomSheet>
     <BottomSheet
       visible={addVisible}
       onClose={closeAddChild}

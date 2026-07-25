@@ -17,6 +17,7 @@ export default function CurriculumActivitiesScreen() {
   const canManage = membership?.role === "STAFF_ADMIN" && membership.active;
   const activities = useQuery({ queryKey: ["curriculum-activities", organizationId], queryFn: () => api.curriculumActivities(), enabled: Boolean(membership) });
   const createActivity = useMutation({ mutationFn: api.createCurriculumActivity.bind(api), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["curriculum-activities", organizationId] }) });
+  const [listOpen, setListOpen] = useState(false);
   const [visible, setVisible] = useState(false);
   const [name, setName] = useState(""); const [description, setDescription] = useState("");
 
@@ -24,6 +25,8 @@ export default function CurriculumActivitiesScreen() {
   if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
 
   const close = () => { setVisible(false); setName(""); setDescription(""); };
+  const openAdd = () => { setListOpen(false); setVisible(true); };
+  const openActivity = (activityId: string) => { setListOpen(false); router.push({ pathname: "/curriculum-activity-detail", params: { activityId } }); };
   const save = async () => {
     if (!name.trim()) return Alert.alert(t("learning.activityRequired"));
     try {
@@ -33,11 +36,19 @@ export default function CurriculumActivitiesScreen() {
   };
 
   return <AppScreen showBottomNavigation={false} title={t("learning.activities")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    {canManage && <Button onPress={() => setVisible(true)}>{t("learning.addActivity")}</Button>}
-    {activities.data?.map((activity) => <NavigationCard key={activity.id} accessibilityLabel={t(canManage ? "learning.editActivity" : "learning.viewActivity")} onPress={() => router.push({ pathname: "/curriculum-activity-detail", params: { activityId: activity.id } })}>
-      <AppText variant="label">{activity.name}</AppText>{!activity.active && <AppText tone="muted">{t("learning.activityArchived")}</AppText>}
-    </NavigationCard>)}
-    {activities.data?.length === 0 && <AppText tone="muted">{t("learning.noActivities")}</AppText>}
+    <NavigationCard accessibilityLabel={t("learning.activities")} onPress={() => setListOpen(true)}>
+      <AppText variant="h5">{t("learning.activities")}</AppText>
+      <AppText variant="bodySmall" tone="muted">{t("learning.addActivityDescription")}</AppText>
+      <AppText tone={activities.data?.length ? "default" : "muted"}>{activities.data?.length ? t("learning.activitiesSummary", { count: activities.data.length }) : t("learning.noActivities")}</AppText>
+    </NavigationCard>
+
+    <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("learning.activities")}>
+      {canManage && <Button onPress={openAdd}>{t("learning.addActivity")}</Button>}
+      {activities.data?.map((activity) => <NavigationCard key={activity.id} accessibilityLabel={t(canManage ? "learning.editActivity" : "learning.viewActivity")} onPress={() => openActivity(activity.id)}>
+        <AppText variant="label">{activity.name}</AppText>{!activity.active && <AppText tone="muted">{t("learning.activityArchived")}</AppText>}
+      </NavigationCard>)}
+      {activities.data?.length === 0 && <AppText tone="muted">{t("learning.noActivities")}</AppText>}
+    </BottomSheet>
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t("learning.addActivity")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t("learning.addActivity"), loading: createActivity.isPending, onPress: () => void save() }}>
       <TextInput style={styles.input} placeholder={t("learning.activityName")} value={name} onChangeText={setName} />

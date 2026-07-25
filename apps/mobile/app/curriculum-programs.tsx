@@ -3,7 +3,7 @@ import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -18,6 +18,7 @@ export default function CurriculumProgramsScreen() {
   const periods = useQuery({ queryKey: ["learning-periods", organizationId], queryFn: () => api.academicYears(), enabled: Boolean(membership) });
   const programs = useQuery({ queryKey: ["curriculum-programs", organizationId], queryFn: () => api.curriculumPrograms(), enabled: Boolean(membership) });
   const createProgram = useMutation({ mutationFn: api.createCurriculumProgram.bind(api), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["curriculum-programs", organizationId] }) });
+  const [listOpen, setListOpen] = useState(false);
   const [visible, setVisible] = useState(false);
   const [name, setName] = useState(""); const [description, setDescription] = useState(""); const [periodId, setPeriodId] = useState<string | undefined>();
 
@@ -25,6 +26,7 @@ export default function CurriculumProgramsScreen() {
   if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
 
   const close = () => { setVisible(false); setName(""); setDescription(""); setPeriodId(undefined); };
+  const openAdd = () => { setListOpen(false); setVisible(true); };
   const save = async () => {
     if (!name.trim()) return Alert.alert(t("academic.programRequired"));
     try {
@@ -34,13 +36,21 @@ export default function CurriculumProgramsScreen() {
   };
 
   return <AppScreen showBottomNavigation={false} title={t("academic.program")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    {canManage && <Button onPress={() => setVisible(true)}>{t("academic.addProgram")}</Button>}
-    {programs.data?.map((program) => <View key={program.id} style={styles.card}>
-      <AppText variant="label">{program.name}</AppText>
-      {program.description ? <AppText tone="muted">{program.description}</AppText> : null}
-      <AppText variant="caption" tone="muted">{periods.data?.find((period) => period.id === program.academicYearId)?.name ?? t("common.noData")}{program.source === "GLOBAL" ? ` · ${t("globalCurriculum.global")}` : ""}</AppText>
-    </View>)}
-    {programs.data?.length === 0 && <AppText tone="muted">{t("academic.noPrograms")}</AppText>}
+    <NavigationCard accessibilityLabel={t("academic.program")} onPress={() => setListOpen(true)}>
+      <AppText variant="h5">{t("academic.program")}</AppText>
+      <AppText variant="bodySmall" tone="muted">{t("academic.addProgramDescription")}</AppText>
+      <AppText tone={programs.data?.length ? "default" : "muted"}>{programs.data?.length ? t("academic.programsSummary", { count: programs.data.length }) : t("academic.noPrograms")}</AppText>
+    </NavigationCard>
+
+    <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("academic.program")}>
+      {canManage && <Button onPress={openAdd}>{t("academic.addProgram")}</Button>}
+      {programs.data?.map((program) => <View key={program.id} style={styles.card}>
+        <AppText variant="label">{program.name}</AppText>
+        {program.description ? <AppText tone="muted">{program.description}</AppText> : null}
+        <AppText variant="caption" tone="muted">{periods.data?.find((period) => period.id === program.academicYearId)?.name ?? t("common.noData")}{program.source === "GLOBAL" ? ` · ${t("globalCurriculum.global")}` : ""}</AppText>
+      </View>)}
+      {programs.data?.length === 0 && <AppText tone="muted">{t("academic.noPrograms")}</AppText>}
+    </BottomSheet>
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t("academic.addProgram")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t("academic.addProgram"), loading: createProgram.isPending, onPress: () => void save() }}>
       <View style={styles.options}>{periods.data?.map((period) => <Button key={period.id} variant={periodId === period.id ? "primary" : "secondary"} onPress={() => setPeriodId(period.id)}>{period.name}</Button>)}</View>

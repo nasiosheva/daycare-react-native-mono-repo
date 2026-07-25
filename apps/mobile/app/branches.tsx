@@ -3,7 +3,7 @@ import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -27,6 +27,7 @@ export default function BranchesScreen() {
   const [branchId, setBranchId] = useState<string>();
   const [name, setName] = useState("");
   const [timezone, setTimezone] = useState("Asia/Jakarta");
+  const [listOpen, setListOpen] = useState(false);
   if (!profile) return null;
   if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
 
@@ -35,6 +36,7 @@ export default function BranchesScreen() {
     setBranchId(branch?.id);
     setName(branch?.name ?? "");
     setTimezone(branch?.timezone ?? "Asia/Jakarta");
+    setListOpen(false);
     setSheet("branch");
   };
   const save = async () => {
@@ -50,13 +52,19 @@ export default function BranchesScreen() {
   return <AppScreen showBottomNavigation={false} title={t("staffAdmin.branchesTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("staffAdmin.branchesSubtitle")}</AppText>
     {membership?.active === false && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
-    {canManage && <Button onPress={() => openSheet()}>{t("tenant.addBranch")}</Button>}
-    {branches.isLoading && <AppText>{t("common.loading")}</AppText>}
-    {branches.isError && <Button variant="secondary" onPress={() => branches.refetch()}>{t("common.retry")}</Button>}
-    {branches.data?.map((branch) => <View key={branch.id} style={styles.card}>
-      <View style={styles.content}><AppText variant="label">{branch.name}{branch.primary ? ` · ${t("tenant.primaryBranch")}` : ""}</AppText><AppText tone="muted">{branch.timezone}{branch.active ? "" : ` · ${t("tenant.archivedBranch")}`}</AppText></View>
-      {canManage && <View style={styles.actions}><Button variant="secondary" onPress={() => openSheet(branch.id)}>{t("tenant.edit")}</Button>{branch.active && !branch.primary && <Button variant="secondary" loading={setPrimary.isPending} onPress={() => void setPrimary.mutateAsync(branch.id)}>{t("tenant.makePrimary")}</Button>}{branch.active && !branch.primary && <Button variant="danger" loading={archive.isPending} onPress={() => void archive.mutateAsync(branch.id)}>{t("tenant.archiveBranch")}</Button>}</View>}
-    </View>)}
+    <NavigationCard accessibilityLabel={t("staffAdmin.branchesTitle")} onPress={() => setListOpen(true)}>
+      <AppText variant="h5">{t("staffAdmin.branchesTitle")}</AppText>
+      <AppText tone={branches.data?.length ? "default" : "muted"}>{branches.isLoading ? t("common.loading") : branches.data?.length ? t("staffAdmin.branchesSummary", { count: branches.data.length }) : t("common.noData")}</AppText>
+    </NavigationCard>
+    <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("staffAdmin.branchesTitle")}>
+      {canManage && <Button onPress={() => openSheet()}>{t("tenant.addBranch")}</Button>}
+      {branches.isLoading && <AppText>{t("common.loading")}</AppText>}
+      {branches.isError && <Button variant="secondary" onPress={() => branches.refetch()}>{t("common.retry")}</Button>}
+      {branches.data?.map((branch) => <View key={branch.id} style={styles.card}>
+        <View style={styles.content}><AppText variant="label">{branch.name}{branch.primary ? ` · ${t("tenant.primaryBranch")}` : ""}</AppText><AppText tone="muted">{branch.timezone}{branch.active ? "" : ` · ${t("tenant.archivedBranch")}`}</AppText></View>
+        {canManage && <View style={styles.actions}><Button variant="secondary" onPress={() => openSheet(branch.id)}>{t("tenant.edit")}</Button>{branch.active && !branch.primary && <Button variant="secondary" loading={setPrimary.isPending} onPress={() => void setPrimary.mutateAsync(branch.id)}>{t("tenant.makePrimary")}</Button>}{branch.active && !branch.primary && <Button variant="danger" loading={archive.isPending} onPress={() => void archive.mutateAsync(branch.id)}>{t("tenant.archiveBranch")}</Button>}</View>}
+      </View>)}
+    </BottomSheet>
     <BottomSheet visible={sheet === "branch"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={branchId ? t("tenant.edit") : t("tenant.addBranch")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("common.save"), loading: create.isPending || update.isPending, onPress: () => void save() }}>
       <TextInput style={styles.input} placeholder={t("tenant.branchName")} value={name} onChangeText={setName} />
       <TextInput style={styles.input} autoCapitalize="none" placeholder={t("tenant.timezone")} value={timezone} onChangeText={setTimezone} />

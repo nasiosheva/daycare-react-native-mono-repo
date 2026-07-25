@@ -34,6 +34,8 @@ class UserProfile(
     @Enumerated(EnumType.STRING) @Column(name = "registration_role") var registrationRole: RegistrationRole? = null,
     @Column(name = "local_password_hash") var localPasswordHash: String? = null,
     @Column(name = "phone_number") var phoneNumber: String? = null,
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var gender: Gender = Gender.UNSPECIFIED,
+    @Column(name = "date_of_birth") var dateOfBirth: LocalDate? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 

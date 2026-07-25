@@ -2,7 +2,7 @@ import { useState, type ReactElement } from "react";
 import { Alert, Image, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useBookingApproval, useBookings } from "@/booking/useBooking";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -25,8 +25,10 @@ export default function BookingApprovalsScreen() {
   const enrollments = useQuery({ queryKey: ["parent-enrollments", organizationId, "pending", filterBranchId], queryFn: () => api.pendingParentEnrollments({ branchId: filterBranchId }), enabled: Boolean(organizationId) && isStaffAdmin });
   const enrollmentApproval = useMutation({ mutationFn: ({ enrollmentId, approved }: { enrollmentId: string; approved: boolean }) => api.approveParentEnrollment(enrollmentId, approved), onSuccess: () => { void client.invalidateQueries({ queryKey: ["parent-enrollments", organizationId] }); void client.invalidateQueries({ queryKey: ["bookings", organizationId] }); void client.invalidateQueries({ queryKey: ["children", organizationId] }); void client.invalidateQueries({ queryKey: ["classrooms", organizationId] }); } });
   const { t, formatDate } = useI18n();
+  const [listOpen, setListOpen] = useState(false);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
   const closeConfirm = () => setConfirm(null);
+  const openConfirm = (value: PendingConfirm) => { setListOpen(false); setConfirm(value); };
   const confirmDecision = async () => {
     if (!confirm) return;
     try {
@@ -37,6 +39,7 @@ export default function BookingApprovalsScreen() {
   };
   const [viewProofInvoiceId, setViewProofInvoiceId] = useState<string | null>(null);
   const closeProof = () => setViewProofInvoiceId(null);
+  const openProof = (invoiceId: string) => { setListOpen(false); setViewProofInvoiceId(invoiceId); };
   const proof = useQuery({ queryKey: ["payment-proof", viewProofInvoiceId], queryFn: () => api.paymentProof(viewProofInvoiceId!), enabled: Boolean(viewProofInvoiceId) });
   const [downloading, setDownloading] = useState(false);
   const downloadProof = async () => {
@@ -53,25 +56,32 @@ export default function BookingApprovalsScreen() {
     <AppText tone="muted">{t("approval.subtitle")}</AppText>
     {readOnly && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     {isStaffAdmin && <BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />}
-    {isStaffAdmin && enrollments.data?.map((enrollment) => <ApprovalCard
-      key={enrollment.id}
-      title={enrollment.childName}
-      description={t("parentEnrollment.status")}
-      actions={<>
-        {isStaffAdmin && <Button variant="secondary" onPress={() => setViewProofInvoiceId(enrollment.invoiceId)}>{t("paymentProof.view")}</Button>}
-        {canDecideEnrollment && <><Button onPress={() => setConfirm({ kind: "enrollment", id: enrollment.id, approved: true, name: enrollment.childName })}>{t("approval.approve")}</Button><Button variant="danger" onPress={() => setConfirm({ kind: "enrollment", id: enrollment.id, approved: false, name: enrollment.childName })}>{t("approval.reject")}</Button></>}
-      </>}
-    />)}
-    {bookings.data?.map((booking) => <ApprovalCard
-      key={booking.id}
-      title={booking.childName}
-      description={`${formatDate(booking.bookingDate)} · ${booking.planName}`}
-      actions={<>
-        {isStaffAdmin && <Button variant="secondary" onPress={() => setViewProofInvoiceId(booking.invoiceId)}>{t("paymentProof.view")}</Button>}
-        {canDecideBooking && <><Button onPress={() => setConfirm({ kind: "booking", id: booking.id, approved: true, name: booking.childName })}>{t("approval.approve")}</Button><Button variant="danger" onPress={() => setConfirm({ kind: "booking", id: booking.id, approved: false, name: booking.childName })}>{t("approval.reject")}</Button></>}
-      </>}
-    />)}
-    {empty && <AppText tone="muted">{t("approval.empty")}</AppText>}
+    <NavigationCard accessibilityLabel={t("approval.title")} onPress={() => setListOpen(true)}>
+      <AppText variant="h5">{t("approval.title")}</AppText>
+      <AppText tone={empty ? "muted" : "default"}>{empty ? t("approval.empty") : t("approval.pendingSummary", { count: (isStaffAdmin ? enrollments.data?.length ?? 0 : 0) + (bookings.data?.length ?? 0) })}</AppText>
+    </NavigationCard>
+
+    <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("approval.title")}>
+      {isStaffAdmin && enrollments.data?.map((enrollment) => <ApprovalCard
+        key={enrollment.id}
+        title={enrollment.childName}
+        description={t("parentEnrollment.status")}
+        actions={<>
+          {isStaffAdmin && <Button variant="secondary" onPress={() => openProof(enrollment.invoiceId)}>{t("paymentProof.view")}</Button>}
+          {canDecideEnrollment && <><Button onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: true, name: enrollment.childName })}>{t("approval.approve")}</Button><Button variant="danger" onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: false, name: enrollment.childName })}>{t("approval.reject")}</Button></>}
+        </>}
+      />)}
+      {bookings.data?.map((booking) => <ApprovalCard
+        key={booking.id}
+        title={booking.childName}
+        description={`${formatDate(booking.bookingDate)} · ${booking.planName}`}
+        actions={<>
+          {isStaffAdmin && <Button variant="secondary" onPress={() => openProof(booking.invoiceId)}>{t("paymentProof.view")}</Button>}
+          {canDecideBooking && <><Button onPress={() => openConfirm({ kind: "booking", id: booking.id, approved: true, name: booking.childName })}>{t("approval.approve")}</Button><Button variant="danger" onPress={() => openConfirm({ kind: "booking", id: booking.id, approved: false, name: booking.childName })}>{t("approval.reject")}</Button></>}
+        </>}
+      />)}
+      {empty && <AppText tone="muted">{t("approval.empty")}</AppText>}
+    </BottomSheet>
 
     <BottomSheet
       visible={confirm !== null}

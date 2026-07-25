@@ -3,7 +3,7 @@ import { Alert, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, colors, PasswordInput, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, PasswordInput, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -21,11 +21,13 @@ export default function StaffPasswordsScreen() {
   const changePassword = useMutation({ mutationFn: ({ userId, password }: { userId: string; password: string }) => api.changeTenantUserPassword(userId, password) });
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [password, setPassword] = useState("");
+  const [listOpen, setListOpen] = useState(false);
   if (!profile) return null;
   if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
 
   const eligibleUsers = users.data?.filter((user) => user.status === "ACTIVE" && user.userId && (user.role === "STAFF_ADMIN" || user.role === "STAFF")) ?? [];
   const selectedUser = eligibleUsers.find((user) => user.userId === selectedUserId);
+  const selectUser = (userId: string) => { setListOpen(false); setSelectedUserId(userId); };
   const submit = async () => {
     if (!selectedUser?.userId) return;
     if (password.length < 6) return Alert.alert(t("password.minLength"));
@@ -40,16 +42,22 @@ export default function StaffPasswordsScreen() {
     <AppText tone="muted">{t("tenantUsers.staffPasswordSubtitle")}</AppText>
     {!canManage && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     <BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />
-    {users.isLoading && <AppText>{t("tenantUsers.loadingStaff")}</AppText>}
-    {users.isError && <Button variant="secondary" onPress={() => users.refetch()}>{t("common.retry")}</Button>}
-    {canManage && !selectedUser && eligibleUsers.map((user) => <View key={user.id} style={styles.user}>
-      <View><AppText variant="label">{user.displayName ?? user.email ?? t("common.noData")}</AppText><AppText tone="muted">{t(roleKey(user.role))} · {user.email}</AppText></View>
-      <Button variant="secondary" onPress={() => setSelectedUserId(user.userId)}>{t("tenantUsers.changePassword")}</Button>
-    </View>)}
+    <NavigationCard accessibilityLabel={t("tenantUsers.staffPasswords")} onPress={() => setListOpen(true)}>
+      <AppText variant="h5">{t("tenantUsers.staffPasswords")}</AppText>
+      <AppText tone={eligibleUsers.length > 0 ? "default" : "muted"}>{users.isLoading ? t("tenantUsers.loadingStaff") : eligibleUsers.length > 0 ? t("tenantUsers.staffCountSummary", { count: eligibleUsers.length }) : t("tenantUsers.noStaff")}</AppText>
+    </NavigationCard>
+    <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("tenantUsers.staffPasswords")}>
+      {users.isLoading && <AppText>{t("tenantUsers.loadingStaff")}</AppText>}
+      {users.isError && <Button variant="secondary" onPress={() => users.refetch()}>{t("common.retry")}</Button>}
+      {canManage && eligibleUsers.map((user) => <View key={user.id} style={styles.user}>
+        <View><AppText variant="label">{user.displayName ?? user.email ?? t("common.noData")}</AppText><AppText tone="muted">{t(roleKey(user.role))} · {user.email}</AppText></View>
+        <Button variant="secondary" onPress={() => selectUser(user.userId!)}>{t("tenantUsers.changePassword")}</Button>
+      </View>)}
+      {!users.isLoading && !users.isError && eligibleUsers.length === 0 && <AppText tone="muted">{t("tenantUsers.noStaff")}</AppText>}
+    </BottomSheet>
     <BottomSheet visible={Boolean(selectedUser)} onClose={() => { setSelectedUserId(null); setPassword(""); }} closeAccessibilityLabel={t("common.close")} title={selectedUser?.displayName ?? selectedUser?.email ?? undefined} negativeAction={{ label: t("common.cancel"), onPress: () => { setSelectedUserId(null); setPassword(""); } }} positiveAction={{ label: t("tenantUsers.savePassword"), loading: changePassword.isPending, disabled: !password, onPress: () => void submit() }}>
       <PasswordInput placeholder={t("password.new")} value={password} onChangeText={setPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
     </BottomSheet>
-    {!users.isLoading && !users.isError && eligibleUsers.length === 0 && <AppText tone="muted">{t("tenantUsers.noStaff")}</AppText>}
   </AppScreen>;
 }
 

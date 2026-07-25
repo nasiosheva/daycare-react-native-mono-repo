@@ -4,6 +4,7 @@ import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.RegistrationRole
+import com.daycare.api.domain.Gender
 import com.daycare.api.domain.TenantSubscriptionStatus
 import com.daycare.api.persistence.InvitationRepository
 import com.daycare.api.persistence.Membership
@@ -19,6 +20,7 @@ import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 @Service
@@ -44,6 +46,14 @@ class IdentityService(
             }
         return saved
     }
+
+    @Transactional
+    fun updatePersonalDetails(jwt: Jwt, gender: Gender, dateOfBirth: LocalDate): UserProfile {
+        val user = sync(jwt)
+        user.gender = gender
+        user.dateOfBirth = dateOfBirth
+        return users.save(user)
+    }
 }
 
 data class AccessScope(val user: UserProfile, val membership: Membership, val institutionTypes: Set<String>, val capabilities: Set<InstitutionCapability>)
@@ -60,7 +70,7 @@ class AccessService(
     @Transactional
     fun currentUser(jwt: Jwt): CurrentUserResponse {
         val user = identityService.sync(jwt)
-        return CurrentUserResponse(user.id, user.displayName, user.registrationRole, platformAccess.isPlatformAdmin(user), memberships.findAllByUserId(user.id).filter { it.active || it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }.sortedByDescending { it.active }.map { membership ->
+        return CurrentUserResponse(user.id, user.displayName, user.gender, user.dateOfBirth, user.registrationRole, platformAccess.isPlatformAdmin(user), memberships.findAllByUserId(user.id).filter { it.active || it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }.sortedByDescending { it.active }.map { membership ->
             val name = organizations.findById(membership.organizationId).map { it.name }.orElse("Unknown organization")
             val capabilities = organizationCapabilities.forOrganization(membership.organizationId)
             MembershipResponse(membership.organizationId, name, membership.role, membership.active, membership.branchId, membership.classroomId, membership.canManageChildPrograms, membership.canManageDevelopmentCategories, capabilities.types, capabilities.capabilities)
@@ -85,6 +95,12 @@ class AccessService(
     fun requireWritable(scope: AccessScope) {
         if (!scope.membership.active) throw AccessDeniedException("Your tenant access is read-only")
     }
+
+    @Transactional
+    fun updatePersonalDetails(jwt: Jwt, gender: Gender, dateOfBirth: LocalDate): CurrentUserResponse {
+        identityService.updatePersonalDetails(jwt, gender, dateOfBirth)
+        return currentUser(jwt)
+    }
 }
 
 @Service
@@ -108,4 +124,4 @@ class PlatformAccessService(
 }
 
 data class MembershipResponse(val organizationId: UUID, val organizationName: String, val role: Role, val active: Boolean, val branchId: UUID?, val classroomId: UUID?, val canManageChildPrograms: Boolean, val canManageDevelopmentCategories: Boolean, val institutionTypes: Set<String>, val capabilities: Set<InstitutionCapability>)
-data class CurrentUserResponse(val id: UUID, val displayName: String, val registrationRole: RegistrationRole?, val isPlatformAdmin: Boolean, val memberships: List<MembershipResponse>)
+data class CurrentUserResponse(val id: UUID, val displayName: String, val gender: Gender, val dateOfBirth: LocalDate?, val registrationRole: RegistrationRole?, val isPlatformAdmin: Boolean, val memberships: List<MembershipResponse>)

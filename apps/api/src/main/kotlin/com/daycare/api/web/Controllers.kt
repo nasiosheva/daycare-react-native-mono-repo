@@ -73,9 +73,11 @@ import com.daycare.api.service.UpdateStaffReminderActiveRequest
 import com.daycare.api.service.SyncStaffReminderSchedulesRequest
 import com.daycare.api.service.ChildReportExportService
 import com.daycare.api.service.ReportExportFormat
+import com.daycare.api.domain.Gender
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
 import org.springframework.http.HttpStatus
 import org.springframework.http.HttpHeaders
@@ -96,11 +98,13 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import java.time.LocalDate
 import java.util.UUID
 
 data class LocalLoginRequest(@field:NotBlank @field:Size(max = 128) val identifier: String, @field:Size(min = 6, max = 128) val password: String)
 data class LocalPasswordRequest(@field:Size(min = 6, max = 128) val password: String)
 data class LocalProfileRequest(@field:NotBlank @field:Size(max = 128) val displayName: String)
+data class UpdatePersonalDetailsRequest(@field:NotNull val gender: Gender, @field:NotNull val dateOfBirth: LocalDate)
 data class LocalRegistrationRequest(@field:NotBlank @field:Size(max = 128) val displayName: String, @field:NotBlank @field:Size(max = 254) val email: String, @field:NotBlank @field:Size(min = 6, max = 128) val password: String)
 
 @RestController
@@ -125,6 +129,9 @@ class LocalAuthenticationController(private val localAuthentication: LocalAuthen
 @SecurityRequirement(name = "bearerAuth")
 class IdentityController(private val access: AccessService) {
     @GetMapping("/me") fun me(@AuthenticationPrincipal jwt: Jwt) = access.currentUser(jwt)
+
+    @PatchMapping("/me")
+    fun updateMe(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: UpdatePersonalDetailsRequest) = access.updatePersonalDetails(jwt, request.gender, request.dateOfBirth)
 }
 
 @RestController

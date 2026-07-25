@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -29,6 +29,7 @@ export default function CurriculumActivityDetailScreen() {
   const createAssessment = useMutation({ mutationFn: (input: { name: string; description?: string }) => api.createCurriculumActivityAssessment(activityId!, input), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["curriculum-activity-assessments", organizationId, activityId] }) });
   const removeAssessment = useMutation({ mutationFn: (assessmentId: string) => api.removeCurriculumActivityAssessment(activityId!, assessmentId), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["curriculum-activity-assessments", organizationId, activityId] }) });
   const [sheet, setSheet] = useState<Sheet>(null);
+  const [listOpen, setListOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [assessmentName, setAssessmentName] = useState("");
@@ -57,6 +58,7 @@ export default function CurriculumActivityDetailScreen() {
       { text: t("learning.archive"), style: "destructive", onPress: () => void archiveActivity.mutateAsync().catch((error: unknown) => Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"))) },
     ]);
   };
+  const openAssessmentSheet = () => { setListOpen(false); setSheet("assessment"); };
   const closeAssessmentSheet = () => { setSheet(null); setAssessmentName(""); setAssessmentDescription(""); };
   const saveAssessment = async () => {
     if (!assessmentName.trim()) return Alert.alert(t("learning.activityRequired"));
@@ -78,7 +80,14 @@ export default function CurriculumActivityDetailScreen() {
         </View>}
       </View>
 
-      <AppText variant="heading">{t("learning.assessments")}</AppText>
+      <NavigationCard accessibilityLabel={t("learning.assessments")} onPress={() => setListOpen(true)}>
+        <AppText variant="h5">{t("learning.assessments")}</AppText>
+        <AppText tone={assessments.data?.length ? "default" : "muted"}>{assessments.data?.length ? t("learning.assessmentsSummary", { count: assessments.data.length }) : t("learning.noAssessments")}</AppText>
+      </NavigationCard>
+    </View>}
+
+    <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("learning.assessments")}>
+      {canManage && <Button variant="secondary" onPress={openAssessmentSheet}>{t("learning.addAssessment")}</Button>}
       {assessments.data?.map((assessment) => <View key={assessment.id} style={styles.item}>
         <View style={styles.itemContent}>
           <AppText variant="label">{assessment.name}</AppText>
@@ -87,8 +96,7 @@ export default function CurriculumActivityDetailScreen() {
         {canManage && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.removeAssessment")} onPress={() => void removeAssessment.mutateAsync(assessment.id)} />}
       </View>)}
       {assessments.data?.length === 0 && <AppText tone="muted">{t("learning.noAssessments")}</AppText>}
-      {canManage && <Button variant="secondary" onPress={() => setSheet("assessment")}>{t("learning.addAssessment")}</Button>}
-    </View>}
+    </BottomSheet>
 
     <BottomSheet visible={sheet === "edit"} onClose={closeEditSheet} closeAccessibilityLabel={t("common.close")} title={t("learning.editActivity")} negativeAction={{ label: t("common.cancel"), onPress: closeEditSheet }} positiveAction={{ label: t("common.save"), loading: updateActivity.isPending, onPress: () => void saveActivity() }}>
       <TextInput style={styles.input} placeholder={t("learning.activityName")} value={name} onChangeText={setName} />

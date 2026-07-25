@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from "react";
 import { ApiClient, ApiError } from "@daycare/api-client";
-import type { CurrentUser, Role } from "@daycare/core";
+import type { ChildGender, CurrentUser, Role } from "@daycare/core";
 import { env } from "@/config/env";
 import { useI18n } from "@/i18n/I18nProvider";
 import { firebaseAuth } from "./firebase";
@@ -24,6 +24,7 @@ type AuthContextValue = {
   sendPhoneCode: (phoneNumber: string) => Promise<PhoneChallenge>;
   verifyPhoneCode: (code: string) => Promise<void>;
   updateDisplayName: (displayName: string) => Promise<void>;
+  updatePersonalDetails: (gender: ChildGender, dateOfBirth: string) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
   signInAsSimulationRole: (role: Role) => void;
@@ -169,6 +170,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
     await firebaseAuth.getIdToken(true);
     await refreshProfile().catch(() => undefined);
   };
+  const updatePersonalDetails = async (gender: ChildGender, dateOfBirth: string) => {
+    if (simulationSession) {
+      setSimulationSession({ ...simulationSession, profile: { ...simulationSession.profile, gender, dateOfBirth } });
+      return;
+    }
+    const nextProfile = await api.updateMyProfile({ gender, dateOfBirth });
+    setFirebaseProfile(nextProfile);
+  };
   const changePassword = async (newPassword: string) => {
     if (simulationSession) throw new Error(t("profile.passwordSimulation"));
     if (env.isLocalAuth) {
@@ -182,7 +191,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (simulationSession) return null;
     return env.isLocalAuth ? localSession?.token ?? null : firebaseAuth.getIdToken();
   }, [localSession, simulationSession]);
-  const value = { user, profile, organizationId, loading, profileError, isSimulationSession: Boolean(simulationSession), api, getRealtimeToken, signInWithEmail: env.isLocalAuth ? signInWithLocalCredentials : firebaseAuth.signInWithEmail, signUpWithEmail: env.isLocalAuth ? signUpWithLocalCredentials : firebaseAuth.signUpWithEmail, signInWithGoogle: firebaseAuth.signInWithGoogle, sendPhoneCode, verifyPhoneCode, updateDisplayName, changePassword, refreshProfile, signInAsSimulationRole, selectOrganization: setOrganizationId, signOut };
+  const value = { user, profile, organizationId, loading, profileError, isSimulationSession: Boolean(simulationSession), api, getRealtimeToken, signInWithEmail: env.isLocalAuth ? signInWithLocalCredentials : firebaseAuth.signInWithEmail, signUpWithEmail: env.isLocalAuth ? signUpWithLocalCredentials : firebaseAuth.signUpWithEmail, signInWithGoogle: firebaseAuth.signInWithGoogle, sendPhoneCode, verifyPhoneCode, updateDisplayName, updatePersonalDetails, changePassword, refreshProfile, signInAsSimulationRole, selectOrganization: setOrganizationId, signOut };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

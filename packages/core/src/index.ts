@@ -15,6 +15,7 @@ export const developmentCategories = ["ACTIVITY", "MEAL", "NAP", "OBSERVATION"] 
 export type DevelopmentCategory = (typeof developmentCategories)[number];
 export const childGenders = ["MALE", "FEMALE"] as const;
 export type ChildGender = (typeof childGenders)[number];
+export type PersonGender = ChildGender | "UNSPECIFIED";
 export const goalCheckInOutcomes = ["YES", "NO"] as const;
 export type GoalCheckInOutcome = (typeof goalCheckInOutcomes)[number];
 export const childGoalOutcomes = ["ACHIEVED", "NOT_ACHIEVED"] as const;
@@ -124,6 +125,8 @@ export type PurchaseServiceInput = z.infer<typeof purchaseServiceSchema>;
 export type CurrentUser = {
   id: string;
   displayName: string;
+  gender: PersonGender;
+  dateOfBirth?: string;
   registrationRole?: RegistrationRole;
   isPlatformAdmin: boolean;
   memberships: Array<{

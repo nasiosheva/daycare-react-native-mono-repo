@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -24,6 +24,7 @@ export default function LearningLevelsScreen() {
   const createLevel = useMutation({ mutationFn: api.createLearningLevel.bind(api), onSuccess: refresh });
   const updateLevel = useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof api.updateLearningLevel>[1] }) => api.updateLearningLevel(id, input), onSuccess: refresh });
   const archiveLevel = useMutation({ mutationFn: api.archiveLearningLevel.bind(api), onSuccess: refresh });
+  const [listOpen, setListOpen] = useState(false);
   const [visible, setVisible] = useState(false);
   const [editingLevelId, setEditingLevelId] = useState<string>();
   const [name, setName] = useState(""); const [minAge, setMinAge] = useState(""); const [maxAge, setMaxAge] = useState(""); const [selectedPrograms, setSelectedPrograms] = useState<string[]>([]);
@@ -35,8 +36,8 @@ export default function LearningLevelsScreen() {
   const useTemplate = (templateName: string, minimum?: number | null, maximum?: number | null) => { setName(templateName); setMinAge(minimum?.toString() ?? ""); setMaxAge(maximum?.toString() ?? ""); };
   const editLevel = (level: LearningLevel) => { setEditingLevelId(level.id); setName(level.name); setMinAge(level.minAgeMonths?.toString() ?? ""); setMaxAge(level.maxAgeMonths?.toString() ?? ""); setSelectedPrograms(level.curriculumProgramIds); };
   const cancelEdit = () => { setEditingLevelId(undefined); setName(""); setMinAge(""); setMaxAge(""); setSelectedPrograms([]); };
-  const openCreate = () => { cancelEdit(); setVisible(true); };
-  const openEdit = (level: LearningLevel) => { editLevel(level); setVisible(true); };
+  const openCreate = () => { cancelEdit(); setListOpen(false); setVisible(true); };
+  const openEdit = (level: LearningLevel) => { editLevel(level); setListOpen(false); setVisible(true); };
   const close = () => { cancelEdit(); setVisible(false); };
   const save = async () => {
     if (!name.trim()) return Alert.alert(t("learning.selectLevel"));
@@ -49,17 +50,24 @@ export default function LearningLevelsScreen() {
   const toggleProgram = (id: string) => setSelectedPrograms((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
 
   return <AppScreen showBottomNavigation={false} title={t("learning.level")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    {canManage && <Button onPress={openCreate}>{t("learning.addLevel")}</Button>}
-    {levels.data?.map((level) => <View key={level.id} style={styles.card}>
-      <AppText variant="label">{level.name}</AppText>
-      <AppText tone="muted">{t("learning.ageMonths", { min: level.minAgeMonths ?? "–", max: level.maxAgeMonths ?? "–" })}</AppText>
-      {!level.active && <AppText tone="muted">{t("learning.archived")}</AppText>}
-      {canManage && level.active && <View style={styles.options}>
-        <IconButton icon="pencil-outline" tone="secondary" accessibilityLabel={t("learning.edit")} onPress={() => openEdit(level)} />
-        <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.archive")} onPress={() => void archiveLevel.mutateAsync(level.id)} />
-      </View>}
-    </View>)}
-    {levels.data?.length === 0 && <AppText tone="muted">{t("learning.noLevels")}</AppText>}
+    <NavigationCard accessibilityLabel={t("learning.level")} onPress={() => setListOpen(true)}>
+      <AppText variant="h5">{t("learning.level")}</AppText>
+      <AppText tone={levels.data?.length ? "default" : "muted"}>{levels.data?.length ? t("learning.levelsSummary", { count: levels.data.length }) : t("learning.noLevels")}</AppText>
+    </NavigationCard>
+
+    <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("learning.level")}>
+      {canManage && <Button onPress={openCreate}>{t("learning.addLevel")}</Button>}
+      {levels.data?.map((level) => <View key={level.id} style={styles.card}>
+        <AppText variant="label">{level.name}</AppText>
+        <AppText tone="muted">{t("learning.ageMonths", { min: level.minAgeMonths ?? "–", max: level.maxAgeMonths ?? "–" })}</AppText>
+        {!level.active && <AppText tone="muted">{t("learning.archived")}</AppText>}
+        {canManage && level.active && <View style={styles.options}>
+          <IconButton icon="pencil-outline" tone="secondary" accessibilityLabel={t("learning.edit")} onPress={() => openEdit(level)} />
+          <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.archive")} onPress={() => void archiveLevel.mutateAsync(level.id)} />
+        </View>}
+      </View>)}
+      {levels.data?.length === 0 && <AppText tone="muted">{t("learning.noLevels")}</AppText>}
+    </BottomSheet>
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t(editingLevelId ? "learning.editLevel" : "learning.addLevel")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t(editingLevelId ? "common.save" : "learning.addLevel"), loading: createLevel.isPending || updateLevel.isPending, onPress: () => void save() }}>
       <AppText variant="label">{t("learning.templates")}</AppText>
