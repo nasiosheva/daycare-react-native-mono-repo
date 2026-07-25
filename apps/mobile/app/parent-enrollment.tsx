@@ -1,83 +1,59 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ChildGender } from "@daycare/core";
-import { AppText, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
+import { useQuery } from "@tanstack/react-query";
+import { AppText, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
-import type { ParentEnrollmentCheckoutInput } from "@daycare/api-client";
-import { GenderPicker } from "@/children/GenderPicker";
-import { DatePicker } from "@/date-picker/DatePicker";
-import { formatIsoDate, isIsoDate } from "@/date-picker/date";
-
-type ChildDraft = Omit<ParentEnrollmentCheckoutInput["children"][number], "gender"> & { gender?: ChildGender };
-const emptyChild = (): ChildDraft => ({ firstName: "", lastName: "", dateOfBirth: "" });
+import type { ParentEnrollment } from "@daycare/api-client";
 
 export default function ParentEnrollmentScreen() {
   const router = useRouter();
-  const { api, refreshProfile, profile, organizationId, selectOrganization } = useAuth(); const { t, formatCurrency } = useI18n(); const client = useQueryClient();
-  const catalog = useQuery({ queryKey: ["parent-enrollment-catalog"], queryFn: () => api.parentEnrollmentCatalog() });
+  const { api, profile, organizationId, refreshProfile, selectOrganization } = useAuth();
+  const { t, formatCurrency } = useI18n();
   const enrollments = useQuery({ queryKey: ["parent-enrollments"], queryFn: () => api.parentEnrollments(), refetchInterval: 15_000 });
-  const parentMemberships = profile?.memberships.filter((membership) => membership.role === "PARENT") ?? [];
-  const availableTenants = useMemo(() => catalog.data?.filter((item) => !parentMemberships.some((membership) => membership.organizationId === item.organizationId)) ?? [], [catalog.data, parentMemberships]);
-  const [tenantId, setTenantId] = useState<string>(); const tenant = useMemo(() => availableTenants.find((item) => item.organizationId === tenantId) ?? availableTenants[0], [availableTenants, tenantId]);
-  const [branchId, setBranchId] = useState<string>(); const branch = tenant?.branches.find((item) => item.id === branchId) ?? tenant?.branches[0];
-  const [planId, setPlanId] = useState<string>(); const plan = tenant?.plans.find((item) => item.id === planId) ?? tenant?.plans[0];
-  const [children, setChildren] = useState<ChildDraft[]>([emptyChild()]);
-  const [enrollSheetOpen, setEnrollSheetOpen] = useState(false);
   const activatedEnrollmentId = useRef<string | null>(null);
   const approvedUnboundEnrollment = enrollments.data?.find((item) => item.status === "APPROVED" && !profile?.memberships.some((membership) => membership.organizationId === item.organizationId));
+
   useEffect(() => {
     if (!approvedUnboundEnrollment || activatedEnrollmentId.current === approvedUnboundEnrollment.id) return;
     activatedEnrollmentId.current = approvedUnboundEnrollment.id;
-    void refreshProfile().then(() => { selectOrganization(approvedUnboundEnrollment.organizationId); router.replace("/home"); }).catch(() => { activatedEnrollmentId.current = null; });
+    void refreshProfile().then(() => selectOrganization(approvedUnboundEnrollment.organizationId)).catch(() => { activatedEnrollmentId.current = null; });
   }, [approvedUnboundEnrollment, refreshProfile, selectOrganization]);
-  const checkout = useMutation({ mutationFn: () => {
-    if (!tenant || !branch || !plan || children.some((child) => !child.firstName.trim() || !child.gender || !isIsoDate(child.dateOfBirth))) throw new Error(t("children.required"));
-    return api.checkoutParentEnrollment({ organizationId: tenant.organizationId, branchId: branch.id, planId: plan.id, bookingDates: [], children: children.map((child) => ({ firstName: child.firstName.trim(), lastName: child.lastName?.trim() || undefined, gender: child.gender!, dateOfBirth: child.dateOfBirth.trim() })) });
-  }, onSuccess: async () => {
-    await client.invalidateQueries({ queryKey: ["parent-enrollments"] });
-    await refreshProfile();
-    setEnrollSheetOpen(false);
-    setTenantId(undefined);
-    setBranchId(undefined);
-    setPlanId(undefined);
-    setChildren([emptyChild()]);
-    Alert.alert(t("parentEnrollment.created"));
-  }, onError: (error) => Alert.alert(t("parentEnrollment.failed"), error instanceof Error ? error.message : t("auth.tryAgain")) });
-  const retry = useMutation({ mutationFn: (enrollmentId: string) => api.retryParentEnrollment(enrollmentId, []), onSuccess: () => void client.invalidateQueries({ queryKey: ["parent-enrollments"] }), onError: (error) => Alert.alert(t("parentEnrollment.failed"), error instanceof Error ? error.message : t("auth.tryAgain")) });
-  const cancel = useMutation({ mutationFn: api.cancelParentEnrollment.bind(api), onSuccess: () => void client.invalidateQueries({ queryKey: ["parent-enrollments"] }), onError: (error) => Alert.alert(t("parentEnrollment.failed"), error instanceof Error ? error.message : t("auth.tryAgain")) });
-  const cancelEnrollment = (enrollmentId: string) => Alert.alert(t("parentEnrollment.cancel"), t("parentEnrollment.cancelConfirm"), [
-    { text: t("common.cancel"), style: "cancel" },
-    { text: t("parentEnrollment.cancel"), style: "destructive", onPress: () => void cancel.mutateAsync(enrollmentId) },
-  ]);
+
   return <AppScreen><View style={styles.content}>
-    <AppText variant="title">{t("parentEnrollment.title")}</AppText><AppText tone="muted">{t("parentEnrollment.subtitle")}</AppText>
-    {parentMemberships.length > 0 && <View style={styles.section}><AppText variant="heading">{t("parentEnrollment.activeTenants")}</AppText>{parentMemberships.map((membership) => <Button key={membership.organizationId} variant={membership.organizationId === organizationId ? "primary" : "secondary"} onPress={() => { selectOrganization(membership.organizationId); router.replace("/home"); }}>{membership.organizationName}</Button>)}</View>}
-    <NavigationCard accessibilityLabel={t("parentEnrollment.newTenant")} onPress={() => setEnrollSheetOpen(true)}>
+    <AppText variant="title">{t("parentEnrollment.title")}</AppText>
+    <AppText tone="muted">{t("parentEnrollment.subtitle")}</AppText>
+    <NavigationCard accessibilityLabel={t("parentEnrollment.newTenant")} onPress={() => router.push("/parent-enrollment-form")}>
       <AppText variant="h5">{t("parentEnrollment.newTenant")}</AppText>
-      <AppText variant="bodySmall" tone="muted">{t("parentEnrollment.subtitle")}</AppText>
-      <AppText tone={availableTenants.length > 0 ? "default" : "muted"}>{catalog.isLoading ? t("common.loading") : availableTenants.length > 0 ? t("parentEnrollment.availableTenantsSummary", { count: availableTenants.length }) : t("parentEnrollment.noTenant")}</AppText>
+      <AppText tone="muted">{t("parentEnrollment.startDescription")}</AppText>
     </NavigationCard>
-    {enrollments.data && enrollments.data.length > 0 && <View style={styles.section}><AppText variant="heading">{t("parentEnrollment.status")}</AppText>{enrollments.data.map((item) => <View key={item.id} style={styles.card}><AppText variant="label">{item.childName}</AppText><AppText>{t((item.status === "APPROVED" ? "status.CONFIRMED" : `status.${item.status}`) as never)}</AppText><AppText tone="muted">{item.status === "PENDING_PAYMENT" ? item.invoiceStatus === "PAYMENT_SUBMITTED" ? t("paymentProof.awaitingReview") : t("parentEnrollment.pendingPayment") : item.status === "PENDING_APPROVAL" ? t("parentEnrollment.pendingApproval") : item.status === "REJECTED" ? t("parentEnrollment.rejected") : item.status === "EXPIRED" ? t("parentEnrollment.expired") : item.status === "CANCELLED" ? t("parentEnrollment.cancelled") : ""}</AppText>{item.status === "PENDING_PAYMENT" && item.invoiceStatus === "PENDING" && <><Button variant="secondary" onPress={() => router.push({ pathname: "/payment-proof", params: { invoiceId: item.invoiceId } })}>{t("paymentProof.submit")}</Button><Button variant="danger" loading={cancel.isPending} onPress={() => cancelEnrollment(item.id)}>{t("parentEnrollment.cancel")}</Button></>}{item.status === "REJECTED" && <Button loading={retry.isPending} onPress={() => retry.mutate(item.id)}>{t("parentEnrollment.retry")}</Button>}</View>)}</View>}
-    <BottomSheet
-      visible={enrollSheetOpen}
-      onClose={() => setEnrollSheetOpen(false)}
-      closeAccessibilityLabel={t("common.close")}
-      title={t("parentEnrollment.newTenant")}
-      negativeAction={{ label: t("common.cancel"), onPress: () => setEnrollSheetOpen(false) }}
-      positiveAction={{ label: t("parentEnrollment.checkout"), loading: checkout.isPending, disabled: !tenant || !branch || !plan, onPress: () => checkout.mutate() }}
-    >
-      {catalog.isLoading && <AppText>{t("common.loading")}</AppText>}{!catalog.isLoading && !tenant && <AppText tone="muted">{t("parentEnrollment.noTenant")}</AppText>}
-      {availableTenants.map((item) => <Button key={item.organizationId} variant={tenant?.organizationId === item.organizationId ? "primary" : "secondary"} onPress={() => { setTenantId(item.organizationId); setBranchId(undefined); setPlanId(undefined); }}>{item.organizationName}</Button>)}
-      {tenant && <><AppText variant="heading">{t("parentEnrollment.branch")}</AppText>{tenant.branches.map((item) => <Button key={item.id} variant={branch?.id === item.id ? "primary" : "secondary"} onPress={() => setBranchId(item.id)}>{item.name}{item.dailyCapacity ? ` · ${t("parentEnrollment.quota", { count: item.dailyCapacity })}` : ""}</Button>)}
-        <AppText variant="heading">{t("parentEnrollment.plan")}</AppText>{tenant.plans.map((item) => <Button key={item.id} variant={plan?.id === item.id ? "primary" : "secondary"} onPress={() => setPlanId(item.id)}>{item.name} · {formatCurrency(item.price)}</Button>)}
-        <AppText variant="heading">{t("parentEnrollment.children")}</AppText>{children.map((child, index) => <View key={index} style={styles.childForm}><AppText variant="label">{t("parentEnrollment.childNumber", { number: index + 1 })}</AppText><TextInput style={styles.input} placeholder={t("children.firstName")} value={child.firstName} onChangeText={(firstName) => setChildren((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, firstName } : item))} /><TextInput style={styles.input} placeholder={t("children.lastName")} value={child.lastName ?? ""} onChangeText={(lastName) => setChildren((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, lastName } : item))} /><GenderPicker value={child.gender} onChange={(gender) => setChildren((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, gender } : item))} /><DatePicker placeholder={t("children.birthDate")} value={child.dateOfBirth} onChange={(dateOfBirth) => setChildren((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, dateOfBirth } : item))} maximumDate={formatIsoDate(new Date())} />{children.length > 1 && <Button variant="danger" onPress={() => setChildren((current) => current.filter((_, itemIndex) => itemIndex !== index))}>{t("parentEnrollment.removeChild")}</Button>}</View>)}<Button variant="secondary" onPress={() => setChildren((current) => [...current, emptyChild()])}>{t("parentEnrollment.addChild")}</Button>
-        <AppText tone="muted">{t("parentEnrollment.bookingAfterApproval")}</AppText>
-      </>}
-    </BottomSheet>
+    <View style={styles.section}>
+      <AppText variant="heading">{t("parentEnrollment.status")}</AppText>
+      {enrollments.isLoading && <AppText tone="muted">{t("common.loading")}</AppText>}
+      {enrollments.data?.map((item) => <View key={item.id} style={styles.card}>
+        <AppText variant="heading">{item.childName}</AppText>
+        <AppText>{item.planName} · {formatCurrency(item.totalAmount)}</AppText>
+        <EnrollmentAction enrollment={item} onApply={() => router.push("/parent-enrollment-form")} onPay={() => item.invoiceId && router.push({ pathname: "/parent-payment", params: { invoiceId: item.invoiceId } })} t={t} />
+      </View>)}
+      {!enrollments.isLoading && enrollments.data?.length === 0 && <AppText tone="muted">{t("parentEnrollment.noApplication")}</AppText>}
+    </View>
+    {profile?.memberships.filter((membership) => membership.role === "PARENT").length ? <View style={styles.section}>
+      <AppText variant="heading">{t("parentEnrollment.activeTenants")}</AppText>
+      {profile.memberships.filter((membership) => membership.role === "PARENT").map((membership) => <Button key={membership.organizationId} variant={membership.organizationId === organizationId ? "primary" : "secondary"} onPress={() => { selectOrganization(membership.organizationId); router.replace("/home"); }}>{membership.organizationName}</Button>)}
+    </View> : null}
   </View></AppScreen>;
 }
-const styles = StyleSheet.create({ content: { gap: spacing.sm }, section: { gap: spacing.sm, marginTop: spacing.md }, card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, childForm: { gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.surface } });
+
+function EnrollmentAction({ enrollment, onApply, onPay, t }: { enrollment: ParentEnrollment; onApply: () => void; onPay: () => void; t: ReturnType<typeof useI18n>["t"] }) {
+  if (enrollment.status === "PENDING_APPROVAL") return <AppText tone="muted">{t("parentEnrollment.pendingApproval")}</AppText>;
+  if (enrollment.status === "REJECTED") return <><AppText tone="danger">{t("parentEnrollment.rejected")}</AppText><Button variant="secondary" onPress={onApply}>{t("parentEnrollment.retry")}</Button></>;
+  if (enrollment.status === "CANCELLED" || enrollment.status === "EXPIRED" || enrollment.invoiceStatus === "OVERDUE") return <><AppText tone="muted">{t("parentEnrollment.expired")}</AppText><Button variant="secondary" onPress={onApply}>{t("parentEnrollment.retry")}</Button></>;
+  if (enrollment.invoiceStatus === "PENDING") return <><AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText><Button onPress={onPay}>{t("parentEnrollment.pay")}</Button></>;
+  if (enrollment.invoiceStatus === "PAYMENT_SUBMITTED") return <AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>;
+  if (enrollment.invoiceStatus === "PAID") return <AppText tone="muted">{t("parentEnrollment.paid")}</AppText>;
+  return <AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText>;
+}
+
+const styles = StyleSheet.create({ content: { gap: spacing.md }, section: { gap: spacing.sm }, card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border } });

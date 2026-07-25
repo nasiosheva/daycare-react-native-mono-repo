@@ -5,6 +5,8 @@ import com.daycare.api.service.InvalidLocalCredentialsException
 import com.daycare.api.service.LocalAuthenticationError
 import com.daycare.api.service.FirebaseIdentityError
 import com.daycare.api.service.TenantUserAccountError
+import com.daycare.api.service.ParentEnrollmentError
+import com.daycare.api.service.TenantPaymentInstructionError
 import org.springframework.context.MessageSource
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -53,6 +55,15 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             TenantUserAccountError.EMAIL_REQUIRED to "error.tenantUserEmailRequired",
             TenantUserAccountError.PASSWORD_TOO_SHORT to "error.tenantUserPasswordTooShort",
             TenantUserAccountError.EMAIL_REGISTERED to "error.emailRegistered",
+            ParentEnrollmentError.ALREADY_ACTIVE to "error.parentEnrollmentAlreadyActive",
+            ParentEnrollmentError.BOOKINGS_NOT_ALLOWED to "error.parentEnrollmentBookingsNotAllowed",
+            ParentEnrollmentError.NOT_FOUND to "error.parentEnrollmentNotFound",
+            ParentEnrollmentError.CANNOT_APPROVE to "error.parentEnrollmentCannotApprove",
+            ParentEnrollmentError.PAYMENT_INSTRUCTION_REQUIRED to "error.parentEnrollmentPaymentInstructionRequired",
+            ParentEnrollmentError.PARENT_NOT_FOUND to "error.parentEnrollmentParentNotFound",
+            ParentEnrollmentError.CANNOT_RETRY to "error.parentEnrollmentCannotRetry",
+            ParentEnrollmentError.CANNOT_CANCEL to "error.parentEnrollmentCannotCancel",
+            TenantPaymentInstructionError.NOT_FOUND to "error.paymentInstructionNotFound",
             "You do not have permission for this organization" to "error.organizationAccess",
             "Tenant subscription is not active" to "error.subscriptionInactive",
             "This feature is not enabled for the institution" to "error.featureUnavailable",

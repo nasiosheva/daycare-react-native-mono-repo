@@ -2,9 +2,9 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AppText, Button, colors, NavigationCard, radius, spacing } from "@daycare/ui";
+import { AppText, BottomSheet, Button, colors, NavigationCard, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren } from "@/attendance/useAttendance";
 import { useBookings, useEntitlements, useInvoices } from "@/booking/useBooking";
@@ -29,7 +29,8 @@ export default function HomeScreen() {
   if (!user) return <Redirect href="/sign-in" />;
   if (!profile) return profileError ? <ProfileLoadFailure error={profileError} /> : <HomeLoadingState />;
   if (profile.isPlatformAdmin) return <PlatformAdminHome />;
-  if (!membership) return <Redirect href={"/parent-enrollment" as never} />;
+  if (!membership && profile.registrationRole === "PARENT") return <ParentOnboardingHome displayName={profile.displayName} />;
+  if (!membership) return <Redirect href={"/profile" as never} />;
   const hasDaycareOperations = hasInstitutionCapability(membership.capabilities, "DAYCARE_OPERATIONS");
   const isStaffAdmin = membership.role === "STAFF_ADMIN";
   const isStaff = membership.role === "STAFF";
@@ -110,10 +111,26 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations, isSim
         <AppText variant="heading">{invoice.invoiceNumber}</AppText>
         <AppText>{invoice.childName} · {formatCurrency(invoice.totalAmount)}</AppText>
         <AppText tone="muted">{t(`status.${invoice.status}` as Parameters<typeof t>[0])} · {t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>
-        {invoice.status === "PENDING" ? <Button onPress={() => router.push({ pathname: "/payment-proof", params: { invoiceId: invoice.id } })}>{t("paymentProof.submit")}</Button> : <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
+        {invoice.status === "PENDING" ? <Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: invoice.id } })}>{t("parentEnrollment.pay")}</Button> : <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
       </View>)}
       {!paymentsUnavailable && summary.actionableInvoices.length === 0 && <AppText tone="muted">{t("home.noActionablePayments")}</AppText>}
     </SummarySection>}
+  </View></AppScreen>;
+}
+
+function ParentOnboardingHome({ displayName }: { displayName: string }) {
+  const router = useRouter();
+  const { api } = useAuth();
+  const { t, formatCurrency } = useI18n();
+  const enrollments = useQuery({ queryKey: ["parent-enrollments"], queryFn: () => api.parentEnrollments() });
+  const next = enrollments.data?.find((item) => item.status === "APPROVED" && item.invoiceStatus === "PENDING") ?? enrollments.data?.find((item) => item.status === "PENDING_APPROVAL");
+  return <AppScreen><View style={styles.content}>
+    <AppText variant="title">{t("home.greeting", { name: displayName })}</AppText>
+    <AppText tone="muted">{t("parentEnrollment.onboardingSubtitle")}</AppText>
+    {next?.status === "PENDING_APPROVAL" && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText tone="muted">{t("parentEnrollment.pendingApproval")}</AppText><Button variant="secondary" onPress={() => router.push("/parent-enrollment")}>{t("parentEnrollment.viewApplication")}</Button></View>}
+    {next?.invoiceStatus === "PENDING" && next.invoiceId && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText>{next.planName} · {formatCurrency(next.totalAmount)}</AppText><AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText><Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: next.invoiceId! } })}>{t("parentEnrollment.pay")}</Button></View>}
+    {!next && <NavigationCard accessibilityLabel={t("parentEnrollment.newTenant")} onPress={() => router.push("/parent-enrollment-form")}><AppText variant="h5">{t("parentEnrollment.newTenant")}</AppText><AppText tone="muted">{t("parentEnrollment.startDescription")}</AppText></NavigationCard>}
+    <Button variant="secondary" onPress={() => router.push("/parent-enrollment")}>{t("parentEnrollment.viewApplication")}</Button>
   </View></AppScreen>;
 }
 
@@ -133,6 +150,18 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, i
   const pendingEnrollments = useQuery({ queryKey: ["parent-enrollments", organizationId, "pending"], queryFn: () => api.pendingParentEnrollments(), enabled: Boolean(organizationId) && canLoadData });
   const invoices = useInvoices(canLoadData && hasDaycareOperations);
   const entitlements = useEntitlements(canLoadData && hasDaycareOperations);
+  const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: Boolean(organizationId) && canLoadData });
+  const capacities = useQuery({ queryKey: ["branch-capacities", organizationId], queryFn: () => api.branchCapacities(), enabled: Boolean(organizationId) && canLoadData });
+  const [branchSummaryOpen, setBranchSummaryOpen] = useState(false);
+  const activeBranches = branches.data?.filter((branch) => branch.active) ?? [];
+  const branchSummaries = activeBranches.map((branch) => ({
+    branch,
+    capacity: capacities.data?.find((item) => item.branchId === branch.id)?.dailyCapacity,
+    childrenCount: children.data?.filter((child) => child.branchId === branch.id).length ?? 0,
+    staffCount: users.data?.filter((user) => user.branchId === branch.id && user.status === "ACTIVE" && (user.role === "STAFF_ADMIN" || user.role === "STAFF")).length ?? 0,
+    pendingApprovals: (pendingBookings.data?.filter((booking) => booking.branchId === branch.id && booking.status === "PENDING_APPROVAL").length ?? 0) + (pendingEnrollments.data?.filter((enrollment) => enrollment.branchId === branch.id).length ?? 0),
+    pendingInvoices: invoices.data?.filter((invoice) => invoice.branchId === branch.id && invoice.status === "PENDING").length ?? 0,
+  }));
   const notifications = useQuery({ queryKey: ["notifications", organizationId], queryFn: () => api.notifications(), enabled: Boolean(organizationId) && canLoadData });
   const unreadNotifications = notifications.data ?? [];
   const unreadNotificationsCount = unreadNotificationCount(unreadNotifications);
@@ -168,6 +197,21 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, i
       <SummaryCard label={t("home.activeSubscriptions")} value={financialUnavailable ? undefined : summary.activeSubscriptions} onPress={() => router.push("/parent-subscriptions")} />
       <SummaryCard label={t("home.remainingCredits")} value={financialUnavailable ? undefined : summary.remainingCredits} onPress={() => router.push("/parent-subscriptions")} />
     </SummarySection>}
+
+    <NavigationCard accessibilityLabel={t("home.branchSummary")} onPress={() => setBranchSummaryOpen(true)}>
+      <AppText variant="h5">{t("home.branchSummary")}</AppText>
+      <AppText tone={activeBranches.length ? "default" : "muted"}>{branches.isLoading ? t("common.loading") : activeBranches.length ? t("home.branchSummaryCount", { count: activeBranches.length }) : t("common.noData")}</AppText>
+    </NavigationCard>
+    <BottomSheet visible={branchSummaryOpen} onClose={() => setBranchSummaryOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("home.branchSummary")}>
+      {branchSummaries.map((item) => <View key={item.branch.id} style={styles.branchCard}>
+        <AppText variant="heading">{item.branch.name}</AppText>
+        <AppText tone="muted">{item.capacity != null ? t("home.branchChildrenWithCapacity", { count: item.childrenCount, capacity: item.capacity }) : t("home.branchChildrenNoCapacity", { count: item.childrenCount })}</AppText>
+        <AppText tone="muted">{t("home.branchStaffSummary", { count: item.staffCount })}</AppText>
+        <AppText tone={item.pendingApprovals > 0 ? "danger" : "muted"}>{t("home.branchApprovalsSummary", { count: item.pendingApprovals })}</AppText>
+        <AppText tone={item.pendingInvoices > 0 ? "danger" : "muted"}>{t("home.branchInvoicesSummary", { count: item.pendingInvoices })}</AppText>
+      </View>)}
+      {activeBranches.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+    </BottomSheet>
   </View></AppScreen>;
 }
 
@@ -234,4 +278,5 @@ const styles = StyleSheet.create({
   parentActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   section: { gap: spacing.sm },
   tenant: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  branchCard: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
 });

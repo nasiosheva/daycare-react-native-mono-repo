@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
@@ -15,19 +15,22 @@ export default function PlatformTenantsScreen() {
   const { api, profile } = useAuth();
   const { t, formatCurrency, formatDate } = useI18n();
   const queryClient = useQueryClient();
-  const tenants = useQuery({ queryKey: ["platform-tenants"], queryFn: () => api.tenants(), enabled: Boolean(profile?.isPlatformAdmin) });
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [search]);
+  const tenants = useQuery({ queryKey: ["platform-tenants", debouncedSearch], queryFn: () => api.tenants(debouncedSearch || undefined), enabled: Boolean(profile?.isPlatformAdmin) });
   const institutionTypes = useQuery({ queryKey: ["platform-institution-types"], queryFn: () => api.institutionTypes(), enabled: Boolean(profile?.isPlatformAdmin) });
   const markPaymentPaid = useMutation({ mutationFn: ({ organizationId, paymentId }: { organizationId: string; paymentId: string }) => api.markTenantPaymentPaid(organizationId, paymentId), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["platform-tenants"] }) });
-  const [search, setSearch] = useState("");
   const [status, setStatus] = useState<TenantSubscriptionStatus | null>(null);
   const [institutionType, setInstitutionType] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(false);
   const institutionTypeNames = useMemo(() => new Map(institutionTypes.data?.map((type) => [type.code, type.name])), [institutionTypes.data]);
-  const visibleTenants = useMemo(() => tenants.data?.filter((tenant) => {
-    const query = search.trim().toLowerCase();
-    const matchesSearch = !query || [tenant.name, tenant.staffAdmin?.email, tenant.staffAdmin?.displayName, ...tenant.institutionTypes.map((type) => institutionTypeNames.get(type) ?? type)].filter(Boolean).some((value) => value!.toLowerCase().includes(query));
-    return matchesSearch && (!status || tenant.subscriptionStatus === status) && (!institutionType || tenant.institutionTypes.includes(institutionType));
-  }) ?? [], [search, status, institutionType, tenants.data, institutionTypeNames]);
+  const visibleTenants = useMemo(() => tenants.data?.filter((tenant) =>
+    (!status || tenant.subscriptionStatus === status) && (!institutionType || tenant.institutionTypes.includes(institutionType))
+  ) ?? [], [status, institutionType, tenants.data]);
   if (!profile) return null;
   if (!profile.isPlatformAdmin) return <Redirect href="/home" />;
 

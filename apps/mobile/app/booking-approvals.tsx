@@ -65,9 +65,8 @@ export default function BookingApprovalsScreen() {
       {isStaffAdmin && enrollments.data?.map((enrollment) => <ApprovalCard
         key={enrollment.id}
         title={enrollment.childName}
-        description={t("parentEnrollment.status")}
+        description={`${enrollment.planName} · ${formatDate(enrollment.createdAt)}`}
         actions={<>
-          {isStaffAdmin && <Button variant="secondary" onPress={() => openProof(enrollment.invoiceId)}>{t("paymentProof.view")}</Button>}
           {canDecideEnrollment && <><Button onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: true, name: enrollment.childName })}>{t("approval.approve")}</Button><Button variant="danger" onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: false, name: enrollment.childName })}>{t("approval.reject")}</Button></>}
         </>}
       />)}

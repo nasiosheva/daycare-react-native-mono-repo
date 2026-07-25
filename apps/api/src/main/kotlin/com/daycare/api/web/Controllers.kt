@@ -64,6 +64,8 @@ import com.daycare.api.service.ParentEnrollmentService
 import com.daycare.api.service.ParentEnrollmentCheckoutRequest
 import com.daycare.api.service.ParentEnrollmentApprovalRequest
 import com.daycare.api.service.ParentEnrollmentRetryRequest
+import com.daycare.api.service.TenantPaymentInstructionService
+import com.daycare.api.service.UpsertPaymentInstructionRequest
 import com.daycare.api.service.CreateTenantBranchRequest
 import com.daycare.api.service.UpdateTenantBranchRequest
 import com.daycare.api.service.BranchManagementService
@@ -161,6 +163,26 @@ class ParentEnrollmentController(private val enrollments: ParentEnrollmentServic
 }
 
 @RestController
+@RequestMapping("/v1/payment-instructions")
+@SecurityRequirement(name = "bearerAuth")
+class TenantPaymentInstructionController(private val paymentInstructions: TenantPaymentInstructionService) {
+    @GetMapping
+    fun list(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = paymentInstructions.list(jwt, organizationId)
+
+    @GetMapping("/manage")
+    fun listForManagement(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = paymentInstructions.listForManagement(jwt, organizationId)
+
+    @PostMapping @ResponseStatus(HttpStatus.CREATED)
+    fun create(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertPaymentInstructionRequest) = paymentInstructions.create(jwt, organizationId, request)
+
+    @PatchMapping("/{instructionId}")
+    fun update(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable instructionId: UUID, @Valid @RequestBody request: UpsertPaymentInstructionRequest) = paymentInstructions.update(jwt, organizationId, instructionId, request)
+
+    @DeleteMapping("/{instructionId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun delete(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable instructionId: UUID) = paymentInstructions.delete(jwt, organizationId, instructionId)
+}
+
+@RestController
 @RequestMapping("/v1/platform")
 @SecurityRequirement(name = "bearerAuth")
 class PlatformController(
@@ -182,7 +204,7 @@ class PlatformController(
     fun deleteInstitutionType(@AuthenticationPrincipal jwt: Jwt, @PathVariable code: String) = institutionTypes.delete(jwt, code)
 
     @GetMapping("/tenants")
-    fun tenants(@AuthenticationPrincipal jwt: Jwt) = platformAdministration.tenants(jwt)
+    fun tenants(@AuthenticationPrincipal jwt: Jwt, @RequestParam(required = false) search: String?) = platformAdministration.tenants(jwt, search)
 
     @PostMapping("/tenants") @ResponseStatus(HttpStatus.CREATED)
     fun createTenant(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: CreateTenantRequest) = platformAdministration.createTenant(jwt, request)

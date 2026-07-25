@@ -115,6 +115,20 @@ export default function GoalsScreen() {
     } catch (error) { Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
   const activeIndicatorCount = editingTemplate?.indicators.filter((indicator) => indicator.active).length ?? 0;
+  const hasFixedChild = typeof routeChildId === "string";
+  const goalsListContent = <>
+    {selectedChild && canAdmin && <Button onPress={() => { setGoalsListOpen(false); setSheet("assign"); }}>{t("goals.assign")}</Button>}
+    {goals.data?.map((goal) => <View key={goal.id} style={styles.card}>
+      <AppText variant="label">{goal.name}</AppText>
+      <AppText tone="muted">{formatDate(goal.startsOn)} – {formatDate(goal.targetEndsOn)}</AppText>
+      <AppText>{t("goals.progress", { yes: goal.yesDays, recorded: goal.recordedDays, percent: goal.yesPercent ?? 0, streak: goal.longestYesStreak })}</AppText>
+      <AppText tone="muted">{t(goal.meetsYesPercent && goal.meetsYesStreak ? "goals.targetsMet" : "goals.targetsPending")}</AppText>
+      <View style={styles.checkIns}>{goal.checkIns.map((checkInItem) => <View key={`${checkInItem.date}-${checkInItem.indicatorId}`} style={styles.checkIn}><AppText tone="muted">{formatDate(checkInItem.date)} · {goal.indicators.find((indicator) => indicator.id === checkInItem.indicatorId)?.name}</AppText><AppText>{t(checkInItem.outcome === "YES" ? "goals.yes" : "goals.no")}</AppText></View>)}</View>
+      {goal.status === "ACTIVE" && canWrite && <View style={styles.indicators}>{goal.indicators.filter((indicator) => indicator.active).map((indicator) => <View key={indicator.id} style={styles.indicator}><AppText variant="label">{indicator.name}</AppText><View style={styles.options}>{goalCheckInOutcomes.map((outcome) => <Button key={outcome} variant="secondary" loading={checkIn.isPending} onPress={() => void checkIn.mutateAsync({ goalId: goal.id, indicatorId: indicator.id, outcome }).catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")))}>{t(outcome === "YES" ? "goals.yes" : "goals.no")}</Button>)}</View></View>)}<Button onPress={() => { setGoalsListOpen(false); setFinalGoalId(goal.id); setSheet("finalize"); }}>{t("goals.finalize")}</Button></View>}
+      {goal.status === "COMPLETED" && <><AppText>{t(goal.finalOutcome === "ACHIEVED" ? "goals.achieved" : "goals.notAchieved")}</AppText><AppText tone="muted">{goal.finalSummary}</AppText></>}
+    </View>)}
+    {selectedChild && goals.data?.length === 0 && <AppText tone="muted">{t("goals.empty")}</AppText>}
+  </>;
 
   return <AppScreen showBottomNavigation={false} title={t("goals.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("goals.subtitle")}</AppText>
@@ -128,10 +142,11 @@ export default function GoalsScreen() {
       <View style={styles.row}><AppText variant="heading">{t("goals.childGoals")}</AppText>{isStaffAdmin && <Button variant="secondary" onPress={() => setFilterVisible(true)}>{t("children.filter")}</Button>}</View>
       {isStaffAdmin && (childFilter.branchId || childFilter.learningLevelId || childFilter.classroomId) && <AppText tone="muted">{t("children.filterActive")}</AppText>}
       <View style={styles.options}>{children.data?.map((child) => <Button key={child.id} variant={child.id === childId ? "primary" : "secondary"} onPress={() => setChildId(child.id)}>{child.fullName}</Button>)}</View>
-      {selectedChild && <NavigationCard accessibilityLabel={t("goals.childGoals")} onPress={() => setGoalsListOpen(true)}>
+      {selectedChild && !hasFixedChild && <NavigationCard accessibilityLabel={t("goals.childGoals")} onPress={() => setGoalsListOpen(true)}>
         <AppText variant="h5">{selectedChild.fullName}</AppText>
         <AppText tone={goals.data?.length ? "default" : "muted"}>{goals.data?.length ? t("goals.goalsSummary", { count: goals.data.length }) : t("goals.empty")}</AppText>
       </NavigationCard>}
+      {selectedChild && hasFixedChild && goalsListContent}
     </View>
 
     <BottomSheet visible={templatesListOpen} onClose={() => setTemplatesListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("goals.templates")}>
@@ -147,19 +162,9 @@ export default function GoalsScreen() {
       {templates.data?.length === 0 && <AppText tone="muted">{t("goals.noTemplates")}</AppText>}
     </BottomSheet>
 
-    <BottomSheet visible={goalsListOpen} onClose={() => setGoalsListOpen(false)} closeAccessibilityLabel={t("common.close")} title={selectedChild?.fullName ?? t("goals.childGoals")}>
-      {selectedChild && canAdmin && <Button onPress={() => { setGoalsListOpen(false); setSheet("assign"); }}>{t("goals.assign")}</Button>}
-      {goals.data?.map((goal) => <View key={goal.id} style={styles.card}>
-        <AppText variant="label">{goal.name}</AppText>
-        <AppText tone="muted">{formatDate(goal.startsOn)} – {formatDate(goal.targetEndsOn)}</AppText>
-        <AppText>{t("goals.progress", { yes: goal.yesDays, recorded: goal.recordedDays, percent: goal.yesPercent ?? 0, streak: goal.longestYesStreak })}</AppText>
-        <AppText tone="muted">{t(goal.meetsYesPercent && goal.meetsYesStreak ? "goals.targetsMet" : "goals.targetsPending")}</AppText>
-        <View style={styles.checkIns}>{goal.checkIns.map((checkInItem) => <View key={`${checkInItem.date}-${checkInItem.indicatorId}`} style={styles.checkIn}><AppText tone="muted">{formatDate(checkInItem.date)} · {goal.indicators.find((indicator) => indicator.id === checkInItem.indicatorId)?.name}</AppText><AppText>{t(checkInItem.outcome === "YES" ? "goals.yes" : "goals.no")}</AppText></View>)}</View>
-        {goal.status === "ACTIVE" && canWrite && <View style={styles.indicators}>{goal.indicators.filter((indicator) => indicator.active).map((indicator) => <View key={indicator.id} style={styles.indicator}><AppText variant="label">{indicator.name}</AppText><View style={styles.options}>{goalCheckInOutcomes.map((outcome) => <Button key={outcome} variant="secondary" loading={checkIn.isPending} onPress={() => void checkIn.mutateAsync({ goalId: goal.id, indicatorId: indicator.id, outcome }).catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")))}>{t(outcome === "YES" ? "goals.yes" : "goals.no")}</Button>)}</View></View>)}<Button onPress={() => { setGoalsListOpen(false); setFinalGoalId(goal.id); setSheet("finalize"); }}>{t("goals.finalize")}</Button></View>}
-        {goal.status === "COMPLETED" && <><AppText>{t(goal.finalOutcome === "ACHIEVED" ? "goals.achieved" : "goals.notAchieved")}</AppText><AppText tone="muted">{goal.finalSummary}</AppText></>}
-      </View>)}
-      {selectedChild && goals.data?.length === 0 && <AppText tone="muted">{t("goals.empty")}</AppText>}
-    </BottomSheet>
+    {!hasFixedChild && <BottomSheet visible={goalsListOpen} onClose={() => setGoalsListOpen(false)} closeAccessibilityLabel={t("common.close")} title={selectedChild?.fullName ?? t("goals.childGoals")}>
+      {goalsListContent}
+    </BottomSheet>}
 
     <BottomSheet visible={sheet === "assign"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("goals.assign")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("goals.assign"), disabled: !templateId, loading: assign.isPending, onPress: () => void assign.mutateAsync().catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) ) }}><View style={styles.options}>{availableTemplates.map((template) => <Button key={template.id} variant={templateId === template.id ? "primary" : "secondary"} onPress={() => setTemplateId(template.id)}>{template.name}</Button>)}</View></BottomSheet>
     <BottomSheet visible={sheet === "finalize"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("goals.finalize")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("goals.finalize"), disabled: !finalSummary.trim(), loading: finalize.isPending, onPress: () => void finalize.mutateAsync().catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) ) }}><View style={styles.options}>{childGoalOutcomes.map((outcome) => <Button key={outcome} variant={finalOutcome === outcome ? "primary" : "secondary"} onPress={() => setFinalOutcome(outcome)}>{t(outcome === "ACHIEVED" ? "goals.achieved" : "goals.notAchieved")}</Button>)}</View><TextInput style={[styles.input, styles.summaryInput]} multiline placeholder={t("goals.finalSummary")} value={finalSummary} onChangeText={setFinalSummary} /></BottomSheet>
