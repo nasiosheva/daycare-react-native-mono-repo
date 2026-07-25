@@ -34,7 +34,6 @@ export default function DevelopmentScreen() {
   const developmentCategories = useDevelopmentCategories();
   const createEntry = useCreateDevelopmentEntry(childId);
   const isOperationalChildScreen = membership?.role === "STAFF_ADMIN" || membership?.role === "STAFF";
-  const isParent = membership?.role === "PARENT";
   const canRecord = membership ? can(membership.role, "recordDevelopment") && membership.active : false;
   const canManageCategories = membership?.active && (membership.role === "STAFF_ADMIN" || (membership.role === "STAFF" && membership.canManageDevelopmentCategories));
 
@@ -81,23 +80,11 @@ export default function DevelopmentScreen() {
       <TextInput style={styles.input} placeholder={t("development.shortTitle")} value={title} onChangeText={setTitle} maxLength={120} />
       <TextInput style={[styles.input, styles.contentInput]} placeholder={t("development.note")} value={content} onChangeText={setContent} multiline maxLength={2_000} textAlignVertical="top" />
     </BottomSheet>
-    {selectedChild && isParent && <View style={styles.section}>
-      <AppText variant="heading">{t("development.history")}</AppText>
-      {entries.isLoading && <AppText tone="muted">{t("development.loading")}</AppText>}
-      {entries.isError && <Button variant="secondary" onPress={() => entries.refetch()}>{t("common.retry")}</Button>}
-      {entries.data?.map((entry) => <View key={entry.id} style={styles.entry}>
-        <AppText variant="label">{entry.categoryName} · {entry.title}</AppText>
-        <AppText>{entry.content}</AppText>
-        <AppText variant="caption" tone="muted">{formatDateTime(entry.recordedAt)} · {entry.recordedBy}</AppText>
-      </View>)}
-      {!entries.isLoading && entries.data?.length === 0 && <AppText tone="muted">{t("development.empty")}</AppText>}
-    </View>}
-
-    {selectedChild && !isParent && <NavigationCard accessibilityLabel={t("development.history")} onPress={() => setHistoryOpen(true)}>
+    {selectedChild && <NavigationCard accessibilityLabel={t("development.history")} onPress={() => setHistoryOpen(true)}>
       <AppText variant="h5">{t("development.history")}</AppText>
       <AppText tone={entries.data?.length ? "default" : "muted"}>{entries.isLoading ? t("development.loading") : entries.data?.length ? t("development.entriesSummary", { count: entries.data.length }) : t("development.empty")}</AppText>
     </NavigationCard>}
-    {!isParent && <BottomSheet visible={historyOpen} onClose={() => setHistoryOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("development.history")}>
+    <BottomSheet visible={historyOpen} onClose={() => setHistoryOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("development.history")}>
       {entries.isLoading && <AppText>{t("development.loading")}</AppText>}
       {entries.isError && <Button onPress={() => entries.refetch()}>{t("common.retry")}</Button>}
       {entries.data?.map((entry) => <View key={entry.id} style={styles.entry}>
@@ -106,14 +93,13 @@ export default function DevelopmentScreen() {
         <AppText variant="caption" tone="muted">{formatDateTime(entry.recordedAt)} · {entry.recordedBy}</AppText>
       </View>)}
       {selectedChild && !entries.isLoading && entries.data?.length === 0 && <AppText tone="muted">{t("development.empty")}</AppText>}
-    </BottomSheet>}
+    </BottomSheet>
     {isStaffAdmin && <ChildFilterSheet visible={filterVisible} filter={childFilter} onClose={() => setFilterVisible(false)} onApply={(filter) => { setChildFilter(filter); setFilterVisible(false); }} />}
   </AppScreen>;
 }
 
 const styles = StyleSheet.create({
   selector: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  section: { gap: spacing.sm },
   form: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 12, backgroundColor: colors.surface },
   contentInput: { minHeight: 120, paddingTop: 12 },

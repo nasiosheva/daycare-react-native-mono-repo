@@ -2,9 +2,9 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AppText, BottomSheet, Button, colors, NavigationCard, radius, spacing } from "@daycare/ui";
+import { AppText, Button, colors, NavigationCard, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren } from "@/attendance/useAttendance";
 import { useBookings, useEntitlements, useInvoices } from "@/booking/useBooking";
@@ -54,26 +54,19 @@ function ProfileLoadFailure({ error }: { error: Error }) {
 function StaffHome({ displayName, organizationName, isSimulationSession, managedChildren, tasksByChildId }: { displayName: string; organizationName: string; isSimulationSession: boolean; managedChildren: ReturnType<typeof useChildren>; tasksByChildId: ReturnType<typeof useStaffDailyTasks> }) {
   const router = useRouter();
   const { t } = useI18n();
-  const [childrenOpen, setChildrenOpen] = useState(false);
-  const openChildTasks = (childId: string) => { setChildrenOpen(false); router.push({ pathname: "/development", params: { childId } }); };
   return <AppScreen><View style={styles.content}>
     <View style={styles.staffToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.STAFF")}</AppText></View><Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable></View>
     {isSimulationSession && <AppText variant="caption" tone="muted">{t("home.simulation")}</AppText>}
-    <NavigationCard accessibilityLabel={t("home.managedChildren")} onPress={() => setChildrenOpen(true)}>
-      <AppText variant="h5">{t("home.managedChildren")}</AppText>
-      <AppText tone={managedChildren.data?.length ? "default" : "muted"}>{managedChildren.isLoading ? t("children.loading") : managedChildren.data?.length ? t("home.managedChildrenSummary", { count: managedChildren.data.length }) : t("home.noManagedChildren")}</AppText>
-    </NavigationCard>
-    <BottomSheet visible={childrenOpen} onClose={() => setChildrenOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("home.managedChildren")}>
-      {managedChildren.isLoading && <AppText tone="muted">{t("children.loading")}</AppText>}
-      {managedChildren.data?.map((child) => {
-        const tasks = tasksByChildId.get(child.id);
-        return <NavigationCard key={child.id} accessibilityLabel={t("home.openDailyTasks", { name: child.fullName })} onPress={() => openChildTasks(child.id)}>
-          <AppText variant="h5">{child.fullName}</AppText>
-          {!tasks || tasks.isLoading ? <AppText tone="muted">{t("home.dailyStatusLoading")}</AppText> : tasks.isError ? <AppText tone="danger">{t("home.dailyStatusUnavailable")}</AppText> : <><AppText tone={tasks.developmentRecorded ? "muted" : "danger"}>{t(tasks.developmentRecorded ? "home.dailyDevelopmentDone" : "home.dailyDevelopmentPending")}</AppText>{tasks.activeGoalCount === 0 ? <AppText variant="caption" tone="muted">{t("home.noActiveGoals")}</AppText> : tasks.pendingGoalNames.length > 0 ? <AppText variant="caption" tone="danger">{t("home.dailyGoalsPending", { names: tasks.pendingGoalNames.join(", ") })}</AppText> : <AppText variant="caption" tone="muted">{t("home.dailyGoalsDone")}</AppText>}</>}
-        </NavigationCard>;
-      })}
-      {!managedChildren.isLoading && managedChildren.data?.length === 0 && <AppText tone="muted">{t("home.noManagedChildren")}</AppText>}
-    </BottomSheet>
+    <AppText variant="heading">{t("home.managedChildren")}</AppText>
+    {managedChildren.isLoading && <AppText tone="muted">{t("children.loading")}</AppText>}
+    {managedChildren.data?.map((child) => {
+      const tasks = tasksByChildId.get(child.id);
+      return <NavigationCard key={child.id} accessibilityLabel={t("home.openDailyTasks", { name: child.fullName })} onPress={() => router.push({ pathname: "/development", params: { childId: child.id } })}>
+        <AppText variant="h5">{child.fullName}</AppText>
+        {!tasks || tasks.isLoading ? <AppText tone="muted">{t("home.dailyStatusLoading")}</AppText> : tasks.isError ? <AppText tone="danger">{t("home.dailyStatusUnavailable")}</AppText> : <><AppText tone={tasks.developmentRecorded ? "muted" : "danger"}>{t(tasks.developmentRecorded ? "home.dailyDevelopmentDone" : "home.dailyDevelopmentPending")}</AppText>{tasks.activeGoalCount === 0 ? <AppText variant="caption" tone="muted">{t("home.noActiveGoals")}</AppText> : tasks.pendingGoalNames.length > 0 ? <AppText variant="caption" tone="danger">{t("home.dailyGoalsPending", { names: tasks.pendingGoalNames.join(", ") })}</AppText> : <AppText variant="caption" tone="muted">{t("home.dailyGoalsDone")}</AppText>}</>}
+      </NavigationCard>;
+    })}
+    {!managedChildren.isLoading && managedChildren.data?.length === 0 && <AppText tone="muted">{t("home.noManagedChildren")}</AppText>}
   </View></AppScreen>;
 }
 
@@ -88,19 +81,12 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations, isSim
   const childrenUnavailable = isSimulationSession || children.isLoading || children.isError;
   const servicesUnavailable = hasDaycareOperations && (entitlements.isLoading || entitlements.isError);
   const paymentsUnavailable = isSimulationSession || invoices.isLoading || invoices.isError;
-  const [childrenOpen, setChildrenOpen] = useState(false);
-  const [paymentsOpen, setPaymentsOpen] = useState(false);
 
   return <AppScreen><View style={styles.content}>
     <AppText variant="title">{t("home.greeting", { name: displayName })}</AppText>
     <AppText tone="muted">{organizationName} · {t("role.PARENT")}</AppText>
     {isSimulationSession && <AppText variant="caption" tone="muted">{t("home.simulation")}</AppText>}
-
-    <NavigationCard accessibilityLabel={t("home.parentChildren")} onPress={() => setChildrenOpen(true)}>
-      <AppText variant="h5">{t("home.parentChildren")}</AppText>
-      <AppText tone={summary.children.length ? "default" : "muted"}>{childrenUnavailable ? t("home.parentSummaryLoading") : summary.children.length ? t("home.parentChildrenSummary", { count: summary.children.length }) : t("children.empty")}</AppText>
-    </NavigationCard>
-    <BottomSheet visible={childrenOpen} onClose={() => setChildrenOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("home.parentChildren")}>
+    <SummarySection title={t("home.parentChildren")}>
       {!isSimulationSession && children.isLoading && <AppText tone="muted">{t("home.parentSummaryLoading")}</AppText>}
       {!isSimulationSession && children.isError && <Button variant="secondary" onPress={() => children.refetch()}>{t("common.retry")}</Button>}
       {!childrenUnavailable && summary.children.map(({ child, activeEntitlements }) => <View key={child.id} style={styles.parentCard}>
@@ -111,28 +97,23 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations, isSim
           <AppText variant="caption" tone="muted">{entitlement.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: entitlement.remainingCredits })} · {t("booking.validUntil", { date: formatDate(entitlement.validUntil) })}</AppText>
         </View>)}</>)}
         <View style={styles.parentActions}>
-          <Button variant="secondary" onPress={() => { setChildrenOpen(false); router.push({ pathname: "/development", params: { childId: child.id } }); }}>{t("development.title")}</Button>
-          <Button variant="secondary" onPress={() => { setChildrenOpen(false); router.push({ pathname: "/parent-qr", params: { childId: child.id } }); }}>{t("qr.title")}</Button>
+          <Button variant="secondary" onPress={() => router.push({ pathname: "/development", params: { childId: child.id } })}>{t("development.title")}</Button>
+          <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-qr", params: { childId: child.id } })}>{t("qr.title")}</Button>
         </View>
       </View>)}
       {!childrenUnavailable && summary.children.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
-    </BottomSheet>
-
-    {hasDaycareOperations && <NavigationCard accessibilityLabel={t("home.parentPayments")} onPress={() => setPaymentsOpen(true)}>
-      <AppText variant="h5">{t("home.parentPayments")}</AppText>
-      <AppText tone={summary.actionableInvoices.length ? "default" : "muted"}>{paymentsUnavailable ? t("home.parentSummaryLoading") : summary.actionableInvoices.length ? t("home.parentPaymentsSummary", { count: summary.actionableInvoices.length }) : t("home.noActionablePayments")}</AppText>
-    </NavigationCard>}
-    {hasDaycareOperations && <BottomSheet visible={paymentsOpen} onClose={() => setPaymentsOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("home.parentPayments")}>
+    </SummarySection>
+    {hasDaycareOperations && <SummarySection title={t("home.parentPayments")}>
       {!isSimulationSession && invoices.isLoading && <AppText tone="muted">{t("home.parentSummaryLoading")}</AppText>}
       {!isSimulationSession && invoices.isError && <Button variant="secondary" onPress={() => invoices.refetch()}>{t("common.retry")}</Button>}
       {!paymentsUnavailable && summary.actionableInvoices.map((invoice) => <View key={invoice.id} style={styles.parentCard}>
         <AppText variant="heading">{invoice.invoiceNumber}</AppText>
         <AppText>{invoice.childName} · {formatCurrency(invoice.totalAmount)}</AppText>
         <AppText tone="muted">{t(`status.${invoice.status}` as Parameters<typeof t>[0])} · {t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>
-        {invoice.status === "PENDING" ? <Button onPress={() => { setPaymentsOpen(false); router.push({ pathname: "/payment-proof", params: { invoiceId: invoice.id } }); }}>{t("paymentProof.submit")}</Button> : <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
+        {invoice.status === "PENDING" ? <Button onPress={() => router.push({ pathname: "/payment-proof", params: { invoiceId: invoice.id } })}>{t("paymentProof.submit")}</Button> : <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
       </View>)}
       {!paymentsUnavailable && summary.actionableInvoices.length === 0 && <AppText tone="muted">{t("home.noActionablePayments")}</AppText>}
-    </BottomSheet>}
+    </SummarySection>}
   </View></AppScreen>;
 }
 
@@ -207,35 +188,21 @@ function PlatformAdminHome() {
   const tenants = useQuery({ queryKey: ["platform-tenants"], queryFn: () => api.tenants() });
   const activeTenants = tenants.data?.filter((tenant) => tenant.subscriptionStatus === "ACTIVE") ?? [];
   const pendingTenants = tenants.data?.filter((tenant) => tenant.subscriptionStatus === "PENDING_PAYMENT") ?? [];
-  const [activeOpen, setActiveOpen] = useState(false);
-  const [pendingOpen, setPendingOpen] = useState(false);
 
   return <AppScreen><View style={styles.content}>
     <AppText variant="title">{t("home.platformAdmin")}</AppText>
     <AppText tone="muted">{t("home.platformSubtitle")}</AppText>
     <Button variant="secondary" onPress={() => router.push("/global-curriculum")}>{t("globalCurriculum.menu")}</Button>
+    {tenants.isLoading && <AppText>{t("home.tenantsLoading")}</AppText>}
     {tenants.isError && <AppText tone="danger">{t("home.tenantsError")}</AppText>}
-
-    <NavigationCard accessibilityLabel={t("home.activeTenants")} onPress={() => setActiveOpen(true)}>
-      <AppText variant="h5">{t("home.activeTenants")}</AppText>
-      <AppText tone={activeTenants.length ? "default" : "muted"}>{tenants.isLoading ? t("home.tenantsLoading") : activeTenants.length ? t("home.activeTenantsSummary", { count: activeTenants.length }) : t("home.noActiveTenants")}</AppText>
-    </NavigationCard>
-    <BottomSheet visible={activeOpen} onClose={() => setActiveOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("home.activeTenants")}>
-      <TenantSection tenants={activeTenants} emptyMessage={t("home.noActiveTenants")} formatCurrency={formatCurrency} t={t} />
-    </BottomSheet>
-
-    <NavigationCard accessibilityLabel={t("home.pendingPayments")} onPress={() => setPendingOpen(true)}>
-      <AppText variant="h5">{t("home.pendingPayments")}</AppText>
-      <AppText tone={pendingTenants.length ? "default" : "muted"}>{tenants.isLoading ? t("home.tenantsLoading") : pendingTenants.length ? t("home.pendingPaymentsSummary", { count: pendingTenants.length }) : t("home.noPendingPayments")}</AppText>
-    </NavigationCard>
-    <BottomSheet visible={pendingOpen} onClose={() => setPendingOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("home.pendingPayments")}>
-      <TenantSection tenants={pendingTenants} emptyMessage={t("home.noPendingPayments")} formatCurrency={formatCurrency} t={t} />
-    </BottomSheet>
+    <TenantSection title={t("home.activeTenants")} tenants={activeTenants} emptyMessage={t("home.noActiveTenants")} formatCurrency={formatCurrency} t={t} />
+    <TenantSection title={t("home.pendingPayments")} tenants={pendingTenants} emptyMessage={t("home.noPendingPayments")} formatCurrency={formatCurrency} t={t} />
   </View></AppScreen>;
 }
 
-function TenantSection({ tenants, emptyMessage, formatCurrency, t }: { tenants: { id: string; name: string; subscriptionPlan: "STARTER" | "STANDARD" | "PREMIUM" | null; payments: { amount: number; status: "PENDING" | "PAID" | "VOID" }[] }[]; emptyMessage: string; formatCurrency: (value: number) => string; t: ReturnType<typeof useI18n>["t"] }) {
+function TenantSection({ title, tenants, emptyMessage, formatCurrency, t }: { title: string; tenants: { id: string; name: string; subscriptionPlan: "STARTER" | "STANDARD" | "PREMIUM" | null; payments: { amount: number; status: "PENDING" | "PAID" | "VOID" }[] }[]; emptyMessage: string; formatCurrency: (value: number) => string; t: ReturnType<typeof useI18n>["t"] }) {
   return <View style={styles.section}>
+    <AppText variant="heading">{title}</AppText>
     {tenants.length === 0 && <AppText tone="muted">{emptyMessage}</AppText>}
     {tenants.map((tenant) => <View key={tenant.id} style={styles.tenant}>
       <AppText variant="label">{tenant.name}</AppText>

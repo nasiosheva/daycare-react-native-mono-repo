@@ -11,11 +11,7 @@ import { bookingStatusKey, invoiceStatusKey, servicePlanTypeKey } from "@/i18n/t
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate, isIsoDate } from "@/date-picker/date";
 
-type ListSheet = "plan" | "invoices" | "history" | "expiredRemaining" | null;
-
-function hasRemaining(item: { status: string; remainingCredits?: number | null }): boolean {
-  return item.status === "ACTIVE" && (item.remainingCredits == null || item.remainingCredits > 0);
-}
+type ListSheet = "plan" | "remaining" | "invoices" | "history" | null;
 
 export default function BookingScreen() {
   const router = useRouter();
@@ -31,8 +27,6 @@ export default function BookingScreen() {
   const pendingChildInvoices = useMemo(() => invoices.data?.filter((item) => item.childId === childId && item.status === "PENDING") ?? [], [invoices.data, childId]);
   const pendingChildInvoicesTotal = useMemo(() => pendingChildInvoices.reduce((sum, item) => sum + item.totalAmount, 0), [pendingChildInvoices]);
   const childBookings = useMemo(() => bookings.data?.filter((item) => item.childId === childId) ?? [], [bookings.data, childId]);
-  const activeRemaining = useMemo(() => entitlements.data?.filter(hasRemaining) ?? [], [entitlements.data]);
-  const expiredRemaining = useMemo(() => entitlements.data?.filter((item) => !hasRemaining(item)) ?? [], [entitlements.data]);
   const closeListSheet = () => setListSheet(null);
   const addDate = () => { if (!isIsoDate(dateInput)) return Alert.alert(t("booking.dateFormat"), t("booking.dateFormatDescription")); if (bookingDates.includes(dateInput)) return; setBookingDates((dates) => [...dates, dateInput].sort()); setDateInput(""); };
   const selectPlan = (item: ServicePlan) => { setPlanId(item.id); setCreditEntitlementId(null); setBookingDates([]); setDateInput(""); setListSheet(null); setBookFormOpen(true); };
@@ -59,6 +53,10 @@ export default function BookingScreen() {
         <AppText variant="label">{t("booking.plan")}</AppText>
         <AppText tone={activeEntitlement ? "default" : "muted"}>{activeEntitlement ? t("booking.activePlanSummary", { name: activeEntitlement.planName }) : t("booking.noActivePlan")}</AppText>
       </NavigationCard>
+      <NavigationCard accessibilityLabel={t("booking.remaining")} onPress={() => setListSheet("remaining")} style={styles.tile}>
+        <AppText variant="label">{t("booking.remaining")}</AppText>
+        <AppText tone={activeEntitlement ? "default" : "muted"}>{activeEntitlement ? (activeEntitlement.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: activeEntitlement.remainingCredits })) : t("booking.noActivePlan")}</AppText>
+      </NavigationCard>
       <NavigationCard accessibilityLabel={t("booking.invoices")} onPress={() => setListSheet("invoices")} style={styles.tile}>
         <AppText variant="label">{t("booking.invoices")}</AppText>
         <AppText tone={pendingChildInvoices.length > 0 ? "danger" : "muted"}>{pendingChildInvoices.length > 0 ? t("booking.pendingInvoicesSummary", { count: pendingChildInvoices.length, amount: formatCurrency(pendingChildInvoicesTotal) }) : t("booking.noPendingInvoices")}</AppText>
@@ -69,27 +67,16 @@ export default function BookingScreen() {
       </NavigationCard>
     </View>
 
-    <View style={styles.section}>
-      <AppText variant="heading">{t("booking.remaining")}</AppText>
-      <AppText tone="muted">{t("booking.remainingDescription")}</AppText>
-      {activeRemaining.map((item) => <View key={item.id} style={styles.card}><AppText variant="label">{item.planName}</AppText><AppText>{item.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: item.remainingCredits })}</AppText><AppText variant="caption" tone="muted">{t("booking.validUntil", { date: formatDate(item.validUntil) })}</AppText>{(item.remainingCredits ?? 0) > 0 && <Button variant="secondary" onPress={() => useRemaining(item.id, item.childId)}>{t("booking.useRemaining")}</Button>}</View>)}
-      {activeRemaining.length === 0 && <AppText tone="muted">{t("booking.noActiveRemaining")}</AppText>}
-    </View>
-
-    {expiredRemaining.length > 0 && <NavigationCard accessibilityLabel={t("booking.remainingExpired")} onPress={() => setListSheet("expiredRemaining")}>
-      <AppText variant="label">{t("booking.remainingExpired")}</AppText>
-      <AppText tone="muted">{t("booking.remainingExpiredSummary", { count: expiredRemaining.length })}</AppText>
-    </NavigationCard>}
-
-    <BottomSheet visible={listSheet === "expiredRemaining"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.remainingExpired")}>
-      <AppText tone="muted">{t("booking.remainingExpiredDescription")}</AppText>
-      {expiredRemaining.map((item) => <View key={item.id} style={styles.card}><AppText variant="label">{item.planName}</AppText><AppText>{item.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: item.remainingCredits })}</AppText><AppText variant="caption" tone="muted">{t("booking.validUntil", { date: formatDate(item.validUntil) })}</AppText></View>)}
-    </BottomSheet>
-
     <BottomSheet visible={listSheet === "plan"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.plan")}>
       <AppText tone="muted">{t("booking.planDescription")}</AppText>
       {plans.data?.map((item) => <PlanCard key={item.id} plan={item} selected={item.id === planId && !creditEntitlementId} onPress={() => selectPlan(item)} formatCurrency={formatCurrency} t={t} />)}
       {plans.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+    </BottomSheet>
+
+    <BottomSheet visible={listSheet === "remaining"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.remaining")}>
+      <AppText tone="muted">{t("booking.remainingDescription")}</AppText>
+      {entitlements.data?.map((item) => <View key={item.id} style={styles.card}><AppText variant="label">{item.planName}</AppText><AppText>{item.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: item.remainingCredits })}</AppText><AppText variant="caption" tone="muted">{t("booking.validUntil", { date: formatDate(item.validUntil) })}</AppText>{item.status === "ACTIVE" && (item.remainingCredits ?? 0) > 0 && <Button variant="secondary" onPress={() => useRemaining(item.id, item.childId)}>{t("booking.useRemaining")}</Button>}</View>)}
+      {entitlements.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "invoices"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.invoices")}>
@@ -118,4 +105,4 @@ export default function BookingScreen() {
   </AppScreen>;
 }
 function PlanCard({ plan, selected, onPress, formatCurrency, t }: { plan: ServicePlan; selected: boolean; onPress: () => void; formatCurrency: (value: number) => string; t: ReturnType<typeof useI18n>["t"] }) { return <View style={styles.card}><AppText variant="heading">{plan.name}</AppText><AppText>{formatCurrency(plan.price)} · {t(servicePlanTypeKey(plan.type))}</AppText>{plan.type === "WEEKLY" && <AppText tone="muted">{t("booking.weeklyDays", { count: plan.creditCount ?? 0, policy: plan.unusedCreditPolicy === "CARRY_FORWARD" ? t("booking.carryForward") : t("booking.expire") })}</AppText>}<Button variant={selected ? "primary" : "secondary"} onPress={onPress}>{selected ? t("booking.selected") : t("booking.select")}</Button></View>; }
-const styles = StyleSheet.create({ row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, tile: { flexGrow: 1, flexBasis: "47%" }, section: { gap: spacing.sm }, form: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, datePicker: { flex: 1, minWidth: 180 }, card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint } });
+const styles = StyleSheet.create({ row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, tile: { flexGrow: 1, flexBasis: "47%" }, form: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, datePicker: { flex: 1, minWidth: 180 }, card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint } });
