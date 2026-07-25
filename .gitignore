@@ -51,3 +51,6 @@ DerivedData/
 
 # Local PostgreSQL data volume
 postgres-data/
+
+# Agent-local project memory; not shared repository context
+.codex/project-memory.md
