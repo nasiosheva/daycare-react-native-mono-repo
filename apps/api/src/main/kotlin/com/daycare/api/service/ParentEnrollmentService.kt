@@ -125,10 +125,14 @@ class ParentEnrollmentService(
     }
 
     @Transactional
-    fun pendingApprovals(jwt: Jwt, organizationId: UUID, filter: BranchListFilter = BranchListFilter()): List<ParentEnrollmentResponse> {
+    fun pendingApprovals(jwt: Jwt, organizationId: UUID, filter: BranchListFilter = BranchListFilter(), search: String? = null): List<ParentEnrollmentResponse> {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
         branchFilters.validate(organizationId, filter)
-        return enrollments.findAllByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId, ParentEnrollmentStatus.PENDING_APPROVAL).filter { filter.branchId == null || it.branchId == filter.branchId }.map(::response)
+        val query = search?.trim().orEmpty()
+        return enrollments.findAllByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId, ParentEnrollmentStatus.PENDING_APPROVAL)
+            .filter { filter.branchId == null || it.branchId == filter.branchId }
+            .map(::response)
+            .filter { query.isEmpty() || it.childName.contains(query, ignoreCase = true) || it.planName.contains(query, ignoreCase = true) }
     }
 
     @Transactional

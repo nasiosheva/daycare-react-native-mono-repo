@@ -38,14 +38,6 @@ jobs:
           node-version: 20
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6
-        with:
-          gradle-version: "8.13"
-          cache-provider: basic
       - name: Validate deployment configuration
         run: |
           test -n "$EXPO_PUBLIC_API_URL"
@@ -61,8 +53,6 @@ jobs:
       - run: corepack pnpm install --frozen-lockfile
       - name: Build web release
         run: corepack pnpm --filter @daycare/app exec expo export --platform web
-      - name: Build API release
-        run: gradle -p apps/api bootJar --no-daemon
       - name: Configure deploy SSH identity
         run: |
           install -d -m 700 ~/.ssh
@@ -74,11 +64,8 @@ jobs:
         env:
           RELEASE_ID: ${{ github.sha }}
         run: |
-          api_jar="$(find apps/api/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' -print -quit)"
-          test -n "$api_jar"
           release_directory="$VPS_APP_DIR/releases/$RELEASE_ID"
           ssh "$VPS_USER@$VPS_HOST" "install -d -m 755 '$release_directory/web'"
-          scp "$api_jar" "$VPS_USER@$VPS_HOST:$release_directory/api.jar"
           rsync -az --delete apps/mobile/dist/ "$VPS_USER@$VPS_HOST:$release_directory/web/"
       - name: Activate release
         env:

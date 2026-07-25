@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppText, BackButton, BottomSheet, Button, colors, PasswordInput, radius, spacing } from "@daycare/ui";
@@ -9,7 +9,6 @@ import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useI18n } from "@/i18n/I18nProvider";
 import { roleKey } from "@/i18n/translations";
-import { BranchFilterControl } from "@/branches/BranchFilterSheet";
 
 const staffRoles: Extract<Role, "STAFF_ADMIN" | "STAFF">[] = ["STAFF_ADMIN", "STAFF"];
 
@@ -85,7 +84,10 @@ export default function TenantUsersScreen() {
       <Button onPress={() => setSheet("staff")}>{t("tenantUsers.createStaffAccount")}</Button>
       <Button variant="secondary" onPress={() => setSheet("parent")}>{t("tenantUsers.parentInvitation")}</Button>
     </View>}
-    <BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
+      <BranchTab label={t("branchFilter.allBranches")} selected={!filterBranchId} onPress={() => setFilterBranchId(undefined)} />
+      {branches.data?.map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
+    </ScrollView>
     <AppText variant="heading">{t("tenantUsers.accounts")}</AppText>
     {tenantUsers.isLoading && <AppText>{t("tenantUsers.loading")}</AppText>}
     {tenantUsers.isError && <Button variant="secondary" onPress={() => tenantUsers.refetch()}>{t("common.retry")}</Button>}
@@ -113,9 +115,22 @@ export default function TenantUsersScreen() {
   </AppScreen>;
 }
 
+function BranchTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}>
+    <AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText>
+  </Pressable>;
+}
+
 const styles = StyleSheet.create({
   form: { gap: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface },
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   user: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint },
+  tabsScroll: { flexGrow: 0, flexShrink: 0 },
+  tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" },
+  activeTab: { borderBottomColor: colors.primary },
+  tabText: { color: colors.muted },
+  activeTabText: { color: colors.primary },
+  pressedTab: { opacity: 0.72 },
 });

@@ -63,6 +63,7 @@ import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Profile
+import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
@@ -73,6 +74,7 @@ import java.util.UUID
 
 @Component
 @Profile("simulation")
+@Order(1)
 @ConditionalOnProperty(prefix = "daycare", name = ["simulation-seed-enabled"], havingValue = "true")
 class SimulationDataSeeder(
     private val users: UserProfileRepository,

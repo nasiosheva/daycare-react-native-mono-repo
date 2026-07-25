@@ -382,27 +382,30 @@ class BillingService(
     }
 
     @Transactional
-    fun bookings(jwt: Jwt, organizationId: UUID, pendingOnly: Boolean, filter: BranchListFilter = BranchListFilter()): List<BookingResponse> {
+    fun bookings(jwt: Jwt, organizationId: UUID, pendingOnly: Boolean, filter: BranchListFilter = BranchListFilter(), search: String? = null): List<BookingResponse> {
         val scope = access.require(jwt, organizationId, if (pendingOnly) setOf(Role.STAFF_ADMIN, Role.STAFF) else setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
         branchFilters.validate(organizationId, filter)
+        val query = search?.trim().orEmpty()
         val source = if (pendingOnly) bookings.findAllByOrganizationIdAndStatusOrderByBookingDateAsc(organizationId, BookingStatus.PENDING_APPROVAL) else bookings.findAllByOrganizationIdOrderByBookingDateDesc(organizationId)
         return source.filter { booking ->
             (filter.branchId == null || booking.branchId == filter.branchId) &&
                 (!pendingOnly || parentEnrollments.findByInvoiceId(booking.invoiceId) == null) &&
                 if (scope.membership.role == Role.PARENT) entitlements.findById(booking.entitlementId).map { it.ownerUserId == scope.user.id }.orElse(false) else childScopes.isStaffManagedChild(scope, booking.childId, organizationId)
         }.map { bookingResponse(it, childName(it.childId)) }
+            .filter { query.isEmpty() || it.childName.contains(query, ignoreCase = true) || it.planName.contains(query, ignoreCase = true) }
     }
 
     @Transactional
-    fun invoices(jwt: Jwt, organizationId: UUID, filter: BranchListFilter = BranchListFilter()): List<InvoiceResponse> {
+    fun invoices(jwt: Jwt, organizationId: UUID, filter: BranchListFilter = BranchListFilter(), search: String? = null): List<InvoiceResponse> {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
         branchFilters.validate(organizationId, filter)
         reconcileExpiredInvoices(organizationId)
+        val query = search?.trim().orEmpty()
         val source = if (scope.membership.role == Role.STAFF_ADMIN) invoices.findAllByOrganizationIdOrderByCreatedAtDesc(organizationId) else invoices.findAllByOrganizationIdAndPayerUserIdOrderByCreatedAtDesc(organizationId, scope.user.id)
         return source.mapNotNull { invoice ->
             val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found")
             if (filter.branchId != null && entitlement.branchId != filter.branchId) null else invoiceResponse(invoice, entitlement.branchId, entitlement.childId, childName(entitlement.childId))
-        }
+        }.filter { query.isEmpty() || it.childName.contains(query, ignoreCase = true) || it.invoiceNumber.contains(query, ignoreCase = true) || (it.parentName?.contains(query, ignoreCase = true) ?: false) || (it.parentEmail?.contains(query, ignoreCase = true) ?: false) }
     }
 
     private fun validatePlanConfiguration(type: ServicePlanType, price: BigDecimal?, creditCount: Int?, unusedCreditPolicy: UnusedCreditPolicy?, carryForwardDays: Int?, dailyCapacity: Int?) {

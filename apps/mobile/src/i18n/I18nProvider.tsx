@@ -22,7 +22,7 @@ export function I18nProvider({ children }: PropsWithChildren) {
     locale,
     setLocale,
     t: (key, params) => translate(locale, key, params),
-    formatCurrency: (amount) => new Intl.NumberFormat(localeTags[locale], { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(amount),
+    formatCurrency: (amount) => new Intl.NumberFormat(localeTags[locale], { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number.isFinite(amount) ? amount : 0),
     formatDate: (date) => new Intl.DateTimeFormat(localeTags[locale], { dateStyle: "medium" }).format(new Date(date)),
     formatDateTime: (date) => new Intl.DateTimeFormat(localeTags[locale], { dateStyle: "medium", timeStyle: "short" }).format(new Date(date)),
     formatTime: (date) => new Intl.DateTimeFormat(localeTags[locale], { timeStyle: "short" }).format(new Date(date)),

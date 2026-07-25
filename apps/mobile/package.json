@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "android": "expo run:android",
+    "android:release": "cd android && ./gradlew assembleRelease",
     "ios": "expo run:ios"
   },
   "dependencies": {

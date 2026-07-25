@@ -76,7 +76,18 @@ interface ChildStaffAssignmentRepository : JpaRepository<ChildStaffAssignment, U
 interface GuardianLinkRepository : JpaRepository<GuardianLink, UUID> { fun findAllByUserId(userId: UUID): List<GuardianLink>; fun existsByChildIdAndUserId(childId: UUID, userId: UUID): Boolean; fun findAllByChildId(childId: UUID): List<GuardianLink> }
 interface AttendanceRepository : JpaRepository<AttendanceRecord, UUID> { fun findByChildIdAndOperationalDate(childId: UUID, operationalDate: LocalDate): AttendanceRecord?; fun findAllByChildIdInAndOperationalDateIn(childIds: List<UUID>, operationalDates: List<LocalDate>): List<AttendanceRecord> }
 interface InvitationRepository : JpaRepository<Invitation, UUID> { fun findAllByStatus(status: InvitationStatus): List<Invitation>; fun findAllByOrganizationIdAndStatus(organizationId: UUID, status: InvitationStatus): List<Invitation> }
-interface NotificationRepository : JpaRepository<Notification, UUID> { fun findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDesc(recipientUserId: UUID, organizationId: UUID): List<Notification> }
+interface NotificationRepository : JpaRepository<Notification, UUID> {
+    fun findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDesc(recipientUserId: UUID, organizationId: UUID): List<Notification>
+
+    @Query("""
+        select notification from Notification notification
+        where notification.recipientUserId = :recipientUserId and notification.organizationId = :organizationId
+          and (lower(notification.title) like lower(concat('%', :query, '%'))
+            or lower(notification.body) like lower(concat('%', :query, '%')))
+        order by notification.createdAt desc
+    """)
+    fun searchByRecipientUserIdAndOrganizationId(@Param("recipientUserId") recipientUserId: UUID, @Param("organizationId") organizationId: UUID, @Param("query") query: String): List<Notification>
+}
 interface DeviceTokenRepository : JpaRepository<DeviceToken, UUID> { fun findAllByUserIdAndOrganizationId(userId: UUID, organizationId: UUID): List<DeviceToken>; fun findByToken(token: String): DeviceToken?; fun findByInstallationId(installationId: String): DeviceToken? }
 interface StaffReminderRepository : JpaRepository<StaffReminder, UUID> { fun findAllByOrganizationIdAndUserIdOrderByCreatedAtDesc(organizationId: UUID, userId: UUID): List<StaffReminder>; fun findAllByActiveTrue(): List<StaffReminder> }
 interface StaffReminderDeviceScheduleRepository : JpaRepository<StaffReminderDeviceSchedule, UUID> { fun findByReminderIdAndInstallationId(reminderId: UUID, installationId: String): StaffReminderDeviceSchedule? }

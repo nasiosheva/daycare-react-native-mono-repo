@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
@@ -10,6 +10,7 @@ import { AppScreen } from "@/navigation/AppScreen";
 
 export default function GlobalCurriculumScreen() {
   const router = useRouter();
+  const { openAdd: openAddParam } = useLocalSearchParams<{ openAdd?: string }>();
   const { api, profile } = useAuth();
   const { t } = useI18n();
   const queryClient = useQueryClient();
@@ -19,6 +20,8 @@ export default function GlobalCurriculumScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+
+  useEffect(() => { if (openAddParam === "1") setSheetOpen(true); }, [openAddParam]);
 
   if (!profile) return null;
   if (!profile.isPlatformAdmin) return <Redirect href="/home" />;
