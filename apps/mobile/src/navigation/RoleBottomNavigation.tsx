@@ -6,8 +6,9 @@ import { useI18n } from "@/i18n/I18nProvider";
 import type { TranslationKey } from "@/i18n/translations";
 
 type NavigationItem = { href: Extract<Href, string>; labelKey: TranslationKey; requiredCapability?: InstitutionCapability };
+export type NavigationRole = Role | "PARENT_ONBOARDING";
 
-const navigationByRole: Record<Role, NavigationItem[]> = {
+const navigationByRole: Record<NavigationRole, NavigationItem[]> = {
   ADMIN: [
     { href: "/home", labelKey: "nav.home" },
     { href: "/platform-tenants", labelKey: "nav.tenant" },
@@ -31,11 +32,16 @@ const navigationByRole: Record<Role, NavigationItem[]> = {
     { href: "/booking", labelKey: "nav.booking", requiredCapability: "DAYCARE_OPERATIONS" },
     { href: "/profile", labelKey: "nav.profile" },
   ],
+  PARENT_ONBOARDING: [
+    { href: "/home", labelKey: "nav.home" },
+    { href: "/parent-enrollment", labelKey: "nav.enrollment" },
+    { href: "/profile", labelKey: "nav.profile" },
+  ],
 };
 
 export const bottomNavigationPaths = new Set<string>(Object.values(navigationByRole).flat().map((item) => item.href));
 
-export function RoleBottomNavigation({ role, capabilities = [] }: { role: Role; capabilities?: readonly InstitutionCapability[] }) {
+export function RoleBottomNavigation({ role, capabilities = [] }: { role: NavigationRole; capabilities?: readonly InstitutionCapability[] }) {
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useI18n();

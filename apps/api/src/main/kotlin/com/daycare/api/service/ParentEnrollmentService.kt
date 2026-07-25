@@ -5,6 +5,7 @@ import com.daycare.api.domain.Gender
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.ParentEnrollmentStatus
 import com.daycare.api.domain.InvoiceStatus
+import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.TenantSubscriptionStatus
 import com.daycare.api.persistence.BranchRepository
@@ -48,7 +49,18 @@ data class ParentEnrollmentRetryRequest(val bookingDates: List<LocalDate> = empt
 data class ParentTenantPlanResponse(val id: UUID, val name: String, val type: com.daycare.api.domain.ServicePlanType, val price: java.math.BigDecimal, val creditCount: Int?, val bookingRequiresApproval: Boolean, val dailyCapacity: Int?)
 data class ParentTenantBranchResponse(val id: UUID, val name: String, val dailyCapacity: Int?)
 data class ParentTenantCatalogResponse(val organizationId: UUID, val organizationName: String, val branches: List<ParentTenantBranchResponse>, val plans: List<ParentTenantPlanResponse>)
-data class ParentEnrollmentResponse(val id: UUID, val organizationId: UUID, val branchId: UUID, val childId: UUID, val childName: String, val invoiceId: UUID, val entitlementId: UUID, val status: ParentEnrollmentStatus, val invoiceStatus: InvoiceStatus, val rejectionReason: String?, val createdAt: Instant)
+data class ParentEnrollmentResponse(val id: UUID, val organizationId: UUID, val branchId: UUID, val childId: UUID, val childName: String, val invoiceId: UUID?, val entitlementId: UUID?, val status: ParentEnrollmentStatus, val invoiceStatus: InvoiceStatus?, val planName: String, val totalAmount: java.math.BigDecimal, val rejectionReason: String?, val createdAt: Instant)
+
+object ParentEnrollmentError {
+    const val ALREADY_ACTIVE = "parent_enrollment.already_active"
+    const val BOOKINGS_NOT_ALLOWED = "parent_enrollment.bookings_not_allowed"
+    const val NOT_FOUND = "parent_enrollment.not_found"
+    const val CANNOT_APPROVE = "parent_enrollment.cannot_approve"
+    const val PAYMENT_INSTRUCTION_REQUIRED = "parent_enrollment.payment_instruction_required"
+    const val PARENT_NOT_FOUND = "parent_enrollment.parent_not_found"
+    const val CANNOT_RETRY = "parent_enrollment.cannot_retry"
+    const val CANNOT_CANCEL = "parent_enrollment.cannot_cancel"
+}
 
 @Service
 class ParentEnrollmentService(
@@ -69,6 +81,7 @@ class ParentEnrollmentService(
     private val billing: BillingService,
     private val notifications: NotificationService,
     private val branchFilters: BranchListFilterService,
+    private val paymentInstructions: TenantPaymentInstructionService,
 ) {
     @Transactional
     fun catalog(jwt: Jwt): List<ParentTenantCatalogResponse> {
@@ -89,18 +102,19 @@ class ParentEnrollmentService(
     @Transactional
     fun checkout(jwt: Jwt, request: ParentEnrollmentCheckoutRequest): List<ParentEnrollmentResponse> {
         val parent = identity.sync(jwt)
-        require(memberships.findAllByUserIdAndOrganizationId(parent.id, request.organizationId).none { it.role == Role.PARENT }) { "Parent is already active in this tenant" }
+        require(memberships.findAllByUserIdAndOrganizationId(parent.id, request.organizationId).none { it.role == Role.PARENT && it.active }) { ParentEnrollmentError.ALREADY_ACTIVE }
         requireCatalogTenant(request.organizationId)
         val branch = branches.findById(request.branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
         require(branch.organizationId == request.organizationId && branch.active) { "Branch is not available for this organization" }
+        require(request.bookingDates.isEmpty()) { ParentEnrollmentError.BOOKINGS_NOT_ALLOWED }
+        val snapshot = billing.quoteEnrollment(request.organizationId, request.planId, request.promoCode)
         val created = request.children.map { childInput ->
             require(childInput.gender != Gender.UNSPECIFIED) { "Gender is required" }
             val child = children.save(Child(organizationId = request.organizationId, branchId = branch.id, firstName = childInput.firstName.trim(), lastName = childInput.lastName?.trim()?.ifBlank { null }, gender = childInput.gender, dateOfBirth = childInput.dateOfBirth, enrollmentStatus = ChildEnrollmentStatus.PENDING))
-            val purchase = billing.purchaseForEnrollment(parent, request.organizationId, child, PurchaseServiceRequest(request.planId, child.id, request.bookingDates, request.promoCode))
-            val enrollment = enrollments.save(ParentEnrollment(userId = parent.id, organizationId = request.organizationId, branchId = branch.id, childId = child.id, invoiceId = purchase.invoice.id, entitlementId = purchase.entitlement.id))
+            val enrollment = enrollments.save(ParentEnrollment(userId = parent.id, organizationId = request.organizationId, branchId = branch.id, childId = child.id, selectedPlanId = snapshot.planId, selectedPlanName = snapshot.planName, selectedPlanType = snapshot.planType, selectedSubtotalAmount = snapshot.subtotalAmount, selectedDiscountAmount = snapshot.discountAmount, selectedDiscountName = snapshot.discountName, selectedDiscountCode = snapshot.discountCode, selectedTotalAmount = snapshot.totalAmount, selectedCreditCount = snapshot.creditCount, selectedUnusedCreditPolicy = snapshot.unusedCreditPolicy, selectedCarryForwardDays = snapshot.carryForwardDays, selectedBookingRequiresApproval = snapshot.bookingRequiresApproval))
             response(enrollment)
         }
-        notifyStaffAdmins(request.organizationId, "Pembayaran Parent baru", "Pengajuan ${created.joinToString { it.childName }} menunggu konfirmasi pembayaran.", "/parent-payments")
+        notifyStaffAdmins(request.organizationId, "Pengajuan Parent baru", "Pengajuan ${created.joinToString { it.childName }} menunggu persetujuan.", "/booking-approvals")
         return created
     }
 
@@ -120,21 +134,27 @@ class ParentEnrollmentService(
     @Transactional
     fun decide(jwt: Jwt, organizationId: UUID, enrollmentId: UUID, request: ParentEnrollmentApprovalRequest): ParentEnrollmentResponse {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
-        val enrollment = enrollments.findById(enrollmentId).orElseThrow { IllegalArgumentException("Parent enrollment was not found") }
-        require(enrollment.organizationId == organizationId && enrollment.status == ParentEnrollmentStatus.PENDING_APPROVAL) { "Parent enrollment cannot be approved" }
+        val enrollment = enrollments.findById(enrollmentId).orElseThrow { IllegalArgumentException(ParentEnrollmentError.NOT_FOUND) }
+        require(enrollment.organizationId == organizationId && enrollment.status == ParentEnrollmentStatus.PENDING_APPROVAL) { ParentEnrollmentError.CANNOT_APPROVE }
         val child = children.findById(enrollment.childId).orElseThrow { IllegalArgumentException("Child was not found") }
         if (request.approved) {
+            require(paymentInstructions.hasActiveInstruction(organizationId)) { ParentEnrollmentError.PAYMENT_INSTRUCTION_REQUIRED }
+            val parent = users.findById(enrollment.userId).orElseThrow { IllegalArgumentException(ParentEnrollmentError.PARENT_NOT_FOUND) }
+            val purchase = billing.purchaseApprovedEnrollment(parent, organizationId, child, EnrollmentPlanSnapshot(enrollment.selectedPlanId, enrollment.selectedPlanName, enrollment.selectedPlanType, enrollment.selectedSubtotalAmount, enrollment.selectedDiscountAmount, enrollment.selectedDiscountName, enrollment.selectedDiscountCode, enrollment.selectedTotalAmount, enrollment.selectedCreditCount, enrollment.selectedUnusedCreditPolicy, enrollment.selectedCarryForwardDays, enrollment.selectedBookingRequiresApproval))
+            enrollment.invoiceId = purchase.invoice.id
+            enrollment.entitlementId = purchase.entitlement.id
             child.enrollmentStatus = ChildEnrollmentStatus.ACTIVE
-            if (memberships.findAllByUserIdAndOrganizationId(enrollment.userId, organizationId).none { it.role == Role.PARENT }) memberships.save(Membership(userId = enrollment.userId, organizationId = organizationId, role = Role.PARENT, branchId = enrollment.branchId))
+            val parentMembership = memberships.findAllByUserIdAndOrganizationId(enrollment.userId, organizationId).firstOrNull { it.role == Role.PARENT }
+            if (parentMembership == null) memberships.save(Membership(userId = enrollment.userId, organizationId = organizationId, role = Role.PARENT, branchId = enrollment.branchId)) else parentMembership.active = true
             if (!guardians.existsByChildIdAndUserId(child.id, enrollment.userId)) guardians.save(GuardianLink(childId = child.id, userId = enrollment.userId))
             enrollment.status = ParentEnrollmentStatus.APPROVED
             enrollment.approvedAt = Instant.now()
-            notifications.notify(organizationId, enrollment.userId, "Pengajuan disetujui", "Pengajuan ${child.fullName()} disetujui. Anda sekarang dapat memakai dashboard Parent.", "/home", setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.PROFILE, RealtimeFlag.CHILDREN, RealtimeFlag.ENTITLEMENTS))
+            notifications.notify(organizationId, enrollment.userId, "Pengajuan disetujui", "Pengajuan ${child.fullName()} disetujui. Selesaikan pembayaran untuk mengaktifkan paket layanan.", "/home", setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.PROFILE, RealtimeFlag.CHILDREN, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.INVOICES))
         } else {
             enrollment.status = ParentEnrollmentStatus.REJECTED
+            child.active = false
             enrollment.rejectionReason = request.rejectionReason?.trim()?.ifBlank { null }
-            val entitlement = entitlements.findById(enrollment.entitlementId).orElseThrow { IllegalArgumentException("Service entitlement was not found") }
-            notifications.notify(organizationId, enrollment.userId, "Pengajuan ditolak", "Paket tetap tersimpan. Ajukan ulang untuk ditinjau kembali.", "/parent-enrollment", setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.ENTITLEMENTS))
+            notifications.notify(organizationId, enrollment.userId, "Pengajuan ditolak", "Ajukan kembali saat data pendaftaran sudah siap.", "/parent-enrollment", setOf(RealtimeFlag.PARENT_ENROLLMENTS))
         }
         return response(enrollment)
     }
@@ -142,23 +162,22 @@ class ParentEnrollmentService(
     @Transactional
     fun retry(jwt: Jwt, enrollmentId: UUID, request: ParentEnrollmentRetryRequest): ParentEnrollmentResponse {
         val parent = identity.sync(jwt)
-        val enrollment = enrollments.findById(enrollmentId).orElseThrow { IllegalArgumentException("Parent enrollment was not found") }
-        require(enrollment.userId == parent.id && enrollment.status == ParentEnrollmentStatus.REJECTED) { "Parent enrollment cannot be retried" }
-        require(request.bookingDates.isEmpty()) { "Parent enrollment retry does not create bookings" }
-        val entitlement = entitlements.findById(enrollment.entitlementId).orElseThrow { IllegalArgumentException("Service entitlement was not found") }
-        require(entitlement.status == com.daycare.api.domain.EntitlementStatus.ACTIVE) { "Service entitlement is not active" }
+        val enrollment = enrollments.findById(enrollmentId).orElseThrow { IllegalArgumentException(ParentEnrollmentError.NOT_FOUND) }
+        require(enrollment.userId == parent.id && enrollment.status == ParentEnrollmentStatus.REJECTED) { ParentEnrollmentError.CANNOT_RETRY }
+        require(request.bookingDates.isEmpty()) { ParentEnrollmentError.BOOKINGS_NOT_ALLOWED }
         enrollment.status = ParentEnrollmentStatus.PENDING_APPROVAL
         enrollment.rejectionReason = null
-        notifyStaffAdmins(enrollment.organizationId, "Pengajuan Parent menunggu persetujuan", "Pengajuan ${response(enrollment).childName} diajukan ulang menggunakan paket yang sudah dibayar.", "/booking-approvals")
+        children.findById(enrollment.childId).orElseThrow { IllegalArgumentException("Child was not found") }.active = true
+        notifyStaffAdmins(enrollment.organizationId, "Pengajuan Parent menunggu persetujuan", "Pengajuan ${response(enrollment).childName} diajukan ulang.", "/booking-approvals")
         return response(enrollment)
     }
 
     @Transactional
     fun cancel(jwt: Jwt, enrollmentId: UUID): ParentEnrollmentResponse {
         val parent = identity.sync(jwt)
-        val enrollment = enrollments.findById(enrollmentId).orElseThrow { IllegalArgumentException("Parent enrollment was not found") }
-        require(enrollment.userId == parent.id && enrollment.status == ParentEnrollmentStatus.PENDING_PAYMENT) { "Only unpaid Parent applications can be cancelled" }
-        billing.cancelPendingEnrollmentPurchase(enrollment.invoiceId, enrollment.entitlementId)
+        val enrollment = enrollments.findById(enrollmentId).orElseThrow { IllegalArgumentException(ParentEnrollmentError.NOT_FOUND) }
+        require(enrollment.userId == parent.id && enrollment.status == ParentEnrollmentStatus.PENDING_APPROVAL) { ParentEnrollmentError.CANNOT_CANCEL }
+        children.findById(enrollment.childId).orElseThrow { IllegalArgumentException("Child was not found") }.active = false
         enrollment.status = ParentEnrollmentStatus.CANCELLED
         return response(enrollment)
     }
@@ -166,18 +185,19 @@ class ParentEnrollmentService(
     @Transactional
     @EventListener
     fun invoicePaid(event: InvoicePaidEvent) {
-        val enrollment = enrollments.findByInvoiceId(event.invoiceId) ?: return
-        if (enrollment.status != ParentEnrollmentStatus.PENDING_PAYMENT) return
-        enrollment.status = ParentEnrollmentStatus.PENDING_APPROVAL
-        val child = children.findById(enrollment.childId).orElseThrow { IllegalArgumentException("Child was not found") }
-        notifyStaffAdmins(enrollment.organizationId, "Pengajuan Parent menunggu persetujuan", "Pengajuan ${child.fullName()} sudah dibayar dan menunggu persetujuan binding Parent.", "/booking-approvals")
+        enrollments.findByInvoiceId(event.invoiceId) ?: return
     }
 
     @Transactional
     @EventListener
     fun invoiceExpired(event: InvoiceExpiredEvent) {
         val enrollment = enrollments.findByInvoiceId(event.invoiceId) ?: return
-        if (enrollment.status == ParentEnrollmentStatus.PENDING_PAYMENT) enrollment.status = ParentEnrollmentStatus.EXPIRED
+        if (enrollment.status != ParentEnrollmentStatus.APPROVED) return
+        val hasActiveService = entitlements.findAllByOrganizationIdAndOwnerUserId(enrollment.organizationId, enrollment.userId).any { it.status == EntitlementStatus.ACTIVE }
+        if (!hasActiveService) {
+            memberships.findAllByUserIdAndOrganizationId(enrollment.userId, enrollment.organizationId).filter { it.role == Role.PARENT }.forEach { it.active = false }
+            notifications.notify(enrollment.organizationId, enrollment.userId, "Tagihan kedaluwarsa", "Akses tenant dibatasi sampai Anda mengajukan pendaftaran baru.", "/parent-enrollment", setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.PROFILE, RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS))
+        }
     }
 
     private fun requireCatalogTenant(organizationId: UUID) {
@@ -192,8 +212,8 @@ class ParentEnrollmentService(
     }
     private fun response(enrollment: ParentEnrollment): ParentEnrollmentResponse {
         val child = children.findById(enrollment.childId).orElseThrow { IllegalArgumentException("Child was not found") }
-        val invoice = invoices.findById(enrollment.invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }
-        return ParentEnrollmentResponse(enrollment.id, enrollment.organizationId, enrollment.branchId, child.id, child.fullName(), enrollment.invoiceId, enrollment.entitlementId, enrollment.status, invoice.status, enrollment.rejectionReason, enrollment.createdAt)
+        val invoice = enrollment.invoiceId?.let { invoices.findById(it).orElseThrow { IllegalArgumentException("Invoice was not found") } }
+        return ParentEnrollmentResponse(enrollment.id, enrollment.organizationId, enrollment.branchId, child.id, child.fullName(), enrollment.invoiceId, enrollment.entitlementId, enrollment.status, invoice?.status, enrollment.selectedPlanName, enrollment.selectedTotalAmount, enrollment.rejectionReason, enrollment.createdAt)
     }
     private fun Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")
 }

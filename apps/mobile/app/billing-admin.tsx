@@ -3,7 +3,7 @@ import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useInvoices, useMarkInvoicePaid, useServicePlans } from "@/booking/useBooking";
 import { useAuth } from "@/auth/AuthProvider";
@@ -122,44 +122,86 @@ export default function BillingAdminScreen() {
   return <AppScreen showBottomNavigation={false} title={t("billing.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {!canManage && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     <BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />
-    <View style={styles.row}>
-      <Button variant="secondary" onPress={() => setListSheet("plans")}>{t("billing.activePlans")}</Button>
-      <Button variant="secondary" onPress={() => setListSheet("templates")}>{t("billing.templates")}</Button>
-      <Button variant="secondary" onPress={() => setListSheet("capacity")}>{t("billing.branchCapacity")}</Button>
-      <Button variant="secondary" onPress={() => setListSheet("discounts")}>{t("billing.discounts")}</Button>
-      <Button variant="secondary" onPress={() => setListSheet("invoices")}>{t("billing.pendingInvoices")}</Button>
+    <View style={styles.grid}>
+      <NavigationCard accessibilityLabel={t("billing.activePlans")} onPress={() => setListSheet("plans")} style={styles.tile}>
+        <AppText variant="label">{t("billing.activePlans")}</AppText>
+        <AppText tone={plans.data?.length ? "default" : "muted"}>{plans.data?.length ? t("billing.plansSummary", { count: plans.data.length }) : t("common.noData")}</AppText>
+      </NavigationCard>
+      <NavigationCard accessibilityLabel={t("billing.templates")} onPress={() => setListSheet("templates")} style={styles.tile}>
+        <AppText variant="label">{t("billing.templates")}</AppText>
+        <AppText tone={templates.data?.length ? "default" : "muted"}>{templates.data?.length ? t("billing.templatesSummary", { count: templates.data.length }) : t("common.noData")}</AppText>
+      </NavigationCard>
+      <NavigationCard accessibilityLabel={t("billing.branchCapacity")} onPress={() => setListSheet("capacity")} style={styles.tile}>
+        <AppText variant="label">{t("billing.branchCapacity")}</AppText>
+        <AppText tone="muted">{branches.data?.filter((branch) => branch.active).length ? t("billing.branchesSummary", { count: branches.data.filter((branch) => branch.active).length }) : t("common.noData")}</AppText>
+      </NavigationCard>
+      <NavigationCard accessibilityLabel={t("billing.discounts")} onPress={() => setListSheet("discounts")} style={styles.tile}>
+        <AppText variant="label">{t("billing.discounts")}</AppText>
+        <AppText tone="muted">{t("billing.discountsDescription")}</AppText>
+      </NavigationCard>
+      <NavigationCard accessibilityLabel={t("billing.pendingInvoices")} onPress={() => setListSheet("invoices")} style={styles.tile}>
+        <AppText variant="label">{t("billing.pendingInvoices")}</AppText>
+        <AppText tone={pendingInvoices.length ? "danger" : "muted"}>{pendingInvoices.length ? t("billing.pendingInvoicesCount", { count: pendingInvoices.length }) : t("common.noData")}</AppText>
+      </NavigationCard>
     </View>
 
     <BottomSheet visible={listSheet === "plans"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.activePlans")}>
       <AppText tone="muted">{t("billing.activePlansDescription")}</AppText>
       {canManage && <Button onPress={openCreatePlan}>{t("billing.createPlan")}</Button>}
-      {plans.data?.map((plan) => <View key={plan.id} style={styles.card}><AppText variant="label">{plan.name}</AppText><AppText>{t(servicePlanTypeKey(plan.type))} · {formatCurrency(plan.price)}</AppText></View>)}
+      {plans.data?.map((plan) => <View key={plan.id} style={styles.card}>
+        <AppText variant="label">{plan.name}</AppText>
+        <AppText>{t(servicePlanTypeKey(plan.type))} · {formatCurrency(plan.price)}</AppText>
+        <PlanExtras type={plan.type} creditCount={plan.creditCount} unusedCreditPolicy={plan.unusedCreditPolicy} dailyCapacity={plan.dailyCapacity} t={t} />
+      </View>)}
       {plans.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "templates"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.templates")}>
       <AppText tone="muted">{t("billing.templatesDescription")}</AppText>
       {canManage && <Button onPress={openCreateTemplate}>{t("billing.createTemplate")}</Button>}
-      {templates.data?.map((template) => <View key={template.id} style={styles.card}><AppText variant="label">{template.name}</AppText><AppText tone="muted">{t(servicePlanTypeKey(template.type))}{template.suggestedPrice ? ` · ${formatCurrency(template.suggestedPrice)}` : ""}</AppText>{canManage && <View style={styles.row}><Button variant="secondary" onPress={() => openUseTemplate(template.id)}>{t("billing.useTemplate")}</Button>{template.source === "TENANT" && <Button variant="secondary" onPress={() => openEditTemplate(template.id)}>{t("billing.editTemplate")}</Button>}{template.source === "TENANT" && <Button variant="danger" loading={deleteTemplate.isPending} onPress={() => void deleteTemplate.mutateAsync(template.id)}>{t("billing.deleteTemplate")}</Button>}</View>}</View>)}
+      {templates.data?.map((template) => <View key={template.id} style={styles.card}>
+        <AppText variant="label">{template.name}</AppText>
+        <AppText tone="muted">{t(servicePlanTypeKey(template.type))}{template.suggestedPrice ? ` · ${formatCurrency(template.suggestedPrice)}` : ""}</AppText>
+        <PlanExtras type={template.type} creditCount={template.creditCount} unusedCreditPolicy={template.unusedCreditPolicy} dailyCapacity={template.dailyCapacity} t={t} />
+        {canManage && <View style={styles.row}><Button variant="secondary" onPress={() => openUseTemplate(template.id)}>{t("billing.useTemplate")}</Button>{template.source === "TENANT" && <Button variant="secondary" onPress={() => openEditTemplate(template.id)}>{t("billing.editTemplate")}</Button>}{template.source === "TENANT" && <Button variant="danger" loading={deleteTemplate.isPending} onPress={() => void deleteTemplate.mutateAsync(template.id)}>{t("billing.deleteTemplate")}</Button>}</View>}
+      </View>)}
       {templates.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "capacity"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.branchCapacity")}>
       <AppText tone="muted">{t("billing.branchCapacityDescription")}</AppText>
-      {branches.data?.filter((branch) => branch.active).map((branch) => { const configured = capacities.data?.find((item) => item.branchId === branch.id)?.dailyCapacity; return <View key={branch.id} style={styles.card}><AppText variant="label">{branch.name}</AppText><AppText tone="muted">{configured ?? "–"}</AppText>{canManage && <Button variant="secondary" onPress={() => openCapacity(branch.id, configured)}>{t("common.edit")}</Button>}</View>; })}
+      {branches.data?.filter((branch) => branch.active).map((branch) => { const configured = capacities.data?.find((item) => item.branchId === branch.id)?.dailyCapacity; return <View key={branch.id} style={styles.card}>
+        <AppText variant="label">{branch.name}</AppText>
+        <AppText tone="muted">{configured != null ? t("billing.planCapacitySummary", { count: configured }) : t("learning.unlimited")}</AppText>
+        {canManage && <Button variant="secondary" onPress={() => openCapacity(branch.id, configured)}>{t("common.edit")}</Button>}
+      </View>; })}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "discounts"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.discounts")}>
       <AppText tone="muted">{t("billing.discountsDescription")}</AppText>
       <View style={styles.row}>{plans.data?.map((plan) => <Button key={plan.id} variant={plan.id === selectedPlanId ? "primary" : "secondary"} onPress={() => setSelectedPlanId(plan.id)}>{plan.name}</Button>)}</View>
       {canManage && selectedPlanId && <Button variant="secondary" onPress={openCreateDiscount}>{t("billing.createDiscount")}</Button>}
-      {discounts.data?.map((item) => <View key={item.id} style={styles.card}><AppText variant="label">{item.name}{item.promoCode ? ` · ${item.promoCode}` : ""}</AppText><AppText tone="muted">{item.type === "PERCENTAGE" ? `${item.value}%` : formatCurrency(item.value)} · {item.active ? t("status.ACTIVE") : t("billing.inactive")}</AppText>{canManage && item.active && selectedPlanId && <Button variant="danger" loading={deactivateDiscount.isPending} onPress={() => void deactivateDiscount.mutateAsync({ planId: selectedPlanId, discountId: item.id })}>{t("billing.deactivate")}</Button>}</View>)}
+      {discounts.data?.map((item) => <View key={item.id} style={styles.card}>
+        <AppText variant="label">{item.name}{item.promoCode ? ` · ${item.promoCode}` : ""}</AppText>
+        <AppText tone="muted">{item.type === "PERCENTAGE" ? `${item.value}%` : formatCurrency(item.value)} · {item.active ? t("status.ACTIVE") : t("billing.inactive")}</AppText>
+        {item.startsOn && item.endsOn && <AppText variant="caption" tone="muted">{t("billing.discountValidityRange", { start: formatDate(item.startsOn), end: formatDate(item.endsOn) })}</AppText>}
+        {item.startsOn && !item.endsOn && <AppText variant="caption" tone="muted">{t("billing.discountValidityFrom", { start: formatDate(item.startsOn) })}</AppText>}
+        {!item.startsOn && item.endsOn && <AppText variant="caption" tone="muted">{t("booking.validUntil", { date: formatDate(item.endsOn) })}</AppText>}
+        {item.usageLimit != null && <AppText variant="caption" tone="muted">{t("billing.discountUsageLimit", { count: item.usageLimit })}</AppText>}
+        {canManage && item.active && selectedPlanId && <Button variant="danger" loading={deactivateDiscount.isPending} onPress={() => void deactivateDiscount.mutateAsync({ planId: selectedPlanId, discountId: item.id })}>{t("billing.deactivate")}</Button>}
+      </View>)}
       {selectedPlanId && discounts.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "invoices"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.pendingInvoices")}>
       <AppText tone="muted">{t("billing.pendingInvoicesDescription")}</AppText>
-      {pendingInvoices.map((invoice) => <View key={invoice.id} style={styles.card}><AppText variant="label">{invoice.invoiceNumber} · {invoice.childName}</AppText><AppText>{formatCurrency(invoice.totalAmount)} · {t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>{canManage && <Button loading={markPaid.isPending} onPress={() => void markPaid.mutateAsync(invoice.id)}>{t("billing.markPaid")}</Button>}</View>)}
+      {pendingInvoices.map((invoice) => <View key={invoice.id} style={styles.card}>
+        <AppText variant="label">{invoice.invoiceNumber} · {invoice.childName}</AppText>
+        <AppText tone="muted">{t("staffAdmin.parent")}: {invoice.parentName ?? invoice.parentEmail ?? t("common.noData")}</AppText>
+        <AppText>{formatCurrency(invoice.totalAmount)} · {t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>
+        {invoice.discountName && <AppText variant="caption" tone="muted">{t("billing.invoiceDiscountApplied", { name: invoice.discountName, amount: formatCurrency(invoice.discountAmount) })}</AppText>}
+        {canManage && <Button loading={markPaid.isPending} onPress={() => void markPaid.mutateAsync(invoice.id)}>{t("billing.markPaid")}</Button>}
+      </View>)}
       {pendingInvoices.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     </BottomSheet>
 
@@ -189,4 +231,12 @@ export default function BillingAdminScreen() {
 
 function Choice<T extends string>({ values, value, onChange, labels }: { values: readonly T[]; value: T; onChange: (value: T) => void; labels: Record<T, string> }) { return <View style={styles.options}>{values.map((item) => <Button key={item} variant={item === value ? "primary" : "secondary"} onPress={() => onChange(item)}>{labels[item]}</Button>)}</View>; }
 
-const styles = StyleSheet.create({ input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.surface }, row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint } });
+function PlanExtras({ type, creditCount, unusedCreditPolicy, dailyCapacity, t }: { type: ServicePlanType; creditCount?: number | null; unusedCreditPolicy?: UnusedCreditPolicy | null; dailyCapacity?: number | null; t: ReturnType<typeof useI18n>["t"] }) {
+  return <>
+    {type !== "MONTHLY" && <AppText tone="muted">{t("billing.planCreditsSummary", { count: creditCount ?? 0 })}</AppText>}
+    {type === "WEEKLY" && <AppText tone="muted">{t(unusedCreditPolicy === "CARRY_FORWARD" ? "billing.carry" : "billing.expire")}</AppText>}
+    {dailyCapacity != null && <AppText tone="muted">{t("billing.planCapacitySummary", { count: dailyCapacity })}</AppText>}
+  </>;
+}
+
+const styles = StyleSheet.create({ input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.surface }, row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, tile: { flexGrow: 1, flexBasis: "47%" }, options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint } });

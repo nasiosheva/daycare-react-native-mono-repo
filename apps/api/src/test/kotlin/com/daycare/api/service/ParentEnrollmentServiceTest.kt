@@ -1,19 +1,16 @@
 package com.daycare.api.service
 
 import com.daycare.api.domain.ChildEnrollmentStatus
-import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.Gender
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.InstitutionTypeCodes
-import com.daycare.api.domain.InvoiceStatus
-import com.daycare.api.domain.ServicePlanType
+import com.daycare.api.domain.ParentEnrollmentStatus
 import com.daycare.api.domain.TenantSubscriptionStatus
 import com.daycare.api.persistence.Branch
 import com.daycare.api.persistence.BranchRepository
 import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.GuardianLinkRepository
-import com.daycare.api.persistence.Invoice
 import com.daycare.api.persistence.InvoiceRepository
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.OrganizationRepository
@@ -34,8 +31,6 @@ import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.security.oauth2.jwt.Jwt
-import java.math.BigDecimal
-import java.time.Instant
 import java.time.LocalDate
 import java.util.Optional
 import java.util.UUID
@@ -59,6 +54,7 @@ class ParentEnrollmentServiceTest {
         val invoices = mock(InvoiceRepository::class.java)
         val billing = mock(BillingService::class.java)
         val notifications = mock(NotificationService::class.java)
+        val paymentInstructions = mock(TenantPaymentInstructionService::class.java)
         val organizationId = UUID.randomUUID()
         val branch = Branch(organizationId = organizationId, name = "Cabang Utama")
         val parent = UserProfile()
@@ -84,36 +80,28 @@ class ParentEnrollmentServiceTest {
         `when`(children.findById(secondChild.id)).thenReturn(Optional.of(secondChild))
         `when`(children.findById(thirdChild.id)).thenReturn(Optional.of(thirdChild))
         `when`(enrollments.save(any(ParentEnrollment::class.java))).thenAnswer { it.arguments[0] }
-        `when`(invoices.findById(any(UUID::class.java))).thenReturn(Optional.of(Invoice(status = InvoiceStatus.PENDING)))
         `when`(memberships.findAllByOrganizationId(organizationId)).thenReturn(emptyList())
         `when`(memberships.findAllByOrganizationId(additionalOrganizationId)).thenReturn(emptyList())
-        `when`(billing.purchaseForEnrollment(parent, organizationId, firstChild, PurchaseServiceRequest(planId, firstChild.id, emptyList()))).thenReturn(purchaseResponse(firstChild))
-        `when`(billing.purchaseForEnrollment(parent, organizationId, secondChild, PurchaseServiceRequest(planId, secondChild.id, emptyList()))).thenReturn(purchaseResponse(secondChild))
-        `when`(billing.purchaseForEnrollment(parent, additionalOrganizationId, thirdChild, PurchaseServiceRequest(additionalPlanId, thirdChild.id, emptyList()))).thenReturn(purchaseResponse(thirdChild))
+        `when`(billing.quoteEnrollment(organizationId, planId, null)).thenReturn(snapshot(planId))
+        `when`(billing.quoteEnrollment(additionalOrganizationId, additionalPlanId, null)).thenReturn(snapshot(additionalPlanId))
         val branchFilters = mock(BranchListFilterService::class.java)
-        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, capabilities, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters)
+        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, capabilities, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters, paymentInstructions)
 
         val response = service.checkout(jwt, ParentEnrollmentCheckoutRequest(organizationId, branch.id, planId, emptyList(), children = listOf(ParentEnrollmentChildInput("Alya", null, Gender.FEMALE, LocalDate.of(2022, 1, 1)), ParentEnrollmentChildInput("Bima", "Putra", Gender.MALE, LocalDate.of(2023, 2, 2)))))
         val additionalTenantResponse = service.checkout(jwt, ParentEnrollmentCheckoutRequest(additionalOrganizationId, additionalBranch.id, additionalPlanId, emptyList(), children = listOf(ParentEnrollmentChildInput("Citra", null, Gender.FEMALE, LocalDate.of(2021, 3, 3)))))
 
         assertEquals(listOf("Alya", "Bima Putra"), response.map { it.childName })
         assertEquals(listOf("Citra"), additionalTenantResponse.map { it.childName })
+        assertEquals(listOf(ParentEnrollmentStatus.PENDING_APPROVAL, ParentEnrollmentStatus.PENDING_APPROVAL), response.map { it.status })
+        assertEquals(listOf<UUID?>(null, null), response.map { it.invoiceId })
         val childCaptor = ArgumentCaptor.forClass(Child::class.java)
         verify(children, times(3)).save(childCaptor.capture())
         assertEquals(listOf(ChildEnrollmentStatus.PENDING, ChildEnrollmentStatus.PENDING, ChildEnrollmentStatus.PENDING), childCaptor.allValues.map { it.enrollmentStatus })
         assertEquals(listOf(Gender.FEMALE, Gender.MALE, Gender.FEMALE), childCaptor.allValues.map { it.gender })
         assertEquals(listOf(organizationId, organizationId, additionalOrganizationId), childCaptor.allValues.map { it.organizationId })
-        verify(billing).purchaseForEnrollment(parent, organizationId, firstChild, PurchaseServiceRequest(planId, firstChild.id, emptyList()))
-        verify(billing).purchaseForEnrollment(parent, organizationId, secondChild, PurchaseServiceRequest(planId, secondChild.id, emptyList()))
-        verify(billing).purchaseForEnrollment(parent, additionalOrganizationId, thirdChild, PurchaseServiceRequest(additionalPlanId, thirdChild.id, emptyList()))
+        verify(billing).quoteEnrollment(organizationId, planId, null)
+        verify(billing).quoteEnrollment(additionalOrganizationId, additionalPlanId, null)
     }
 
-    private fun purchaseResponse(child: Child): PurchaseServiceResponse {
-        val invoiceId = UUID.randomUUID()
-        return PurchaseServiceResponse(
-            EntitlementResponse(id = UUID.randomUUID(), branchId = UUID.randomUUID(), childId = child.id, childName = child.firstName, parentName = null, parentEmail = null, planName = "Paket", type = ServicePlanType.MONTHLY, status = EntitlementStatus.PENDING_PAYMENT, totalCredits = null, remainingCredits = null, validUntil = LocalDate.now()),
-            InvoiceResponse(id = invoiceId, invoiceNumber = "INV-TEST", branchId = UUID.randomUUID(), childId = child.id, childName = child.firstName, parentName = null, parentEmail = null, subtotalAmount = BigDecimal.ONE, discountAmount = BigDecimal.ZERO, discountName = null, discountCode = null, totalAmount = BigDecimal.ONE, status = InvoiceStatus.PENDING, dueDate = LocalDate.now(), createdAt = Instant.now(), paymentProof = null),
-            emptyList(),
-        )
-    }
+    private fun snapshot(planId: UUID) = EnrollmentPlanSnapshot(planId, "Paket", com.daycare.api.domain.ServicePlanType.MONTHLY, java.math.BigDecimal.ONE, java.math.BigDecimal.ZERO, null, null, java.math.BigDecimal.ONE, null, null, null, true)
 }

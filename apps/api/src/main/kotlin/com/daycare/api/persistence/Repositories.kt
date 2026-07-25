@@ -10,8 +10,22 @@ import java.time.LocalDate
 import java.util.UUID
 
 interface UserProfileRepository : JpaRepository<UserProfile, UUID> { fun findByFirebaseUid(firebaseUid: String): UserProfile?; fun findByEmailIgnoreCase(email: String): UserProfile?; fun findByUsernameIgnoreCase(username: String): UserProfile? }
-interface MembershipRepository : JpaRepository<Membership, UUID> { fun findAllByUserIdAndOrganizationId(userId: UUID, organizationId: UUID): List<Membership>; fun findAllByUserId(userId: UUID): List<Membership>; fun findAllByOrganizationId(organizationId: UUID): List<Membership> }
-interface OrganizationRepository : JpaRepository<Organization, UUID>
+interface MembershipRepository : JpaRepository<Membership, UUID> {
+    fun findAllByUserIdAndOrganizationId(userId: UUID, organizationId: UUID): List<Membership>
+    fun findAllByUserId(userId: UUID): List<Membership>
+    fun findAllByOrganizationId(organizationId: UUID): List<Membership>
+
+    @Query("""
+        select distinct membership.organizationId
+        from Membership membership, UserProfile user
+        where membership.userId = user.id
+          and membership.role = com.daycare.api.domain.Role.STAFF_ADMIN
+          and (lower(user.email) like lower(concat('%', :query, '%'))
+            or lower(user.displayName) like lower(concat('%', :query, '%')))
+    """)
+    fun findOrganizationIdsByStaffAdminSearch(@Param("query") query: String): List<UUID>
+}
+interface OrganizationRepository : JpaRepository<Organization, UUID> { fun findAllByNameContainingIgnoreCase(name: String): List<Organization> }
 interface OrganizationTypeAssignmentRepository : JpaRepository<OrganizationTypeAssignment, UUID> { fun findAllByOrganizationId(organizationId: UUID): List<OrganizationTypeAssignment>; fun existsByType(type: String): Boolean }
 interface InstitutionTypeDefinitionRepository : JpaRepository<InstitutionTypeDefinition, String> { fun findAllByActiveTrueOrderByNameAsc(): List<InstitutionTypeDefinition>; fun existsByNameIgnoreCase(name: String): Boolean; fun findByNameIgnoreCase(name: String): InstitutionTypeDefinition? }
 interface AcademicYearRepository : JpaRepository<AcademicYear, UUID> { fun findAllByOrganizationIdOrderByStartsOnDesc(organizationId: UUID): List<AcademicYear> }
@@ -51,6 +65,7 @@ interface ClassroomStaffAssignmentRepository : JpaRepository<ClassroomStaffAssig
 interface ClassroomProgramRepository : JpaRepository<ClassroomProgram, UUID> { fun findAllByOrganizationIdAndClassroomIdOrderByCreatedAtDesc(organizationId: UUID, classroomId: UUID): List<ClassroomProgram> }
 interface ChildRepository : JpaRepository<Child, UUID> { fun findAllByOrganizationId(organizationId: UUID): List<Child>; fun findAllByOrganizationIdAndBranchId(organizationId: UUID, branchId: UUID): List<Child> }
 interface ParentEnrollmentRepository : JpaRepository<ParentEnrollment, UUID> { fun findAllByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId: UUID, status: com.daycare.api.domain.ParentEnrollmentStatus): List<ParentEnrollment>; fun findAllByUserIdOrderByCreatedAtDesc(userId: UUID): List<ParentEnrollment>; fun findByInvoiceId(invoiceId: UUID): ParentEnrollment? }
+interface TenantPaymentInstructionRepository : JpaRepository<TenantPaymentInstruction, UUID> { fun findAllByOrganizationIdOrderByDisplayOrderAscCreatedAtAsc(organizationId: UUID): List<TenantPaymentInstruction>; fun findAllByOrganizationIdAndActiveTrueOrderByDisplayOrderAscCreatedAtAsc(organizationId: UUID): List<TenantPaymentInstruction> }
 interface ChildProgramRepository : JpaRepository<ChildProgram, UUID> { fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildProgram> }
 interface ChildStaffAssignmentRepository : JpaRepository<ChildStaffAssignment, UUID> {
     fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildStaffAssignment>

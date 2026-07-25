@@ -7,7 +7,7 @@ enum class Gender { MALE, FEMALE, UNSPECIFIED }
 enum class GoalCheckInOutcome { YES, NO }
 enum class ChildGoalStatus { ACTIVE, COMPLETED }
 enum class ChildGoalOutcome { ACHIEVED, NOT_ACHIEVED }
-enum class ParentEnrollmentStatus { PENDING_PAYMENT, PENDING_APPROVAL, APPROVED, REJECTED, EXPIRED, CANCELLED }
+enum class ParentEnrollmentStatus { PENDING_APPROVAL, APPROVED, REJECTED, EXPIRED, CANCELLED }
 enum class ChildCareRole { STAFF, NURSE, MISS }
 enum class AttendanceMethod { MANUAL, QR }
 enum class AttendanceAction { CHECK_IN, CHECK_OUT }

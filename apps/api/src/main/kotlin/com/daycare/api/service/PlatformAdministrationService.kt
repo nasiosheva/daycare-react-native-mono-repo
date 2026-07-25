@@ -109,9 +109,14 @@ class PlatformAdministrationService(
     private val institutionTypeCatalog: InstitutionTypeCatalogService,
 ) {
     @Transactional
-    fun tenants(jwt: Jwt): List<TenantResponse> {
+    fun tenants(jwt: Jwt, search: String?): List<TenantResponse> {
         platformAccess.requirePlatformAdmin(jwt)
-        return organizations.findAll().map(::tenantResponse)
+        val query = search?.trim().orEmpty()
+        if (query.isEmpty()) return organizations.findAll().map(::tenantResponse)
+        val byName = organizations.findAllByNameContainingIgnoreCase(query)
+        val staffAdminOrgIds = memberships.findOrganizationIdsByStaffAdminSearch(query)
+        val byStaffAdmin = if (staffAdminOrgIds.isEmpty()) emptyList() else organizations.findAllById(staffAdminOrgIds)
+        return (byName + byStaffAdmin).distinctBy { it.id }.map(::tenantResponse)
     }
 
     @Transactional

@@ -10,6 +10,8 @@ import com.daycare.api.domain.GoalCheckInOutcome
 import com.daycare.api.domain.ChildGoalStatus
 import com.daycare.api.domain.ChildGoalOutcome
 import com.daycare.api.domain.ParentEnrollmentStatus
+import com.daycare.api.domain.ServicePlanType
+import com.daycare.api.domain.UnusedCreditPolicy
 import com.daycare.api.domain.TenantPaymentStatus
 import com.daycare.api.domain.TenantSubscriptionPlan
 import com.daycare.api.domain.TenantSubscriptionStatus
@@ -293,12 +295,37 @@ class ParentEnrollment(
     @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
     @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(),
     @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
-    @Column(name = "invoice_id", nullable = false) var invoiceId: UUID = UUID.randomUUID(),
-    @Column(name = "entitlement_id", nullable = false) var entitlementId: UUID = UUID.randomUUID(),
-    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: ParentEnrollmentStatus = ParentEnrollmentStatus.PENDING_PAYMENT,
+    @Column(name = "invoice_id") var invoiceId: UUID? = null,
+    @Column(name = "entitlement_id") var entitlementId: UUID? = null,
+    @Column(name = "selected_plan_id", nullable = false) var selectedPlanId: UUID = UUID.randomUUID(),
+    @Column(name = "selected_plan_name", nullable = false) var selectedPlanName: String = "",
+    @Enumerated(EnumType.STRING) @Column(name = "selected_plan_type", nullable = false) var selectedPlanType: ServicePlanType = ServicePlanType.DAILY,
+    @Column(name = "selected_subtotal_amount", nullable = false, precision = 14, scale = 2) var selectedSubtotalAmount: java.math.BigDecimal = java.math.BigDecimal.ZERO,
+    @Column(name = "selected_discount_amount", nullable = false, precision = 14, scale = 2) var selectedDiscountAmount: java.math.BigDecimal = java.math.BigDecimal.ZERO,
+    @Column(name = "selected_discount_name") var selectedDiscountName: String? = null,
+    @Column(name = "selected_discount_code") var selectedDiscountCode: String? = null,
+    @Column(name = "selected_total_amount", nullable = false, precision = 14, scale = 2) var selectedTotalAmount: java.math.BigDecimal = java.math.BigDecimal.ZERO,
+    @Column(name = "selected_credit_count") var selectedCreditCount: Int? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "selected_unused_credit_policy") var selectedUnusedCreditPolicy: UnusedCreditPolicy? = null,
+    @Column(name = "selected_carry_forward_days") var selectedCarryForwardDays: Int? = null,
+    @Column(name = "selected_booking_requires_approval", nullable = false) var selectedBookingRequiresApproval: Boolean = true,
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: ParentEnrollmentStatus = ParentEnrollmentStatus.PENDING_APPROVAL,
     @Column(name = "rejection_reason") var rejectionReason: String? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
     @Column(name = "approved_at") var approvedAt: Instant? = null,
+)
+
+@Entity @Table(name = "tenant_payment_instructions")
+class TenantPaymentInstruction(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var name: String = "",
+    @Column(name = "account_holder", nullable = false) var accountHolder: String = "",
+    @Column(name = "account_number", nullable = false) var accountNumber: String = "",
+    @Column(length = 500) var note: String? = null,
+    @Column(nullable = false) var active: Boolean = true,
+    @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
 @Entity

@@ -70,6 +70,20 @@ data class SubmitPaymentProofRequest(@field:NotBlank @field:Size(max = 255) val 
 data class ReviewPaymentProofRequest(val approved: Boolean, @field:Size(max = 500) val rejectionReason: String? = null)
 data class InvoiceResponse(val id: UUID, val invoiceNumber: String, val branchId: UUID, val childId: UUID, val childName: String, val parentName: String?, val parentEmail: String?, val subtotalAmount: BigDecimal, val discountAmount: BigDecimal, val discountName: String?, val discountCode: String?, val totalAmount: BigDecimal, val status: InvoiceStatus, val dueDate: LocalDate, val createdAt: Instant, val paymentProof: PaymentProofResponse?)
 data class PurchaseServiceResponse(val entitlement: EntitlementResponse, val invoice: InvoiceResponse, val bookings: List<BookingResponse>)
+data class EnrollmentPlanSnapshot(
+    val planId: UUID,
+    val planName: String,
+    val planType: ServicePlanType,
+    val subtotalAmount: BigDecimal,
+    val discountAmount: BigDecimal,
+    val discountName: String?,
+    val discountCode: String?,
+    val totalAmount: BigDecimal,
+    val creditCount: Int?,
+    val unusedCreditPolicy: UnusedCreditPolicy?,
+    val carryForwardDays: Int?,
+    val bookingRequiresApproval: Boolean,
+)
 
 @Service
 class BillingService(
@@ -189,6 +203,27 @@ class BillingService(
 
     @Transactional
     fun purchaseForEnrollment(parent: UserProfile, organizationId: UUID, child: Child, request: PurchaseServiceRequest): PurchaseServiceResponse = purchaseForChild(parent, organizationId, child, request, deferBookings = true)
+
+    @Transactional(readOnly = true)
+    fun quoteEnrollment(organizationId: UUID, planId: UUID, promoCode: String?): EnrollmentPlanSnapshot {
+        val plan = requirePlan(planId, organizationId)
+        val appliedDiscount = applicableDiscount(organizationId, plan, promoCode, LocalDate.now())
+        val discountAmount = appliedDiscount?.amount ?: BigDecimal.ZERO
+        val totalAmount = plan.price.subtract(discountAmount)
+        require(totalAmount > BigDecimal.ZERO) { "Discount must leave a positive total" }
+        return EnrollmentPlanSnapshot(plan.id, plan.name, plan.type, plan.price, discountAmount, appliedDiscount?.discount?.name, appliedDiscount?.discount?.promoCode, totalAmount, plan.creditCount, plan.unusedCreditPolicy, plan.carryForwardDays, plan.bookingRequiresApproval)
+    }
+
+    @Transactional
+    fun purchaseApprovedEnrollment(parent: UserProfile, organizationId: UUID, child: Child, snapshot: EnrollmentPlanSnapshot): PurchaseServiceResponse {
+        reconcileExpiredInvoices(organizationId)
+        val today = LocalDate.now()
+        val periodEnd = deferredPeriodEnd(snapshot.planType, today)
+        val invoice = invoices.save(Invoice(organizationId = organizationId, payerUserId = parent.id, invoiceNumber = "INV-${UUID.randomUUID().toString().take(8).uppercase()}", subtotalAmount = snapshot.subtotalAmount, discountAmount = snapshot.discountAmount, discountName = snapshot.discountName, discountCode = snapshot.discountCode, totalAmount = snapshot.totalAmount, dueDate = today.plusDays(2)))
+        val validUntil = if (snapshot.planType == ServicePlanType.WEEKLY && snapshot.unusedCreditPolicy == UnusedCreditPolicy.CARRY_FORWARD) periodEnd.plusDays(snapshot.carryForwardDays?.toLong() ?: 30) else periodEnd
+        val entitlement = entitlements.save(ServiceEntitlement(organizationId = organizationId, branchId = child.branchId, childId = child.id, ownerUserId = parent.id, planId = snapshot.planId, invoiceId = invoice.id, planName = snapshot.planName, planType = snapshot.planType, totalCredits = snapshot.creditCount, bookingRequiresApproval = snapshot.bookingRequiresApproval, periodStart = today, periodEnd = periodEnd, validUntil = validUntil))
+        return PurchaseServiceResponse(entitlementResponse(entitlement), invoiceResponse(invoice, entitlement.branchId, child.id, child.fullName()), emptyList())
+    }
 
     private fun purchaseForChild(parent: UserProfile, organizationId: UUID, child: Child, request: PurchaseServiceRequest, deferBookings: Boolean = false): PurchaseServiceResponse {
         reconcileExpiredInvoices(organizationId)

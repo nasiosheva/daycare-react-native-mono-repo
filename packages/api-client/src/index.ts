@@ -132,9 +132,11 @@ export type TenantUser = { id: string; userId: string | null; displayName: strin
 export type DevelopmentCategoryOption = { id: string; name: string; active: boolean; system: boolean };
 export type ParentTenantPlan = { id: string; name: string; type: ServicePlanType; price: number; creditCount?: number | null; bookingRequiresApproval: boolean; dailyCapacity?: number | null };
 export type ParentTenantCatalog = { organizationId: string; organizationName: string; branches: Array<{ id: string; name: string; dailyCapacity?: number | null }>; plans: ParentTenantPlan[] };
-export type ParentEnrollmentStatus = "PENDING_PAYMENT" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "EXPIRED" | "CANCELLED";
-export type ParentEnrollment = { id: string; organizationId: string; branchId: string; childId: string; childName: string; invoiceId: string; entitlementId: string; status: ParentEnrollmentStatus; invoiceStatus: InvoiceStatus; rejectionReason?: string | null; createdAt: string };
+export type ParentEnrollmentStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "EXPIRED" | "CANCELLED";
+export type ParentEnrollment = { id: string; organizationId: string; branchId: string; childId: string; childName: string; invoiceId?: string | null; entitlementId?: string | null; status: ParentEnrollmentStatus; invoiceStatus?: InvoiceStatus | null; planName: string; totalAmount: number; rejectionReason?: string | null; createdAt: string };
 export type ParentEnrollmentCheckoutInput = { organizationId: string; branchId: string; planId: string; bookingDates: string[]; promoCode?: string; children: Array<{ firstName: string; lastName?: string; gender: ChildGender; dateOfBirth: string }> };
+export type PaymentInstruction = { id: string; name: string; accountHolder: string; accountNumber: string; note?: string | null; active: boolean; displayOrder: number };
+export type UpsertPaymentInstructionInput = Omit<PaymentInstruction, "id">;
 export type AppNotification = { id: string; title: string; body: string; actionPath?: string | null; createdAt: string; readAt?: string | null };
 export type PushNotificationMuteDuration = "ONE_HOUR" | "ONE_WEEK" | "ONE_MONTH";
 export type DeviceNotificationPreference = { pushMutedUntil?: string | null };
@@ -172,8 +174,13 @@ export class ApiClient {
   async approveParentEnrollment(enrollmentId: string, approved: boolean, rejectionReason?: string): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/approval`, { method: "POST", body: JSON.stringify({ approved, rejectionReason }) }); }
   async retryParentEnrollment(enrollmentId: string, bookingDates: string[]): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/retry`, { method: "POST", body: JSON.stringify({ bookingDates }) }); }
   async cancelParentEnrollment(enrollmentId: string): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/cancel`, { method: "POST" }); }
+  async paymentInstructions(): Promise<PaymentInstruction[]> { return this.request("/payment-instructions"); }
+  async managedPaymentInstructions(): Promise<PaymentInstruction[]> { return this.request("/payment-instructions/manage"); }
+  async createPaymentInstruction(input: UpsertPaymentInstructionInput): Promise<PaymentInstruction> { return this.request("/payment-instructions", { method: "POST", body: JSON.stringify(input) }); }
+  async updatePaymentInstruction(instructionId: string, input: UpsertPaymentInstructionInput): Promise<PaymentInstruction> { return this.request(`/payment-instructions/${instructionId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async deletePaymentInstruction(instructionId: string): Promise<void> { await this.request<void>(`/payment-instructions/${instructionId}`, { method: "DELETE" }); }
 
-  async tenants(): Promise<Tenant[]> { return this.request("/platform/tenants"); }
+  async tenants(search?: string): Promise<Tenant[]> { const query = search?.trim(); return this.request(`/platform/tenants${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
   async institutionTypes(): Promise<InstitutionTypeDefinition[]> { return this.request("/platform/institution-types"); }
   async createInstitutionType(input: { name: string }): Promise<InstitutionTypeDefinition> { return this.request("/platform/institution-types", { method: "POST", body: JSON.stringify(input) }); }
   async updateInstitutionType(code: string, input: { name: string }): Promise<InstitutionTypeDefinition> { return this.request(`/platform/institution-types/${code}`, { method: "PATCH", body: JSON.stringify(input) }); }
