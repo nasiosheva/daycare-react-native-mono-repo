@@ -4,13 +4,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ChildListFilter, GoalIndicator, GoalTemplate, UpsertGoalTemplateInput } from "@daycare/api-client";
-import { childGoalOutcomes, goalCategories, goalCheckInOutcomes, type ChildGoalOutcome } from "@daycare/core";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
+import { childGoalOutcomes, goalCheckInOutcomes, type ChildGoalOutcome } from "@daycare/core";
+import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren } from "@/attendance/useAttendance";
 import { useI18n } from "@/i18n/I18nProvider";
-import { goalCategoryKey } from "@/i18n/translations";
 import { formatIsoDate } from "@/date-picker/date";
 import { ageInMonths } from "@/development/childAge";
 import { ChildFilterSheet } from "@/children/ChildFilterSheet";
@@ -37,9 +36,15 @@ export default function GoalsScreen() {
     setChildId((currentChildId) => resolveSelectedChildId(children.data ?? [], currentChildId, hasFixedChild ? routeChildId : undefined, hasFixedChild));
   }, [children.data, hasFixedChild, routeChildId]);
   const selectedChild = children.data?.find((child) => child.id === childId) ?? null;
-  const templates = useQuery({ queryKey: ["goal-templates", organizationId], queryFn: () => api.goalTemplates(), enabled: canAdmin });
-  const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: canAdmin });
-  const classrooms = useQuery({ queryKey: ["classrooms", organizationId], queryFn: () => api.classrooms(), enabled: canAdmin });
+  const [templateSearch, setTemplateSearch] = useState("");
+  const [debouncedTemplateSearch, setDebouncedTemplateSearch] = useState("");
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedTemplateSearch(templateSearch.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [templateSearch]);
+  const templates = useQuery({ queryKey: ["goal-templates", organizationId, debouncedTemplateSearch], queryFn: () => api.goalTemplates(debouncedTemplateSearch || undefined), enabled: canWrite });
+  const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: canWrite });
+  const classrooms = useQuery({ queryKey: ["classrooms", organizationId], queryFn: () => api.classrooms(), enabled: canWrite });
   const goals = useQuery({ queryKey: ["child-goals", organizationId, childId], queryFn: () => api.childGoals(childId!), enabled: Boolean(selectedChild && membership) });
   const refreshGoals = () => { void queryClient.invalidateQueries({ queryKey: ["goal-templates", organizationId] }); void queryClient.invalidateQueries({ queryKey: ["child-goals", organizationId, childId] }); };
   const [sheet, setSheet] = useState<Sheet>(null);
@@ -47,7 +52,6 @@ export default function GoalsScreen() {
   const assign = useMutation({ mutationFn: () => api.assignChildGoal(childId!, { templateId: templateId! }), onSuccess: () => { refreshGoals(); setSheet(null); setTemplateId(undefined); } });
   const finalize = useMutation({ mutationFn: () => api.finalizeChildGoal(finalGoalId!, { outcome: finalOutcome, summary: finalSummary.trim() }), onSuccess: () => { refreshGoals(); setSheet(null); setFinalGoalId(undefined); setFinalSummary(""); } });
   const checkIn = useMutation({ mutationFn: ({ goalId, indicatorId, outcome }: { goalId: string; indicatorId: string; outcome: (typeof goalCheckInOutcomes)[number] }) => api.recordGoalCheckIn(goalId, formatIsoDate(new Date()), indicatorId, outcome), onSuccess: refreshGoals });
-  const archiveTemplate = useMutation({ mutationFn: api.archiveGoalTemplate.bind(api), onSuccess: refreshGoals });
   const selectedClassroom = classrooms.data?.find((classroom) => classroom.id === selectedChild?.classroomId);
   const selectedChildAgeMonths = selectedChild ? ageInMonths(selectedChild.dateOfBirth) : null;
   const matchesChildAge = (template: GoalTemplate) => template.minAgeMonths == null || template.maxAgeMonths == null || selectedChildAgeMonths == null
@@ -57,7 +61,6 @@ export default function GoalsScreen() {
       || ((!template.classroomId || template.classroomId === selectedChild?.classroomId)
         && (!template.learningLevelId || template.learningLevelId === selectedClassroom?.learningLevelId)))) ?? [];
 
-  const [templatesListOpen, setTemplatesListOpen] = useState(false);
   const [goalsListOpen, setGoalsListOpen] = useState(false);
   const [templateFormOpen, setTemplateFormOpen] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string>();
@@ -96,8 +99,7 @@ export default function GoalsScreen() {
   if (!profile || !membership) return null;
 
   const resetTemplateForm = () => { setTemplateName(""); setTemplateDescription(""); setTemplateDurationDays("100"); setTemplateMinimumPercent("90"); setTemplateMinimumStreak("14"); setTemplateLearningLevelId(undefined); setTemplateClassroomId(undefined); setOpenInfo(null); };
-  const openCreateTemplate = () => { setTemplatesListOpen(false); setEditingTemplateId(undefined); resetTemplateForm(); setTemplateFormOpen(true); };
-  const openEditTemplateForm = (id: string) => { setTemplatesListOpen(false); setEditingTemplateId(id); setTemplateFormOpen(true); };
+  const openCreateTemplate = () => { setEditingTemplateId(undefined); resetTemplateForm(); setTemplateFormOpen(true); };
   const closeTemplateForm = () => { setTemplateFormOpen(false); setEditingTemplateId(undefined); resetTemplateForm(); };
   const submitTemplateForm = () => {
     const duration = Number(templateDurationDays);
@@ -122,13 +124,16 @@ export default function GoalsScreen() {
     } catch (error) { Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
   const activeIndicatorCount = editingTemplate?.indicators.filter((indicator) => indicator.active).length ?? 0;
+  const totalMissedDays = goals.data?.filter((goal) => goal.status === "ACTIVE").reduce((sum, goal) => sum + goal.missedDays, 0) ?? 0;
   const goalsListContent = <>
-    {selectedChild && canAdmin && <Button onPress={() => { setGoalsListOpen(false); setSheet("assign"); }}>{t("goals.assign")}</Button>}
-    {goals.data?.map((goal) => <View key={goal.id} style={styles.card}>
+    {selectedChild && canWrite && <Button onPress={() => { setGoalsListOpen(false); setSheet("assign"); }}>{t("goals.assign")}</Button>}
+    {goals.isFetching && <ShimmerList />}
+    {!goals.isFetching && goals.data?.map((goal) => <View key={goal.id} style={styles.card}>
       <AppText variant="label">{goal.name}</AppText>
       <AppText tone="muted">{formatDate(goal.startsOn)} – {formatDate(goal.targetEndsOn)}</AppText>
       <AppText>{t("goals.progress", { yes: goal.yesDays, recorded: goal.recordedDays, percent: goal.yesPercent ?? 0, streak: goal.longestYesStreak })}</AppText>
       <AppText tone="muted">{t(goal.meetsYesPercent && goal.meetsYesStreak ? "goals.targetsMet" : "goals.targetsPending")}</AppText>
+      {goal.status === "ACTIVE" && goal.missedDays > 0 && <View style={styles.missedBadge}><AppText tone="danger" variant="caption">{t("goals.missedDays", { count: goal.missedDays })}</AppText></View>}
       <View style={styles.checkIns}>{goal.checkIns.map((checkInItem) => <View key={`${checkInItem.date}-${checkInItem.indicatorId}`} style={styles.checkIn}><AppText tone="muted">{formatDate(checkInItem.date)} · {goal.indicators.find((indicator) => indicator.id === checkInItem.indicatorId)?.name}</AppText><AppText>{t(checkInItem.outcome === "YES" ? "goals.yes" : "goals.no")}</AppText></View>)}</View>
       {goal.status === "ACTIVE" && canWrite && <View style={styles.indicators}>{goal.indicators.filter((indicator) => indicator.active).map((indicator) => <View key={indicator.id} style={styles.indicator}><AppText variant="label">{indicator.name}</AppText><View style={styles.options}>{goalCheckInOutcomes.map((outcome) => <Button key={outcome} variant="secondary" loading={checkIn.isPending} onPress={() => void checkIn.mutateAsync({ goalId: goal.id, indicatorId: indicator.id, outcome }).catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")))}>{t(outcome === "YES" ? "goals.yes" : "goals.no")}</Button>)}</View></View>)}<Button onPress={() => { setGoalsListOpen(false); setFinalGoalId(goal.id); setSheet("finalize"); }}>{t("goals.finalize")}</Button></View>}
       {goal.status === "COMPLETED" && <><AppText>{t(goal.finalOutcome === "ACHIEVED" ? "goals.achieved" : "goals.notAchieved")}</AppText><AppText tone="muted">{goal.finalSummary}</AppText></>}
@@ -136,13 +141,8 @@ export default function GoalsScreen() {
     {selectedChild && goals.data?.length === 0 && <AppText tone="muted">{t("goals.empty")}</AppText>}
   </>;
 
-  return <AppScreen showBottomNavigation={false} title={t("goals.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
+  return <AppScreen showBottomNavigation={false} title={t("goals.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canAdmin ? <FloatingActionButton accessibilityLabel={t("goals.addTemplate")} onPress={openCreateTemplate}>+ {t("goals.addTemplate")}</FloatingActionButton> : undefined}>
     <AppText tone="muted">{t("goals.subtitle")}</AppText>
-
-    {canAdmin && <NavigationCard accessibilityLabel={t("goals.templates")} onPress={() => setTemplatesListOpen(true)}>
-      <AppText variant="h5">{t("goals.templates")}</AppText>
-      <AppText tone={templates.data?.length ? "default" : "muted"}>{templates.data?.length ? t("goals.templatesSummary", { count: templates.data.length }) : t("goals.noTemplates")}</AppText>
-    </NavigationCard>}
 
     <View style={styles.section}>
       <View style={styles.row}><AppText variant="heading">{t("goals.childGoals")}</AppText>{isStaffAdmin && <Button variant="secondary" onPress={() => setFilterVisible(true)}>{t("children.filter")}</Button>}</View>
@@ -153,29 +153,16 @@ export default function GoalsScreen() {
       {selectedChild && !hasFixedChild && <NavigationCard accessibilityLabel={t("goals.childGoals")} onPress={() => setGoalsListOpen(true)}>
         <AppText variant="h5">{selectedChild.fullName}</AppText>
         <AppText tone={goals.data?.length ? "default" : "muted"}>{goals.data?.length ? t("goals.goalsSummary", { count: goals.data.length }) : t("goals.empty")}</AppText>
+        {totalMissedDays > 0 && <AppText tone="danger" variant="caption">{t("goals.missedDays", { count: totalMissedDays })}</AppText>}
       </NavigationCard>}
       {selectedChild && hasFixedChild && goalsListContent}
     </View>
-
-    <BottomSheet visible={templatesListOpen} onClose={() => setTemplatesListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("goals.templates")}>
-      <Button onPress={openCreateTemplate}>{t("goals.addTemplate")}</Button>
-      {goalCategories.map((category) => {
-        const categoryTemplates = templates.data?.filter((template) => template.category === category) ?? [];
-        if (categoryTemplates.length === 0) return null;
-        return <View key={category} style={styles.categorySection}>
-          <AppText variant="heading">{t(goalCategoryKey(category))}</AppText>
-          {categoryTemplates.map((template) => <TemplateCard key={template.id} template={template} onEdit={() => openEditTemplateForm(template.id)} onArchive={() => void archiveTemplate.mutateAsync(template.id)} />)}
-        </View>;
-      })}
-      {(templates.data?.filter((template) => !template.category) ?? []).map((template) => <TemplateCard key={template.id} template={template} onEdit={() => openEditTemplateForm(template.id)} onArchive={() => void archiveTemplate.mutateAsync(template.id)} />)}
-      {templates.data?.length === 0 && <AppText tone="muted">{t("goals.noTemplates")}</AppText>}
-    </BottomSheet>
 
     {!hasFixedChild && <BottomSheet visible={goalsListOpen} onClose={() => setGoalsListOpen(false)} closeAccessibilityLabel={t("common.close")} title={selectedChild?.fullName ?? t("goals.childGoals")}>
       {goalsListContent}
     </BottomSheet>}
 
-    <BottomSheet visible={sheet === "assign"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("goals.assign")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("goals.assign"), disabled: !templateId, loading: assign.isPending, onPress: () => void assign.mutateAsync().catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) ) }}><View style={styles.options}>{availableTemplates.map((template) => <Button key={template.id} variant={templateId === template.id ? "primary" : "secondary"} onPress={() => setTemplateId(template.id)}>{template.name}</Button>)}</View></BottomSheet>
+    <BottomSheet visible={sheet === "assign"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("goals.assign")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("goals.assign"), disabled: !templateId, loading: assign.isPending, onPress: () => void assign.mutateAsync().catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) ) }}><TextInput accessibilityLabel={t("goals.searchTemplates")} style={styles.input} placeholder={t("goals.searchTemplates")} value={templateSearch} onChangeText={setTemplateSearch} /><View style={styles.options}>{availableTemplates.map((template) => <Button key={template.id} variant={templateId === template.id ? "primary" : "secondary"} onPress={() => setTemplateId(template.id)}>{template.name}</Button>)}</View>{templates.isLoading && <AppText tone="muted">{t("common.loading")}</AppText>}{templates.isError && <Button variant="secondary" onPress={() => void templates.refetch()}>{t("common.retry")}</Button>}{!templates.isLoading && !templates.isError && availableTemplates.length === 0 && <AppText tone="muted">{t("goals.notInAgeRange")}</AppText>}</BottomSheet>
     <BottomSheet visible={sheet === "finalize"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("goals.finalize")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("goals.finalize"), disabled: !finalSummary.trim(), loading: finalize.isPending, onPress: () => void finalize.mutateAsync().catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) ) }}><View style={styles.options}>{childGoalOutcomes.map((outcome) => <Button key={outcome} variant={finalOutcome === outcome ? "primary" : "secondary"} onPress={() => setFinalOutcome(outcome)}>{t(outcome === "ACHIEVED" ? "goals.achieved" : "goals.notAchieved")}</Button>)}</View><TextInput style={[styles.input, styles.summaryInput]} multiline placeholder={t("goals.finalSummary")} value={finalSummary} onChangeText={setFinalSummary} /></BottomSheet>
 
     <BottomSheet
@@ -223,19 +210,6 @@ export default function GoalsScreen() {
   </AppScreen>;
 }
 
-function TemplateCard({ template, onEdit, onArchive }: { template: GoalTemplate; onEdit: () => void; onArchive: () => void }) {
-  const { t } = useI18n();
-  return <View style={styles.card}>
-    <AppText variant="label">{template.name}{template.source === "GLOBAL" ? ` · ${t("globalCurriculum.global")}` : ""}</AppText>
-    <AppText tone="muted">{t("goals.target", { days: template.durationDays, percent: template.minimumYesPercent, streak: template.minimumYesStreak })}</AppText>
-    {template.minAgeMonths != null && template.maxAgeMonths != null && <AppText variant="caption" tone="muted">{t("goals.ageRangeYears", { min: template.minAgeMonths / 12, max: template.maxAgeMonths / 12 })}</AppText>}
-    {template.source === "TENANT" && <View style={styles.options}>
-      <Button variant="secondary" onPress={onEdit}>{t("common.edit")}</Button>
-      {template.active && <Button variant="danger" onPress={onArchive}>{t("goals.archive")}</Button>}
-    </View>}
-  </View>;
-}
-
 function IconButton({ icon, tone = "secondary", onPress, accessibilityLabel, disabled }: { icon: keyof typeof Ionicons.glyphMap; tone?: "secondary" | "danger"; onPress: () => void; accessibilityLabel: string; disabled?: boolean }) {
   return <Pressable
     accessibilityRole="button"
@@ -261,7 +235,6 @@ function GoalFormField({ id, label, info, infoAction, expanded, onToggle, childr
 
 const styles = StyleSheet.create({
   section: { gap: spacing.sm },
-  categorySection: { gap: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
@@ -269,6 +242,7 @@ const styles = StyleSheet.create({
   indicator: { gap: spacing.xs, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
   checkIns: { gap: spacing.xs },
   checkIn: { flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
+  missedBadge: { alignSelf: "flex-start", paddingVertical: spacing.xs / 2, paddingHorizontal: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
   input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.surface },
   summaryInput: { minHeight: 100, paddingTop: spacing.sm, textAlignVertical: "top" },
   field: { gap: spacing.xs },

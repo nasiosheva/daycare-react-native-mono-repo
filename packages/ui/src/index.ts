@@ -9,4 +9,5 @@ export * from "./NavigationCard";
 export * from "./PasswordInput";
 export * from "./PinEntryScreen";
 export * from "./Screen";
+export * from "./Shimmer";
 export * from "./theme";

@@ -12,19 +12,24 @@ import com.daycare.api.persistence.ChildGoal
 import com.daycare.api.persistence.ChildGoalCheckIn
 import com.daycare.api.persistence.ChildGoalCheckInRepository
 import com.daycare.api.persistence.ChildGoalRepository
+import com.daycare.api.persistence.ChildRepository
+import com.daycare.api.persistence.ChildStaffAssignmentRepository
 import com.daycare.api.persistence.ClassroomRepository
+import com.daycare.api.persistence.ClassroomStaffAssignmentRepository
 import com.daycare.api.persistence.GoalTemplate
 import com.daycare.api.persistence.GoalTemplateIndicator
 import com.daycare.api.persistence.GoalTemplateIndicatorRepository
 import com.daycare.api.persistence.GoalTemplateRepository
 import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.LearningLevelRepository
+import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.realtime.RealtimeFlag
 import com.daycare.api.realtime.RealtimePublisher
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
@@ -32,6 +37,8 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import java.time.LocalDate
 import java.time.Period
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 data class UpsertGoalTemplateRequest(
@@ -54,7 +61,7 @@ data class GoalIndicatorCheckInResponse(val indicatorId: UUID, val date: LocalDa
 data class ChildGoalResponse(
     val id: UUID, val childId: UUID, val templateId: UUID, val name: String, val description: String, val startsOn: LocalDate, val targetEndsOn: LocalDate,
     val durationDays: Int, val minimumYesPercent: Int, val minimumYesStreak: Int, val status: ChildGoalStatus, val finalOutcome: ChildGoalOutcome?, val finalSummary: String?, val finalizedAt: Instant?,
-    val recordedDays: Int, val yesDays: Int, val noDays: Int, val yesPercent: Int?, val currentYesStreak: Int, val longestYesStreak: Int, val meetsYesPercent: Boolean, val meetsYesStreak: Boolean,
+    val recordedDays: Int, val yesDays: Int, val noDays: Int, val yesPercent: Int?, val currentYesStreak: Int, val longestYesStreak: Int, val meetsYesPercent: Boolean, val meetsYesStreak: Boolean, val missedDays: Int,
     val indicators: List<GoalIndicatorResponse>, val checkIns: List<GoalIndicatorCheckInResponse>,
 )
 
@@ -71,11 +78,19 @@ class GoalService(
     private val guardians: GuardianLinkRepository,
     private val audits: AuditLogRepository,
     private val realtime: RealtimePublisher,
+    private val notifications: NotificationService,
+    private val children: ChildRepository,
+    private val childStaffAssignments: ChildStaffAssignmentRepository,
+    private val classroomStaffAssignments: ClassroomStaffAssignmentRepository,
+    private val memberships: MembershipRepository,
 ) {
     @Transactional(readOnly = true)
-    fun templates(jwt: Jwt, organizationId: UUID): List<GoalTemplateResponse> {
+    fun templates(jwt: Jwt, organizationId: UUID, search: String? = null): List<GoalTemplateResponse> {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
-        return templates.findVisibleToOrganization(organizationId).map(::templateResponse)
+        val query = search?.trim().orEmpty()
+        val visibleTemplates = if (query.isBlank()) templates.findVisibleToOrganization(organizationId)
+        else templates.searchVisibleToOrganization(organizationId, query)
+        return visibleTemplates.map(::templateResponse)
     }
 
     @Transactional
@@ -93,14 +108,6 @@ class GoalService(
         validateTemplateScope(organizationId, request)
         val template = template(templateId, organizationId); requireTenantOwned(template)
         template.learningLevelId = request.learningLevelId; template.classroomId = request.classroomId; template.name = request.name.trim(); template.description = request.description.trim(); template.durationDays = request.durationDays; template.minimumYesPercent = request.minimumYesPercent; template.minimumYesStreak = request.minimumYesStreak
-        realtime.publishToTenantRoles(organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), setOf(RealtimeFlag.GOALS))
-        return templateResponse(template)
-    }
-
-    @Transactional
-    fun archiveTemplate(jwt: Jwt, organizationId: UUID, templateId: UUID): GoalTemplateResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
-        val template = template(templateId, organizationId); requireTenantOwned(template); template.active = false
         realtime.publishToTenantRoles(organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), setOf(RealtimeFlag.GOALS))
         return templateResponse(template)
     }
@@ -145,7 +152,7 @@ class GoalService(
 
     @Transactional
     fun assign(jwt: Jwt, organizationId: UUID, childId: UUID, request: AssignChildGoalRequest): ChildGoalResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN)); access.requireWritable(scope)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF)); access.requireWritable(scope)
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         val template = template(request.templateId, organizationId)
         require(template.active) { "Goal template is inactive" }
@@ -229,12 +236,45 @@ class GoalService(
             GoalCheckInValue(date, if (allYes) GoalCheckInOutcome.YES else GoalCheckInOutcome.NO)
         }
         val progress = GoalProgressCalculator.calculate(combinedValues)
+        val targetEndsOn = goal.startsOn.plusDays(template.durationDays.toLong() - 1)
+        val elapsedEndsOn = if (goal.status == ChildGoalStatus.ACTIVE) minOf(LocalDate.now(), targetEndsOn) else targetEndsOn
+        val elapsedDays = if (elapsedEndsOn.isBefore(goal.startsOn)) 0 else ChronoUnit.DAYS.between(goal.startsOn, elapsedEndsOn).toInt() + 1
+        val missedDays = (elapsedDays - progress.recordedDays).coerceAtLeast(0)
         return ChildGoalResponse(
-            goal.id, goal.childId, template.id, template.name, template.description, goal.startsOn, goal.startsOn.plusDays(template.durationDays.toLong() - 1), template.durationDays, template.minimumYesPercent, template.minimumYesStreak,
+            goal.id, goal.childId, template.id, template.name, template.description, goal.startsOn, targetEndsOn, template.durationDays, template.minimumYesPercent, template.minimumYesStreak,
             goal.status, goal.finalOutcome, goal.finalSummary, goal.finalizedAt, progress.recordedDays, progress.yesDays, progress.noDays, progress.yesPercent, progress.currentYesStreak, progress.longestYesStreak,
-            progress.yesPercent != null && progress.yesPercent >= template.minimumYesPercent, progress.longestYesStreak >= template.minimumYesStreak,
+            progress.yesPercent != null && progress.yesPercent >= template.minimumYesPercent, progress.longestYesStreak >= template.minimumYesStreak, missedDays,
             goalIndicators.findAllByGoalTemplateIdOrderByDisplayOrderAsc(template.id).map(::indicatorResponse), items.map { GoalIndicatorCheckInResponse(it.indicatorId, it.checkInDate, it.outcome, it.recordedAt) },
         )
+    }
+    private fun Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")
+
+    @Scheduled(cron = "0 0 20 * * *", zone = "Asia/Jakarta")
+    @Transactional
+    fun sendMissedCheckInReminders() {
+        val today = LocalDate.now(ZoneId.of("Asia/Jakarta"))
+        goals.findAllByStatus(ChildGoalStatus.ACTIVE).forEach { goal ->
+            val template = templates.findById(goal.templateId).orElse(null) ?: return@forEach
+            val targetEndsOn = goal.startsOn.plusDays(template.durationDays.toLong() - 1)
+            if (today.isBefore(goal.startsOn) || today.isAfter(targetEndsOn)) return@forEach
+            val activeIndicators = goalIndicators.findAllByGoalTemplateIdOrderByDisplayOrderAsc(template.id).filter { it.active }
+            if (activeIndicators.isEmpty()) return@forEach
+            val doneIndicatorIds = checkIns.findAllByChildGoalIdOrderByCheckInDateAsc(goal.id).filter { it.checkInDate == today }.map { it.indicatorId }.toSet()
+            if (activeIndicators.all { it.id in doneIndicatorIds }) return@forEach
+            val child = children.findById(goal.childId).orElse(null) ?: return@forEach
+            if (!child.active) return@forEach
+            notifyIncompleteCheckIn(goal.organizationId, child)
+        }
+    }
+    private fun notifyIncompleteCheckIn(organizationId: UUID, child: Child) {
+        val staffIds = mutableSetOf<UUID>()
+        staffIds += childStaffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id).map { it.userId }
+        child.classroomId?.let { classroomId -> staffIds += classroomStaffAssignments.findAllByOrganizationIdAndClassroomIdOrderByCreatedAtDesc(organizationId, classroomId).map { it.userId } }
+        if (staffIds.isEmpty()) staffIds += memberships.findAllByOrganizationId(organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.map { it.userId }
+        val childName = child.fullName()
+        staffIds.forEach { userId ->
+            notifications.notify(organizationId, userId, "Check-in goal belum diisi", "Check-in goal hari ini untuk $childName belum diisi.", actionPath = "/goals?childId=${child.id}", realtimeFlags = setOf(RealtimeFlag.GOALS))
+        }
     }
     private fun publishGoal(organizationId: UUID, childId: UUID) {
         guardians.findAllByChildId(childId).forEach { realtime.publishToUser(organizationId, it.userId, setOf(RealtimeFlag.GOALS)) }

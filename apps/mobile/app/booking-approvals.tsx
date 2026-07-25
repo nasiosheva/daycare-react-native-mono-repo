@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactElement } from "react";
 import { Alert, Image, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useBookingApproval } from "@/booking/useBooking";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -54,7 +54,8 @@ export default function BookingApprovalsScreen() {
     catch (error) { Alert.alert(t("paymentProof.downloadFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
     finally { setDownloading(false); }
   };
-  const empty = !bookings.isLoading && (!isStaffAdmin || !enrollments.isLoading) && bookings.data?.length === 0 && (!isStaffAdmin || enrollments.data?.length === 0);
+  const approvalsFetching = bookings.isFetching || (isStaffAdmin && enrollments.isFetching);
+  const empty = !approvalsFetching && bookings.data?.length === 0 && (!isStaffAdmin || enrollments.data?.length === 0);
   const confirmLoading = confirm?.kind === "booking" ? approval.isPending : enrollmentApproval.isPending;
   return <AppScreen showBottomNavigation={!isStaffAdmin} title={isStaffAdmin ? t("approval.title") : undefined} header={isStaffAdmin ? <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} /> : undefined}>
     {!isStaffAdmin && <AppText variant="title">{t("approval.title")}</AppText>}
@@ -66,7 +67,8 @@ export default function BookingApprovalsScreen() {
     </ScrollView>}
     <TextInput style={styles.input} placeholder={t("approval.search")} value={search} onChangeText={setSearch} />
 
-    {isStaffAdmin && enrollments.data?.map((enrollment) => <ApprovalCard
+    {approvalsFetching && <ShimmerList />}
+    {isStaffAdmin && !approvalsFetching && enrollments.data?.map((enrollment) => <ApprovalCard
       key={enrollment.id}
       title={enrollment.childName}
       description={`${enrollment.planName} · ${formatDate(enrollment.createdAt)}`}
@@ -75,7 +77,7 @@ export default function BookingApprovalsScreen() {
         <Button style={styles.actionButton} variant="danger" onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: false, name: enrollment.childName })}>{t("approval.reject")}</Button>
       </View> : undefined}
     />)}
-    {bookings.data?.map((booking) => <ApprovalCard
+    {!approvalsFetching && bookings.data?.map((booking) => <ApprovalCard
       key={booking.id}
       title={booking.childName}
       description={`${formatDate(booking.bookingDate)} · ${booking.planName}`}

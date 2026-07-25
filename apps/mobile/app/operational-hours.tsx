@@ -1,7 +1,7 @@
 import { StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, colors, radius, spacing } from "@daycare/ui";
+import { AppText, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -13,12 +13,11 @@ export default function OperationalHoursScreen() {
   if (!profile) return null;
   if (membership?.role !== "PARENT") return <Redirect href="/home" />;
   return <AppScreen title={t("overtime.parentTitle")}><AppText tone="muted">{t("overtime.parentDescription")}</AppText>
-    {hours.isLoading && <AppText>{t("common.loading")}</AppText>}
-    {hours.data?.map((branch) => <View key={branch.branchId} style={styles.card}><AppText variant="heading">{branch.branchName}</AppText><AppText tone="muted">{t("overtime.branchOperatingHours")}</AppText>
+    {hours.isFetching ? <ShimmerList /> : hours.data?.map((branch) => <View key={branch.branchId} style={styles.card}><AppText variant="heading">{branch.branchName}</AppText><AppText tone="muted">{t("overtime.branchOperatingHours")}</AppText>
       {branch.hours.map((hour) => <View key={hour.dayOfWeek} style={styles.row}><AppText>{t(`overtime.day.${hour.dayOfWeek}`)}</AppText><AppText tone="muted">{hour.active ? `${hour.opensAt}–${hour.closesAt}` : t("overtime.closed")}</AppText></View>)}
       <AppText variant="h5">{t("overtime.rateTiers")}</AppText>{branch.tiers.map((tier, index) => <AppText key={`${tier.durationMinutes}-${index}`} tone="muted">{t("overtime.parentTier", { duration: tier.durationMinutes, amount: formatCurrency(tier.amount) })}</AppText>)}
     </View>)}
-    {!hours.isLoading && hours.data?.length === 0 && <AppText tone="muted">{t("overtime.noParentBranches")}</AppText>}
+    {!hours.isFetching && hours.data?.length === 0 && <AppText tone="muted">{t("overtime.noParentBranches")}</AppText>}
   </AppScreen>;
 }
 

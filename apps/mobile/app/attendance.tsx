@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import type { ChildListFilter } from "@daycare/api-client";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useChildren, useRecordAttendance } from "@/attendance/useAttendance";
 import { useAuth } from "@/auth/AuthProvider";
@@ -35,12 +35,12 @@ export default function AttendanceScreen() {
     {!readOnly && <Button variant="secondary" onPress={() => router.push("/attendance-scan")}>{t("attendance.scan")}</Button>}
     <NavigationCard accessibilityLabel={t("attendance.title")} onPress={() => setListOpen(true)}>
       <AppText variant="h5">{t("attendance.title")}</AppText>
-      <AppText tone={totalChildren > 0 ? "default" : "muted"}>{children.isLoading ? t("attendance.loading") : totalChildren > 0 ? t("attendance.rosterSummary", { present: presentCount, total: totalChildren }) : t("children.empty")}</AppText>
+      <AppText tone={totalChildren > 0 ? "default" : "muted"}>{children.isFetching ? t("attendance.loading") : totalChildren > 0 ? t("attendance.rosterSummary", { present: presentCount, total: totalChildren }) : t("children.empty")}</AppText>
     </NavigationCard>
     <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("attendance.title")}>
-      {children.isLoading && <AppText>{t("attendance.loading")}</AppText>}
+      {children.isFetching && <ShimmerList />}
       {children.isError && <Button onPress={() => children.refetch()}>{t("common.retry")}</Button>}
-      {children.data?.map((child) => {
+      {!children.isFetching && children.data?.map((child) => {
         const checkedIn = Boolean(child.todayCheckedInAt);
         const checkedOut = Boolean(child.todayCheckedOutAt);
         return <View key={child.id} style={styles.card}>

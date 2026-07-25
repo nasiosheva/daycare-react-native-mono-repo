@@ -2,7 +2,7 @@ import { useState } from "react";
 import QRCode from "react-native-qrcode-svg";
 import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { AppText, BottomSheet, NavigationCard, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BottomSheet, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useChildren, useAttendanceQr } from "@/attendance/useAttendance";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -25,10 +25,11 @@ export default function ParentQrScreen() {
   const selectedChild = visibleChildren?.find((child) => child.id === selectedChildId) ?? null;
   return <AppScreen>
     <AppText variant="title">{t("qr.title")}</AppText>
-    {visibleChildren?.map((child) => <NavigationCard key={child.id} accessibilityLabel={t("qr.showQr", { name: child.fullName })} onPress={() => setSelectedChildId(child.id)}>
+    {children.isFetching && <ShimmerList variant="tile" />}
+    {!children.isFetching && visibleChildren?.map((child) => <NavigationCard key={child.id} accessibilityLabel={t("qr.showQr", { name: child.fullName })} onPress={() => setSelectedChildId(child.id)}>
       <AppText variant="h5">{child.fullName}</AppText>
     </NavigationCard>)}
-    {!children.isLoading && visibleChildren?.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
+    {!children.isFetching && visibleChildren?.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
     <BottomSheet visible={Boolean(selectedChild)} onClose={() => setSelectedChildId(null)} closeAccessibilityLabel={t("common.close")} title={selectedChild?.fullName ?? t("qr.title")}>
       {selectedChild && <ChildQr childId={selectedChild.id} name={selectedChild.fullName} />}
     </BottomSheet>

@@ -223,8 +223,10 @@ class LearningStructureService(
         require(classroom.active && classroom.learningLevelId != null) { "Classroom must be active and assigned to a learning level" }
         require(classroom.branchId == child.branchId) { "Child and classroom must belong to the same branch" }
         val current = placements.findByChildIdAndEndedOnIsNull(childId)
-        if (current != null && request.startsOn == current.startsOn) {
-            if (current.classroomId == classroom.id) return placementResponse(current)
+        if (current != null && current.classroomId == classroom.id && request.startsOn == current.startsOn) return placementResponse(current)
+        if (current != null && current.startsOn == LocalDate.now() && request.startsOn == current.startsOn) {
+            // Same-day correction: the active placement started today and has not accumulated any
+            // history yet, so it is safe to overwrite in place instead of closing and replacing it.
             requireCapacity(classroom)
             current.classroomId = classroom.id; current.learningLevelId = classroom.learningLevelId; current.academicYearId = classroom.academicYearId
             child.classroomId = classroom.id

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, Button, colors, FloatingActionButton, radius, spacing } from "@daycare/ui";
+import { AppText, Button, colors, FloatingActionButton, radius, ShimmerList, spacing } from "@daycare/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { tenantSubscriptionStatuses, type TenantSubscriptionStatus } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
@@ -49,10 +49,10 @@ export default function PlatformTenantsScreen() {
       <StatusTab label={t("tenant.filterAll")} selected={!institutionType} onPress={() => setInstitutionType(null)} />
       {institutionTypes.data?.map((item) => <StatusTab key={item.code} label={item.name} selected={institutionType === item.code} onPress={() => setInstitutionType(item.code)} />)}
     </ScrollView>
-    {tenants.isLoading && <AppText>{t("tenant.load")}</AppText>}
+    {tenants.isFetching && <ShimmerList />}
     {tenants.isError && <Button variant="secondary" onPress={() => tenants.refetch()}>{t("tenant.reload")}</Button>}
-    {!tenants.isLoading && !tenants.isError && visibleTenants.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
-    {visibleTenants.map((tenant) => <View key={tenant.id} style={styles.card}>
+    {!tenants.isFetching && !tenants.isError && visibleTenants.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+    {!tenants.isFetching && visibleTenants.map((tenant) => <View key={tenant.id} style={styles.card}>
       <AppText variant="heading">{tenant.name}</AppText>
       <AppText tone="muted">{tenant.institutionTypes.map((type) => institutionTypeNames.get(type) ?? type).join(" + ")}</AppText>
       <AppText tone="muted">{tenant.subscriptionPlan ? t(tenantSubscriptionPlanKey(tenant.subscriptionPlan)) : t("tenant.noSubscription")} · {tenant.subscriptionStatus ? t(tenantSubscriptionStatusKey(tenant.subscriptionStatus)) : t("tenant.noStatus")}</AppText>

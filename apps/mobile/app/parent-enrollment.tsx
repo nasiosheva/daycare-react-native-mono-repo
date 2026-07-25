@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { AppText, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -31,13 +31,13 @@ export default function ParentEnrollmentScreen() {
     </NavigationCard>
     <View style={styles.section}>
       <AppText variant="heading">{t("parentEnrollment.status")}</AppText>
-      {enrollments.isLoading && <AppText tone="muted">{t("common.loading")}</AppText>}
-      {enrollments.data?.map((item) => <View key={item.id} style={styles.card}>
+      {enrollments.isFetching && <ShimmerList />}
+      {!enrollments.isFetching && enrollments.data?.map((item) => <View key={item.id} style={styles.card}>
         <AppText variant="heading">{item.childName}</AppText>
         <AppText>{item.planName} · {formatCurrency(item.totalAmount)}</AppText>
         <EnrollmentAction enrollment={item} onApply={() => router.push("/parent-enrollment-form")} onPay={() => item.invoiceId && router.push({ pathname: "/parent-payment", params: { invoiceId: item.invoiceId } })} t={t} />
       </View>)}
-      {!enrollments.isLoading && enrollments.data?.length === 0 && <AppText tone="muted">{t("parentEnrollment.noApplication")}</AppText>}
+      {!enrollments.isFetching && enrollments.data?.length === 0 && <AppText tone="muted">{t("parentEnrollment.noApplication")}</AppText>}
     </View>
     {profile?.memberships.filter((membership) => membership.role === "PARENT").length ? <View style={styles.section}>
       <AppText variant="heading">{t("parentEnrollment.activeTenants")}</AppText>

@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -88,14 +88,15 @@ export default function CurriculumActivityDetailScreen() {
 
     <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("learning.assessments")}>
       {canManage && <Button variant="secondary" onPress={openAssessmentSheet}>{t("learning.addAssessment")}</Button>}
-      {assessments.data?.map((assessment) => <View key={assessment.id} style={styles.item}>
+      {assessments.isFetching && <ShimmerList variant="row" />}
+      {!assessments.isFetching && assessments.data?.map((assessment) => <View key={assessment.id} style={styles.item}>
         <View style={styles.itemContent}>
           <AppText variant="label">{assessment.name}</AppText>
           {assessment.description ? <AppText variant="bodySmall" tone="muted">{assessment.description}</AppText> : null}
         </View>
         {canManage && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.removeAssessment")} onPress={() => void removeAssessment.mutateAsync(assessment.id)} />}
       </View>)}
-      {assessments.data?.length === 0 && <AppText tone="muted">{t("learning.noAssessments")}</AppText>}
+      {!assessments.isFetching && assessments.data?.length === 0 && <AppText tone="muted">{t("learning.noAssessments")}</AppText>}
     </BottomSheet>
 
     <BottomSheet visible={sheet === "edit"} onClose={closeEditSheet} closeAccessibilityLabel={t("common.close")} title={t("learning.editActivity")} negativeAction={{ label: t("common.cancel"), onPress: closeEditSheet }} positiveAction={{ label: t("common.save"), loading: updateActivity.isPending, onPress: () => void saveActivity() }}>

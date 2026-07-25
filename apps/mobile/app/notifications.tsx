@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PushNotificationMuteDuration } from "@daycare/api-client";
 import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -73,16 +73,16 @@ export default function NotificationsScreen() {
 
   return <AppScreen showBottomNavigation={false} title={t("notifications.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} headerAction={<Pressable accessibilityRole="button" accessibilityLabel={t("notifications.settings")} hitSlop={spacing.sm} onPress={openSettings} style={({ pressed }) => [styles.settingsButton, pressed && styles.settingsButtonPressed]}><Ionicons name="settings-outline" size={24} color={colors.primary} /></Pressable>}>
     <TextInput style={styles.input} placeholder={t("notifications.search")} value={search} onChangeText={setSearch} />
-    <AppText tone={unreadCount > 0 ? "default" : "muted"}>{notifications.isLoading ? t("notifications.loading") : notifications.data?.length ? (unreadCount > 0 ? t("notifications.unreadSummary", { count: unreadCount }) : t("notifications.allRead")) : t("notifications.empty")}</AppText>
+    <AppText tone={unreadCount > 0 ? "default" : "muted"}>{notifications.isFetching ? t("notifications.loading") : notifications.data?.length ? (unreadCount > 0 ? t("notifications.unreadSummary", { count: unreadCount }) : t("notifications.allRead")) : t("notifications.empty")}</AppText>
     {notifications.isError && <Button variant="secondary" onPress={() => notifications.refetch()}>{t("common.retry")}</Button>}
-    {notifications.data?.map((item) => <View key={item.id} style={[styles.card, !item.readAt && styles.unread]}>
+    {notifications.isFetching ? <ShimmerList /> : notifications.data?.map((item) => <View key={item.id} style={[styles.card, !item.readAt && styles.unread]}>
       <AppText variant="h5">{item.title}</AppText>
       <AppText>{item.body}</AppText>
       <AppText variant="caption" tone="muted">{formatDateTime(item.createdAt)}</AppText>
       {!item.readAt && <Button variant="secondary" loading={markRead.isPending} onPress={() => void open(item.id, item.actionPath)}>{t(item.actionPath ? "notifications.open" : "notifications.markRead")}</Button>}
       {item.readAt && item.actionPath && <Button variant="secondary" onPress={() => router.push(item.actionPath as never)}>{t("notifications.open")}</Button>}
     </View>)}
-    {!notifications.isLoading && notifications.data?.length === 0 && <AppText tone="muted">{t("notifications.empty")}</AppText>}
+    {!notifications.isFetching && notifications.data?.length === 0 && <AppText tone="muted">{t("notifications.empty")}</AppText>}
     <BottomSheet visible={settingsVisible} onClose={closeSettings} closeAccessibilityLabel={t("common.close")} title={t("notifications.settings")} negativeAction={{ label: t("common.close"), onPress: closeSettings }} positiveAction={{ label: t("notifications.apply"), loading: updatePreference.isPending, disabled: selectedMuteDuration === undefined, onPress: applyMutePreference }}>
       <AppText tone="muted">{t("notifications.muteDescription")}</AppText>
       {mutedUntil && <AppText tone="muted">{t("notifications.mutedUntil", { date: formatDateTime(mutedUntil) })}</AppText>}

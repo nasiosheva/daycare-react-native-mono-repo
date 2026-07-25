@@ -3,7 +3,7 @@ import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-n
 import { useRouter } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { hasInstitutionCapability, staffReminderTargets, type StaffReminderTarget } from "@daycare/core";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import type { StaffReminder } from "@daycare/api-client";
 import { AppScreen } from "@/navigation/AppScreen";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
@@ -73,14 +73,14 @@ export default function StaffRemindersScreen() {
     {Platform.OS === "web" && <View style={styles.warning}><AppText variant="caption" tone="danger">{t("reminders.webWarning")}</AppText></View>}
     <NavigationCard accessibilityLabel={t("reminders.title")} onPress={() => setListOpen(true)}>
       <AppText variant="h5">{t("reminders.title")}</AppText>
-      <AppText tone={reminders.data?.length ? "default" : "muted"}>{reminders.isLoading ? t("common.loading") : reminders.data?.length ? t("reminders.remindersSummary", { count: reminders.data.length }) : t("reminders.empty")}</AppText>
+      <AppText tone={reminders.data?.length ? "default" : "muted"}>{reminders.isFetching ? t("common.loading") : reminders.data?.length ? t("reminders.remindersSummary", { count: reminders.data.length }) : t("reminders.empty")}</AppText>
     </NavigationCard>
 
     <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("reminders.title")}>
       {canManage && <Button onPress={openCreate}>{t("reminders.add")}</Button>}
-      {reminders.isLoading && <AppText tone="muted">{t("common.loading")}</AppText>}
+      {reminders.isFetching && <ShimmerList />}
       {reminders.isError && <Button variant="secondary" onPress={() => reminders.refetch()}>{t("common.retry")}</Button>}
-      {reminders.data?.map((reminder) => <View key={reminder.id} style={[styles.card, !reminder.active && styles.inactive]}>
+      {!reminders.isFetching && reminders.data?.map((reminder) => <View key={reminder.id} style={[styles.card, !reminder.active && styles.inactive]}>
         <AppText variant="heading">{reminder.title}</AppText>
         <AppText>{reminder.description}</AppText>
         <AppText tone="muted">{formatTime(reminder)} · {reminder.weekdays.map((day) => t(weekdayKeys[day - 1])).join(", ")}</AppText>
@@ -88,7 +88,7 @@ export default function StaffRemindersScreen() {
         <AppText variant="caption" tone={reminder.active ? "default" : "muted"}>{t(reminder.active ? "reminders.active" : "reminders.inactive")}</AppText>
         {canManage && <View style={styles.actions}><Button variant="secondary" onPress={() => openEdit(reminder)}>{t("common.edit")}</Button><Button variant="secondary" loading={setActive.isPending} onPress={() => toggle(reminder)}>{t(reminder.active ? "reminders.pause" : "reminders.activate")}</Button><Button variant="danger" loading={remove.isPending} onPress={() => deleteReminder(reminder)}>{t("reminders.delete")}</Button></View>}
       </View>)}
-      {!reminders.isLoading && reminders.data?.length === 0 && <AppText tone="muted">{t("reminders.empty")}</AppText>}
+      {!reminders.isFetching && reminders.data?.length === 0 && <AppText tone="muted">{t("reminders.empty")}</AppText>}
     </BottomSheet>
 
     <BottomSheet

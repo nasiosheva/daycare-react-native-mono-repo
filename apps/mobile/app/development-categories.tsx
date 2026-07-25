@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
@@ -50,9 +50,9 @@ export default function DevelopmentCategoriesScreen() {
   return <AppScreen showBottomNavigation={false} title={t("development.categories")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("development.categoriesSubtitle")}</AppText>
     <Button onPress={() => setAddVisible(true)}>{t("development.addCategory")}</Button>
-    {categories.isLoading && <AppText>{t("development.loading")}</AppText>}
+    {categories.isFetching && <ShimmerList />}
     {categories.isError && <Button variant="secondary" onPress={() => categories.refetch()}>{t("common.retry")}</Button>}
-    {categories.data?.map((item) => <View key={item.id} style={styles.item}>
+    {!categories.isFetching && categories.data?.map((item) => <View key={item.id} style={styles.item}>
       <AppText variant="label">{item.name}</AppText>
       <AppText tone="muted">{item.system ? t("development.categoryBuiltIn") : item.active ? t("development.categoryActive") : t("development.categoryInactive")}</AppText>
       {canManage && !item.system && <View style={styles.actions}>

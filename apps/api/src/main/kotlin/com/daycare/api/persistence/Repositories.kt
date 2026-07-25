@@ -122,7 +122,17 @@ interface GoalTemplateRepository : JpaRepository<GoalTemplate, UUID> {
         order by case when template.organizationId is null then 0 else 1 end, template.createdAt desc
     """)
     fun findVisibleToOrganization(@Param("organizationId") organizationId: UUID): List<GoalTemplate>
+
+    @Query("""
+        select template
+        from GoalTemplate template
+        where (template.organizationId is null or template.organizationId = :organizationId)
+          and (lower(template.name) like lower(concat('%', :search, '%'))
+            or lower(template.description) like lower(concat('%', :search, '%')))
+        order by case when template.organizationId is null then 0 else 1 end, template.createdAt desc
+    """)
+    fun searchVisibleToOrganization(@Param("organizationId") organizationId: UUID, @Param("search") search: String): List<GoalTemplate>
 }
 interface GoalTemplateIndicatorRepository : JpaRepository<GoalTemplateIndicator, UUID> { fun findAllByGoalTemplateIdOrderByDisplayOrderAsc(goalTemplateId: UUID): List<GoalTemplateIndicator> }
-interface ChildGoalRepository : JpaRepository<ChildGoal, UUID> { fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildGoal>; fun existsByChildIdAndTemplateIdAndStatus(childId: UUID, templateId: UUID, status: com.daycare.api.domain.ChildGoalStatus): Boolean }
+interface ChildGoalRepository : JpaRepository<ChildGoal, UUID> { fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildGoal>; fun existsByChildIdAndTemplateIdAndStatus(childId: UUID, templateId: UUID, status: com.daycare.api.domain.ChildGoalStatus): Boolean; fun findAllByStatus(status: com.daycare.api.domain.ChildGoalStatus): List<ChildGoal> }
 interface ChildGoalCheckInRepository : JpaRepository<ChildGoalCheckIn, UUID> { fun findAllByChildGoalIdOrderByCheckInDateAsc(childGoalId: UUID): List<ChildGoalCheckIn>; fun findByChildGoalIdAndIndicatorIdAndCheckInDate(childGoalId: UUID, indicatorId: UUID, checkInDate: LocalDate): ChildGoalCheckIn? }

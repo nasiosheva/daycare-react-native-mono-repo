@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
-import type { ChildListFilter } from "@daycare/api-client";
+import type { Child, ChildListFilter } from "@daycare/api-client";
 import type { ChildGender } from "@daycare/core";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useChildren } from "@/attendance/useAttendance";
 import { useCreateChild } from "@/children/useChildManagement";
@@ -13,7 +13,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate, isIsoDate } from "@/date-picker/date";
 import { ChildrenReportActions } from "@/document-export/ChildrenReportActions";
-import { ChildFilterSheet } from "@/children/ChildFilterSheet";
+import { ChildFilterTabs } from "@/children/ChildFilterTabs";
 
 export default function ChildrenScreen() {
   const router = useRouter();
@@ -23,8 +23,6 @@ export default function ChildrenScreen() {
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
   const canManage = isStaffAdmin && membership.active;
   const canOpenDetail = membership?.role === "STAFF_ADMIN" || membership?.role === "STAFF";
-  const [filterVisible, setFilterVisible] = useState(false);
-  const [listOpen, setListOpen] = useState(false);
   const [childFilter, setChildFilter] = useState<ChildListFilter>({});
   const children = useChildren(isStaffAdmin ? childFilter : {});
   const createChild = useCreateChild();
@@ -50,20 +48,15 @@ export default function ChildrenScreen() {
       Alert.alert(t("children.created"));
     } catch (error) { Alert.alert(t("children.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
-  const openChild = (childId: string) => { setListOpen(false); router.push({ pathname: "/child-detail", params: { childId } }); };
-  return <AppScreen showBottomNavigation={false} title={t("children.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    {isStaffAdmin && <View style={styles.actions}><Button variant="secondary" onPress={() => setFilterVisible(true)}>{t("children.filter")}</Button>{canManage && <Button onPress={() => setAddVisible(true)}>{t("children.add")}</Button>}</View>}
+  const openChild = (childId: string) => router.push({ pathname: "/child-detail", params: { childId} });
+  return <AppScreen showBottomNavigation={false} title={t("children.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton accessibilityLabel={t("children.add")} onPress={() => setAddVisible(true)}>+ {t("children.add")}</FloatingActionButton> : undefined}>
+    {isStaffAdmin && <ChildFilterTabs filter={childFilter} onChange={setChildFilter} />}
     {canOpenDetail && <ChildrenReportActions filter={childFilter} />}
-    {isStaffAdmin && (childFilter.branchId || childFilter.learningLevelId || childFilter.classroomId) && <AppText tone="muted">{t("children.filterActive")}</AppText>}
-    <NavigationCard accessibilityLabel={t("children.title")} onPress={() => setListOpen(true)}>
-      <AppText variant="h5">{t("children.title")}</AppText>
-      <AppText variant="bodySmall" tone="muted">{t("children.menuDescription")}</AppText>
-      <AppText tone={children.data?.length ? "default" : "muted"}>{children.isLoading ? t("common.loading") : children.data?.length ? t("children.countSummary", { count: children.data.length }) : t("children.empty")}</AppText>
-    </NavigationCard>
-    <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("children.title")}>
-      {children.data?.map((child) => <View key={child.id} style={styles.card}><AppText variant="h5">{child.fullName}</AppText><AppText tone="muted">{child.dateOfBirth}</AppText>{canOpenDetail && <Button variant="secondary" onPress={() => openChild(child.id)}>{t(canManage ? "children.edit" : "children.view")}</Button>}</View>)}
-      {!children.isLoading && children.data?.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
-    </BottomSheet>
+    <AppText variant="h5">{t("children.title")}</AppText>
+    <AppText variant="bodySmall" tone="muted">{t("children.menuDescription")}</AppText>
+    <AppText tone={children.data?.length ? "default" : "muted"}>{children.isFetching ? t("common.loading") : children.data?.length ? t("children.countSummary", { count: children.data.length }) : t("children.empty")}</AppText>
+    {children.isError && <Button variant="secondary" onPress={() => void children.refetch()}>{t("common.retry")}</Button>}
+    {children.isFetching ? <ShimmerList /> : children.data?.map((child) => <ChildListItem key={child.id} child={child} canOpenDetail={canOpenDetail} accessibilityLabel={t("children.view")} onPress={() => openChild(child.id)} />)}
     <BottomSheet
       visible={addVisible}
       onClose={closeAddChild}
@@ -78,8 +71,13 @@ export default function ChildrenScreen() {
       <GenderPicker value={gender} onChange={setGender} />
       <DatePicker placeholder={t("children.birthDate")} value={dateOfBirth} onChange={setDateOfBirth} maximumDate={formatIsoDate(new Date())} />
     </BottomSheet>
-    {isStaffAdmin && <ChildFilterSheet visible={filterVisible} filter={childFilter} onClose={() => setFilterVisible(false)} onApply={(filter) => { setChildFilter(filter); setFilterVisible(false); }} />}
   </AppScreen>;
 }
 
-const styles = StyleSheet.create({ actions: { flexDirection: "row", gap: spacing.sm }, card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface } });
+function ChildListItem({ child, canOpenDetail, accessibilityLabel, onPress }: { child: Child; canOpenDetail: boolean; accessibilityLabel: string; onPress: () => void }) {
+  const content = <><AppText variant="h5">{child.fullName}</AppText><AppText tone="muted">{child.dateOfBirth}</AppText></>;
+  if (!canOpenDetail) return <View style={styles.card}>{content}</View>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${accessibilityLabel}: ${child.fullName}`} onPress={onPress} style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>{content}</Pressable>;
+}
+
+const styles = StyleSheet.create({ card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, cardPressed: { opacity: 0.72 }, input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface } });

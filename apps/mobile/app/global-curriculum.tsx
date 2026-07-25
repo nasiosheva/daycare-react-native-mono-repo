@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -34,9 +34,8 @@ export default function GlobalCurriculumScreen() {
 
   return <AppScreen showBottomNavigation={false} title={t("globalCurriculum.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton accessibilityLabel={t("globalCurriculum.add")} onPress={() => setSheetOpen(true)}>+ {t("globalCurriculum.add")}</FloatingActionButton>}>
     <AppText tone="muted">{t("globalCurriculum.subtitle")}</AppText>
-    {programs.isLoading && <AppText>{t("common.loading")}</AppText>}
-    {programs.data?.map((program) => <View key={program.id} style={styles.card}><AppText variant="label">{program.name}</AppText>{program.description && <AppText tone="muted">{program.description}</AppText>}</View>)}
-    {!programs.isLoading && programs.data?.length === 0 && <AppText tone="muted">{t("globalCurriculum.empty")}</AppText>}
+    {programs.isFetching ? <ShimmerList /> : programs.data?.map((program) => <View key={program.id} style={styles.card}><AppText variant="label">{program.name}</AppText>{program.description && <AppText tone="muted">{program.description}</AppText>}</View>)}
+    {!programs.isFetching && programs.data?.length === 0 && <AppText tone="muted">{t("globalCurriculum.empty")}</AppText>}
     <BottomSheet visible={sheetOpen} onClose={closeSheet} closeAccessibilityLabel={t("common.close")} title={t("globalCurriculum.add")} negativeAction={{ label: t("common.cancel"), onPress: closeSheet }} positiveAction={{ label: t("common.save"), loading: createProgram.isPending, disabled: !name.trim(), onPress: () => void save() }}>
       <TextInput style={styles.input} placeholder={t("academic.programName")} value={name} onChangeText={setName} />
       <TextInput style={styles.input} placeholder={t("academic.description")} value={description} onChangeText={setDescription} multiline />

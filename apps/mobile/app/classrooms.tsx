@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -66,8 +66,9 @@ export default function ClassroomsScreen() {
 
     <BottomSheet visible={classroomsListOpen} onClose={() => setClassroomsListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("learning.classroom")}>
       {canManage && <Button onPress={openCreate}>{t("learning.addClassroom")}</Button>}
-      {classrooms.data?.map((classroom) => <ClassroomCard key={classroom.id} classroom={classroom} levelName={levels.data?.find((level) => level.id === classroom.learningLevelId)?.name} branchName={branches.data?.find((branch) => branch.id === classroom.branchId)?.name} periodName={periods.data?.find((period) => period.id === classroom.learningPeriodId)?.name} canManage={canManage} onEdit={() => openEdit(classroom)} onArchive={() => void archiveClassroom.mutateAsync(classroom.id)} />)}
-      {classrooms.data?.length === 0 && <AppText tone="muted">{t("learning.noClassrooms")}</AppText>}
+      {classrooms.isFetching && <ShimmerList />}
+      {!classrooms.isFetching && classrooms.data?.map((classroom) => <ClassroomCard key={classroom.id} classroom={classroom} levelName={levels.data?.find((level) => level.id === classroom.learningLevelId)?.name} branchName={branches.data?.find((branch) => branch.id === classroom.branchId)?.name} periodName={periods.data?.find((period) => period.id === classroom.learningPeriodId)?.name} canManage={canManage} onEdit={() => openEdit(classroom)} onArchive={() => void archiveClassroom.mutateAsync(classroom.id)} />)}
+      {!classrooms.isFetching && classrooms.data?.length === 0 && <AppText tone="muted">{t("learning.noClassrooms")}</AppText>}
     </BottomSheet>
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t(editingClassroomId ? "learning.editClassroom" : "learning.addClassroom")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t(editingClassroomId ? "common.save" : "learning.addClassroom"), loading: createClassroom.isPending || updateClassroom.isPending, onPress: () => void save() }}>
@@ -137,14 +138,16 @@ function ClassroomCard({ classroom, levelName, branchName, periodName, canManage
     </View>}
 
     <BottomSheet visible={programsOpen} onClose={() => setProgramsOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("learning.classroomPrograms")}>
-      {programs.data?.map((program) => <View key={program.id} style={styles.assignment}><View style={styles.assignmentContent}><AppText>{program.name}</AppText>{program.description && <AppText variant="bodySmall" tone="muted">{program.description}</AppText>}</View>{canManage && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.removeProgram")} onPress={() => void removeProgram.mutateAsync(program.id)} />}</View>)}
-      {programs.data?.length === 0 && <AppText tone="muted">{t("learning.noClassroomPrograms")}</AppText>}
+      {programs.isFetching && <ShimmerList variant="row" />}
+      {!programs.isFetching && programs.data?.map((program) => <View key={program.id} style={styles.assignment}><View style={styles.assignmentContent}><AppText>{program.name}</AppText>{program.description && <AppText variant="bodySmall" tone="muted">{program.description}</AppText>}</View>{canManage && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.removeProgram")} onPress={() => void removeProgram.mutateAsync(program.id)} />}</View>)}
+      {!programs.isFetching && programs.data?.length === 0 && <AppText tone="muted">{t("learning.noClassroomPrograms")}</AppText>}
       {canManage && classroom.active && <Button variant="secondary" onPress={openAddProgram}>{t("learning.addClassroomProgram")}</Button>}
     </BottomSheet>
 
     <BottomSheet visible={staffOpen} onClose={() => setStaffOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("learning.staff")}>
-      {staff.data?.map((assignment) => <View key={assignment.id} style={styles.assignment}><View style={styles.assignmentContent}><AppText variant="label">{assignment.displayName}</AppText><AppText variant="bodySmall" tone="muted">{assignmentRoleLabel(assignment.assignmentRole)}</AppText></View>{canManage && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.unassignStaff")} onPress={() => void unassign.mutateAsync(assignment.id)} />}</View>)}
-      {staff.data?.length === 0 && <AppText tone="muted">{t("learning.noStaff")}</AppText>}
+      {staff.isFetching && <ShimmerList variant="row" />}
+      {!staff.isFetching && staff.data?.map((assignment) => <View key={assignment.id} style={styles.assignment}><View style={styles.assignmentContent}><AppText variant="label">{assignment.displayName}</AppText><AppText variant="bodySmall" tone="muted">{assignmentRoleLabel(assignment.assignmentRole)}</AppText></View>{canManage && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.unassignStaff")} onPress={() => void unassign.mutateAsync(assignment.id)} />}</View>)}
+      {!staff.isFetching && staff.data?.length === 0 && <AppText tone="muted">{t("learning.noStaff")}</AppText>}
       {canManage && classroom.active && <Button variant="secondary" onPress={openAddStaff}>{t("learning.assignStaff")}</Button>}
     </BottomSheet>
 
