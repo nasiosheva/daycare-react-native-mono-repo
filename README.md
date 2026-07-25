@@ -352,7 +352,7 @@ The API client package includes an OpenAPI generation script. The running API pu
 
 The deployment workflow builds an immutable API JAR and Expo web export on a GitHub-hosted runner, uploads both to a per-commit release directory on the VPS, and atomically changes the active release before restarting the API. It deliberately does not install a self-hosted GitHub runner on the production VPS.
 
-Create a protected GitHub Environment named `production` and configure these values there before enabling the first deployment:
+Create a protected GitHub Environment named `production` and configure these values there before enabling the first deployment. Public build settings are preferably Environment Variables; the deployment workflow also accepts an Environment Secret with the same name when a value has been stored there instead.
 
 | Kind | Name | Purpose |
 | --- | --- | --- |
