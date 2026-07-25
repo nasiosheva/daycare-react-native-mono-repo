@@ -3,7 +3,7 @@ import { Alert, Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import type { CreateOvertimeChargeInput, OvertimeCharge } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -44,10 +44,10 @@ export default function OvertimeChargesScreen() {
 
   return <AppScreen showBottomNavigation={false} title={t("overtime.chargesTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={membership.active !== false ? <FloatingActionButton accessibilityLabel={t("overtime.addCharge")} onPress={openCreate}>+ {t("overtime.addCharge")}</FloatingActionButton> : undefined}>
     <AppText tone="muted">{t("overtime.chargesDescription")}</AppText>
-    {charges.isLoading && <AppText>{t("common.loading")}</AppText>}
+    {charges.isFetching && <ShimmerList />}
     {charges.isError && <Button variant="secondary" onPress={() => charges.refetch()}>{t("common.retry")}</Button>}
-    {charges.data?.map((charge) => <View key={charge.id} style={styles.card}><AppText variant="h5">{charge.childName}</AppText><AppText>{formatDate(charge.operationalDate)} · {charge.pickedUpAt} · {t("overtime.minutes", { count: charge.overtimeMinutes })}</AppText><AppText>{formatCurrency(charge.totalAmount)}</AppText><AppText tone="muted">{t("overtime.dueDate", { date: formatDate(charge.dueDate), status: t(`status.${charge.status}`) })}</AppText>{charge.status === "PENDING" && membership.active !== false && <View style={styles.actions}><Button variant="secondary" onPress={() => openEdit(charge)}>{t("common.edit")}</Button><Button variant="danger" loading={voidCharge.isPending} onPress={() => void cancel(charge)}>{t("overtime.voidCharge")}</Button></View>}</View>)}
-    {!charges.isLoading && charges.data?.length === 0 && <AppText tone="muted">{t("overtime.noCharges")}</AppText>}
+    {!charges.isFetching && charges.data?.map((charge) => <View key={charge.id} style={styles.card}><AppText variant="h5">{charge.childName}</AppText><AppText>{formatDate(charge.operationalDate)} · {charge.pickedUpAt} · {t("overtime.minutes", { count: charge.overtimeMinutes })}</AppText><AppText>{formatCurrency(charge.totalAmount)}</AppText><AppText tone="muted">{t("overtime.dueDate", { date: formatDate(charge.dueDate), status: t(`status.${charge.status}`) })}</AppText>{charge.status === "PENDING" && membership.active !== false && <View style={styles.actions}><Button variant="secondary" onPress={() => openEdit(charge)}>{t("common.edit")}</Button><Button variant="danger" loading={voidCharge.isPending} onPress={() => void cancel(charge)}>{t("overtime.voidCharge")}</Button></View>}</View>)}
+    {!charges.isFetching && charges.data?.length === 0 && <AppText tone="muted">{t("overtime.noCharges")}</AppText>}
     <BottomSheet visible={Boolean(form)} onClose={() => setForm(null)} closeAccessibilityLabel={t("common.close")} title={form?.charge ? t("overtime.editCharge") : t("overtime.addCharge")} negativeAction={{ label: t("common.cancel"), onPress: () => setForm(null) }} positiveAction={{ label: t("common.save"), loading: create.isPending || update.isPending, disabled: !form?.childId, onPress: () => void submit() }}>
       <AppText variant="label">{t("overtime.child")}</AppText>
       {children.data?.map((child) => <Pressable key={child.id} disabled={Boolean(form?.charge)} onPress={() => setForm((current) => current ? { ...current, childId: child.id } : current)} style={({ pressed }) => [styles.child, form?.childId === child.id && styles.selectedChild, pressed && styles.pressed]}><AppText>{child.fullName}</AppText></Pressable>)}

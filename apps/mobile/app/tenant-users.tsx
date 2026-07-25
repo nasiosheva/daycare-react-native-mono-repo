@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, BackButton, BottomSheet, Button, colors, PasswordInput, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, PasswordInput, radius, spacing } from "@daycare/ui";
 import type { Role } from "@daycare/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
@@ -89,9 +89,9 @@ export default function TenantUsersScreen() {
       {branches.data?.map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
     </ScrollView>
     <AppText variant="heading">{t("tenantUsers.accounts")}</AppText>
-    {tenantUsers.isLoading && <AppText>{t("tenantUsers.loading")}</AppText>}
+    {tenantUsers.isFetching && <ShimmerList variant="row" />}
     {tenantUsers.isError && <Button variant="secondary" onPress={() => tenantUsers.refetch()}>{t("common.retry")}</Button>}
-    {tenantUsers.data?.map((item) => <View key={item.id} style={styles.user}>
+    {!tenantUsers.isFetching && tenantUsers.data?.map((item) => <View key={item.id} style={styles.user}>
       <AppText variant="label">{item.displayName ?? item.email ?? t("common.noData")}</AppText>
       <AppText tone="muted">{t(roleKey(item.role))} · {t(`status.${item.status}` as Parameters<typeof t>[0])}{item.role === "STAFF" ? ` · ${branches.data?.find((branch) => branch.id === item.branchId)?.name ?? t("tenantUsers.noBranch")}` : ""}</AppText>
       {item.role === "STAFF" && <AppText tone="muted">{item.canManageChildPrograms ? t("tenantUsers.programPermissionEnabled") : t("tenantUsers.programPermissionDisabled")}</AppText>}

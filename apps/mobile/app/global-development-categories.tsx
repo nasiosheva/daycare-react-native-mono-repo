@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, FloatingActionButton, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
@@ -48,9 +48,9 @@ export default function GlobalDevelopmentCategoriesScreen() {
 
   return <AppScreen showBottomNavigation={false} title={t("development.globalCategories")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton accessibilityLabel={t("development.addCategory")} onPress={() => setAddVisible(true)}>+ {t("development.addCategory")}</FloatingActionButton>}>
     <AppText tone="muted">{t("development.globalCategoriesSubtitle")}</AppText>
-    {categories.isLoading && <AppText>{t("development.loading")}</AppText>}
+    {categories.isFetching && <ShimmerList />}
     {categories.isError && <AppText tone="danger">{t("home.tenantsError")}</AppText>}
-    {categories.data?.map((item) => <View key={item.id} style={styles.item}>
+    {!categories.isFetching && categories.data?.map((item) => <View key={item.id} style={styles.item}>
       <AppText variant="label">{item.name}</AppText>
       <AppText tone="muted">{item.active ? t("development.categoryActive") : t("development.categoryInactive")}</AppText>
       <View style={styles.actions}>
@@ -59,7 +59,7 @@ export default function GlobalDevelopmentCategoriesScreen() {
         <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("development.deleteCategory")} disabled={deleteCategory.isPending} onPress={() => setDeletingCategory(item)} />
       </View>
     </View>)}
-    {!categories.isLoading && categories.data?.length === 0 && <AppText tone="muted">{t("development.noCategories")}</AppText>}
+    {!categories.isFetching && categories.data?.length === 0 && <AppText tone="muted">{t("development.noCategories")}</AppText>}
     <BottomSheet visible={addVisible} onClose={() => setAddVisible(false)} closeAccessibilityLabel={t("common.close")} title={t("development.addCategory")} negativeAction={{ label: t("common.cancel"), onPress: () => setAddVisible(false) }} positiveAction={{ label: t("common.save"), loading: createCategory.isPending, disabled: !name.trim(), onPress: () => void create() }}><TextInput style={styles.input} value={name} onChangeText={setName} maxLength={120} placeholder={t("development.categoryName")} /></BottomSheet>
     <BottomSheet visible={Boolean(editingCategory)} onClose={closeEdit} closeAccessibilityLabel={t("common.close")} title={t("development.editCategory")} negativeAction={{ label: t("common.cancel"), onPress: closeEdit }} positiveAction={{ label: t("common.save"), loading: renameCategory.isPending, disabled: !name.trim(), onPress: () => void saveEdit() }}><TextInput style={styles.input} value={name} onChangeText={setName} maxLength={120} placeholder={t("development.categoryName")} /></BottomSheet>
     <BottomSheet visible={Boolean(deletingCategory)} onClose={closeDeleteSheet} closeAccessibilityLabel={t("common.close")} title={t("development.deleteCategory")} negativeAction={{ label: t("common.cancel"), onPress: closeDeleteSheet }} positiveAction={{ label: t("development.deleteCategory"), variant: "danger", loading: deleteCategory.isPending, onPress: () => void performDelete() }}><AppText tone="muted">{t("development.deleteCategoryConfirm")}</AppText></BottomSheet>

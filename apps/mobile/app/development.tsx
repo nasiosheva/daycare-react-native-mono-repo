@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import type { ChildListFilter } from "@daycare/api-client";
-import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { can } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
@@ -92,9 +92,9 @@ function DevelopmentHistory({ entries }: { entries: ReturnType<typeof useDevelop
   const groups = groupDevelopmentEntries(entries.data ?? []);
   return <View style={styles.section}>
     <AppText variant="heading">{t("development.history")}</AppText>
-    {entries.isLoading && <AppText tone="muted">{t("development.loading")}</AppText>}
+    {entries.isFetching && <ShimmerList />}
     {entries.isError && <Button variant="secondary" onPress={() => entries.refetch()}>{t("common.retry")}</Button>}
-    {groups.map((group) => <View key={group.category} style={styles.categoryGroup}>
+    {!entries.isFetching && groups.map((group) => <View key={group.category} style={styles.categoryGroup}>
       <AppText variant="label">{group.categoryName}</AppText>
       {group.entries.map((entry) => <View key={entry.id} style={styles.entry}>
         <AppText variant="label">{entry.title}</AppText>
@@ -102,7 +102,7 @@ function DevelopmentHistory({ entries }: { entries: ReturnType<typeof useDevelop
         <AppText variant="caption" tone="muted">{formatDateTime(entry.recordedAt)} · {entry.recordedBy}</AppText>
       </View>)}
     </View>)}
-    {!entries.isLoading && entries.data?.length === 0 && <AppText tone="muted">{t("development.empty")}</AppText>}
+    {!entries.isFetching && entries.data?.length === 0 && <AppText tone="muted">{t("development.empty")}</AppText>}
   </View>;
 }
 

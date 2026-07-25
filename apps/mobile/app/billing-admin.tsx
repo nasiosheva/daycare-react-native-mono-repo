@@ -3,7 +3,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from "react
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useInvoices, useMarkInvoicePaid, useServicePlans } from "@/booking/useBooking";
 import { useAuth } from "@/auth/AuthProvider";
@@ -150,29 +150,32 @@ export default function BillingAdminScreen() {
     <BottomSheet visible={listSheet === "plans"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.activePlans")}>
       <AppText tone="muted">{t("billing.activePlansDescription")}</AppText>
       {canManage && <Button onPress={openCreatePlan}>{t("billing.createPlan")}</Button>}
-      {plans.data?.map((plan) => <View key={plan.id} style={styles.card}>
+      {plans.isFetching && <ShimmerList />}
+      {!plans.isFetching && plans.data?.map((plan) => <View key={plan.id} style={styles.card}>
         <AppText variant="label">{plan.name}</AppText>
         <AppText>{t(servicePlanTypeKey(plan.type))} · {formatCurrency(plan.price)}</AppText>
         <PlanExtras type={plan.type} creditCount={plan.creditCount} unusedCreditPolicy={plan.unusedCreditPolicy} dailyCapacity={plan.dailyCapacity} t={t} />
       </View>)}
-      {plans.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+      {!plans.isFetching && plans.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "templates"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.templates")}>
       <AppText tone="muted">{t("billing.templatesDescription")}</AppText>
       {canManage && <Button onPress={openCreateTemplate}>{t("billing.createTemplate")}</Button>}
-      {templates.data?.map((template) => <View key={template.id} style={styles.card}>
+      {templates.isFetching && <ShimmerList />}
+      {!templates.isFetching && templates.data?.map((template) => <View key={template.id} style={styles.card}>
         <AppText variant="label">{template.name}</AppText>
         <AppText tone="muted">{t(servicePlanTypeKey(template.type))}{template.suggestedPrice ? ` · ${formatCurrency(template.suggestedPrice)}` : ""}</AppText>
         <PlanExtras type={template.type} creditCount={template.creditCount} unusedCreditPolicy={template.unusedCreditPolicy} dailyCapacity={template.dailyCapacity} t={t} />
         {canManage && <View style={styles.row}><Button variant="secondary" onPress={() => openUseTemplate(template.id)}>{t("billing.useTemplate")}</Button>{template.source === "TENANT" && <Button variant="secondary" onPress={() => openEditTemplate(template.id)}>{t("billing.editTemplate")}</Button>}{template.source === "TENANT" && <Button variant="danger" loading={deleteTemplate.isPending} onPress={() => void deleteTemplate.mutateAsync(template.id)}>{t("billing.deleteTemplate")}</Button>}</View>}
       </View>)}
-      {templates.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+      {!templates.isFetching && templates.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "capacity"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.branchCapacity")}>
       <AppText tone="muted">{t("billing.branchCapacityDescription")}</AppText>
-      {branches.data?.filter((branch) => branch.active).map((branch) => { const configured = capacities.data?.find((item) => item.branchId === branch.id)?.dailyCapacity; return <View key={branch.id} style={styles.card}>
+      {(branches.isFetching || capacities.isFetching) && <ShimmerList />}
+      {!branches.isFetching && !capacities.isFetching && branches.data?.filter((branch) => branch.active).map((branch) => { const configured = capacities.data?.find((item) => item.branchId === branch.id)?.dailyCapacity; return <View key={branch.id} style={styles.card}>
         <AppText variant="label">{branch.name}</AppText>
         <AppText tone="muted">{configured != null ? t("billing.planCapacitySummary", { count: configured }) : t("learning.unlimited")}</AppText>
         {canManage && <Button variant="secondary" onPress={() => openCapacity(branch.id, configured)}>{t("common.edit")}</Button>}
@@ -183,7 +186,8 @@ export default function BillingAdminScreen() {
       <AppText tone="muted">{t("billing.discountsDescription")}</AppText>
       <View style={styles.row}>{plans.data?.map((plan) => <Button key={plan.id} variant={plan.id === selectedPlanId ? "primary" : "secondary"} onPress={() => setSelectedPlanId(plan.id)}>{plan.name}</Button>)}</View>
       {canManage && selectedPlanId && <Button variant="secondary" onPress={openCreateDiscount}>{t("billing.createDiscount")}</Button>}
-      {discounts.data?.map((item) => <View key={item.id} style={styles.card}>
+      {discounts.isFetching && <ShimmerList />}
+      {!discounts.isFetching && discounts.data?.map((item) => <View key={item.id} style={styles.card}>
         <AppText variant="label">{item.name}{item.promoCode ? ` · ${item.promoCode}` : ""}</AppText>
         <AppText tone="muted">{item.type === "PERCENTAGE" ? `${item.value}%` : formatCurrency(item.value)} · {item.active ? t("status.ACTIVE") : t("billing.inactive")}</AppText>
         {item.startsOn && item.endsOn && <AppText variant="caption" tone="muted">{t("billing.discountValidityRange", { start: formatDate(item.startsOn), end: formatDate(item.endsOn) })}</AppText>}
@@ -192,19 +196,20 @@ export default function BillingAdminScreen() {
         {item.usageLimit != null && <AppText variant="caption" tone="muted">{t("billing.discountUsageLimit", { count: item.usageLimit })}</AppText>}
         {canManage && item.active && selectedPlanId && <Button variant="danger" loading={deactivateDiscount.isPending} onPress={() => void deactivateDiscount.mutateAsync({ planId: selectedPlanId, discountId: item.id })}>{t("billing.deactivate")}</Button>}
       </View>)}
-      {selectedPlanId && discounts.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+      {!discounts.isFetching && selectedPlanId && discounts.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "invoices"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.pendingInvoices")}>
       <AppText tone="muted">{t("billing.pendingInvoicesDescription")}</AppText>
-      {pendingInvoices.map((invoice) => <View key={invoice.id} style={styles.card}>
+      {invoices.isFetching && <ShimmerList />}
+      {!invoices.isFetching && pendingInvoices.map((invoice) => <View key={invoice.id} style={styles.card}>
         <AppText variant="label">{invoice.invoiceNumber} · {invoice.childName}</AppText>
         <AppText tone="muted">{t("staffAdmin.parent")}: {invoice.parentName ?? invoice.parentEmail ?? t("common.noData")}</AppText>
         <AppText>{formatCurrency(invoice.totalAmount)} · {t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>
         {invoice.discountName && <AppText variant="caption" tone="muted">{t("billing.invoiceDiscountApplied", { name: invoice.discountName, amount: formatCurrency(invoice.discountAmount) })}</AppText>}
         {canManage && <Button loading={markPaid.isPending} onPress={() => void markPaid.mutateAsync(invoice.id)}>{t("billing.markPaid")}</Button>}
       </View>)}
-      {pendingInvoices.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+      {!invoices.isFetching && pendingInvoices.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     </BottomSheet>
 
     <BottomSheet visible={Boolean(capacityBranchId)} onClose={() => setCapacityBranchId(undefined)} closeAccessibilityLabel={t("common.close")} title={t("billing.branchCapacity")} negativeAction={{ label: t("common.cancel"), onPress: () => setCapacityBranchId(undefined) }} positiveAction={{ label: t("billing.saveCapacity"), loading: setBranchCapacity.isPending, onPress: () => void saveCapacity() }}><TextInput style={styles.input} placeholder={t("billing.dailyCapacity")} keyboardType="numeric" value={capacity} onChangeText={setCapacity} /></BottomSheet>

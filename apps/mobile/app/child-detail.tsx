@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ChildGender } from "@daycare/core";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAddChildProgram, useAssignChildStaff, useChildProfile, useDeactivateChild, useRemoveChildProgram, useUnassignChildStaff, useUpdateChild } from "@/children/useChildManagement";
@@ -35,6 +35,7 @@ export default function ChildDetailScreen() {
   const unassignStaff = useUnassignChildStaff(childId ?? "");
   const staff = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: membership?.role === "STAFF_ADMIN" && Boolean(childId) });
   const classrooms = useQuery({ queryKey: ["classrooms", organizationId], queryFn: () => api.classrooms(), enabled: Boolean(childId && membership) });
+  const academicYears = useQuery({ queryKey: ["academic-years", organizationId], queryFn: () => api.academicYears(), enabled: Boolean(childId && membership) });
   const placements = useQuery({ queryKey: ["child-placements", organizationId, childId], queryFn: () => api.childPlacements(childId!), enabled: Boolean(childId && membership) });
   const placeChild = useMutation({ mutationFn: (input: { classroomId: string; startsOn?: string }) => api.placeChild(childId!, input), onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["child-placements", organizationId, childId] }); void queryClient.invalidateQueries({ queryKey: ["children", organizationId] }); } });
   const [firstName, setFirstName] = useState("");
@@ -55,6 +56,8 @@ export default function ChildDetailScreen() {
   const childBranchId = childProfile.data?.child.branchId;
   const assignableStaff = useMemo(() => staff.data?.filter((user) => user.userId && user.status === "ACTIVE" && (user.role === "STAFF_ADMIN" || (user.role === "STAFF" && user.branchId === childBranchId))) ?? [], [staff.data, childBranchId]);
   const assignmentRoleLabel = (role: (typeof assignmentRoles)[number]) => role === "NURSE" ? t("children.nurse") : role === "MISS" ? t("children.miss") : t("children.staff");
+  const currentPlacement = placements.data?.find((placement) => !placement.endedOn) ?? null;
+  const academicYearName = (id?: string | null) => academicYears.data?.find((year) => year.id === id)?.name;
 
   useEffect(() => {
     if (!childProfile.data) return;
@@ -119,20 +122,23 @@ export default function ChildDetailScreen() {
 
     <BottomSheet visible={placementsOpen} onClose={() => setPlacementsOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("learning.placements")}>
       {canPlaceChild && <Button variant="secondary" onPress={() => { setPlacementsOpen(false); setSheet("placement"); }}>{t("learning.placeChild")}</Button>}
-      {placements.data?.map((placement) => <View key={placement.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{placement.learningLevelName ?? "–"} · {placement.classroomName}</AppText><AppText variant="bodySmall" tone="muted">{placement.startsOn}{placement.endedOn ? ` – ${placement.endedOn}` : ""}</AppText></View></View>)}
-      {placements.data?.length === 0 && <AppText tone="muted">{t("learning.noPlacements")}</AppText>}
+      {placements.isFetching && <ShimmerList variant="row" />}
+      {!placements.isFetching && placements.data?.map((placement) => <View key={placement.id} style={styles.item}><View style={styles.itemContent}><View style={styles.row}><AppText variant="label">{placement.learningLevelName ?? "–"} · {placement.classroomName}</AppText>{!placement.endedOn && <AppText variant="caption" style={styles.activeBadge}>{t("learning.active")}</AppText>}</View><AppText variant="bodySmall" tone="muted">{placement.startsOn}{placement.endedOn ? ` – ${placement.endedOn}` : ""}{academicYearName(placement.learningPeriodId) ? ` · ${academicYearName(placement.learningPeriodId)}` : ""}</AppText></View></View>)}
+      {!placements.isFetching && placements.data?.length === 0 && <AppText tone="muted">{t("learning.noPlacements")}</AppText>}
     </BottomSheet>
 
     <BottomSheet visible={programsOpen} onClose={() => setProgramsOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("children.programs")}>
       <Button variant="secondary" onPress={() => { setProgramsOpen(false); setSheet("program"); }}>{t("children.addProgram")}</Button>
-      {childProfile.data?.programs.map((program) => <View key={program.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{program.name}</AppText>{program.description && <AppText variant="bodySmall" tone="muted">{program.description}</AppText>}</View><Button variant="danger" onPress={() => void removeProgram.mutateAsync(program.id)}>{t("children.remove")}</Button></View>)}
-      {childProfile.data?.programs.length === 0 && <AppText tone="muted">{t("children.noPrograms")}</AppText>}
+      {childProfile.isFetching && <ShimmerList variant="row" />}
+      {!childProfile.isFetching && childProfile.data?.programs.map((program) => <View key={program.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{program.name}</AppText>{program.description && <AppText variant="bodySmall" tone="muted">{program.description}</AppText>}</View><Button variant="danger" onPress={() => void removeProgram.mutateAsync(program.id)}>{t("children.remove")}</Button></View>)}
+      {!childProfile.isFetching && childProfile.data?.programs.length === 0 && <AppText tone="muted">{t("children.noPrograms")}</AppText>}
     </BottomSheet>
 
     <BottomSheet visible={staffListOpen} onClose={() => setStaffListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("children.staffAssignments")}>
       <Button variant="secondary" onPress={() => { setStaffListOpen(false); setSheet("staff"); }}>{t("children.assign")}</Button>
-      {childProfile.data?.staffAssignments.map((assignment) => <View key={assignment.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{assignment.displayName}</AppText><AppText variant="bodySmall" tone="muted">{assignmentRoleLabel(assignment.assignmentRole)} · {assignment.email}</AppText></View><Button variant="danger" onPress={() => void unassignStaff.mutateAsync(assignment.id)}>{t("children.unassign")}</Button></View>)}
-      {childProfile.data?.staffAssignments.length === 0 && <AppText tone="muted">{t("children.noStaff")}</AppText>}
+      {childProfile.isFetching && <ShimmerList variant="row" />}
+      {!childProfile.isFetching && childProfile.data?.staffAssignments.map((assignment) => <View key={assignment.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{assignment.displayName}</AppText><AppText variant="bodySmall" tone="muted">{assignmentRoleLabel(assignment.assignmentRole)} · {assignment.email}</AppText></View><Button variant="danger" onPress={() => void unassignStaff.mutateAsync(assignment.id)}>{t("children.unassign")}</Button></View>)}
+      {!childProfile.isFetching && childProfile.data?.staffAssignments.length === 0 && <AppText tone="muted">{t("children.noStaff")}</AppText>}
     </BottomSheet>
     <BottomSheet visible={sheet === "edit"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("children.edit")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("children.save"), loading: updateChild.isPending, onPress: () => void saveChild() }}>
       <TextInput style={styles.input} placeholder={t("children.firstName")} value={firstName} onChangeText={setFirstName} />
@@ -142,8 +148,11 @@ export default function ChildDetailScreen() {
       <DatePicker placeholder={t("children.birthDate")} value={dateOfBirth} onChange={setDateOfBirth} maximumDate={formatIsoDate(new Date())} />
     </BottomSheet>
     <BottomSheet visible={sheet === "placement"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("learning.placeChild")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("learning.placeChild"), loading: placeChild.isPending, disabled: !classroomId, onPress: () => { if (!classroomId) return; void placeChild.mutateAsync({ classroomId, startsOn: placementStart || undefined }).then((placement) => { if (placement.ageGuidanceWarning) Alert.alert(t("learning.ageGuidance")); setClassroomId(null); setPlacementStart(""); setSheet(null); }).catch((error: unknown) => Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"))); } }}>
+      <AppText tone="muted">{currentPlacement ? t("learning.currentPlacementContext", { level: currentPlacement.learningLevelName ?? "–", classroom: currentPlacement.classroomName }) : t("learning.noCurrentPlacement")}</AppText>
+      <AppText variant="label">{t("learning.selectClassroom")}</AppText>
       <View style={styles.options}>{classrooms.data?.filter((classroom) => classroom.active).map((classroom) => <Button key={classroom.id} variant={classroomId === classroom.id ? "primary" : "secondary"} onPress={() => setClassroomId(classroom.id)}>{classroom.name}</Button>)}</View>
       <DatePicker placeholder={t("learning.startDate")} value={placementStart} onChange={setPlacementStart} onClear={() => setPlacementStart("")} clearAccessibilityLabel={t("common.clear")} />
+      {currentPlacement && <AppText variant="caption" tone="muted">{t("learning.placeChildWarning")}</AppText>}
     </BottomSheet>
     <BottomSheet visible={sheet === "program"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("children.addProgram")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("children.addProgram"), loading: addProgram.isPending, disabled: !programName.trim(), onPress: () => void saveProgram() }}>
       <TextInput style={styles.input} placeholder={t("children.programName")} value={programName} onChangeText={setProgramName} />
@@ -163,4 +172,6 @@ const styles = StyleSheet.create({
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   item: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
   itemContent: { flex: 1, gap: spacing.xs },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  activeBadge: { color: colors.primary, fontWeight: "700" },
 });

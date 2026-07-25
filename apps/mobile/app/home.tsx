@@ -4,7 +4,7 @@ import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AppText, BottomSheet, Button, colors, NavigationCard, radius, spacing } from "@daycare/ui";
+import { AppText, BottomSheet, Button, ShimmerList, colors, NavigationCard, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren } from "@/attendance/useAttendance";
 import { useBookings, useEntitlements, useInvoices } from "@/booking/useBooking";
@@ -59,15 +59,15 @@ function StaffHome({ displayName, organizationName, isSimulationSession, managed
     <View style={styles.staffToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.STAFF")}</AppText></View><Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable></View>
     {isSimulationSession && <AppText variant="caption" tone="muted">{t("home.simulation")}</AppText>}
     <AppText variant="heading">{t("home.managedChildren")}</AppText>
-    {managedChildren.isLoading && <AppText tone="muted">{t("children.loading")}</AppText>}
-    {managedChildren.data?.map((child) => {
+    {managedChildren.isFetching && <ShimmerList variant="tile" />}
+    {!managedChildren.isFetching && managedChildren.data?.map((child) => {
       const tasks = tasksByChildId.get(child.id);
       return <NavigationCard key={child.id} accessibilityLabel={t("home.openDailyTasks", { name: child.fullName })} onPress={() => router.push({ pathname: "/development", params: { childId: child.id } })}>
         <AppText variant="h5">{child.fullName}</AppText>
         {!tasks || tasks.isLoading ? <AppText tone="muted">{t("home.dailyStatusLoading")}</AppText> : tasks.isError ? <AppText tone="danger">{t("home.dailyStatusUnavailable")}</AppText> : <><AppText tone={tasks.developmentRecorded ? "muted" : "danger"}>{t(tasks.developmentRecorded ? "home.dailyDevelopmentDone" : "home.dailyDevelopmentPending")}</AppText>{tasks.activeGoalCount === 0 ? <AppText variant="caption" tone="muted">{t("home.noActiveGoals")}</AppText> : tasks.pendingGoalNames.length > 0 ? <AppText variant="caption" tone="danger">{t("home.dailyGoalsPending", { names: tasks.pendingGoalNames.join(", ") })}</AppText> : <AppText variant="caption" tone="muted">{t("home.dailyGoalsDone")}</AppText>}</>}
       </NavigationCard>;
     })}
-    {!managedChildren.isLoading && managedChildren.data?.length === 0 && <AppText tone="muted">{t("home.noManagedChildren")}</AppText>}
+    {!managedChildren.isFetching && managedChildren.data?.length === 0 && <AppText tone="muted">{t("home.noManagedChildren")}</AppText>}
   </View></AppScreen>;
 }
 
@@ -79,16 +79,16 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations, isSim
   const entitlements = useEntitlements(canLoadData && hasDaycareOperations);
   const invoices = useInvoices(canLoadData && hasDaycareOperations);
   const summary = createParentHomeSummary(children.data ?? [], entitlements.data ?? [], invoices.data ?? []);
-  const childrenUnavailable = isSimulationSession || children.isLoading || children.isError;
-  const servicesUnavailable = hasDaycareOperations && (entitlements.isLoading || entitlements.isError);
-  const paymentsUnavailable = isSimulationSession || invoices.isLoading || invoices.isError;
+  const childrenUnavailable = isSimulationSession || children.isFetching || children.isError;
+  const servicesUnavailable = hasDaycareOperations && (entitlements.isFetching || entitlements.isError);
+  const paymentsUnavailable = isSimulationSession || invoices.isFetching || invoices.isError;
 
   return <AppScreen><View style={styles.content}>
     <AppText variant="title">{t("home.greeting", { name: displayName })}</AppText>
     <AppText tone="muted">{organizationName} · {t("role.PARENT")}</AppText>
     {isSimulationSession && <AppText variant="caption" tone="muted">{t("home.simulation")}</AppText>}
     <SummarySection title={t("home.parentChildren")}>
-      {!isSimulationSession && children.isLoading && <AppText tone="muted">{t("home.parentSummaryLoading")}</AppText>}
+      {!isSimulationSession && children.isFetching && <ShimmerList />}
       {!isSimulationSession && children.isError && <Button variant="secondary" onPress={() => children.refetch()}>{t("common.retry")}</Button>}
       {!childrenUnavailable && summary.children.map(({ child, activeEntitlements }) => <View key={child.id} style={styles.parentCard}>
         <AppText variant="heading">{child.fullName}</AppText>
@@ -105,7 +105,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations, isSim
       {!childrenUnavailable && summary.children.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
     </SummarySection>
     {hasDaycareOperations && <SummarySection title={t("home.parentPayments")}>
-      {!isSimulationSession && invoices.isLoading && <AppText tone="muted">{t("home.parentSummaryLoading")}</AppText>}
+      {!isSimulationSession && invoices.isFetching && <ShimmerList />}
       {!isSimulationSession && invoices.isError && <Button variant="secondary" onPress={() => invoices.refetch()}>{t("common.retry")}</Button>}
       {!paymentsUnavailable && summary.actionableInvoices.map((invoice) => <View key={invoice.id} style={styles.parentCard}>
         <AppText variant="heading">{invoice.invoiceNumber}</AppText>
@@ -167,9 +167,9 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, i
   const unreadNotificationBadgeLabel = unreadNotificationBadge(unreadNotificationsCount);
   const unreadNotificationsLabel = unreadNotificationBadgeLabel ? t("notifications.unreadCount", { count: unreadNotificationsCount }) : t("notifications.title");
   const summary = createStaffAdminSummary({ children: children.data ?? [], users: users.data ?? [], pendingBookings: pendingBookings.data ?? [], pendingEnrollments: pendingEnrollments.data ?? [], invoices: invoices.data ?? [], entitlements: entitlements.data ?? [] });
-  const operationalUnavailable = isSimulationSession || children.isLoading || users.isLoading || children.isError || users.isError;
-  const financialUnavailable = isSimulationSession || pendingBookings.isLoading || invoices.isLoading || entitlements.isLoading || pendingBookings.isError || invoices.isError || entitlements.isError;
-  const approvalsUnavailable = isSimulationSession || pendingBookings.isLoading || pendingEnrollments.isLoading || pendingBookings.isError || pendingEnrollments.isError;
+  const operationalUnavailable = isSimulationSession || children.isFetching || users.isFetching || children.isError || users.isError;
+  const financialUnavailable = isSimulationSession || pendingBookings.isFetching || invoices.isFetching || entitlements.isFetching || pendingBookings.isError || invoices.isError || entitlements.isError;
+  const approvalsUnavailable = isSimulationSession || pendingBookings.isFetching || pendingEnrollments.isFetching || pendingBookings.isError || pendingEnrollments.isError;
 
   return <AppScreen><View style={styles.content}>
     <View style={styles.staffAdminToolbar}>
@@ -199,17 +199,18 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, i
 
     <NavigationCard accessibilityLabel={t("home.branchSummary")} onPress={() => setBranchSummaryOpen(true)}>
       <AppText variant="h5">{t("home.branchSummary")}</AppText>
-      <AppText tone={activeBranches.length ? "default" : "muted"}>{branches.isLoading ? t("common.loading") : activeBranches.length ? t("home.branchSummaryCount", { count: activeBranches.length }) : t("common.noData")}</AppText>
+      <AppText tone={activeBranches.length ? "default" : "muted"}>{branches.isFetching ? t("common.loading") : activeBranches.length ? t("home.branchSummaryCount", { count: activeBranches.length }) : t("common.noData")}</AppText>
     </NavigationCard>
     <BottomSheet visible={branchSummaryOpen} onClose={() => setBranchSummaryOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("home.branchSummary")}>
-      {branchSummaries.map((item) => <View key={item.branch.id} style={styles.branchCard}>
+      {(branches.isFetching || capacities.isFetching || children.isFetching || users.isFetching || pendingBookings.isFetching || pendingEnrollments.isFetching || invoices.isFetching) && <ShimmerList />}
+      {!branches.isFetching && !capacities.isFetching && !children.isFetching && !users.isFetching && !pendingBookings.isFetching && !pendingEnrollments.isFetching && !invoices.isFetching && branchSummaries.map((item) => <View key={item.branch.id} style={styles.branchCard}>
         <AppText variant="heading">{item.branch.name}</AppText>
         <AppText tone="muted">{item.capacity != null ? t("home.branchChildrenWithCapacity", { count: item.childrenCount, capacity: item.capacity }) : t("home.branchChildrenNoCapacity", { count: item.childrenCount })}</AppText>
         <AppText tone="muted">{t("home.branchStaffSummary", { count: item.staffCount })}</AppText>
         <AppText tone={item.pendingApprovals > 0 ? "danger" : "muted"}>{t("home.branchApprovalsSummary", { count: item.pendingApprovals })}</AppText>
         <AppText tone={item.pendingInvoices > 0 ? "danger" : "muted"}>{t("home.branchInvoicesSummary", { count: item.pendingInvoices })}</AppText>
       </View>)}
-      {activeBranches.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+      {!branches.isFetching && activeBranches.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     </BottomSheet>
   </View></AppScreen>;
 }
@@ -237,10 +238,10 @@ function PlatformAdminHome() {
     <AppText tone="muted">{t("home.platformSubtitle")}</AppText>
     <Button variant="secondary" onPress={() => router.push("/global-curriculum")}>{t("globalCurriculum.menu")}</Button>
     <Button variant="secondary" onPress={() => router.push("/global-development-categories")}>{t("development.globalCategories")}</Button>
-    {tenants.isLoading && <AppText>{t("home.tenantsLoading")}</AppText>}
+    {tenants.isFetching && <ShimmerList />}
     {tenants.isError && <AppText tone="danger">{t("home.tenantsError")}</AppText>}
-    <TenantSection title={t("home.activeTenants")} tenants={activeTenants} emptyMessage={t("home.noActiveTenants")} formatCurrency={formatCurrency} t={t} />
-    <TenantSection title={t("home.pendingPayments")} tenants={pendingTenants} emptyMessage={t("home.noPendingPayments")} formatCurrency={formatCurrency} t={t} />
+    {!tenants.isFetching && <><TenantSection title={t("home.activeTenants")} tenants={activeTenants} emptyMessage={t("home.noActiveTenants")} formatCurrency={formatCurrency} t={t} />
+    <TenantSection title={t("home.pendingPayments")} tenants={pendingTenants} emptyMessage={t("home.noPendingPayments")} formatCurrency={formatCurrency} t={t} /></>}
   </View></AppScreen>;
 }
 

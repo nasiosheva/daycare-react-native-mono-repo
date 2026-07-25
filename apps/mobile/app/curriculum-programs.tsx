@@ -3,7 +3,7 @@ import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -44,14 +44,14 @@ export default function CurriculumProgramsScreen() {
     <AppText variant="h5">{t("academic.program")}</AppText>
     <AppText variant="bodySmall" tone="muted">{t("academic.addProgramDescription")}</AppText>
     <TextInput style={styles.input} placeholder={t("academic.searchPrograms")} value={search} onChangeText={setSearch} />
-    {programs.isLoading && <AppText tone="muted">{t("common.loading")}</AppText>}
+    {programs.isFetching && <ShimmerList />}
     {programs.isError && <Button variant="secondary" onPress={() => programs.refetch()}>{t("common.retry")}</Button>}
-    {programs.data?.map((program) => <View key={program.id} style={styles.card}>
+    {!programs.isFetching && programs.data?.map((program) => <View key={program.id} style={styles.card}>
       <AppText variant="label">{program.name}</AppText>
       {program.description ? <AppText tone="muted">{program.description}</AppText> : null}
       <AppText variant="caption" tone="muted">{periods.data?.find((period) => period.id === program.academicYearId)?.name ?? t("common.noData")}{program.source === "GLOBAL" ? ` · ${t("globalCurriculum.global")}` : ""}</AppText>
     </View>)}
-    {!programs.isLoading && !programs.isError && programs.data?.length === 0 && <AppText tone="muted">{t("academic.noPrograms")}</AppText>}
+    {!programs.isFetching && !programs.isError && programs.data?.length === 0 && <AppText tone="muted">{t("academic.noPrograms")}</AppText>}
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t("academic.addProgram")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t("academic.addProgram"), loading: createProgram.isPending, onPress: () => void save() }}>
       <View style={styles.options}>{periods.data?.map((period) => <Button key={period.id} variant={periodId === period.id ? "primary" : "secondary"} onPress={() => setPeriodId(period.id)}>{period.name}</Button>)}</View>

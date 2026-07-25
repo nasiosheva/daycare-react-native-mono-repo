@@ -1,7 +1,7 @@
 import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { AppText, BackButton, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -16,9 +16,9 @@ export default function ParentPaymentScreen() {
     {invoice.isLoading && <AppText tone="muted">{t("common.loading")}</AppText>}
     {invoice.data && <View style={styles.card}><AppText variant="heading">{invoice.data.invoiceNumber}</AppText><AppText>{invoice.data.description ?? t(invoiceSourceKey(invoice.data.source))} · {formatCurrency(invoice.data.totalAmount)}</AppText><AppText tone="muted">{invoice.data.childName}</AppText><AppText tone="muted">{t("tenant.dueDate", { date: formatDate(invoice.data.dueDate) })}</AppText></View>}
     <AppText variant="heading">{t("paymentInstruction.title")}</AppText>
-    {instructions.isLoading && <AppText tone="muted">{t("common.loading")}</AppText>}
-    {!instructions.isLoading && instructions.data?.length === 0 && <AppText tone="danger">{t("paymentInstruction.unavailable")}</AppText>}
-    {instructions.data?.map((instruction) => <View key={instruction.id} style={styles.card}><AppText variant="heading">{instruction.name}</AppText><AppText>{instruction.accountHolder}</AppText><AppText selectable>{instruction.accountNumber}</AppText>{instruction.note && <AppText tone="muted">{instruction.note}</AppText>}</View>)}
+    {instructions.isFetching && <ShimmerList />}
+    {!instructions.isFetching && instructions.data?.length === 0 && <AppText tone="danger">{t("paymentInstruction.unavailable")}</AppText>}
+    {!instructions.isFetching && instructions.data?.map((instruction) => <View key={instruction.id} style={styles.card}><AppText variant="heading">{instruction.name}</AppText><AppText>{instruction.accountHolder}</AppText><AppText selectable>{instruction.accountNumber}</AppText>{instruction.note && <AppText tone="muted">{instruction.note}</AppText>}</View>)}
     <Button disabled={!invoice.data || invoice.data.status !== "PENDING" || !instructions.data?.length} onPress={() => router.replace({ pathname: "/payment-proof", params: { invoiceId } })}>{t("parentEnrollment.uploadAfterPayment")}</Button>
   </View></AppScreen>;
 }

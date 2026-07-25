@@ -403,16 +403,13 @@ class InstitutionController(private val attendance: AttendanceService, private v
     fun activities(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = academic.activities(jwt, organizationId)
 
     @GetMapping("/goal-templates")
-    fun goalTemplates(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = goalService.templates(jwt, organizationId)
+    fun goalTemplates(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) search: String?) = goalService.templates(jwt, organizationId, search)
 
     @PostMapping("/goal-templates") @ResponseStatus(HttpStatus.CREATED)
     fun createGoalTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertGoalTemplateRequest) = goalService.createTemplate(jwt, organizationId, request)
 
     @PatchMapping("/goal-templates/{templateId}")
     fun updateGoalTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID, @Valid @RequestBody request: UpsertGoalTemplateRequest) = goalService.updateTemplate(jwt, organizationId, templateId, request)
-
-    @PostMapping("/goal-templates/{templateId}/archive")
-    fun archiveGoalTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID) = goalService.archiveTemplate(jwt, organizationId, templateId)
 
     @PostMapping("/goal-templates/{templateId}/indicators") @ResponseStatus(HttpStatus.CREATED)
     fun createGoalIndicator(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID, @Valid @RequestBody request: UpsertGoalIndicatorRequest) = goalService.createIndicator(jwt, organizationId, templateId, request)
