@@ -4,6 +4,7 @@ import com.daycare.api.domain.BookingStatus
 import com.daycare.api.domain.CapacityReservationStatus
 import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.InvoiceStatus
+import com.daycare.api.domain.InvoiceSource
 import com.daycare.api.domain.PaymentProofStatus
 import com.daycare.api.domain.ServicePlanDiscountKind
 import com.daycare.api.domain.ServicePlanDiscountType
@@ -34,6 +35,7 @@ class Invoice(
     @Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "payer_user_id", nullable = false) var payerUserId: UUID = UUID.randomUUID(),
     @Column(name = "invoice_number", nullable = false, unique = true) var invoiceNumber: String = "", @Column(name = "subtotal_amount", nullable = false, precision = 14, scale = 2) var subtotalAmount: BigDecimal = BigDecimal.ZERO, @Column(name = "discount_amount", nullable = false, precision = 14, scale = 2) var discountAmount: BigDecimal = BigDecimal.ZERO, @Column(name = "discount_name") var discountName: String? = null, @Column(name = "discount_code") var discountCode: String? = null, @Column(nullable = false, precision = 14, scale = 2) var totalAmount: BigDecimal = BigDecimal.ZERO,
     @Enumerated(EnumType.STRING) @Column(nullable = false) var status: InvoiceStatus = InvoiceStatus.PENDING, @Column(name = "due_date", nullable = false) var dueDate: LocalDate = LocalDate.now(),
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var source: InvoiceSource = InvoiceSource.SERVICE, @Column(name = "branch_id") var branchId: UUID? = null, @Column(name = "child_id") var childId: UUID? = null, @Column(length = 500) var description: String? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(), @Column(name = "paid_at") var paidAt: Instant? = null,
 )
 

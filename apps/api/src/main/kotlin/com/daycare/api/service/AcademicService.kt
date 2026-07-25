@@ -63,10 +63,16 @@ class AcademicService(
     }
 
     @Transactional(readOnly = true)
-    fun curriculumPrograms(jwt: Jwt, organizationId: UUID): List<CurriculumProgramResponse> {
+    fun curriculumPrograms(jwt: Jwt, organizationId: UUID, search: String? = null): List<CurriculumProgramResponse> {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
-        return curriculumPrograms.findAllByOrganizationIdIsNullOrderByNameAsc().map(::curriculumProgramResponse) +
-            curriculumPrograms.findAllByOrganizationIdOrderByNameAsc(organizationId).map(::curriculumProgramResponse)
+        val query = search?.trim().orEmpty()
+        val programs = if (query.isBlank()) {
+            curriculumPrograms.findAllByOrganizationIdIsNullOrderByNameAsc() +
+                curriculumPrograms.findAllByOrganizationIdOrderByNameAsc(organizationId)
+        } else {
+            curriculumPrograms.searchAvailableForOrganization(organizationId, query)
+        }
+        return programs.map(::curriculumProgramResponse)
     }
 
     @Transactional

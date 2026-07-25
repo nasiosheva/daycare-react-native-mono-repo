@@ -2,6 +2,8 @@
 
 Date: 2026-07-25
 
+> **Superseded the same day** by [`global-goal-templates.md`](./global-goal-templates.md): the local-only Kotlin seeder described below was replaced with a global Flyway-seeded reference set (138 templates) visible to every tenant in every environment, including production. Kept here as a historical record only.
+
 ## Context
 
 Goal templates previously had no seeded demo rows in either the local (`LOCAL_SEED_ENABLED=true`) or `simulation` profile, even though the feature (Staff Admin creating scoped Goal templates with indicators, then assigning them to children) has been implemented since an earlier change. This made it hard to exercise the Goals flow against realistic data without creating templates by hand first.

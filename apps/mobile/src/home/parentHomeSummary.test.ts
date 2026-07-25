@@ -14,9 +14,9 @@ describe("createParentHomeSummary", () => {
         { id: "active-earlier", branchId: "branch", childId: "child-a", childName: "Alya", planName: "Mingguan", type: "WEEKLY", status: "ACTIVE", totalCredits: 5, remainingCredits: 3, validUntil: "2026-08-01" },
       ],
       [
-        { id: "paid", invoiceNumber: "INV-1", branchId: "branch", childId: "child-a", childName: "Alya", parentName: null, parentEmail: null, subtotalAmount: 100, discountAmount: 0, discountName: null, discountCode: null, totalAmount: 100, status: "PAID", dueDate: "2026-07-01", createdAt: "2026-06-01T00:00:00Z", paymentProof: null },
-        { id: "review", invoiceNumber: "INV-2", branchId: "branch", childId: "child-b", childName: "Bima", parentName: null, parentEmail: null, subtotalAmount: 200, discountAmount: 0, discountName: null, discountCode: null, totalAmount: 200, status: "PAYMENT_SUBMITTED", dueDate: "2026-07-20", createdAt: "2026-07-01T00:00:00Z", paymentProof: null },
-        { id: "pending", invoiceNumber: "INV-3", branchId: "branch", childId: "child-a", childName: "Alya", parentName: null, parentEmail: null, subtotalAmount: 150, discountAmount: 0, discountName: null, discountCode: null, totalAmount: 150, status: "PENDING", dueDate: "2026-07-10", createdAt: "2026-07-01T00:00:00Z", paymentProof: null },
+        { id: "paid", invoiceNumber: "INV-1", source: "SERVICE", branchId: "branch", childId: "child-a", childName: "Alya", parentName: null, parentEmail: null, subtotalAmount: 100, discountAmount: 0, discountName: null, discountCode: null, totalAmount: 100, status: "PAID", dueDate: "2026-07-01", createdAt: "2026-06-01T00:00:00Z", paymentProof: null },
+        { id: "review", invoiceNumber: "INV-2", source: "SERVICE", branchId: "branch", childId: "child-b", childName: "Bima", parentName: null, parentEmail: null, subtotalAmount: 200, discountAmount: 0, discountName: null, discountCode: null, totalAmount: 200, status: "PAYMENT_SUBMITTED", dueDate: "2026-07-20", createdAt: "2026-07-01T00:00:00Z", paymentProof: null },
+        { id: "pending", invoiceNumber: "INV-3", source: "SERVICE", branchId: "branch", childId: "child-a", childName: "Alya", parentName: null, parentEmail: null, subtotalAmount: 150, discountAmount: 0, discountName: null, discountCode: null, totalAmount: 150, status: "PENDING", dueDate: "2026-07-10", createdAt: "2026-07-01T00:00:00Z", paymentProof: null },
       ],
     );
 

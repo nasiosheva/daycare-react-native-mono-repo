@@ -9,7 +9,6 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useDevelopmentCategories } from "@/development/useDevelopment";
 import { useI18n } from "@/i18n/I18nProvider";
-import { developmentCategoryKey } from "@/i18n/translations";
 import { notify } from "@/notify/notify";
 import type { DevelopmentCategoryOption } from "@daycare/api-client";
 
@@ -54,7 +53,7 @@ export default function DevelopmentCategoriesScreen() {
     {categories.isLoading && <AppText>{t("development.loading")}</AppText>}
     {categories.isError && <Button variant="secondary" onPress={() => categories.refetch()}>{t("common.retry")}</Button>}
     {categories.data?.map((item) => <View key={item.id} style={styles.item}>
-      <AppText variant="label">{item.system ? t(developmentCategoryKey(item.id as "ACTIVITY" | "MEAL" | "NAP" | "OBSERVATION")) : item.name}</AppText>
+      <AppText variant="label">{item.name}</AppText>
       <AppText tone="muted">{item.system ? t("development.categoryBuiltIn") : item.active ? t("development.categoryActive") : t("development.categoryInactive")}</AppText>
       {canManage && !item.system && <View style={styles.actions}>
         <IconButton icon="pencil-outline" tone="secondary" accessibilityLabel={t("development.editCategory")} onPress={() => openEdit(item)} />

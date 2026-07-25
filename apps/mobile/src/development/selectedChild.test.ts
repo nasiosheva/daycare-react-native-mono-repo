@@ -16,4 +16,8 @@ describe("resolveSelectedChildId", () => {
     expect(resolveSelectedChildId(children, "child-b", "removed-child")).toBe("child-b");
     expect(resolveSelectedChildId(children, null, "removed-child")).toBe("child-a");
   });
+
+  it("does not switch to another child when the route is locked", () => {
+    expect(resolveSelectedChildId(children, "child-b", "removed-child", true)).toBeNull();
+  });
 });

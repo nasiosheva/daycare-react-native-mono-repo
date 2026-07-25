@@ -5,6 +5,7 @@ import { AppText, BackButton, Button, colors, radius, spacing } from "@daycare/u
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
+import { invoiceSourceKey } from "@/i18n/translations";
 
 export default function ParentPaymentScreen() {
   const router = useRouter(); const { invoiceId } = useLocalSearchParams<{ invoiceId: string }>(); const { api } = useAuth(); const { t, formatCurrency, formatDate } = useI18n();
@@ -13,7 +14,7 @@ export default function ParentPaymentScreen() {
   return <AppScreen showBottomNavigation={false} title={t("parentEnrollment.pay")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.content}>
     <AppText variant="title">{t("parentEnrollment.pay")}</AppText>
     {invoice.isLoading && <AppText tone="muted">{t("common.loading")}</AppText>}
-    {invoice.data && <View style={styles.card}><AppText variant="heading">{invoice.data.invoiceNumber}</AppText><AppText>{invoice.data.childName} · {formatCurrency(invoice.data.totalAmount)}</AppText><AppText tone="muted">{t("tenant.dueDate", { date: formatDate(invoice.data.dueDate) })}</AppText></View>}
+    {invoice.data && <View style={styles.card}><AppText variant="heading">{invoice.data.invoiceNumber}</AppText><AppText>{invoice.data.description ?? t(invoiceSourceKey(invoice.data.source))} · {formatCurrency(invoice.data.totalAmount)}</AppText><AppText tone="muted">{invoice.data.childName}</AppText><AppText tone="muted">{t("tenant.dueDate", { date: formatDate(invoice.data.dueDate) })}</AppText></View>}
     <AppText variant="heading">{t("paymentInstruction.title")}</AppText>
     {instructions.isLoading && <AppText tone="muted">{t("common.loading")}</AppText>}
     {!instructions.isLoading && instructions.data?.length === 0 && <AppText tone="danger">{t("paymentInstruction.unavailable")}</AppText>}

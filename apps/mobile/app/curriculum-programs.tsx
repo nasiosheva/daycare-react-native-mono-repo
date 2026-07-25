@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -16,9 +16,14 @@ export default function CurriculumProgramsScreen() {
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canManage = membership?.role === "STAFF_ADMIN" && membership.active;
   const periods = useQuery({ queryKey: ["learning-periods", organizationId], queryFn: () => api.academicYears(), enabled: Boolean(membership) });
-  const programs = useQuery({ queryKey: ["curriculum-programs", organizationId], queryFn: () => api.curriculumPrograms(), enabled: Boolean(membership) });
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [search]);
+  const programs = useQuery({ queryKey: ["curriculum-programs", organizationId, debouncedSearch], queryFn: () => api.curriculumPrograms(debouncedSearch || undefined), enabled: Boolean(membership) });
   const createProgram = useMutation({ mutationFn: api.createCurriculumProgram.bind(api), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["curriculum-programs", organizationId] }) });
-  const [listOpen, setListOpen] = useState(false);
   const [visible, setVisible] = useState(false);
   const [name, setName] = useState(""); const [description, setDescription] = useState(""); const [periodId, setPeriodId] = useState<string | undefined>();
 
@@ -26,7 +31,7 @@ export default function CurriculumProgramsScreen() {
   if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
 
   const close = () => { setVisible(false); setName(""); setDescription(""); setPeriodId(undefined); };
-  const openAdd = () => { setListOpen(false); setVisible(true); };
+  const openAdd = () => setVisible(true);
   const save = async () => {
     if (!name.trim()) return Alert.alert(t("academic.programRequired"));
     try {
@@ -35,22 +40,18 @@ export default function CurriculumProgramsScreen() {
     } catch (error) { Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
 
-  return <AppScreen showBottomNavigation={false} title={t("academic.program")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    <NavigationCard accessibilityLabel={t("academic.program")} onPress={() => setListOpen(true)}>
-      <AppText variant="h5">{t("academic.program")}</AppText>
-      <AppText variant="bodySmall" tone="muted">{t("academic.addProgramDescription")}</AppText>
-      <AppText tone={programs.data?.length ? "default" : "muted"}>{programs.data?.length ? t("academic.programsSummary", { count: programs.data.length }) : t("academic.noPrograms")}</AppText>
-    </NavigationCard>
-
-    <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("academic.program")}>
-      {canManage && <Button onPress={openAdd}>{t("academic.addProgram")}</Button>}
-      {programs.data?.map((program) => <View key={program.id} style={styles.card}>
-        <AppText variant="label">{program.name}</AppText>
-        {program.description ? <AppText tone="muted">{program.description}</AppText> : null}
-        <AppText variant="caption" tone="muted">{periods.data?.find((period) => period.id === program.academicYearId)?.name ?? t("common.noData")}{program.source === "GLOBAL" ? ` · ${t("globalCurriculum.global")}` : ""}</AppText>
-      </View>)}
-      {programs.data?.length === 0 && <AppText tone="muted">{t("academic.noPrograms")}</AppText>}
-    </BottomSheet>
+  return <AppScreen showBottomNavigation={false} title={t("academic.program")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton accessibilityLabel={t("academic.addProgram")} onPress={openAdd}>+ {t("academic.addProgram")}</FloatingActionButton> : undefined}>
+    <AppText variant="h5">{t("academic.program")}</AppText>
+    <AppText variant="bodySmall" tone="muted">{t("academic.addProgramDescription")}</AppText>
+    <TextInput style={styles.input} placeholder={t("academic.searchPrograms")} value={search} onChangeText={setSearch} />
+    {programs.isLoading && <AppText tone="muted">{t("common.loading")}</AppText>}
+    {programs.isError && <Button variant="secondary" onPress={() => programs.refetch()}>{t("common.retry")}</Button>}
+    {programs.data?.map((program) => <View key={program.id} style={styles.card}>
+      <AppText variant="label">{program.name}</AppText>
+      {program.description ? <AppText tone="muted">{program.description}</AppText> : null}
+      <AppText variant="caption" tone="muted">{periods.data?.find((period) => period.id === program.academicYearId)?.name ?? t("common.noData")}{program.source === "GLOBAL" ? ` · ${t("globalCurriculum.global")}` : ""}</AppText>
+    </View>)}
+    {!programs.isLoading && !programs.isError && programs.data?.length === 0 && <AppText tone="muted">{t("academic.noPrograms")}</AppText>}
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t("academic.addProgram")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t("academic.addProgram"), loading: createProgram.isPending, onPress: () => void save() }}>
       <View style={styles.options}>{periods.data?.map((period) => <Button key={period.id} variant={periodId === period.id ? "primary" : "secondary"} onPress={() => setPeriodId(period.id)}>{period.name}</Button>)}</View>

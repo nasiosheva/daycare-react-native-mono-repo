@@ -1,4 +1,4 @@
-import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffReminderTarget, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
+import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, GoalCategory, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffReminderTarget, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -94,7 +94,14 @@ export type PaymentProofStatus = "SUBMITTED" | "VERIFIED" | "REJECTED";
 export type PaymentProof = { status: PaymentProofStatus; fileName: string; note?: string | null; submittedAt: string; rejectionReason?: string | null };
 export type PaymentProofImage = { fileName: string; contentType: string; dataBase64: string; note?: string | null };
 export type SubmitPaymentProofInput = { fileName: string; contentType: "image/jpeg" | "image/png"; imageBase64: string; note?: string };
-export type Invoice = { id: string; invoiceNumber: string; branchId: string; childId: string; childName: string; parentName?: string | null; parentEmail?: string | null; subtotalAmount: number; discountAmount: number; discountName?: string | null; discountCode?: string | null; totalAmount: number; status: InvoiceStatus; dueDate: string; createdAt: string; paymentProof?: PaymentProof | null };
+export type Invoice = { id: string; invoiceNumber: string; source: "SERVICE" | "OVERTIME"; description?: string | null; branchId: string; childId: string; childName: string; parentName?: string | null; parentEmail?: string | null; subtotalAmount: number; discountAmount: number; discountName?: string | null; discountCode?: string | null; totalAmount: number; status: InvoiceStatus; dueDate: string; createdAt: string; paymentProof?: PaymentProof | null };
+export type OperatingDay = "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
+export type BranchOperatingHour = { dayOfWeek: OperatingDay; active: boolean; opensAt?: string | null; closesAt?: string | null };
+export type OvertimeRateTier = { durationMinutes: number; amount: number };
+export type BranchOperatingHours = { branchId: string; branchName: string; timezone: string; hours: BranchOperatingHour[]; tiers: OvertimeRateTier[] };
+export type UpdateBranchOperatingHoursInput = { hours: BranchOperatingHour[]; tiers: OvertimeRateTier[] };
+export type CreateOvertimeChargeInput = { childId: string; operationalDate: string; pickedUpAt: string; dueDate: string };
+export type OvertimeCharge = { id: string; invoiceId: string; branchId: string; childId: string; childName: string; operationalDate: string; pickedUpAt: string; closesAt: string; overtimeMinutes: number; totalAmount: number; dueDate: string; status: InvoiceStatus; tiers: OvertimeRateTier[] };
 export type TenantPayment = { id: string; amount: number; status: TenantPaymentStatus; dueDate: string; paidAt: string | null };
 export type TenantStaffAdmin = { id: string; email: string | null; displayName: string | null; status: "ACTIVE" | "INACTIVE" | "PENDING"; primary: boolean };
 export type TenantBranch = { id: string; name: string; timezone: string; active: boolean; primary: boolean };
@@ -121,8 +128,8 @@ export type ClassroomStaffAssignment = { id: string; userId: string; displayName
 export type ClassroomProgram = { id: string; name: string; description: string };
 export type GoalIndicator = { id: string; name: string; displayOrder: number; active: boolean };
 export type UpsertGoalIndicatorInput = { name: string; displayOrder?: number };
-export type GoalTemplate = { id: string; learningLevelId?: string | null; classroomId?: string | null; name: string; description: string; durationDays: number; minimumYesPercent: number; minimumYesStreak: number; active: boolean; indicators: GoalIndicator[] };
-export type UpsertGoalTemplateInput = Omit<GoalTemplate, "id" | "active" | "indicators">;
+export type GoalTemplate = { id: string; learningLevelId?: string | null; classroomId?: string | null; name: string; description: string; durationDays: number; minimumYesPercent: number; minimumYesStreak: number; minAgeMonths?: number | null; maxAgeMonths?: number | null; category?: GoalCategory | null; source: "GLOBAL" | "TENANT"; active: boolean; indicators: GoalIndicator[] };
+export type UpsertGoalTemplateInput = Omit<GoalTemplate, "id" | "active" | "indicators" | "source">;
 export type GoalIndicatorCheckIn = { indicatorId: string; date: string; outcome: GoalCheckInOutcome; recordedAt: string };
 export type ChildGoal = { id: string; childId: string; templateId: string; name: string; description: string; startsOn: string; targetEndsOn: string; durationDays: number; minimumYesPercent: number; minimumYesStreak: number; status: "ACTIVE" | "COMPLETED"; finalOutcome?: ChildGoalOutcome | null; finalSummary?: string | null; finalizedAt?: string | null; recordedDays: number; yesDays: number; noDays: number; yesPercent?: number | null; currentYesStreak: number; longestYesStreak: number; meetsYesPercent: boolean; meetsYesStreak: boolean; indicators: GoalIndicator[]; checkIns: GoalIndicatorCheckIn[] };
 export type ChildPlacement = { id: string; classroomId: string; classroomName: string; learningLevelId?: string | null; learningLevelName?: string | null; learningPeriodId?: string | null; startsOn: string; endedOn?: string | null; ageGuidanceWarning: boolean };
@@ -205,6 +212,13 @@ export class ApiClient {
   async updateBranch(branchId: string, input: { name: string; timezone: string }): Promise<TenantBranch> { return this.request(`/branches/${branchId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async setPrimaryBranch(branchId: string): Promise<TenantBranch> { return this.request(`/branches/${branchId}/primary`, { method: "POST" }); }
   async archiveBranch(branchId: string): Promise<TenantBranch> { return this.request(`/branches/${branchId}/archive`, { method: "POST" }); }
+  async branchOperatingHours(branchId: string): Promise<BranchOperatingHours> { return this.request(`/branches/${branchId}/operating-hours`); }
+  async updateBranchOperatingHours(branchId: string, input: UpdateBranchOperatingHoursInput): Promise<BranchOperatingHours> { return this.request(`/branches/${branchId}/operating-hours`, { method: "PUT", body: JSON.stringify(input) }); }
+  async parentOperatingHours(): Promise<BranchOperatingHours[]> { return this.request("/parent/operating-hours"); }
+  async overtimeCharges(): Promise<OvertimeCharge[]> { return this.request("/overtime-charges"); }
+  async createOvertimeCharge(input: CreateOvertimeChargeInput): Promise<OvertimeCharge> { return this.request("/overtime-charges", { method: "POST", body: JSON.stringify(input) }); }
+  async updateOvertimeCharge(chargeId: string, input: CreateOvertimeChargeInput): Promise<OvertimeCharge> { return this.request(`/overtime-charges/${chargeId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async voidOvertimeCharge(chargeId: string): Promise<void> { await this.request<void>(`/overtime-charges/${chargeId}/void`, { method: "POST" }); }
   async renewTenantSubscription(organizationId: string, monthlyFee?: number): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/subscription/renew`, { method: "POST", body: JSON.stringify({ monthlyFee }) }); }
   async setTenantSubscriptionStatus(organizationId: string, status: Extract<TenantSubscriptionStatus, "ACTIVE" | "SUSPENDED">): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/subscription/${status}`, { method: "POST" }); }
   async createPlatformAdmin(input: CreatePlatformAdminInput): Promise<{ id: string }> { return this.request("/platform/admins", { method: "POST", body: JSON.stringify(input) }); }
@@ -235,7 +249,10 @@ export class ApiClient {
   async syncStaffReminderSchedules(input: { installationId: string; schedules: Array<{ reminderId: string; ruleVersion: number; scheduled: boolean }> }): Promise<void> { await this.request<void>("/staff-reminders/local-schedules", { method: "PUT", body: JSON.stringify(input) }); }
   async academicYears(): Promise<AcademicYear[]> { return this.request("/academic-years"); }
   async createAcademicYear(input: CreateAcademicYearInput): Promise<AcademicYear> { return this.request("/academic-years", { method: "POST", body: JSON.stringify(input) }); }
-  async curriculumPrograms(): Promise<CurriculumProgram[]> { return this.request("/curriculum-programs"); }
+  async curriculumPrograms(search?: string): Promise<CurriculumProgram[]> {
+    const query = search?.trim();
+    return this.request(`/curriculum-programs${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`);
+  }
   async createCurriculumProgram(input: CreateCurriculumProgramInput): Promise<CurriculumProgram> { return this.request("/curriculum-programs", { method: "POST", body: JSON.stringify(input) }); }
   async curriculumActivities(): Promise<CurriculumActivity[]> { return this.request("/curriculum-activities"); }
   async createCurriculumActivity(input: UpsertCurriculumActivityInput): Promise<CurriculumActivity> { return this.request("/curriculum-activities", { method: "POST", body: JSON.stringify(input) }); }
@@ -307,6 +324,10 @@ export class ApiClient {
   async createDevelopmentCategory(input: { name: string }): Promise<DevelopmentCategoryOption> { return this.request("/development-categories", { method: "POST", body: JSON.stringify(input) }); }
   async updateDevelopmentCategory(categoryId: string, input: { name?: string; active?: boolean }): Promise<DevelopmentCategoryOption> { return this.request(`/development-categories/${categoryId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async deleteDevelopmentCategory(categoryId: string): Promise<void> { await this.request<void>(`/development-categories/${categoryId}`, { method: "DELETE" }); }
+  async globalDevelopmentCategories(): Promise<DevelopmentCategoryOption[]> { return this.request("/platform/development-categories"); }
+  async createGlobalDevelopmentCategory(input: { name: string }): Promise<DevelopmentCategoryOption> { return this.request("/platform/development-categories", { method: "POST", body: JSON.stringify(input) }); }
+  async updateGlobalDevelopmentCategory(categoryId: string, input: { name?: string; active?: boolean }): Promise<DevelopmentCategoryOption> { return this.request(`/platform/development-categories/${categoryId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async deleteGlobalDevelopmentCategory(categoryId: string): Promise<void> { await this.request<void>(`/platform/development-categories/${categoryId}`, { method: "DELETE" }); }
 
   async downloadChildrenReport(format: "PDF" | "XLSX", filter: ChildListFilter = {}): Promise<DownloadedReport> {
     const params = new URLSearchParams({ format });

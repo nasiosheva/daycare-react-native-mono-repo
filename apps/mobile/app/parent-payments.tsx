@@ -8,6 +8,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useMarkInvoicePaid } from "@/booking/useBooking";
 import { useI18n } from "@/i18n/I18nProvider";
+import { invoiceSourceKey } from "@/i18n/translations";
 
 export default function ParentPaymentsScreen() {
   const router = useRouter();
@@ -61,6 +62,7 @@ export default function ParentPaymentsScreen() {
     <AppText tone={pendingInvoices.length > 0 ? "danger" : "muted"}>{pendingInvoices.length > 0 ? t("staffAdmin.paymentsSummary", { count: pendingInvoices.length, amount: formatCurrency(pendingTotal) }) : t("staffAdmin.noPayments")}</AppText>
     {pendingInvoices.map((invoice) => <View key={invoice.id} style={styles.card}>
       <AppText variant="h5">{invoice.childName}</AppText>
+      <AppText tone="muted">{invoice.description ?? t(invoiceSourceKey(invoice.source))}</AppText>
       <AppText tone="muted">{t("staffAdmin.parent")}: {invoice.parentName ?? invoice.parentEmail ?? t("common.noData")}</AppText>
       <AppText>{invoice.invoiceNumber} · {formatCurrency(invoice.totalAmount)}</AppText>
       <AppText variant="caption" tone="muted">{t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>

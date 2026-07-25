@@ -109,6 +109,8 @@ Live end-to-end against the local dev API (not just compile checks): logged in, 
 
 ## 6. Goal template demo seed data (30 templates)
 
+> **Superseded the same day** by [`global-goal-templates.md`](./global-goal-templates.md): this section's local-only Kotlin seeder was replaced with a global Flyway-seeded reference set (138 templates, age-graded) visible to every tenant in every environment, including production. Sections 1–5 of this document are unaffected and remain current. Kept here as a historical record only.
+
 **Request:** a list of 30 Indonesian early-childhood developmental milestones (toilet training; color/shape/number/letter recognition; name/parents'-names/address recall; self-care habits; social behavior; fine/gross motor skills; short prayers/songs; emotion recognition; focus/reading habits), asking for a seeder to add them as Goal templates, later refined to live in its own dedicated file.
 
 - **Domain constraint discovered during research:** `GoalTemplate` (and the `LearningLevel` it's scoped to) has `organizationId` as **`NOT NULL`** — unlike `CurriculumProgram`, which explicitly supports a nullable/global `organizationId` for platform-owned rows. There is no way to seed these 30 goals as reusable, tenant-agnostic reference data; each must belong to one specific tenant's learning level or classroom.

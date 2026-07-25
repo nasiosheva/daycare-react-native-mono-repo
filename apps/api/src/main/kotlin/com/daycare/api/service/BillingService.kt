@@ -3,6 +3,7 @@ package com.daycare.api.service
 import com.daycare.api.domain.BookingStatus
 import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.InvoiceStatus
+import com.daycare.api.domain.InvoiceSource
 import com.daycare.api.domain.PaymentProofStatus
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.Role
@@ -68,7 +69,7 @@ data class PaymentProofResponse(val status: PaymentProofStatus, val fileName: St
 data class PaymentProofImageResponse(val fileName: String, val contentType: String, val dataBase64: String, val note: String?)
 data class SubmitPaymentProofRequest(@field:NotBlank @field:Size(max = 255) val fileName: String, @field:NotBlank @field:Size(max = 100) val contentType: String, @field:NotBlank @field:Size(max = 7_000_000) val imageBase64: String, @field:Size(max = 500) val note: String? = null)
 data class ReviewPaymentProofRequest(val approved: Boolean, @field:Size(max = 500) val rejectionReason: String? = null)
-data class InvoiceResponse(val id: UUID, val invoiceNumber: String, val branchId: UUID, val childId: UUID, val childName: String, val parentName: String?, val parentEmail: String?, val subtotalAmount: BigDecimal, val discountAmount: BigDecimal, val discountName: String?, val discountCode: String?, val totalAmount: BigDecimal, val status: InvoiceStatus, val dueDate: LocalDate, val createdAt: Instant, val paymentProof: PaymentProofResponse?)
+data class InvoiceResponse(val id: UUID, val invoiceNumber: String, val source: InvoiceSource, val description: String?, val branchId: UUID, val childId: UUID, val childName: String, val parentName: String?, val parentEmail: String?, val subtotalAmount: BigDecimal, val discountAmount: BigDecimal, val discountName: String?, val discountCode: String?, val totalAmount: BigDecimal, val status: InvoiceStatus, val dueDate: LocalDate, val createdAt: Instant, val paymentProof: PaymentProofResponse?)
 data class PurchaseServiceResponse(val entitlement: EntitlementResponse, val invoice: InvoiceResponse, val bookings: List<BookingResponse>)
 data class EnrollmentPlanSnapshot(
     val planId: UUID,
@@ -222,7 +223,7 @@ class BillingService(
         val invoice = invoices.save(Invoice(organizationId = organizationId, payerUserId = parent.id, invoiceNumber = "INV-${UUID.randomUUID().toString().take(8).uppercase()}", subtotalAmount = snapshot.subtotalAmount, discountAmount = snapshot.discountAmount, discountName = snapshot.discountName, discountCode = snapshot.discountCode, totalAmount = snapshot.totalAmount, dueDate = today.plusDays(2)))
         val validUntil = if (snapshot.planType == ServicePlanType.WEEKLY && snapshot.unusedCreditPolicy == UnusedCreditPolicy.CARRY_FORWARD) periodEnd.plusDays(snapshot.carryForwardDays?.toLong() ?: 30) else periodEnd
         val entitlement = entitlements.save(ServiceEntitlement(organizationId = organizationId, branchId = child.branchId, childId = child.id, ownerUserId = parent.id, planId = snapshot.planId, invoiceId = invoice.id, planName = snapshot.planName, planType = snapshot.planType, totalCredits = snapshot.creditCount, bookingRequiresApproval = snapshot.bookingRequiresApproval, periodStart = today, periodEnd = periodEnd, validUntil = validUntil))
-        return PurchaseServiceResponse(entitlementResponse(entitlement), invoiceResponse(invoice, entitlement.branchId, child.id, child.fullName()), emptyList())
+        return PurchaseServiceResponse(entitlementResponse(entitlement), invoiceResponse(invoice), emptyList())
     }
 
     private fun purchaseForChild(parent: UserProfile, organizationId: UUID, child: Child, request: PurchaseServiceRequest, deferBookings: Boolean = false): PurchaseServiceResponse {
@@ -244,7 +245,7 @@ class BillingService(
         val createdBookings = if (deferBookings) emptyList() else dates.map { date -> bookings.save(Booking(organizationId = organizationId, branchId = child.branchId, childId = child.id, entitlementId = entitlement.id, invoiceId = invoice.id, bookingDate = date, planName = plan.name)) }
         if (!deferBookings) capacity.reserve(organizationId, child.branchId, plan.id, entitlement.id, capacityDates(plan.type, dates, today, periodEnd), createdBookings.associate { it.bookingDate to it.id })
         if (appliedDiscount?.discount?.kind == ServicePlanDiscountKind.PROMO_CODE) discountRedemptions.save(ServicePlanDiscountRedemption(discountId = appliedDiscount.discount.id, invoiceId = invoice.id))
-        return PurchaseServiceResponse(entitlementResponse(entitlement), invoiceResponse(invoice, entitlement.branchId, child.id, child.fullName()), createdBookings.map { bookingResponse(it, child.fullName()) })
+        return PurchaseServiceResponse(entitlementResponse(entitlement), invoiceResponse(invoice), createdBookings.map { bookingResponse(it, child.fullName()) })
     }
 
     @Transactional
@@ -263,9 +264,8 @@ class BillingService(
         reconcileExpiredInvoices(organizationId)
         val invoice = requireInvoice(invoiceId, organizationId)
         require(invoice.status == InvoiceStatus.PENDING) { "Invoice is not awaiting payment" }
-        val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found")
         completeInvoicePayment(invoice)
-        return invoiceResponse(invoice, entitlement.branchId, entitlement.childId, childName(entitlement.childId))
+        return invoiceResponse(invoice)
     }
 
     @Transactional
@@ -289,8 +289,7 @@ class BillingService(
         paymentProofs.save(proof)
         invoice.status = InvoiceStatus.PAYMENT_SUBMITTED
         notifyStaffAdmins(invoice.organizationId, "Bukti pembayaran baru", "Tagihan ${invoice.invoiceNumber} menunggu verifikasi.")
-        val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found")
-        return invoiceResponse(invoice, entitlement.branchId, entitlement.childId, childName(entitlement.childId))
+        return invoiceResponse(invoice)
     }
 
     @Transactional
@@ -300,7 +299,6 @@ class BillingService(
         val invoice = requireInvoice(invoiceId, organizationId)
         require(invoice.status == InvoiceStatus.PAYMENT_SUBMITTED) { "Invoice payment proof is not awaiting review" }
         val proof = paymentProofs.findByInvoiceId(invoice.id) ?: throw IllegalArgumentException("Payment proof was not found")
-        val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found")
         proof.reviewedAt = Instant.now()
         proof.reviewedByUserId = reviewer.user.id
         if (request.approved) {
@@ -315,7 +313,7 @@ class BillingService(
             invoice.status = InvoiceStatus.PENDING
             notifications.notify(organizationId, invoice.payerUserId, "Bukti pembayaran ditolak", reason, realtimeFlags = setOf(RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.PARENT_ENROLLMENTS))
         }
-        return invoiceResponse(invoice, entitlement.branchId, entitlement.childId, childName(entitlement.childId))
+        return invoiceResponse(invoice)
     }
 
     @Transactional(readOnly = true)
@@ -323,8 +321,7 @@ class BillingService(
         val user = identity.sync(jwt)
         val invoice = invoices.findById(invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }
         if (invoice.payerUserId != user.id) access.require(jwt, invoice.organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
-        val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found")
-        return invoiceResponse(invoice, entitlement.branchId, entitlement.childId, childName(entitlement.childId))
+        return invoiceResponse(invoice)
     }
 
     @Transactional(readOnly = true)
@@ -338,11 +335,13 @@ class BillingService(
 
     private fun completeInvoicePayment(invoice: Invoice) {
         invoice.status = InvoiceStatus.PAID; invoice.paidAt = Instant.now()
-        val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found")
-        entitlement.status = if (entitlement.validUntil.isBefore(LocalDate.now())) EntitlementStatus.EXPIRED else EntitlementStatus.ACTIVE
-        bookings.findAllByInvoiceId(invoice.id).forEach { booking -> if (booking.status == BookingStatus.PENDING_PAYMENT) booking.status = if (entitlement.bookingRequiresApproval) BookingStatus.PENDING_APPROVAL else BookingStatus.CONFIRMED }
+        val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull()
+        if (entitlement != null) {
+            entitlement.status = if (entitlement.validUntil.isBefore(LocalDate.now())) EntitlementStatus.EXPIRED else EntitlementStatus.ACTIVE
+            bookings.findAllByInvoiceId(invoice.id).forEach { booking -> if (booking.status == BookingStatus.PENDING_PAYMENT) booking.status = if (entitlement.bookingRequiresApproval) BookingStatus.PENDING_APPROVAL else BookingStatus.CONFIRMED }
+            events.publishEvent(InvoicePaidEvent(invoice.id))
+        }
         notifications.notify(invoice.organizationId, invoice.payerUserId, "Pembayaran diterima", "Tagihan ${invoice.invoiceNumber} telah dikonfirmasi.", realtimeFlags = setOf(RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.BOOKINGS, RealtimeFlag.PARENT_ENROLLMENTS))
-        events.publishEvent(InvoicePaidEvent(invoice.id))
     }
 
     @Transactional
@@ -403,8 +402,8 @@ class BillingService(
         val query = search?.trim().orEmpty()
         val source = if (scope.membership.role == Role.STAFF_ADMIN) invoices.findAllByOrganizationIdOrderByCreatedAtDesc(organizationId) else invoices.findAllByOrganizationIdAndPayerUserIdOrderByCreatedAtDesc(organizationId, scope.user.id)
         return source.mapNotNull { invoice ->
-            val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Invoice entitlement was not found")
-            if (filter.branchId != null && entitlement.branchId != filter.branchId) null else invoiceResponse(invoice, entitlement.branchId, entitlement.childId, childName(entitlement.childId))
+            val response = invoiceResponse(invoice)
+            if (filter.branchId != null && response.branchId != filter.branchId) null else response
         }.filter { query.isEmpty() || it.childName.contains(query, ignoreCase = true) || it.invoiceNumber.contains(query, ignoreCase = true) || (it.parentName?.contains(query, ignoreCase = true) ?: false) || (it.parentEmail?.contains(query, ignoreCase = true) ?: false) }
     }
 
@@ -467,7 +466,7 @@ class BillingService(
             invoiceEntitlements.forEach { it.status = EntitlementStatus.EXPIRED }
             capacity.releaseForEntitlements(invoiceEntitlements.map { it.id })
             discountRedemptions.deleteAllByInvoiceId(invoice.id)
-            events.publishEvent(InvoiceExpiredEvent(invoice.id))
+            if (invoiceEntitlements.isNotEmpty()) events.publishEvent(InvoiceExpiredEvent(invoice.id))
         }
     }
 
@@ -504,7 +503,13 @@ class BillingService(
     private fun templateFromRequest(organizationId: UUID, request: UpsertServicePlanTemplateRequest) = ServicePlanTemplate(organizationId = organizationId, name = request.name.trim(), type = request.type, suggestedPrice = request.suggestedPrice, creditCount = request.creditCount, unusedCreditPolicy = request.unusedCreditPolicy, carryForwardDays = request.carryForwardDays, bookingRequiresApproval = request.bookingRequiresApproval, dailyCapacity = request.dailyCapacity)
     private fun entitlementResponse(entitlement: ServiceEntitlement): EntitlementResponse { val parent = users.findById(entitlement.ownerUserId).orElse(null); return EntitlementResponse(entitlement.id, entitlement.branchId, entitlement.childId, childName(entitlement.childId), parent?.displayName, parent?.email, entitlement.planName, entitlement.planType, entitlement.status, entitlement.totalCredits, entitlement.totalCredits?.let { remainingCredits(entitlement) }, entitlement.validUntil) }
     private fun bookingResponse(booking: Booking, childName: String) = BookingResponse(booking.id, booking.branchId, booking.childId, childName, booking.bookingDate, booking.status, booking.planName, booking.invoiceId)
-    private fun invoiceResponse(invoice: Invoice, branchId: UUID, childId: UUID, childName: String): InvoiceResponse { val parent = users.findById(invoice.payerUserId).orElse(null); return InvoiceResponse(invoice.id, invoice.invoiceNumber, branchId, childId, childName, parent?.displayName, parent?.email, invoice.subtotalAmount, invoice.discountAmount, invoice.discountName, invoice.discountCode, invoice.totalAmount, invoice.status, invoice.dueDate, invoice.createdAt, paymentProofs.findByInvoiceId(invoice.id)?.let(::paymentProofResponse)) }
+    private fun invoiceResponse(invoice: Invoice): InvoiceResponse {
+        val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull()
+        val branchId = entitlement?.branchId ?: invoice.branchId ?: throw IllegalArgumentException("Invoice branch was not found")
+        val childId = entitlement?.childId ?: invoice.childId ?: throw IllegalArgumentException("Invoice child was not found")
+        val parent = users.findById(invoice.payerUserId).orElse(null)
+        return InvoiceResponse(invoice.id, invoice.invoiceNumber, invoice.source, invoice.description, branchId, childId, childName(childId), parent?.displayName, parent?.email, invoice.subtotalAmount, invoice.discountAmount, invoice.discountName, invoice.discountCode, invoice.totalAmount, invoice.status, invoice.dueDate, invoice.createdAt, paymentProofs.findByInvoiceId(invoice.id)?.let(::paymentProofResponse))
+    }
     private fun paymentProofResponse(proof: PaymentProof) = PaymentProofResponse(proof.status, proof.fileName, proof.note, proof.submittedAt, proof.rejectionReason)
     private fun decodePaymentProof(request: SubmitPaymentProofRequest): ByteArray {
         require(request.contentType.lowercase() in setOf("image/jpeg", "image/png")) { "Payment proof must be a JPEG or PNG image" }

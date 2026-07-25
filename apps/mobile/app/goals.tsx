@@ -3,15 +3,18 @@ import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ChildListFilter, GoalIndicator, UpsertGoalTemplateInput } from "@daycare/api-client";
-import { childGoalOutcomes, goalCheckInOutcomes, type ChildGoalOutcome } from "@daycare/core";
+import type { ChildListFilter, GoalIndicator, GoalTemplate, UpsertGoalTemplateInput } from "@daycare/api-client";
+import { childGoalOutcomes, goalCategories, goalCheckInOutcomes, type ChildGoalOutcome } from "@daycare/core";
 import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren } from "@/attendance/useAttendance";
 import { useI18n } from "@/i18n/I18nProvider";
+import { goalCategoryKey } from "@/i18n/translations";
 import { formatIsoDate } from "@/date-picker/date";
+import { ageInMonths } from "@/development/childAge";
 import { ChildFilterSheet } from "@/children/ChildFilterSheet";
+import { resolveSelectedChildId } from "@/development/selectedChild";
 
 type Sheet = "assign" | "finalize" | null;
 
@@ -29,10 +32,10 @@ export default function GoalsScreen() {
   const [childFilter, setChildFilter] = useState<ChildListFilter>({});
   const children = useChildren(isStaffAdmin ? childFilter : {});
   const [childId, setChildId] = useState<string | null>(typeof routeChildId === "string" ? routeChildId : null);
+  const hasFixedChild = typeof routeChildId === "string";
   useEffect(() => {
-    if (!children.data) return;
-    if (!childId || !children.data.some((child) => child.id === childId)) setChildId(children.data[0]?.id ?? null);
-  }, [childId, children.data]);
+    setChildId((currentChildId) => resolveSelectedChildId(children.data ?? [], currentChildId, hasFixedChild ? routeChildId : undefined, hasFixedChild));
+  }, [children.data, hasFixedChild, routeChildId]);
   const selectedChild = children.data?.find((child) => child.id === childId) ?? null;
   const templates = useQuery({ queryKey: ["goal-templates", organizationId], queryFn: () => api.goalTemplates(), enabled: canAdmin });
   const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: canAdmin });
@@ -46,9 +49,13 @@ export default function GoalsScreen() {
   const checkIn = useMutation({ mutationFn: ({ goalId, indicatorId, outcome }: { goalId: string; indicatorId: string; outcome: (typeof goalCheckInOutcomes)[number] }) => api.recordGoalCheckIn(goalId, formatIsoDate(new Date()), indicatorId, outcome), onSuccess: refreshGoals });
   const archiveTemplate = useMutation({ mutationFn: api.archiveGoalTemplate.bind(api), onSuccess: refreshGoals });
   const selectedClassroom = classrooms.data?.find((classroom) => classroom.id === selectedChild?.classroomId);
-  const availableTemplates = templates.data?.filter((template) => template.active
-    && (!template.classroomId || template.classroomId === selectedChild?.classroomId)
-    && (!template.learningLevelId || template.learningLevelId === selectedClassroom?.learningLevelId)) ?? [];
+  const selectedChildAgeMonths = selectedChild ? ageInMonths(selectedChild.dateOfBirth) : null;
+  const matchesChildAge = (template: GoalTemplate) => template.minAgeMonths == null || template.maxAgeMonths == null || selectedChildAgeMonths == null
+    || (selectedChildAgeMonths >= template.minAgeMonths && selectedChildAgeMonths <= template.maxAgeMonths);
+  const availableTemplates = templates.data?.filter((template) => template.active && matchesChildAge(template)
+    && (template.source === "GLOBAL"
+      || ((!template.classroomId || template.classroomId === selectedChild?.classroomId)
+        && (!template.learningLevelId || template.learningLevelId === selectedClassroom?.learningLevelId)))) ?? [];
 
   const [templatesListOpen, setTemplatesListOpen] = useState(false);
   const [goalsListOpen, setGoalsListOpen] = useState(false);
@@ -115,7 +122,6 @@ export default function GoalsScreen() {
     } catch (error) { Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
   const activeIndicatorCount = editingTemplate?.indicators.filter((indicator) => indicator.active).length ?? 0;
-  const hasFixedChild = typeof routeChildId === "string";
   const goalsListContent = <>
     {selectedChild && canAdmin && <Button onPress={() => { setGoalsListOpen(false); setSheet("assign"); }}>{t("goals.assign")}</Button>}
     {goals.data?.map((goal) => <View key={goal.id} style={styles.card}>
@@ -141,7 +147,9 @@ export default function GoalsScreen() {
     <View style={styles.section}>
       <View style={styles.row}><AppText variant="heading">{t("goals.childGoals")}</AppText>{isStaffAdmin && <Button variant="secondary" onPress={() => setFilterVisible(true)}>{t("children.filter")}</Button>}</View>
       {isStaffAdmin && (childFilter.branchId || childFilter.learningLevelId || childFilter.classroomId) && <AppText tone="muted">{t("children.filterActive")}</AppText>}
-      <View style={styles.options}>{children.data?.map((child) => <Button key={child.id} variant={child.id === childId ? "primary" : "secondary"} onPress={() => setChildId(child.id)}>{child.fullName}</Button>)}</View>
+      {hasFixedChild && selectedChild && <AppText variant="heading">{selectedChild.fullName}</AppText>}
+      {!hasFixedChild && <View style={styles.options}>{children.data?.map((child) => <Button key={child.id} variant={child.id === childId ? "primary" : "secondary"} onPress={() => setChildId(child.id)}>{child.fullName}</Button>)}</View>}
+      {hasFixedChild && !children.isLoading && !selectedChild && <AppText tone="muted">{t("children.empty")}</AppText>}
       {selectedChild && !hasFixedChild && <NavigationCard accessibilityLabel={t("goals.childGoals")} onPress={() => setGoalsListOpen(true)}>
         <AppText variant="h5">{selectedChild.fullName}</AppText>
         <AppText tone={goals.data?.length ? "default" : "muted"}>{goals.data?.length ? t("goals.goalsSummary", { count: goals.data.length }) : t("goals.empty")}</AppText>
@@ -151,14 +159,15 @@ export default function GoalsScreen() {
 
     <BottomSheet visible={templatesListOpen} onClose={() => setTemplatesListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("goals.templates")}>
       <Button onPress={openCreateTemplate}>{t("goals.addTemplate")}</Button>
-      {templates.data?.map((template) => <View key={template.id} style={styles.card}>
-        <AppText variant="label">{template.name}</AppText>
-        <AppText tone="muted">{t("goals.target", { days: template.durationDays, percent: template.minimumYesPercent, streak: template.minimumYesStreak })}</AppText>
-        <View style={styles.options}>
-          <Button variant="secondary" onPress={() => openEditTemplateForm(template.id)}>{t("common.edit")}</Button>
-          {template.active && <Button variant="danger" onPress={() => void archiveTemplate.mutateAsync(template.id)}>{t("goals.archive")}</Button>}
-        </View>
-      </View>)}
+      {goalCategories.map((category) => {
+        const categoryTemplates = templates.data?.filter((template) => template.category === category) ?? [];
+        if (categoryTemplates.length === 0) return null;
+        return <View key={category} style={styles.categorySection}>
+          <AppText variant="heading">{t(goalCategoryKey(category))}</AppText>
+          {categoryTemplates.map((template) => <TemplateCard key={template.id} template={template} onEdit={() => openEditTemplateForm(template.id)} onArchive={() => void archiveTemplate.mutateAsync(template.id)} />)}
+        </View>;
+      })}
+      {(templates.data?.filter((template) => !template.category) ?? []).map((template) => <TemplateCard key={template.id} template={template} onEdit={() => openEditTemplateForm(template.id)} onArchive={() => void archiveTemplate.mutateAsync(template.id)} />)}
       {templates.data?.length === 0 && <AppText tone="muted">{t("goals.noTemplates")}</AppText>}
     </BottomSheet>
 
@@ -214,6 +223,19 @@ export default function GoalsScreen() {
   </AppScreen>;
 }
 
+function TemplateCard({ template, onEdit, onArchive }: { template: GoalTemplate; onEdit: () => void; onArchive: () => void }) {
+  const { t } = useI18n();
+  return <View style={styles.card}>
+    <AppText variant="label">{template.name}{template.source === "GLOBAL" ? ` · ${t("globalCurriculum.global")}` : ""}</AppText>
+    <AppText tone="muted">{t("goals.target", { days: template.durationDays, percent: template.minimumYesPercent, streak: template.minimumYesStreak })}</AppText>
+    {template.minAgeMonths != null && template.maxAgeMonths != null && <AppText variant="caption" tone="muted">{t("goals.ageRangeYears", { min: template.minAgeMonths / 12, max: template.maxAgeMonths / 12 })}</AppText>}
+    {template.source === "TENANT" && <View style={styles.options}>
+      <Button variant="secondary" onPress={onEdit}>{t("common.edit")}</Button>
+      {template.active && <Button variant="danger" onPress={onArchive}>{t("goals.archive")}</Button>}
+    </View>}
+  </View>;
+}
+
 function IconButton({ icon, tone = "secondary", onPress, accessibilityLabel, disabled }: { icon: keyof typeof Ionicons.glyphMap; tone?: "secondary" | "danger"; onPress: () => void; accessibilityLabel: string; disabled?: boolean }) {
   return <Pressable
     accessibilityRole="button"
@@ -239,6 +261,7 @@ function GoalFormField({ id, label, info, infoAction, expanded, onToggle, childr
 
 const styles = StyleSheet.create({
   section: { gap: spacing.sm },
+  categorySection: { gap: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
