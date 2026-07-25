@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, type PropsWithChildren } from "react";
-import { Animated, Modal, PanResponder, Pressable, StyleSheet, View } from "react-native";
+import { Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { AppText } from "./AppText";
 import { Button } from "./Button";
 import { colors, radius, spacing } from "./theme";
@@ -53,7 +53,9 @@ export function BottomSheet({ visible, onClose, title, children, negativeAction,
             <AppText variant="heading" style={styles.closeLabel}>×</AppText>
           </Pressable>
         </View>
-        <View style={styles.content}>{children}</View>
+        <ScrollView style={styles.contentScroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
+          {children}
+        </ScrollView>
         {(negativeAction || positiveAction) && <View style={styles.actions}>
           {negativeAction && <Button style={styles.actionButton} variant={negativeAction.variant ?? "secondary"} disabled={negativeAction.disabled} loading={negativeAction.loading} onPress={negativeAction.onPress}>{negativeAction.label}</Button>}
           {positiveAction && <Button style={styles.actionButton} variant={positiveAction.variant ?? "primary"} disabled={positiveAction.disabled} loading={positiveAction.loading} onPress={positiveAction.onPress}>{positiveAction.label}</Button>}
@@ -65,13 +67,14 @@ export function BottomSheet({ visible, onClose, title, children, negativeAction,
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(61, 38, 50, 0.42)" },
-  sheet: { paddingBottom: spacing.lg, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, backgroundColor: colors.surface },
+  sheet: { maxHeight: "88%", paddingBottom: spacing.lg, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, backgroundColor: colors.surface },
   dragArea: { alignItems: "center", paddingTop: spacing.sm, paddingBottom: spacing.xs },
   handle: { width: 42, height: 4, borderRadius: radius.pill, backgroundColor: colors.border },
   header: { minHeight: 48, flexDirection: "row", alignItems: "center", paddingLeft: spacing.md, paddingRight: spacing.sm },
   title: { flex: 1 },
   close: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: colors.surfaceTint },
   closeLabel: { color: colors.primary, lineHeight: 26 },
+  contentScroll: { flexShrink: 1 },
   content: { gap: spacing.md, paddingHorizontal: spacing.md },
   actions: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.md },
   actionButton: { flex: 1 },

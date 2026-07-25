@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
-import { AppText, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import type { ServicePlan } from "@daycare/api-client";
 import { useChildren } from "@/attendance/useAttendance";
@@ -23,6 +23,10 @@ export default function BookingScreen() {
   const plan = useMemo(() => plans.data?.find((item) => item.id === planId) ?? null, [plans.data, planId]);
   const creditEntitlement = useMemo(() => entitlements.data?.find((item) => item.id === creditEntitlementId) ?? null, [creditEntitlementId, entitlements.data]);
   useEffect(() => { if (!childId && children.data?.[0]) setChildId(children.data[0].id); }, [childId, children.data]);
+  const activeEntitlement = useMemo(() => entitlements.data?.find((item) => item.childId === childId && item.status === "ACTIVE") ?? null, [entitlements.data, childId]);
+  const pendingChildInvoices = useMemo(() => invoices.data?.filter((item) => item.childId === childId && item.status === "PENDING") ?? [], [invoices.data, childId]);
+  const pendingChildInvoicesTotal = useMemo(() => pendingChildInvoices.reduce((sum, item) => sum + item.totalAmount, 0), [pendingChildInvoices]);
+  const childBookings = useMemo(() => bookings.data?.filter((item) => item.childId === childId) ?? [], [bookings.data, childId]);
   const closeListSheet = () => setListSheet(null);
   const addDate = () => { if (!isIsoDate(dateInput)) return Alert.alert(t("booking.dateFormat"), t("booking.dateFormatDescription")); if (bookingDates.includes(dateInput)) return; setBookingDates((dates) => [...dates, dateInput].sort()); setDateInput(""); };
   const selectPlan = (item: ServicePlan) => { setPlanId(item.id); setCreditEntitlementId(null); setBookingDates([]); setDateInput(""); setListSheet(null); setBookFormOpen(true); };
@@ -41,14 +45,26 @@ export default function BookingScreen() {
     try { await purchase.mutateAsync({ childId, planId: plan.id, bookingDates: dates }); closeBookForm(); Alert.alert(t("booking.orderCreated"), t("booking.orderDescription")); }
     catch (error) { Alert.alert(t("booking.orderFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
-  return <AppScreen>
-    <AppText variant="title">{t("booking.title")}</AppText><AppText tone="muted">{t("booking.subtitle")}</AppText>
+  return <AppScreen title={t("booking.title")}>
+    <AppText tone="muted">{t("booking.subtitle")}</AppText>
     <AppText variant="heading">{t("booking.child")}</AppText><View style={styles.row}>{children.data?.map((child) => <Button key={child.id} variant={child.id === childId ? "primary" : "secondary"} onPress={() => setChildId(child.id)}>{child.fullName}</Button>)}</View>
-    <View style={styles.row}>
-      <Button variant="secondary" onPress={() => setListSheet("plan")}>{t("booking.plan")}</Button>
-      <Button variant="secondary" onPress={() => setListSheet("remaining")}>{t("booking.remaining")}</Button>
-      <Button variant="secondary" onPress={() => setListSheet("invoices")}>{t("booking.invoices")}</Button>
-      <Button variant="secondary" onPress={() => setListSheet("history")}>{t("booking.history")}</Button>
+    <View style={styles.grid}>
+      <NavigationCard accessibilityLabel={t("booking.plan")} onPress={() => setListSheet("plan")} style={styles.tile}>
+        <AppText variant="label">{t("booking.plan")}</AppText>
+        <AppText tone={activeEntitlement ? "default" : "muted"}>{activeEntitlement ? t("booking.activePlanSummary", { name: activeEntitlement.planName }) : t("booking.noActivePlan")}</AppText>
+      </NavigationCard>
+      <NavigationCard accessibilityLabel={t("booking.remaining")} onPress={() => setListSheet("remaining")} style={styles.tile}>
+        <AppText variant="label">{t("booking.remaining")}</AppText>
+        <AppText tone={activeEntitlement ? "default" : "muted"}>{activeEntitlement ? (activeEntitlement.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: activeEntitlement.remainingCredits })) : t("booking.noActivePlan")}</AppText>
+      </NavigationCard>
+      <NavigationCard accessibilityLabel={t("booking.invoices")} onPress={() => setListSheet("invoices")} style={styles.tile}>
+        <AppText variant="label">{t("booking.invoices")}</AppText>
+        <AppText tone={pendingChildInvoices.length > 0 ? "danger" : "muted"}>{pendingChildInvoices.length > 0 ? t("booking.pendingInvoicesSummary", { count: pendingChildInvoices.length, amount: formatCurrency(pendingChildInvoicesTotal) }) : t("booking.noPendingInvoices")}</AppText>
+      </NavigationCard>
+      <NavigationCard accessibilityLabel={t("booking.history")} onPress={() => setListSheet("history")} style={styles.tile}>
+        <AppText variant="label">{t("booking.history")}</AppText>
+        <AppText tone="muted">{childBookings.length > 0 ? t("booking.historySummary", { count: childBookings.length }) : t("booking.noBookingsYet")}</AppText>
+      </NavigationCard>
     </View>
 
     <BottomSheet visible={listSheet === "plan"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.plan")}>
@@ -89,4 +105,4 @@ export default function BookingScreen() {
   </AppScreen>;
 }
 function PlanCard({ plan, selected, onPress, formatCurrency, t }: { plan: ServicePlan; selected: boolean; onPress: () => void; formatCurrency: (value: number) => string; t: ReturnType<typeof useI18n>["t"] }) { return <View style={styles.card}><AppText variant="heading">{plan.name}</AppText><AppText>{formatCurrency(plan.price)} · {t(servicePlanTypeKey(plan.type))}</AppText>{plan.type === "WEEKLY" && <AppText tone="muted">{t("booking.weeklyDays", { count: plan.creditCount ?? 0, policy: plan.unusedCreditPolicy === "CARRY_FORWARD" ? t("booking.carryForward") : t("booking.expire") })}</AppText>}<Button variant={selected ? "primary" : "secondary"} onPress={onPress}>{selected ? t("booking.selected") : t("booking.select")}</Button></View>; }
-const styles = StyleSheet.create({ row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, form: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, datePicker: { flex: 1, minWidth: 180 }, card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint } });
+const styles = StyleSheet.create({ row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, tile: { flexGrow: 1, flexBasis: "47%" }, form: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, datePicker: { flex: 1, minWidth: 180 }, card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint } });
