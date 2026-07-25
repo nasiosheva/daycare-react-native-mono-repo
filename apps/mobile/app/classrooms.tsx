@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { BranchFilterControl } from "@/branches/BranchFilterSheet";
@@ -31,6 +31,7 @@ export default function ClassroomsScreen() {
   const updateClassroom = useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof api.updateClassroom>[1] }) => api.updateClassroom(id, input), onSuccess: refresh });
   const archiveClassroom = useMutation({ mutationFn: api.archiveClassroom.bind(api), onSuccess: refresh });
   const [visible, setVisible] = useState(false);
+  const [classroomsListOpen, setClassroomsListOpen] = useState(false);
   const [editingClassroomId, setEditingClassroomId] = useState<string>();
   const [name, setName] = useState(""); const [levelId, setLevelId] = useState<string>(); const [branchId, setBranchId] = useState<string>(); const [periodId, setPeriodId] = useState<string>(); const [capacity, setCapacity] = useState("");
   useEffect(() => { if (!branchId && branches.data?.[0]) setBranchId(branches.data[0].id); }, [branches.data, branchId]);
@@ -41,8 +42,8 @@ export default function ClassroomsScreen() {
   const failure = (error: unknown) => Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"));
   const editClassroom = (classroom: Classroom) => { setEditingClassroomId(classroom.id); setName(classroom.name); setBranchId(classroom.branchId); setLevelId(classroom.learningLevelId ?? undefined); setPeriodId(classroom.learningPeriodId ?? undefined); setCapacity(classroom.capacity?.toString() ?? ""); };
   const cancelEdit = () => { setEditingClassroomId(undefined); setName(""); setLevelId(undefined); setPeriodId(undefined); setCapacity(""); };
-  const openCreate = () => { cancelEdit(); setVisible(true); };
-  const openEdit = (classroom: Classroom) => { editClassroom(classroom); setVisible(true); };
+  const openCreate = () => { setClassroomsListOpen(false); cancelEdit(); setVisible(true); };
+  const openEdit = (classroom: Classroom) => { setClassroomsListOpen(false); editClassroom(classroom); setVisible(true); };
   const close = () => { cancelEdit(); setVisible(false); };
   const save = async () => {
     if (!name.trim() || !levelId || !branchId) return Alert.alert(t("learning.selectLevel"));
@@ -54,9 +55,17 @@ export default function ClassroomsScreen() {
   };
 
   return <AppScreen showBottomNavigation={false} title={t("learning.classroom")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    {isStaffAdmin && <View style={styles.options}><BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />{canManage && <Button onPress={openCreate}>{t("learning.addClassroom")}</Button>}</View>}
-    {classrooms.data?.map((classroom) => <ClassroomCard key={classroom.id} classroom={classroom} levelName={levels.data?.find((level) => level.id === classroom.learningLevelId)?.name} branchName={branches.data?.find((branch) => branch.id === classroom.branchId)?.name} periodName={periods.data?.find((period) => period.id === classroom.learningPeriodId)?.name} canManage={canManage} onEdit={() => openEdit(classroom)} onArchive={() => void archiveClassroom.mutateAsync(classroom.id)} />)}
-    {classrooms.data?.length === 0 && <AppText tone="muted">{t("learning.noClassrooms")}</AppText>}
+    {isStaffAdmin && <BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />}
+    <NavigationCard accessibilityLabel={t("learning.classroom")} onPress={() => setClassroomsListOpen(true)}>
+      <AppText variant="h5">{t("learning.classroom")}</AppText>
+      <AppText tone={classrooms.data?.length ? "default" : "muted"}>{classrooms.data?.length ? t("learning.classroomsSummary", { count: classrooms.data.length }) : t("learning.noClassrooms")}</AppText>
+    </NavigationCard>
+
+    <BottomSheet visible={classroomsListOpen} onClose={() => setClassroomsListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("learning.classroom")}>
+      {canManage && <Button onPress={openCreate}>{t("learning.addClassroom")}</Button>}
+      {classrooms.data?.map((classroom) => <ClassroomCard key={classroom.id} classroom={classroom} levelName={levels.data?.find((level) => level.id === classroom.learningLevelId)?.name} branchName={branches.data?.find((branch) => branch.id === classroom.branchId)?.name} periodName={periods.data?.find((period) => period.id === classroom.learningPeriodId)?.name} canManage={canManage} onEdit={() => openEdit(classroom)} onArchive={() => void archiveClassroom.mutateAsync(classroom.id)} />)}
+      {classrooms.data?.length === 0 && <AppText tone="muted">{t("learning.noClassrooms")}</AppText>}
+    </BottomSheet>
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t(editingClassroomId ? "learning.editClassroom" : "learning.addClassroom")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t(editingClassroomId ? "common.save" : "learning.addClassroom"), loading: createClassroom.isPending || updateClassroom.isPending, onPress: () => void save() }}>
       <View style={styles.options}>{branches.data?.map((branch) => <Button key={branch.id} variant={branchId === branch.id ? "primary" : "secondary"} onPress={() => setBranchId(branch.id)}>{branch.name}</Button>)}</View>
@@ -80,6 +89,8 @@ function ClassroomCard({ classroom, levelName, branchName, periodName, canManage
   const createProgram = useMutation({ mutationFn: (input: { name: string; description?: string }) => api.createClassroomProgram(classroom.id, input), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["classroom-programs", organizationId, classroom.id] }) });
   const removeProgram = useMutation({ mutationFn: (programId: string) => api.removeClassroomProgram(classroom.id, programId), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["classroom-programs", organizationId, classroom.id] }) });
   const [cardSheet, setCardSheet] = useState<"program" | "staff" | null>(null);
+  const [programsOpen, setProgramsOpen] = useState(false);
+  const [staffOpen, setStaffOpen] = useState(false);
   const [staffId, setStaffId] = useState<string>();
   const [role, setRole] = useState<(typeof assignmentRoles)[number]>("STAFF");
   const [programName, setProgramName] = useState("");
@@ -88,6 +99,8 @@ function ClassroomCard({ classroom, levelName, branchName, periodName, canManage
   const isFull = classroom.capacity !== null && classroom.capacity !== undefined && classroom.activeChildren >= classroom.capacity;
   const capacityValue = classroom.capacity == null ? `${classroom.activeChildren}` : `${classroom.activeChildren}/${classroom.capacity}`;
   const assignmentRoleLabel = (assignmentRole: (typeof assignmentRoles)[number]) => assignmentRole === "NURSE" ? t("children.nurse") : assignmentRole === "MISS" ? t("children.miss") : t("children.staff");
+  const openAddProgram = () => { setProgramsOpen(false); setCardSheet("program"); };
+  const openAddStaff = () => { setStaffOpen(false); setCardSheet("staff"); };
   const closeProgramSheet = () => { setCardSheet(null); setProgramName(""); setProgramDescription(""); };
   const saveProgram = async () => {
     if (!programName.trim()) return;
@@ -107,18 +120,30 @@ function ClassroomCard({ classroom, levelName, branchName, periodName, canManage
   return <View style={[styles.card, !classroom.active && styles.cardArchived]}><View style={styles.cardHeader}><View style={styles.cardTitle}><AppText variant="h6">{classroom.name}</AppText><AppText variant="bodySmall" tone="muted">{levelName ?? t("common.noData")}</AppText></View><View style={[styles.statusBadge, classroom.active ? isFull ? styles.statusBadgeFull : styles.statusBadgeActive : styles.statusBadgeArchived]}><AppText variant="caption" tone={classroom.active && isFull ? "danger" : "muted"}>{classroom.active ? isFull ? t("learning.classroomFull") : t("status.ACTIVE") : t("learning.archived")}</AppText></View></View>
     <View style={styles.metadata}><AppText variant="caption" tone="muted">{t("learning.branch")}: {branchName ?? t("common.noData")}</AppText><AppText variant="caption" tone="muted">{t("learning.period")}: {periodName ?? t("common.noData")}</AppText></View>
     <View style={styles.metrics}><ClassroomMetric label={t("learning.children")} value={capacityValue} detail={classroom.capacity == null ? t("learning.unlimited") : t("learning.capacity")} emphasis={isFull} /><ClassroomMetric label={t("learning.staff")} value={staff.data?.length?.toString() ?? "–"} detail={t("learning.staffCount", { count: staff.data?.length ?? 0 })} /><ClassroomMetric label={t("learning.classroomPrograms")} value={programs.data?.length?.toString() ?? "–"} detail={t("learning.programCount", { count: programs.data?.length ?? 0 })} /></View>
-    <AppText variant="label">{t("learning.classroomPrograms")}</AppText>
-    {programs.data?.map((program) => <View key={program.id} style={styles.assignment}><View style={styles.assignmentContent}><AppText>{program.name}</AppText>{program.description && <AppText variant="bodySmall" tone="muted">{program.description}</AppText>}</View>{canManage && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.removeProgram")} onPress={() => void removeProgram.mutateAsync(program.id)} />}</View>)}
-    {programs.data?.length === 0 && <AppText tone="muted">{t("learning.noClassroomPrograms")}</AppText>}
-    {canManage && classroom.active && <Button variant="secondary" onPress={() => setCardSheet("program")}>{t("learning.addClassroomProgram")}</Button>}
-    <AppText variant="label">{t("learning.staff")}</AppText>
-    {staff.data?.map((assignment) => <View key={assignment.id} style={styles.assignment}><View style={styles.assignmentContent}><AppText variant="label">{assignment.displayName}</AppText><AppText variant="bodySmall" tone="muted">{assignmentRoleLabel(assignment.assignmentRole)}</AppText></View>{canManage && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.unassignStaff")} onPress={() => void unassign.mutateAsync(assignment.id)} />}</View>)}
-    {staff.data?.length === 0 && <AppText tone="muted">{t("learning.noStaff")}</AppText>}
+    <NavigationCard accessibilityLabel={t("learning.classroomPrograms")} onPress={() => setProgramsOpen(true)}>
+      <AppText variant="h6">{t("learning.classroomPrograms")}</AppText>
+      <AppText tone={programs.data?.length ? "default" : "muted"}>{programs.data?.length ? t("learning.programCount", { count: programs.data.length }) : t("learning.noClassroomPrograms")}</AppText>
+    </NavigationCard>
+    <NavigationCard accessibilityLabel={t("learning.staff")} onPress={() => setStaffOpen(true)}>
+      <AppText variant="h6">{t("learning.staff")}</AppText>
+      <AppText tone={staff.data?.length ? "default" : "muted"}>{staff.data?.length ? t("learning.staffCount", { count: staff.data.length }) : t("learning.noStaff")}</AppText>
+    </NavigationCard>
     {canManage && classroom.active && <View style={styles.options}>
-      <Button variant="secondary" onPress={() => setCardSheet("staff")}>{t("learning.assignStaff")}</Button>
       <IconButton icon="pencil-outline" tone="secondary" accessibilityLabel={t("learning.edit")} onPress={onEdit} />
       <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.archive")} onPress={onArchive} />
     </View>}
+
+    <BottomSheet visible={programsOpen} onClose={() => setProgramsOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("learning.classroomPrograms")}>
+      {programs.data?.map((program) => <View key={program.id} style={styles.assignment}><View style={styles.assignmentContent}><AppText>{program.name}</AppText>{program.description && <AppText variant="bodySmall" tone="muted">{program.description}</AppText>}</View>{canManage && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.removeProgram")} onPress={() => void removeProgram.mutateAsync(program.id)} />}</View>)}
+      {programs.data?.length === 0 && <AppText tone="muted">{t("learning.noClassroomPrograms")}</AppText>}
+      {canManage && classroom.active && <Button variant="secondary" onPress={openAddProgram}>{t("learning.addClassroomProgram")}</Button>}
+    </BottomSheet>
+
+    <BottomSheet visible={staffOpen} onClose={() => setStaffOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("learning.staff")}>
+      {staff.data?.map((assignment) => <View key={assignment.id} style={styles.assignment}><View style={styles.assignmentContent}><AppText variant="label">{assignment.displayName}</AppText><AppText variant="bodySmall" tone="muted">{assignmentRoleLabel(assignment.assignmentRole)}</AppText></View>{canManage && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.unassignStaff")} onPress={() => void unassign.mutateAsync(assignment.id)} />}</View>)}
+      {staff.data?.length === 0 && <AppText tone="muted">{t("learning.noStaff")}</AppText>}
+      {canManage && classroom.active && <Button variant="secondary" onPress={openAddStaff}>{t("learning.assignStaff")}</Button>}
+    </BottomSheet>
 
     <BottomSheet visible={cardSheet === "program"} onClose={closeProgramSheet} closeAccessibilityLabel={t("common.close")} title={t("learning.addClassroomProgram")} negativeAction={{ label: t("common.cancel"), onPress: closeProgramSheet }} positiveAction={{ label: t("common.save"), loading: createProgram.isPending, disabled: !programName.trim(), onPress: () => void saveProgram() }}>
       <TextInput style={styles.input} placeholder={t("academic.programName")} value={programName} onChangeText={setProgramName} />
