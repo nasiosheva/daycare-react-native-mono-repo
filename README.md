@@ -349,9 +349,9 @@ The API client package includes an OpenAPI generation script. The running API pu
 
 ## GitHub Actions deployment
 
-`Pull request tests` runs only the TypeScript and Kotlin unit suites for pull requests targeting `production`. `Deploy production` runs only after a commit is pushed to `production` (normally the result of merging an approved pull request). Protect `production` in GitHub so pull requests must pass `Pull request tests` and direct pushes are disallowed.
+`Pull request tests` runs only the TypeScript/mobile suite for pull requests targeting `production`. `Deploy production` runs only after a commit is pushed to `production` (normally the result of merging an approved pull request). Protect `production` in GitHub so pull requests must pass `Pull request tests` and direct pushes are disallowed.
 
-The deployment workflow builds an immutable API JAR and Expo web export on a GitHub-hosted runner, uploads both to a per-commit release directory on the VPS, and atomically changes the active release before restarting the API. It deliberately does not install a self-hosted GitHub runner on the production VPS.
+The deployment workflow builds and uploads only the Expo web export. It deliberately does not run Gradle, build the API JAR, run API tests, apply database migrations, or restart the API. During activation, the VPS preserves the currently deployed API JAR while atomically switching the web release and reloading Caddy. API releases remain a separate manual operational process.
 
 For a private repository on GitHub Free, configure these values as repository-level Actions Variables and Secrets before enabling the first deployment; Environment variables and secrets are not available to those workflow runs. On GitHub Pro, Team, or Enterprise, the same names may instead be scoped to a protected `production` Environment. Public build settings are preferably Actions Variables; the deployment workflow also accepts an Actions Secret with the same name when a value has been stored there instead.
 
@@ -365,7 +365,7 @@ For a private repository on GitHub Free, configure these values as repository-le
 | Secret | `VPS_SSH_PRIVATE_KEY` | A dedicated GitHub Actions deployment private key, never the developer's personal SSH key. |
 | Secret | `VPS_KNOWN_HOSTS` | Verified host-key line from the VPS; do not generate it in CI with an unverified `ssh-keyscan`. |
 
-Before the workflow can activate a release, provision the VPS with PostgreSQL, Java 21, Caddy, an `umur-emas-api` systemd service, and a non-login deployment user that can run only `/usr/local/sbin/umur-emas-activate-release` through `sudo`. Install [scripts/production/activate-release.sh](scripts/production/activate-release.sh) there as `/usr/local/sbin/umur-emas-activate-release` with root ownership and executable permissions. The API systemd environment file must remain only on the VPS and provide at least `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `FIREBASE_ISSUER_URI`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `CORS_ALLOWED_ORIGINS`, `PLATFORM_ADMIN_EMAILS`, and a strong `QR_SIGNING_SECRET`.
+Before the workflow can activate a release, provision the VPS with PostgreSQL, Java 21, Caddy, an `umur-emas-api` systemd service, and a non-login deployment user that can run only `/usr/local/sbin/umur-emas-activate-release` through `sudo`. Install [scripts/production/activate-release.sh](scripts/production/activate-release.sh) there as `/usr/local/sbin/umur-emas-activate-release` with root ownership and executable permissions; update that installed script before the next web-only deployment so it preserves the current API JAR. The API systemd environment file must remain only on the VPS and provide at least `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `FIREBASE_ISSUER_URI`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `CORS_ALLOWED_ORIGINS`, `PLATFORM_ADMIN_EMAILS`, and a strong `QR_SIGNING_SECRET`.
 
 ## Git workflow
 

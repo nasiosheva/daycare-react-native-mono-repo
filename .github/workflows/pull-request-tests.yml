@@ -23,18 +23,3 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - run: corepack pnpm install --frozen-lockfile
       - run: corepack pnpm test
-
-  api-unit-tests:
-    name: API unit tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6
-        with:
-          gradle-version: "8.13"
-          cache-provider: basic
-      - run: gradle -p apps/api test --no-daemon
