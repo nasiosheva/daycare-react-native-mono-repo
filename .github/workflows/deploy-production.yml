@@ -15,7 +15,7 @@ jobs:
   build-and-deploy:
     name: Build and deploy
     runs-on: ubuntu-latest
-    environment: golden-age
+    environment: production
     env:
       EXPO_PUBLIC_API_URL: ${{ vars.PRODUCTION_API_URL || secrets.PRODUCTION_API_URL }}
       EXPO_PUBLIC_REALTIME_URL: ${{ vars.PRODUCTION_REALTIME_URL || secrets.PRODUCTION_REALTIME_URL }}
