@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,7 +9,6 @@ import { useInvoices, useMarkInvoicePaid, useServicePlans } from "@/booking/useB
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { servicePlanTypeKey } from "@/i18n/translations";
-import { BranchFilterControl } from "@/branches/BranchFilterSheet";
 import { DatePicker } from "@/date-picker/DatePicker";
 import type { ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, UnusedCreditPolicy } from "@daycare/core";
 import type { ServicePlanTemplate } from "@daycare/api-client";
@@ -121,7 +120,10 @@ export default function BillingAdminScreen() {
 
   return <AppScreen showBottomNavigation={false} title={t("billing.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {!canManage && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
-    <BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
+      <BranchTab label={t("branchFilter.allBranches")} selected={!filterBranchId} onPress={() => setFilterBranchId(undefined)} />
+      {branches.data?.map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
+    </ScrollView>
     <View style={styles.grid}>
       <NavigationCard accessibilityLabel={t("billing.activePlans")} onPress={() => setListSheet("plans")} style={styles.tile}>
         <AppText variant="label">{t("billing.activePlans")}</AppText>
@@ -239,4 +241,10 @@ function PlanExtras({ type, creditCount, unusedCreditPolicy, dailyCapacity, t }:
   </>;
 }
 
-const styles = StyleSheet.create({ input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.surface }, row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, tile: { flexGrow: 1, flexBasis: "47%" }, options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint } });
+function BranchTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}>
+    <AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText>
+  </Pressable>;
+}
+
+const styles = StyleSheet.create({ input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.surface }, row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, tile: { flexGrow: 1, flexBasis: "47%" }, options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint }, tabsScroll: { flexGrow: 0, flexShrink: 0 }, tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }, tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" }, activeTab: { borderBottomColor: colors.primary }, tabText: { color: colors.muted }, activeTabText: { color: colors.primary }, pressedTab: { opacity: 0.72 } });

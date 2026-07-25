@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -8,7 +8,6 @@ import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useI18n } from "@/i18n/I18nProvider";
 import { roleKey } from "@/i18n/translations";
-import { BranchFilterControl } from "@/branches/BranchFilterSheet";
 
 export default function StaffPasswordsScreen() {
   const router = useRouter();
@@ -18,6 +17,7 @@ export default function StaffPasswordsScreen() {
   const canManage = membership?.active !== false;
   const [filterBranchId, setFilterBranchId] = useState<string>();
   const users = useQuery({ queryKey: ["tenant-users", organizationId, filterBranchId], queryFn: () => api.tenantUsers({ branchId: filterBranchId }), enabled: membership?.role === "STAFF_ADMIN" });
+  const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: membership?.role === "STAFF_ADMIN" });
   const changePassword = useMutation({ mutationFn: ({ userId, password }: { userId: string; password: string }) => api.changeTenantUserPassword(userId, password) });
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [password, setPassword] = useState("");
@@ -41,7 +41,10 @@ export default function StaffPasswordsScreen() {
   return <AppScreen showBottomNavigation={false} title={t("tenantUsers.staffPasswords")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("tenantUsers.staffPasswordSubtitle")}</AppText>
     {!canManage && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
-    <BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
+      <BranchTab label={t("branchFilter.allBranches")} selected={!filterBranchId} onPress={() => setFilterBranchId(undefined)} />
+      {branches.data?.map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
+    </ScrollView>
     <NavigationCard accessibilityLabel={t("tenantUsers.staffPasswords")} onPress={() => setListOpen(true)}>
       <AppText variant="h5">{t("tenantUsers.staffPasswords")}</AppText>
       <AppText tone={eligibleUsers.length > 0 ? "default" : "muted"}>{users.isLoading ? t("tenantUsers.loadingStaff") : eligibleUsers.length > 0 ? t("tenantUsers.staffCountSummary", { count: eligibleUsers.length }) : t("tenantUsers.noStaff")}</AppText>
@@ -61,8 +64,21 @@ export default function StaffPasswordsScreen() {
   </AppScreen>;
 }
 
+function BranchTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}>
+    <AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText>
+  </Pressable>;
+}
+
 const styles = StyleSheet.create({
   user: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint },
   form: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  tabsScroll: { flexGrow: 0, flexShrink: 0 },
+  tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" },
+  activeTab: { borderBottomColor: colors.primary },
+  tabText: { color: colors.muted },
+  activeTabText: { color: colors.primary },
+  pressedTab: { opacity: 0.72 },
 });

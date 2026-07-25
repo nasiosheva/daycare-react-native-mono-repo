@@ -152,6 +152,15 @@ function withBranchFilter(path: string, filter: BranchListFilter) {
   return `${path}?${new URLSearchParams({ branchId: filter.branchId }).toString()}`;
 }
 
+function withBranchAndSearchFilter(path: string, filter: BranchListFilter, search?: string) {
+  const params: Record<string, string> = {};
+  if (filter.branchId) params.branchId = filter.branchId;
+  const query = search?.trim();
+  if (query) params.search = query;
+  const qs = new URLSearchParams(params).toString();
+  return qs ? `${path}?${qs}` : path;
+}
+
 export function realtimeUrl(apiUrl: string, override?: string): string {
   if (override) return override;
   const url = new URL(apiUrl);
@@ -170,7 +179,7 @@ export class ApiClient {
   async parentEnrollmentCatalog(): Promise<ParentTenantCatalog[]> { return this.request("/parent-enrollment/catalog"); }
   async parentEnrollments(): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment"); }
   async checkoutParentEnrollment(input: ParentEnrollmentCheckoutInput): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment/checkout", { method: "POST", body: JSON.stringify(input) }); }
-  async pendingParentEnrollments(filter: BranchListFilter = {}): Promise<ParentEnrollment[]> { return this.request(withBranchFilter("/parent-enrollment/pending-approval", filter)); }
+  async pendingParentEnrollments(filter: BranchListFilter = {}, search?: string): Promise<ParentEnrollment[]> { return this.request(withBranchAndSearchFilter("/parent-enrollment/pending-approval", filter, search)); }
   async approveParentEnrollment(enrollmentId: string, approved: boolean, rejectionReason?: string): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/approval`, { method: "POST", body: JSON.stringify({ approved, rejectionReason }) }); }
   async retryParentEnrollment(enrollmentId: string, bookingDates: string[]): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/retry`, { method: "POST", body: JSON.stringify({ bookingDates }) }); }
   async cancelParentEnrollment(enrollmentId: string): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/cancel`, { method: "POST" }); }
@@ -216,7 +225,7 @@ export class ApiClient {
   async registerDevice(input: { token: string; platform: "ios" | "android"; installationId: string; timeZone: string }): Promise<void> { await this.request<void>("/device-tokens", { method: "POST", body: JSON.stringify(input) }); }
   async deviceNotificationPreference(installationId: string): Promise<DeviceNotificationPreference> { return this.request(`/device-notification-preference?${new URLSearchParams({ installationId }).toString()}`); }
   async updateDeviceNotificationPreference(input: { installationId: string; muteDuration: PushNotificationMuteDuration | null }): Promise<DeviceNotificationPreference> { return this.request("/device-notification-preference", { method: "PATCH", body: JSON.stringify(input) }); }
-  async notifications(): Promise<AppNotification[]> { return this.request("/notifications"); }
+  async notifications(search?: string): Promise<AppNotification[]> { const query = search?.trim(); return this.request(`/notifications${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
   async markNotificationRead(notificationId: string): Promise<AppNotification> { return this.request(`/notifications/${notificationId}/read`, { method: "PATCH" }); }
   async staffReminders(): Promise<StaffReminder[]> { return this.request("/staff-reminders"); }
   async createStaffReminder(input: UpsertStaffReminderInput): Promise<StaffReminder> { return this.request("/staff-reminders", { method: "POST", body: JSON.stringify(input) }); }
@@ -326,9 +335,9 @@ export class ApiClient {
   async entitlements(filter: BranchListFilter = {}): Promise<ServiceEntitlement[]> { return this.request(withBranchFilter("/service-entitlements", filter)); }
   async bookEntitlement(entitlementId: string, bookingDates: string[]): Promise<Booking[]> { return this.request(`/service-entitlements/${entitlementId}/bookings`, { method: "POST", body: JSON.stringify({ bookingDates }) }); }
   async bookings(filter: BranchListFilter = {}): Promise<Booking[]> { return this.request(withBranchFilter("/bookings", filter)); }
-  async pendingBookings(filter: BranchListFilter = {}): Promise<Booking[]> { return this.request(withBranchFilter("/bookings/pending-approval", filter)); }
+  async pendingBookings(filter: BranchListFilter = {}, search?: string): Promise<Booking[]> { return this.request(withBranchAndSearchFilter("/bookings/pending-approval", filter, search)); }
   async approveBooking(bookingId: string, approved: boolean): Promise<Booking> { return this.request(`/bookings/${bookingId}/approval`, { method: "POST", body: JSON.stringify({ approved }) }); }
-  async invoices(filter: BranchListFilter = {}): Promise<Invoice[]> { return this.request(withBranchFilter("/invoices", filter)); }
+  async invoices(filter: BranchListFilter = {}, search?: string): Promise<Invoice[]> { return this.request(withBranchAndSearchFilter("/invoices", filter, search)); }
   async invoice(invoiceId: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}`); }
   async submitPaymentProof(invoiceId: string, input: SubmitPaymentProofInput): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/payment-proof`, { method: "POST", body: JSON.stringify(input) }); }
   async paymentProof(invoiceId: string): Promise<PaymentProofImage> { return this.request(`/invoices/${invoiceId}/payment-proof`); }

@@ -187,9 +187,12 @@ class AdministrationService(
     }
 
     @Transactional(readOnly = true)
-    fun notifications(jwt: Jwt, organizationId: UUID): List<NotificationResponse> {
+    fun notifications(jwt: Jwt, organizationId: UUID, search: String?): List<NotificationResponse> {
         val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
-        return notifications.findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDesc(scope.user.id, organizationId).map(::notificationResponse)
+        val query = search?.trim().orEmpty()
+        val results = if (query.isEmpty()) notifications.findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDesc(scope.user.id, organizationId)
+            else notifications.searchByRecipientUserIdAndOrganizationId(scope.user.id, organizationId, query)
+        return results.map(::notificationResponse)
     }
 
     @Transactional

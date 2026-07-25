@@ -130,7 +130,6 @@ function ParentOnboardingHome({ displayName }: { displayName: string }) {
     {next?.status === "PENDING_APPROVAL" && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText tone="muted">{t("parentEnrollment.pendingApproval")}</AppText><Button variant="secondary" onPress={() => router.push("/parent-enrollment")}>{t("parentEnrollment.viewApplication")}</Button></View>}
     {next?.invoiceStatus === "PENDING" && next.invoiceId && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText>{next.planName} · {formatCurrency(next.totalAmount)}</AppText><AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText><Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: next.invoiceId! } })}>{t("parentEnrollment.pay")}</Button></View>}
     {!next && <NavigationCard accessibilityLabel={t("parentEnrollment.newTenant")} onPress={() => router.push("/parent-enrollment-form")}><AppText variant="h5">{t("parentEnrollment.newTenant")}</AppText><AppText tone="muted">{t("parentEnrollment.startDescription")}</AppText></NavigationCard>}
-    <Button variant="secondary" onPress={() => router.push("/parent-enrollment")}>{t("parentEnrollment.viewApplication")}</Button>
   </View></AppScreen>;
 }
 
@@ -237,6 +236,7 @@ function PlatformAdminHome() {
     <AppText variant="title">{t("home.platformAdmin")}</AppText>
     <AppText tone="muted">{t("home.platformSubtitle")}</AppText>
     <Button variant="secondary" onPress={() => router.push("/global-curriculum")}>{t("globalCurriculum.menu")}</Button>
+    <Button variant="secondary" onPress={() => router.push({ pathname: "/global-curriculum", params: { openAdd: "1" } })}>{t("globalCurriculum.add")}</Button>
     {tenants.isLoading && <AppText>{t("home.tenantsLoading")}</AppText>}
     {tenants.isError && <AppText tone="danger">{t("home.tenantsError")}</AppText>}
     <TenantSection title={t("home.activeTenants")} tenants={activeTenants} emptyMessage={t("home.noActiveTenants")} formatCurrency={formatCurrency} t={t} />

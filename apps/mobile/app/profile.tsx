@@ -89,8 +89,7 @@ export default function ProfileScreen() {
     finally { setCreatingAdmin(false); }
   };
 
-  return <AppScreen showBottomNavigation={!isStaffProfile} title={isStaffProfile ? t("profile.title") : undefined} header={isStaffProfile ? <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} /> : undefined}>
-    {!isStaffProfile && <AppText variant="title">{t("profile.title")}</AppText>}
+  return <AppScreen showBottomNavigation={!isStaffProfile} title={t("profile.title")} header={isStaffProfile ? <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} /> : undefined} headerAction={<LanguageSwitcher compact />}>
     <View style={styles.card}>
       <AppText variant="heading">{profile?.displayName ?? user?.displayName ?? t("common.noData")}</AppText>
       {profile?.gender && profile.gender !== "UNSPECIFIED" && <AppText tone="muted">{t(profile.gender === "MALE" ? "children.genderMale" : "children.genderFemale")}</AppText>}
@@ -113,7 +112,6 @@ export default function ProfileScreen() {
 
     <View style={styles.form}>
       <AppText variant="heading">{t("profile.personal")}</AppText>
-      <LanguageSwitcher compact />
       {organizationId && !isStaffAdmin && <Button variant="secondary" onPress={() => router.push("/notifications" as never)}>{t("profile.notifications")}</Button>}
       {membership?.role === "STAFF" && <Button variant="secondary" onPress={() => router.push("/staff-reminders" as never)}>{t("profile.reminders")}</Button>}
       <Button variant="secondary" onPress={() => setProfileSheet("profile")}>{t("profile.savePersonal")}</Button>

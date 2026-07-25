@@ -150,7 +150,7 @@ class ParentEnrollmentController(private val enrollments: ParentEnrollmentServic
     fun mine(@AuthenticationPrincipal jwt: Jwt) = enrollments.mine(jwt)
 
     @GetMapping("/pending-approval")
-    fun pendingApprovals(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?) = enrollments.pendingApprovals(jwt, organizationId, BranchListFilter(branchId))
+    fun pendingApprovals(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?, @RequestParam(required = false) search: String?) = enrollments.pendingApprovals(jwt, organizationId, BranchListFilter(branchId), search)
 
     @PostMapping("/{enrollmentId}/approval")
     fun decide(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable enrollmentId: UUID, @Valid @RequestBody request: ParentEnrollmentApprovalRequest) = enrollments.decide(jwt, organizationId, enrollmentId, request)
@@ -191,6 +191,7 @@ class PlatformController(
     private val platformCurriculum: PlatformCurriculumService,
     private val institutionTypes: InstitutionTypeCatalogService,
 ) {
+
     @GetMapping("/institution-types")
     fun institutionTypes(@AuthenticationPrincipal jwt: Jwt) = institutionTypes.list(jwt)
 
@@ -491,7 +492,7 @@ class InstitutionController(private val attendance: AttendanceService, private v
     fun updateDeviceNotificationPreference(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpdateDeviceNotificationPreferenceRequest) = administration.updateDeviceNotificationPreference(jwt, organizationId, request)
 
     @GetMapping("/notifications")
-    fun notifications(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = administration.notifications(jwt, organizationId)
+    fun notifications(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) search: String?) = administration.notifications(jwt, organizationId, search)
 
     @PatchMapping("/notifications/{notificationId}/read")
     fun markNotificationRead(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable notificationId: UUID) = administration.markNotificationRead(jwt, organizationId, notificationId)
@@ -565,13 +566,13 @@ class BillingController(private val billing: BillingService) {
     fun bookings(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?) = billing.bookings(jwt, organizationId, false, BranchListFilter(branchId))
 
     @GetMapping("/bookings/pending-approval")
-    fun pendingBookings(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?) = billing.bookings(jwt, organizationId, true, BranchListFilter(branchId))
+    fun pendingBookings(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?, @RequestParam(required = false) search: String?) = billing.bookings(jwt, organizationId, true, BranchListFilter(branchId), search)
 
     @PostMapping("/bookings/{bookingId}/approval")
     fun approveBooking(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable bookingId: UUID, @Valid @RequestBody request: BookingApprovalRequest) = billing.approveBooking(jwt, organizationId, bookingId, request)
 
     @GetMapping("/invoices")
-    fun invoices(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?) = billing.invoices(jwt, organizationId, BranchListFilter(branchId))
+    fun invoices(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?, @RequestParam(required = false) search: String?) = billing.invoices(jwt, organizationId, BranchListFilter(branchId), search)
 
     @GetMapping("/invoices/{invoiceId}")
     fun invoice(@AuthenticationPrincipal jwt: Jwt, @PathVariable invoiceId: UUID) = billing.invoice(jwt, invoiceId)

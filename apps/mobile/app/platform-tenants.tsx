@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, BottomSheet, Button, NavigationCard, colors, FloatingActionButton, radius, spacing } from "@daycare/ui";
+import { AppText, Button, colors, FloatingActionButton, radius, spacing } from "@daycare/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { tenantSubscriptionStatuses, type TenantSubscriptionStatus } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
@@ -26,7 +26,6 @@ export default function PlatformTenantsScreen() {
   const markPaymentPaid = useMutation({ mutationFn: ({ organizationId, paymentId }: { organizationId: string; paymentId: string }) => api.markTenantPaymentPaid(organizationId, paymentId), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["platform-tenants"] }) });
   const [status, setStatus] = useState<TenantSubscriptionStatus | null>(null);
   const [institutionType, setInstitutionType] = useState<string | null>(null);
-  const [listOpen, setListOpen] = useState(false);
   const institutionTypeNames = useMemo(() => new Map(institutionTypes.data?.map((type) => [type.code, type.name])), [institutionTypes.data]);
   const visibleTenants = useMemo(() => tenants.data?.filter((tenant) =>
     (!status || tenant.subscriptionStatus === status) && (!institutionType || tenant.institutionTypes.includes(institutionType))
@@ -50,29 +49,22 @@ export default function PlatformTenantsScreen() {
       <StatusTab label={t("tenant.filterAll")} selected={!institutionType} onPress={() => setInstitutionType(null)} />
       {institutionTypes.data?.map((item) => <StatusTab key={item.code} label={item.name} selected={institutionType === item.code} onPress={() => setInstitutionType(item.code)} />)}
     </ScrollView>
-    <NavigationCard accessibilityLabel={t("tenant.list")} onPress={() => setListOpen(true)}>
-      <AppText variant="h5">{t("tenant.list")}</AppText>
-      <AppText tone={visibleTenants.length ? "default" : "muted"}>{tenants.isLoading ? t("tenant.load") : visibleTenants.length ? t("tenant.tenantsSummary", { count: visibleTenants.length }) : t("common.noData")}</AppText>
-    </NavigationCard>
-
-    <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("tenant.list")}>
-      {tenants.isLoading && <AppText>{t("tenant.load")}</AppText>}
-      {tenants.isError && <Button variant="secondary" onPress={() => tenants.refetch()}>{t("tenant.reload")}</Button>}
-      {!tenants.isLoading && !tenants.isError && visibleTenants.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
-      {visibleTenants.map((tenant) => <View key={tenant.id} style={styles.card}>
-        <AppText variant="heading">{tenant.name}</AppText>
-        <AppText tone="muted">{tenant.institutionTypes.map((type) => institutionTypeNames.get(type) ?? type).join(" + ")}</AppText>
-        <AppText tone="muted">{tenant.subscriptionPlan ? t(tenantSubscriptionPlanKey(tenant.subscriptionPlan)) : t("tenant.noSubscription")} · {tenant.subscriptionStatus ? t(tenantSubscriptionStatusKey(tenant.subscriptionStatus)) : t("tenant.noStatus")}</AppText>
-        {tenant.staffAdmin && <AppText variant="caption" tone="muted">{t("tenant.staffAdmin")} · {tenant.staffAdmin.email ?? tenant.staffAdmin.displayName ?? t("common.noData")}</AppText>}
-        {tenant.trialEndsAt && <AppText variant="caption" tone="muted">{t("tenant.trialUntil", { date: formatDate(tenant.trialEndsAt) })}</AppText>}
-        {tenant.payments.map((payment) => <View key={payment.id} style={styles.payment}>
-          <AppText>{formatCurrency(payment.amount)} · {t(tenantPaymentStatusKey(payment.status))}</AppText>
-          <AppText variant="caption" tone="muted">{t("tenant.dueDate", { date: formatDate(payment.dueDate) })}</AppText>
-          {payment.status === "PENDING" && <Button loading={markPaymentPaid.isPending} onPress={() => void markPaymentPaid.mutateAsync({ organizationId: tenant.id, paymentId: payment.id })}>{t("tenant.markPaid")}</Button>}
-        </View>)}
-        <Button variant="secondary" onPress={() => { setListOpen(false); router.push({ pathname: "/tenant-detail", params: { tenantId: tenant.id } }); }}>{t("tenant.openDetails")}</Button>
+    {tenants.isLoading && <AppText>{t("tenant.load")}</AppText>}
+    {tenants.isError && <Button variant="secondary" onPress={() => tenants.refetch()}>{t("tenant.reload")}</Button>}
+    {!tenants.isLoading && !tenants.isError && visibleTenants.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+    {visibleTenants.map((tenant) => <View key={tenant.id} style={styles.card}>
+      <AppText variant="heading">{tenant.name}</AppText>
+      <AppText tone="muted">{tenant.institutionTypes.map((type) => institutionTypeNames.get(type) ?? type).join(" + ")}</AppText>
+      <AppText tone="muted">{tenant.subscriptionPlan ? t(tenantSubscriptionPlanKey(tenant.subscriptionPlan)) : t("tenant.noSubscription")} · {tenant.subscriptionStatus ? t(tenantSubscriptionStatusKey(tenant.subscriptionStatus)) : t("tenant.noStatus")}</AppText>
+      {tenant.staffAdmin && <AppText variant="caption" tone="muted">{t("tenant.staffAdmin")} · {tenant.staffAdmin.email ?? tenant.staffAdmin.displayName ?? t("common.noData")}</AppText>}
+      {tenant.trialEndsAt && <AppText variant="caption" tone="muted">{t("tenant.trialUntil", { date: formatDate(tenant.trialEndsAt) })}</AppText>}
+      {tenant.payments.map((payment) => <View key={payment.id} style={styles.payment}>
+        <AppText>{formatCurrency(payment.amount)} · {t(tenantPaymentStatusKey(payment.status))}</AppText>
+        <AppText variant="caption" tone="muted">{t("tenant.dueDate", { date: formatDate(payment.dueDate) })}</AppText>
+        {payment.status === "PENDING" && <Button loading={markPaymentPaid.isPending} onPress={() => void markPaymentPaid.mutateAsync({ organizationId: tenant.id, paymentId: payment.id })}>{t("tenant.markPaid")}</Button>}
       </View>)}
-    </BottomSheet>
+      <Button variant="secondary" onPress={() => router.push({ pathname: "/tenant-detail", params: { tenantId: tenant.id } })}>{t("tenant.openDetails")}</Button>
+    </View>)}
   </AppScreen>;
 }
 

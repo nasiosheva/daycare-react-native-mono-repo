@@ -33,6 +33,7 @@ daycare:
   firebase-service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
   qr-signing-secret: ${QR_SIGNING_SECRET:replace-this-development-secret-with-at-least-32-characters}
   expo-push-url: ${EXPO_PUSH_URL:https://exp.host/--/api/v2/push/send}
+  seed-run: ${SEED_RUN:}
 springdoc:
   api-docs:
     path: /v3/api-docs

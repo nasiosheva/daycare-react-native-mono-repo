@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,7 +7,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
-import { BranchFilterControl } from "@/branches/BranchFilterSheet";
 import { AppScreen } from "@/navigation/AppScreen";
 import type { Classroom } from "@daycare/api-client";
 
@@ -22,6 +21,7 @@ export default function ClassroomsScreen() {
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
   const canManage = isStaffAdmin && membership.active;
   const [filterBranchId, setFilterBranchId] = useState<string>();
+  const filterBranches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: isStaffAdmin });
   const periods = useQuery({ queryKey: ["learning-periods", organizationId], queryFn: () => api.academicYears(), enabled: Boolean(membership) });
   const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: Boolean(membership) });
   const classrooms = useQuery({ queryKey: ["classrooms", organizationId, filterBranchId], queryFn: () => api.classrooms({ branchId: isStaffAdmin ? filterBranchId : undefined }), enabled: Boolean(membership) });
@@ -55,7 +55,10 @@ export default function ClassroomsScreen() {
   };
 
   return <AppScreen showBottomNavigation={false} title={t("learning.classroom")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    {isStaffAdmin && <BranchFilterControl branchId={filterBranchId} onChange={setFilterBranchId} />}
+    {isStaffAdmin && <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
+      <BranchTab label={t("branchFilter.allBranches")} selected={!filterBranchId} onPress={() => setFilterBranchId(undefined)} />
+      {filterBranches.data?.map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
+    </ScrollView>}
     <NavigationCard accessibilityLabel={t("learning.classroom")} onPress={() => setClassroomsListOpen(true)}>
       <AppText variant="h5">{t("learning.classroom")}</AppText>
       <AppText tone={classrooms.data?.length ? "default" : "muted"}>{classrooms.data?.length ? t("learning.classroomsSummary", { count: classrooms.data.length }) : t("learning.noClassrooms")}</AppText>
@@ -161,6 +164,12 @@ function ClassroomMetric({ label, value, detail, emphasis = false }: { label: st
   return <View style={[styles.metric, emphasis && styles.metricWarning]}><AppText variant="overline" tone="muted">{label}</AppText><AppText variant="h5" tone={emphasis ? "danger" : "default"}>{value}</AppText><AppText variant="caption" tone="muted">{detail}</AppText></View>;
 }
 
+function BranchTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}>
+    <AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText>
+  </Pressable>;
+}
+
 function IconButton({ icon, tone = "secondary", onPress, accessibilityLabel, disabled }: { icon: keyof typeof Ionicons.glyphMap; tone?: "secondary" | "danger"; onPress: () => void; accessibilityLabel: string; disabled?: boolean }) {
   return <Pressable
     accessibilityRole="button"
@@ -175,6 +184,13 @@ function IconButton({ icon, tone = "secondary", onPress, accessibilityLabel, dis
 }
 
 const styles = StyleSheet.create({
+  tabsScroll: { flexGrow: 0, flexShrink: 0 },
+  tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" },
+  activeTab: { borderBottomColor: colors.primary },
+  tabText: { color: colors.muted },
+  activeTabText: { color: colors.primary },
+  pressedTab: { opacity: 0.72 },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface },
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, alignItems: "center" },
   iconButton: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
