@@ -4,6 +4,8 @@ Use repository-local context only for this project. Do not read, use, or update 
 
 Read `.codex/project-memory.md` before non-trivial implementation, review, or architecture work. Keep durable project decisions there; do not store secrets, personal data, access tokens, or environment values.
 
+Every change requires a documentation review in the same change set. Create or update a daily context note at `docs/changes/YYYY-MM-DD/<context>.md` that records the change, affected behavior, verification, and any follow-up. Update `README.md` for any change to user flow, business rules, API contracts, configuration, local/prod operation, or verification. Update the relevant module documentation for implementation-level changes when it exists. If no documentation changes are materially needed, state that explicitly in the final handoff with the reason; do not silently omit the review.
+
 Follow the current baseline code and always stay focused. Match existing architecture, patterns, naming, style, and folder structure. Make only the requested changes, avoid unnecessary refactors, and keep solutions simple, pragmatic, maintainable, and well-tested where appropriate.
 
 Apply SOLID principles when designing or modifying code, especially when the existing baseline does not already define a clear pattern. Enforce clear separation of concerns: keep presentation, business logic, state management, side effects, data access, configuration, and integration code in their appropriate layers or modules. Do not mix unrelated responsibilities in a single component, hook, function, class, file, or service unless the existing baseline clearly requires that pattern for the requested scope.
