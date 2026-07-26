@@ -356,7 +356,7 @@ The API client package includes an OpenAPI generation script. The running API pu
 
 ## GitHub Actions deployment
 
-`Pull request tests` runs only the TypeScript/mobile suite for pull requests targeting `production`. `Deploy production` runs only after a commit is pushed to `production` (normally the result of merging an approved pull request). Protect `production` in GitHub so pull requests must pass `Pull request tests` and direct pushes are disallowed.
+`Pull request tests` runs only the TypeScript/mobile suite for pull requests targeting `production`. `Deploy production` runs only after a commit is pushed to `production` (normally the result of merging an approved pull request). Both workflows use `pnpm/action-setup@v6`, which supports the current GitHub Actions runtime. Protect `production` in GitHub so pull requests must pass `Pull request tests` and direct pushes are disallowed.
 
 The deployment workflow builds and uploads only the Expo web export. It deliberately does not run Gradle, build the API JAR, run API tests, apply database migrations, or restart the API. During activation, the VPS preserves the currently deployed API JAR while atomically switching the web release and reloading Caddy. API releases remain a separate manual operational process.
 
