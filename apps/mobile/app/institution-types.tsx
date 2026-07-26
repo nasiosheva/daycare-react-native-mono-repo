@@ -3,7 +3,7 @@ import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InstitutionTypeDefinition } from "@daycare/api-client";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
@@ -28,7 +28,6 @@ export default function InstitutionTypesScreen() {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [selectedType, setSelectedType] = useState<InstitutionTypeDefinition | null>(null);
   const [name, setName] = useState("");
-  const [listOpen, setListOpen] = useState(false);
   if (!profile) return null;
   if (!profile.isPlatformAdmin) return <Redirect href="/home" />;
 
@@ -38,19 +37,16 @@ export default function InstitutionTypesScreen() {
     setName("");
   };
   const openCreate = () => {
-    setListOpen(false);
     setName("");
     setSelectedType(null);
     setSheet("create");
   };
   const openEdit = (type: InstitutionTypeDefinition) => {
-    setListOpen(false);
     setSelectedType(type);
     setName(type.name);
     setSheet("edit");
   };
   const openDelete = (type: InstitutionTypeDefinition) => {
-    setListOpen(false);
     setSelectedType(type);
     setSheet("delete");
   };
@@ -83,31 +79,47 @@ export default function InstitutionTypesScreen() {
 
   return <AppScreen showBottomNavigation={false} title={t("institutionCatalog.manage")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("institutionCatalog.description")}</AppText>
-    <NavigationCard accessibilityLabel={t("institutionCatalog.manage")} onPress={() => setListOpen(true)}>
-      <AppText variant="h5">{t("institutionCatalog.manage")}</AppText>
-      <AppText tone={institutionTypes.data?.length ? "default" : "muted"}>{institutionTypes.isFetching ? t("institutionCatalog.load") : institutionTypes.data?.length ? t("institutionCatalog.typesSummary", { count: institutionTypes.data.length }) : t("institutionCatalog.empty")}</AppText>
-    </NavigationCard>
 
-    <BottomSheet visible={listOpen} onClose={() => setListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("institutionCatalog.manage")}>
-      <Button onPress={openCreate}>{t("institutionCatalog.add")}</Button>
-      {institutionTypes.isFetching && <ShimmerList />}
-      {institutionTypes.isError && <Button variant="secondary" onPress={() => institutionTypes.refetch()}>{t("institutionCatalog.reload")}</Button>}
-      {!institutionTypes.isFetching && !institutionTypes.isError && institutionTypes.data?.length === 0 && <AppText tone="muted">{t("institutionCatalog.empty")}</AppText>}
-      {!institutionTypes.isFetching && institutionTypes.data?.map((type) => <View key={type.code} style={styles.card}>
+    {sheet === "create"
+      ? <View style={styles.form}>
+        <AppText variant="heading">{t("institutionCatalog.add")}</AppText>
+        <TextInput autoFocus style={styles.input} placeholder={t("institutionCatalog.name")} value={name} onChangeText={setName} />
+        <View style={styles.actions}>
+          <Button variant="secondary" onPress={closeSheet}>{t("common.cancel")}</Button>
+          <Button loading={createInstitutionType.isPending} onPress={() => void save()}>{t("common.save")}</Button>
+        </View>
+      </View>
+      : <Button onPress={openCreate}>{t("institutionCatalog.add")}</Button>}
+
+    {institutionTypes.isFetching && <ShimmerList />}
+    {institutionTypes.isError && <Button variant="secondary" onPress={() => institutionTypes.refetch()}>{t("institutionCatalog.reload")}</Button>}
+    {!institutionTypes.isFetching && !institutionTypes.isError && institutionTypes.data?.length === 0 && <AppText tone="muted">{t("institutionCatalog.empty")}</AppText>}
+    {!institutionTypes.isFetching && institutionTypes.data?.map((type) => {
+      const isSelected = selectedType?.code === type.code;
+      if (isSelected && sheet === "edit") return <View key={type.code} style={styles.form}>
+        <AppText variant="heading">{t("institutionCatalog.edit")}</AppText>
+        <TextInput autoFocus style={styles.input} placeholder={t("institutionCatalog.name")} value={name} onChangeText={setName} />
+        <View style={styles.actions}>
+          <Button variant="secondary" onPress={closeSheet}>{t("common.cancel")}</Button>
+          <Button loading={updateInstitutionType.isPending} onPress={() => void save()}>{t("common.save")}</Button>
+        </View>
+      </View>;
+      if (isSelected && sheet === "delete") return <View key={type.code} style={styles.form}>
+        <AppText variant="heading">{type.name}</AppText>
+        <AppText tone="muted">{t("institutionCatalog.deleteConfirmation", { name: type.name })}</AppText>
+        <View style={styles.actions}>
+          <Button variant="secondary" onPress={closeSheet}>{t("common.cancel")}</Button>
+          <Button variant="danger" loading={deleteInstitutionType.isPending} onPress={() => void remove()}>{t("institutionCatalog.delete")}</Button>
+        </View>
+      </View>;
+      return <View key={type.code} style={styles.card}>
         <View style={styles.content}><AppText variant="heading">{type.name}</AppText><AppText variant="caption" tone="muted">{type.code}</AppText></View>
         <View style={styles.actions}>
           <Button variant="secondary" onPress={() => openEdit(type)}>{t("common.edit")}</Button>
           <Button variant="danger" onPress={() => openDelete(type)}>{t("institutionCatalog.delete")}</Button>
         </View>
-      </View>)}
-    </BottomSheet>
-
-    <BottomSheet visible={sheet === "create" || sheet === "edit"} onClose={closeSheet} closeAccessibilityLabel={t("common.close")} title={t(sheet === "edit" ? "institutionCatalog.edit" : "institutionCatalog.add")} negativeAction={{ label: t("common.cancel"), onPress: closeSheet }} positiveAction={{ label: t("common.save"), loading: createInstitutionType.isPending || updateInstitutionType.isPending, onPress: () => void save() }}>
-      <TextInput autoFocus style={styles.input} placeholder={t("institutionCatalog.name")} value={name} onChangeText={setName} />
-    </BottomSheet>
-    <BottomSheet visible={sheet === "delete"} onClose={closeSheet} closeAccessibilityLabel={t("common.close")} title={t("institutionCatalog.delete")} negativeAction={{ label: t("common.cancel"), onPress: closeSheet }} positiveAction={{ label: t("institutionCatalog.delete"), variant: "danger", loading: deleteInstitutionType.isPending, onPress: () => void remove() }}>
-      <AppText tone="muted">{t("institutionCatalog.deleteConfirmation", { name: selectedType?.name ?? "" })}</AppText>
-    </BottomSheet>
+      </View>;
+    })}
   </AppScreen>;
 }
 
@@ -115,5 +127,6 @@ const styles = StyleSheet.create({
   card: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   content: { flex: 1, gap: spacing.xs },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  form: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
 });

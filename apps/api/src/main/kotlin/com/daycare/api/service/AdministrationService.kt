@@ -103,7 +103,7 @@ class AdministrationService(
     fun tenantUsers(jwt: Jwt, organizationId: UUID, filter: BranchListFilter = BranchListFilter()): List<TenantUserResponse> {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
         branchFilters.validate(organizationId, filter)
-        val scopedMemberships = membershipsFor(organizationId).filter { filter.branchId == null || it.branchId == filter.branchId }
+        val scopedMemberships = membershipsFor(organizationId).filter { filter.branchId == null || it.branchId == filter.branchId || it.role == Role.STAFF_ADMIN }
         val activeUsers = users.findAllById(scopedMemberships.map { it.userId }).associateBy { it.id }
         val memberships = scopedMemberships.map { membership ->
             val user = activeUsers[membership.userId]

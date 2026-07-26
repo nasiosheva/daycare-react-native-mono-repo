@@ -96,7 +96,7 @@ class ParentEnrollmentService(
                 branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organization.id).map { branch -> ParentTenantBranchResponse(branch.id, branch.name, billingBranchCapacity(organization.id, branch.id)) },
                 plans.findAllByOrganizationIdAndActiveTrue(organization.id).map { plan -> ParentTenantPlanResponse(plan.id, plan.name, plan.type, plan.price, plan.creditCount, plan.bookingRequiresApproval, plan.dailyCapacity) },
             )
-        }.filter { it.branches.isNotEmpty() && it.plans.isNotEmpty() }
+        }
     }
 
     @Transactional

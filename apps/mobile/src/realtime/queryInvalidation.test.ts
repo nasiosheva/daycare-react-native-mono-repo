@@ -17,4 +17,13 @@ describe("invalidateRealtimeFlags", () => {
     expect(client.getQueryState(["entitlements", "tenant-a"])?.isInvalidated).toBe(true);
     expect(client.getQueryState(["children", "tenant-a"])?.isInvalidated).toBe(false);
   });
+
+  it("invalidates server-authorized child placement options after learning changes", () => {
+    const client = new QueryClient();
+    client.setQueryData(["child-placement-options", "tenant-a", "child-a"], []);
+
+    invalidateRealtimeFlags(client, ["LEARNING"]);
+
+    expect(client.getQueryState(["child-placement-options", "tenant-a", "child-a"])?.isInvalidated).toBe(true);
+  });
 });

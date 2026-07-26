@@ -41,7 +41,8 @@ data class UpsertLearningLevelRequest(
     val displayOrder: Int = 0,
     val curriculumProgramIds: Set<UUID> = emptySet(),
 )
-data class LearningLevelResponse(val id: UUID, val name: String, val minAgeMonths: Int?, val maxAgeMonths: Int?, val displayOrder: Int, val active: Boolean, val curriculumProgramIds: Set<UUID>)
+enum class LearningLevelSource { GLOBAL, TENANT }
+data class LearningLevelResponse(val id: UUID, val name: String, val minAgeMonths: Int?, val maxAgeMonths: Int?, val displayOrder: Int, val source: LearningLevelSource, val isTemplate: Boolean, val active: Boolean, val curriculumProgramIds: Set<UUID>)
 data class UpsertClassroomRequest(
     val branchId: UUID,
     val learningLevelId: UUID,
@@ -60,6 +61,7 @@ data class ChildPlacementResponse(val id: UUID, val classroomId: UUID, val class
 @Service
 class LearningStructureService(
     private val access: AccessService,
+    private val platformAccess: PlatformAccessService,
     private val levels: LearningLevelRepository,
     private val levelPrograms: LearningLevelCurriculumProgramRepository,
     private val programs: CurriculumProgramRepository,
@@ -93,6 +95,35 @@ class LearningStructureService(
     }
 
     @Transactional(readOnly = true)
+    fun globalLevels(jwt: Jwt): List<LearningLevelResponse> {
+        platformAccess.requirePlatformAdmin(jwt)
+        return levels.findAllByOrganizationIdIsNullOrderByDisplayOrderAscNameAsc().map(::levelResponse)
+    }
+
+    @Transactional
+    fun createGlobalLevel(jwt: Jwt, request: UpsertLearningLevelRequest): LearningLevelResponse {
+        platformAccess.requirePlatformAdmin(jwt)
+        validateLevel(request)
+        val level = levels.save(LearningLevel(organizationId = null, name = request.name.trim(), minAgeMonths = request.minAgeMonths, maxAgeMonths = request.maxAgeMonths, displayOrder = request.displayOrder, isTemplate = true))
+        return levelResponse(level)
+    }
+
+    @Transactional
+    fun updateGlobalLevel(jwt: Jwt, levelId: UUID, request: UpsertLearningLevelRequest): LearningLevelResponse {
+        platformAccess.requirePlatformAdmin(jwt)
+        validateLevel(request)
+        val level = globalLevel(levelId)
+        level.name = request.name.trim(); level.minAgeMonths = request.minAgeMonths; level.maxAgeMonths = request.maxAgeMonths; level.displayOrder = request.displayOrder
+        return levelResponse(level)
+    }
+
+    @Transactional
+    fun deleteGlobalLevel(jwt: Jwt, levelId: UUID) {
+        platformAccess.requirePlatformAdmin(jwt)
+        levels.delete(globalLevel(levelId))
+    }
+
+    @Transactional(readOnly = true)
     fun levels(jwt: Jwt, organizationId: UUID): List<LearningLevelResponse> {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
         return levels.findAllByOrganizationIdOrderByDisplayOrderAscNameAsc(organizationId).map(::levelResponse)
@@ -112,8 +143,8 @@ class LearningStructureService(
     fun updateLevel(jwt: Jwt, organizationId: UUID, levelId: UUID, request: UpsertLearningLevelRequest): LearningLevelResponse {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         validateLevel(request)
-        validatePrograms(organizationId, request.curriculumProgramIds)
         val level = level(levelId, organizationId)
+        validatePrograms(organizationId, request.curriculumProgramIds, level.id)
         level.name = request.name.trim(); level.minAgeMonths = request.minAgeMonths; level.maxAgeMonths = request.maxAgeMonths; level.displayOrder = request.displayOrder
         replacePrograms(level.id, request.curriculumProgramIds)
         return levelResponse(level)
@@ -213,6 +244,17 @@ class LearningStructureService(
         return placements.findAllByOrganizationIdAndChildIdOrderByStartsOnDesc(organizationId, childId).map(::placementResponse)
     }
 
+    @Transactional(readOnly = true)
+    fun placementOptions(jwt: Jwt, organizationId: UUID, childId: UUID): List<ClassroomResponse> {
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
+        val child = if (scope.membership.role == Role.STAFF) childScopes.requireStaffManagedChild(scope, childId, organizationId) else requireChild(childId, organizationId)
+        require(child.enrollmentStatus == ChildEnrollmentStatus.ACTIVE) { "Child enrollment is still pending Parent approval" }
+        val activeBranchIds = branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId).map { it.id }.toSet()
+        return classrooms.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId)
+            .filter { classroom -> classroom.branchId == child.branchId && classroom.branchId in activeBranchIds && classroom.learningLevelId != null && childScopes.canStaffPlaceChildInClassroom(scope, child.id, classroom.id, organizationId) }
+            .map(::classroomResponse)
+    }
+
     @Transactional
     fun placeChild(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreateChildPlacementRequest): ChildPlacementResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
@@ -222,6 +264,9 @@ class LearningStructureService(
         val classroom = classroom(request.classroomId, organizationId)
         require(classroom.active && classroom.learningLevelId != null) { "Classroom must be active and assigned to a learning level" }
         require(classroom.branchId == child.branchId) { "Child and classroom must belong to the same branch" }
+        require(childScopes.canStaffPlaceChildInClassroom(scope, child.id, classroom.id, organizationId)) { "Staff member cannot place this child in the selected classroom" }
+        val branch = branches.findById(classroom.branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
+        require(branch.active) { "Classroom's branch has been archived" }
         val current = placements.findByChildIdAndEndedOnIsNull(childId)
         if (current != null && current.classroomId == classroom.id && request.startsOn == current.startsOn) return placementResponse(current)
         if (current != null && current.startsOn == LocalDate.now() && request.startsOn == current.startsOn) {
@@ -245,9 +290,10 @@ class LearningStructureService(
         require(request.maxAgeMonths == null || request.maxAgeMonths >= 0) { "Maximum age must not be negative" }
         require(request.minAgeMonths == null || request.maxAgeMonths == null || request.minAgeMonths <= request.maxAgeMonths) { "Minimum age must not exceed maximum age" }
     }
-    private fun validatePrograms(organizationId: UUID, ids: Set<UUID>) { ids.forEach { id ->
+    private fun validatePrograms(organizationId: UUID, ids: Set<UUID>, existingLevelId: UUID? = null) { ids.forEach { id ->
         val program = programs.findById(id).orElseThrow { IllegalArgumentException("Curriculum program was not found") }
         require(program.organizationId == null || program.organizationId == organizationId) { "Curriculum program belongs to a different organization" }
+        require(program.active || (existingLevelId != null && levelPrograms.existsByLearningLevelIdAndCurriculumProgramId(existingLevelId, id))) { "Archived curriculum program cannot be assigned to a new learning level" }
     } }
     private fun replacePrograms(levelId: UUID, ids: Set<UUID>) { levelPrograms.deleteAllByLearningLevelId(levelId); levelPrograms.saveAll(ids.map { LearningLevelCurriculumProgram(learningLevelId = levelId, curriculumProgramId = it) }) }
     private fun validateClassroomReferences(organizationId: UUID, request: UpsertClassroomRequest) {
@@ -262,9 +308,10 @@ class LearningStructureService(
         require(activeChildren(classroom.id) < capacity) { "Classroom capacity has been reached" }
     }
     private fun level(id: UUID, organizationId: UUID) = levels.findById(id).orElseThrow { IllegalArgumentException("Learning level was not found") }.also { require(it.organizationId == organizationId) { "Learning level belongs to a different organization" } }
+    private fun globalLevel(id: UUID) = levels.findById(id).orElseThrow { IllegalArgumentException("Learning level was not found") }.also { require(it.organizationId == null) { "Learning level is not global" } }
     private fun classroom(id: UUID, organizationId: UUID) = classrooms.findById(id).orElseThrow { IllegalArgumentException("Classroom was not found") }.also { require(it.organizationId == organizationId) { "Classroom belongs to a different organization" } }
     private fun requireChild(id: UUID, organizationId: UUID) = children.findById(id).orElseThrow { IllegalArgumentException("Child was not found") }.also { require(it.organizationId == organizationId) { "Child belongs to a different organization" }; require(it.active) { "Child is inactive" } }
-    private fun levelResponse(level: LearningLevel): LearningLevelResponse = LearningLevelResponse(level.id, level.name, level.minAgeMonths, level.maxAgeMonths, level.displayOrder, level.active, levelPrograms.findAllByLearningLevelId(level.id).map { it.curriculumProgramId }.toSet())
+    private fun levelResponse(level: LearningLevel): LearningLevelResponse = LearningLevelResponse(level.id, level.name, level.minAgeMonths, level.maxAgeMonths, level.displayOrder, if (level.organizationId == null) LearningLevelSource.GLOBAL else LearningLevelSource.TENANT, level.isTemplate, level.active, levelPrograms.findAllByLearningLevelId(level.id).map { it.curriculumProgramId }.toSet())
     private fun classroomResponse(classroom: Classroom): ClassroomResponse = ClassroomResponse(classroom.id, classroom.branchId, classroom.learningLevelId, classroom.academicYearId, classroom.name, classroom.capacity, classroom.active, activeChildren(classroom.id))
     private fun activeChildren(classroomId: UUID) = placements.countByClassroomIdAndActiveEnrollmentStatus(classroomId, ChildEnrollmentStatus.ACTIVE)
     private fun classroomStaffResponse(assignment: ClassroomStaffAssignment): ClassroomStaffAssignmentResponse? = users.findById(assignment.userId).map { ClassroomStaffAssignmentResponse(assignment.id, it.id, it.displayName, it.email, ChildCareRole.valueOf(assignment.assignmentRole)) }.orElse(null)

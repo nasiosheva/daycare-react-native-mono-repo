@@ -30,6 +30,7 @@ daycare:
   local-seed-admin-username: ${LOCAL_SEED_ADMIN_USERNAME:admin}
   local-seed-admin-display-name: ${LOCAL_SEED_ADMIN_DISPLAY_NAME:Local Admin}
   local-seed-admin-password: ${LOCAL_SEED_ADMIN_PASSWORD:admin@local.test}
+  seed-global-curriculum-enabled: ${SEED_GLOBAL_CURRICULUM_ENABLED:false}
   firebase-service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
   qr-signing-secret: ${QR_SIGNING_SECRET:replace-this-development-secret-with-at-least-32-characters}
   expo-push-url: ${EXPO_PUSH_URL:https://exp.host/--/api/v2/push/send}

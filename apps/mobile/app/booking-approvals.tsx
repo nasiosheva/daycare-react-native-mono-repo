@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactElement } from "react";
-import { Alert, Image, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
@@ -30,28 +30,32 @@ export default function BookingApprovalsScreen() {
   const canDecideBooking = (membership?.role === "STAFF_ADMIN" || membership?.role === "STAFF") && !readOnly;
   const enrollments = useQuery({ queryKey: ["parent-enrollments", organizationId, "pending", filterBranchId, debouncedSearch], queryFn: () => api.pendingParentEnrollments({ branchId: filterBranchId }, debouncedSearch || undefined), enabled: Boolean(organizationId) && isStaffAdmin });
   const enrollmentApproval = useMutation({ mutationFn: ({ enrollmentId, approved }: { enrollmentId: string; approved: boolean }) => api.approveParentEnrollment(enrollmentId, approved), onSuccess: () => { void client.invalidateQueries({ queryKey: ["parent-enrollments", organizationId] }); void client.invalidateQueries({ queryKey: ["bookings", organizationId] }); void client.invalidateQueries({ queryKey: ["children", organizationId] }); void client.invalidateQueries({ queryKey: ["classrooms", organizationId] }); } });
-  const { t, formatDate } = useI18n();
+  const { t, formatCurrency, formatDate } = useI18n();
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
-  const closeConfirm = () => setConfirm(null);
-  const openConfirm = (value: PendingConfirm) => setConfirm(value);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [proofError, setProofError] = useState<string | null>(null);
+  const closeConfirm = () => { setConfirm(null); setDecisionError(null); };
+  const openConfirm = (value: PendingConfirm) => { setDecisionError(null); setConfirm(value); };
   const confirmDecision = async () => {
     if (!confirm) return;
+    setDecisionError(null);
     try {
       if (confirm.kind === "booking") await approval.mutateAsync({ bookingId: confirm.id, approved: confirm.approved });
       else await enrollmentApproval.mutateAsync({ enrollmentId: confirm.id, approved: confirm.approved });
       closeConfirm();
-    } catch (error) { Alert.alert(t("approval.failed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    } catch (error) { setDecisionError(error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
   const [viewProofInvoiceId, setViewProofInvoiceId] = useState<string | null>(null);
-  const closeProof = () => setViewProofInvoiceId(null);
-  const openProof = (invoiceId: string) => setViewProofInvoiceId(invoiceId);
+  const closeProof = () => { setViewProofInvoiceId(null); setProofError(null); };
+  const openProof = (invoiceId: string) => { setProofError(null); setViewProofInvoiceId(invoiceId); };
   const proof = useQuery({ queryKey: ["payment-proof", viewProofInvoiceId], queryFn: () => api.paymentProof(viewProofInvoiceId!), enabled: Boolean(viewProofInvoiceId) });
   const [downloading, setDownloading] = useState(false);
   const downloadProof = async () => {
     if (!proof.data) return;
     setDownloading(true);
+    setProofError(null);
     try { await downloadPaymentProofImage(proof.data.fileName, proof.data.contentType, proof.data.dataBase64); }
-    catch (error) { Alert.alert(t("paymentProof.downloadFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    catch (error) { setProofError(error instanceof Error ? error.message : t("auth.tryAgain")); }
     finally { setDownloading(false); }
   };
   const approvalsFetching = bookings.isFetching || (isStaffAdmin && enrollments.isFetching);
@@ -68,27 +72,32 @@ export default function BookingApprovalsScreen() {
     <TextInput style={styles.input} placeholder={t("approval.search")} value={search} onChangeText={setSearch} />
 
     {approvalsFetching && <ShimmerList />}
-    {isStaffAdmin && !approvalsFetching && enrollments.data?.map((enrollment) => <ApprovalCard
-      key={enrollment.id}
-      title={enrollment.childName}
-      description={`${enrollment.planName} · ${formatDate(enrollment.createdAt)}`}
-      actions={canDecideEnrollment ? <View style={styles.actionsRow}>
-        <Button style={styles.actionButton} onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: true, name: enrollment.childName })}>{t("approval.approve")}</Button>
-        <Button style={styles.actionButton} variant="danger" onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: false, name: enrollment.childName })}>{t("approval.reject")}</Button>
-      </View> : undefined}
-    />)}
-    {!approvalsFetching && bookings.data?.map((booking) => <ApprovalCard
-      key={booking.id}
-      title={booking.childName}
-      description={`${formatDate(booking.bookingDate)} · ${booking.planName}`}
-      actions={<>
-        {isStaffAdmin && <Button variant="secondary" onPress={() => openProof(booking.invoiceId)}>{t("paymentProof.view")}</Button>}
-        {canDecideBooking && <View style={styles.actionsRow}>
-          <Button style={styles.actionButton} onPress={() => openConfirm({ kind: "booking", id: booking.id, approved: true, name: booking.childName })}>{t("approval.approve")}</Button>
-          <Button style={styles.actionButton} variant="danger" onPress={() => openConfirm({ kind: "booking", id: booking.id, approved: false, name: booking.childName })}>{t("approval.reject")}</Button>
-        </View>}
-      </>}
-    />)}
+    {isStaffAdmin && !approvalsFetching && Boolean(enrollments.data?.length) && <ApprovalSection title={t("approval.enrollmentSection")} description={t("approval.enrollmentSectionDescription")}>
+      {enrollments.data?.map((enrollment) => <ApprovalCard
+        key={enrollment.id}
+        title={enrollment.childName}
+        description={`${enrollment.planName} · ${formatCurrency(enrollment.totalAmount)} · ${formatDate(enrollment.createdAt)}`}
+        actions={canDecideEnrollment ? <View style={styles.actionsRow}>
+          <Button style={styles.actionButton} onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: true, name: enrollment.childName })}>{t("approval.approve")}</Button>
+          <Button style={styles.actionButton} variant="danger" onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: false, name: enrollment.childName })}>{t("approval.reject")}</Button>
+        </View> : undefined}
+      />)}
+    </ApprovalSection>}
+    {!approvalsFetching && Boolean(bookings.data?.length) && <ApprovalSection title={t("approval.bookingSection")} description={t("approval.bookingSectionDescription")}>
+      {bookings.data?.map((booking) => <ApprovalCard
+        key={booking.id}
+        title={booking.childName}
+        description={`${formatDate(booking.bookingDate)} · ${booking.planName}`}
+        detail={`${booking.invoiceNumber} · ${formatCurrency(booking.invoiceTotalAmount)}`}
+        actions={<>
+          {isStaffAdmin && <Button variant="secondary" onPress={() => openProof(booking.invoiceId)}>{t("paymentProof.view")}</Button>}
+          {canDecideBooking && <View style={styles.actionsRow}>
+            <Button style={styles.actionButton} onPress={() => openConfirm({ kind: "booking", id: booking.id, approved: true, name: booking.childName })}>{t("approval.approve")}</Button>
+            <Button style={styles.actionButton} variant="danger" onPress={() => openConfirm({ kind: "booking", id: booking.id, approved: false, name: booking.childName })}>{t("approval.reject")}</Button>
+          </View>}
+        </>}
+      />)}
+    </ApprovalSection>}
     {empty && <AppText tone="muted">{t("approval.empty")}</AppText>}
 
     <BottomSheet
@@ -99,6 +108,7 @@ export default function BookingApprovalsScreen() {
       negativeAction={{ label: t("common.cancel"), onPress: closeConfirm }}
       positiveAction={{ label: t(confirm?.approved ? "approval.approve" : "approval.reject"), variant: confirm?.approved ? "primary" : "danger", loading: confirmLoading, onPress: () => void confirmDecision() }}
     >
+      {decisionError && <AppText accessibilityRole="alert" tone="danger">{decisionError}</AppText>}
       <AppText tone="muted">{t(confirm?.approved ? "approval.confirmApproveDescription" : "approval.confirmRejectDescription")}</AppText>
     </BottomSheet>
 
@@ -110,16 +120,25 @@ export default function BookingApprovalsScreen() {
       negativeAction={{ label: t("common.close"), onPress: closeProof }}
       positiveAction={{ label: t("paymentProof.download"), loading: downloading, disabled: !proof.data, onPress: () => void downloadProof() }}
     >
+      {proofError && <AppText accessibilityRole="alert" tone="danger">{proofError}</AppText>}
       {proof.isLoading ? <AppText>{t("common.loading")}</AppText> : proof.data ? <Image source={{ uri: `data:${proof.data.contentType};base64,${proof.data.dataBase64}` }} style={styles.preview} resizeMode="contain" /> : <AppText tone="muted">{t("paymentProof.none")}</AppText>}
       {proof.data?.note && <AppText tone="muted">{proof.data.note}</AppText>}
     </BottomSheet>
   </AppScreen>;
 }
 
-function ApprovalCard({ title, description, actions }: { title: string; description: string; actions?: ReactElement }) {
+function ApprovalSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+  return <View style={styles.section}>
+    <View style={styles.sectionHeader}><AppText variant="heading">{title}</AppText><AppText tone="muted">{description}</AppText></View>
+    {children}
+  </View>;
+}
+
+function ApprovalCard({ title, description, detail, actions }: { title: string; description: string; detail?: string; actions?: ReactElement }) {
   return <View style={styles.card}>
     <AppText variant="heading">{title}</AppText>
     <AppText tone="muted">{description}</AppText>
+    {detail && <AppText variant="label">{detail}</AppText>}
     {actions}
   </View>;
 }
@@ -139,6 +158,8 @@ const styles = StyleSheet.create({
   tabText: { color: colors.muted },
   activeTabText: { color: colors.primary },
   pressedTab: { opacity: 0.72 },
+  section: { gap: spacing.sm },
+  sectionHeader: { gap: spacing.xs },
   card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   actionsRow: { flexDirection: "row", gap: spacing.sm },
   actionButton: { flex: 1 },

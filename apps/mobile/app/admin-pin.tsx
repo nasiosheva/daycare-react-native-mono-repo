@@ -10,7 +10,7 @@ type Step = "new" | "confirm";
 
 export default function AdminPinScreen() {
   const router = useRouter();
-  const { api, profile, isSimulationSession } = useAuth();
+  const { api, profile } = useAuth();
   const { t } = useI18n();
   const [step, setStep] = useState<Step>("new");
   const [newPin, setNewPin] = useState("");
@@ -31,7 +31,6 @@ export default function AdminPinScreen() {
       Alert.alert(t("pin.mismatch"), t("pin.mismatchDescription"));
       return;
     }
-    if (isSimulationSession) return Alert.alert(t("pin.unavailable"), t("pin.simulation"));
     try {
       await api.changePlatformAdminPin(pin);
       Alert.alert(t("pin.changed"), t("pin.changedDescription"), [{ text: t("common.ok"), onPress: () => router.replace("/profile") }]);

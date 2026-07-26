@@ -35,13 +35,14 @@ import com.daycare.api.service.CreateChildPlacementRequest
 import com.daycare.api.service.ChildListFilter
 import com.daycare.api.service.BranchListFilter
 import com.daycare.api.service.GoalService
-import com.daycare.api.service.UpsertGoalTemplateRequest
+import com.daycare.api.service.UpsertDevelopmentProgramRequest
 import com.daycare.api.service.UpsertGoalIndicatorRequest
 import com.daycare.api.service.AssignChildGoalRequest
 import com.daycare.api.service.GoalCheckInRequest
 import com.daycare.api.service.FinalizeChildGoalRequest
 import com.daycare.api.service.CreateAcademicYearRequest
 import com.daycare.api.service.CreateCurriculumProgramRequest
+import com.daycare.api.service.SetCurriculumProgramActiveRequest
 import com.daycare.api.service.UpsertCurriculumActivityRequest
 import com.daycare.api.service.CreateCurriculumActivityAssessmentRequest
 import com.daycare.api.service.ChangePlatformAdminPinRequest
@@ -60,6 +61,7 @@ import com.daycare.api.service.AssignChildStaffRequest
 import com.daycare.api.service.SetBranchCapacityRequest
 import com.daycare.api.service.UpsertServicePlanTemplateRequest
 import com.daycare.api.service.LocalAuthenticationService
+import com.daycare.api.service.LoginIdentifierService
 import com.daycare.api.service.ParentEnrollmentService
 import com.daycare.api.service.ParentEnrollmentCheckoutRequest
 import com.daycare.api.service.ParentEnrollmentApprovalRequest
@@ -107,6 +109,7 @@ import java.time.LocalDate
 import java.util.UUID
 
 data class LocalLoginRequest(@field:NotBlank @field:Size(max = 128) val identifier: String, @field:Size(min = 6, max = 128) val password: String)
+data class LoginIdentifierRequest(@field:NotBlank @field:Size(min = 2, max = 100) val username: String)
 data class LocalPasswordRequest(@field:Size(min = 6, max = 128) val password: String)
 data class LocalProfileRequest(@field:NotBlank @field:Size(max = 128) val displayName: String)
 data class UpdatePersonalDetailsRequest(@field:NotNull val gender: Gender, @field:NotNull val dateOfBirth: LocalDate)
@@ -127,6 +130,13 @@ class LocalAuthenticationController(private val localAuthentication: LocalAuthen
 
     @PatchMapping("/profile")
     fun updateProfile(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: LocalProfileRequest) = localAuthentication.updateDisplayName(jwt.subject, request.displayName)
+}
+
+@RestController
+@RequestMapping("/v1/auth")
+class LoginIdentifierController(private val loginIdentifiers: LoginIdentifierService) {
+    @PostMapping("/resolve-username")
+    fun resolveUsername(@Valid @RequestBody request: LoginIdentifierRequest) = loginIdentifiers.resolveUsername(request.username)
 }
 
 @RestController
@@ -194,6 +204,8 @@ class PlatformController(
     private val platformCurriculum: PlatformCurriculumService,
     private val institutionTypes: InstitutionTypeCatalogService,
     private val development: DevelopmentService,
+    private val goalService: GoalService,
+    private val learning: LearningStructureService,
 ) {
 
     @GetMapping("/development-categories")
@@ -207,6 +219,30 @@ class PlatformController(
 
     @DeleteMapping("/development-categories/{categoryId}") @ResponseStatus(HttpStatus.NO_CONTENT)
     fun deleteGlobalDevelopmentCategory(@AuthenticationPrincipal jwt: Jwt, @PathVariable categoryId: UUID) = development.deleteGlobalCategory(jwt, categoryId)
+
+    @GetMapping("/development-programs")
+    fun globalDevelopmentPrograms(@AuthenticationPrincipal jwt: Jwt, @RequestParam(required = false) search: String?) = goalService.globalPrograms(jwt, search)
+
+    @PostMapping("/development-programs") @ResponseStatus(HttpStatus.CREATED)
+    fun createGlobalDevelopmentProgram(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: UpsertDevelopmentProgramRequest) = goalService.createGlobalProgram(jwt, request)
+
+    @PatchMapping("/development-programs/{programId}")
+    fun updateGlobalDevelopmentProgram(@AuthenticationPrincipal jwt: Jwt, @PathVariable programId: UUID, @Valid @RequestBody request: UpsertDevelopmentProgramRequest) = goalService.updateGlobalProgram(jwt, programId, request)
+
+    @DeleteMapping("/development-programs/{programId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteGlobalDevelopmentProgram(@AuthenticationPrincipal jwt: Jwt, @PathVariable programId: UUID) = goalService.deleteGlobalProgram(jwt, programId)
+
+    @GetMapping("/learning-levels")
+    fun globalLearningLevels(@AuthenticationPrincipal jwt: Jwt) = learning.globalLevels(jwt)
+
+    @PostMapping("/learning-levels") @ResponseStatus(HttpStatus.CREATED)
+    fun createGlobalLearningLevel(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: UpsertLearningLevelRequest) = learning.createGlobalLevel(jwt, request)
+
+    @PatchMapping("/learning-levels/{levelId}")
+    fun updateGlobalLearningLevel(@AuthenticationPrincipal jwt: Jwt, @PathVariable levelId: UUID, @Valid @RequestBody request: UpsertLearningLevelRequest) = learning.updateGlobalLevel(jwt, levelId, request)
+
+    @DeleteMapping("/learning-levels/{levelId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteGlobalLearningLevel(@AuthenticationPrincipal jwt: Jwt, @PathVariable levelId: UUID) = learning.deleteGlobalLevel(jwt, levelId)
 
     @GetMapping("/institution-types")
     fun institutionTypes(@AuthenticationPrincipal jwt: Jwt) = institutionTypes.list(jwt)
@@ -254,10 +290,16 @@ class PlatformController(
     fun changePin(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: ChangePlatformAdminPinRequest) = platformAdminPin.changePin(jwt, request)
 
     @GetMapping("/curriculum-programs")
-    fun curriculumPrograms(@AuthenticationPrincipal jwt: Jwt) = platformCurriculum.programs(jwt)
+    fun curriculumPrograms(@AuthenticationPrincipal jwt: Jwt, @RequestParam(defaultValue = "false") includeArchived: Boolean) = platformCurriculum.programs(jwt, includeArchived)
 
     @PostMapping("/curriculum-programs") @ResponseStatus(HttpStatus.CREATED)
     fun createCurriculumProgram(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: CreateGlobalCurriculumProgramRequest) = platformCurriculum.createProgram(jwt, request)
+
+    @PatchMapping("/curriculum-programs/{programId}")
+    fun updateCurriculumProgram(@AuthenticationPrincipal jwt: Jwt, @PathVariable programId: UUID, @Valid @RequestBody request: CreateGlobalCurriculumProgramRequest) = platformCurriculum.updateProgram(jwt, programId, request)
+
+    @PatchMapping("/curriculum-programs/{programId}/active")
+    fun setCurriculumProgramActive(@AuthenticationPrincipal jwt: Jwt, @PathVariable programId: UUID, @RequestBody request: SetCurriculumProgramActiveRequest) = platformCurriculum.setProgramActive(jwt, programId, request.active)
 
     @PostMapping("/tenants/{organizationId}/payments/{paymentId}/mark-paid")
     fun markPaymentPaid(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable paymentId: UUID) = platformAdministration.markPaymentPaid(jwt, organizationId, paymentId)
@@ -351,6 +393,12 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @PutMapping("/child-goals/{goalId}/check-ins/{date}")
     fun recordGoalCheckIn(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable goalId: UUID, @PathVariable date: java.time.LocalDate, @Valid @RequestBody request: GoalCheckInRequest) = goalService.recordCheckIn(jwt, organizationId, goalId, date, request)
 
+    @GetMapping("/child-goals/{goalId}/check-ins/{date}/{indicatorId}/photo")
+    fun goalCheckInPhoto(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable goalId: UUID, @PathVariable date: java.time.LocalDate, @PathVariable indicatorId: UUID) = goalService.checkInPhoto(jwt, organizationId, goalId, date, indicatorId)
+
+    @GetMapping("/child-goals/{goalId}/check-ins/{date}/{indicatorId}/audio")
+    fun goalCheckInAudio(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable goalId: UUID, @PathVariable date: java.time.LocalDate, @PathVariable indicatorId: UUID) = goalService.checkInAudio(jwt, organizationId, goalId, date, indicatorId)
+
     @PostMapping("/child-goals/{goalId}/finalize")
     fun finalizeGoal(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable goalId: UUID, @Valid @RequestBody request: FinalizeChildGoalRequest) = goalService.finalize(jwt, organizationId, goalId, request)
 
@@ -373,7 +421,7 @@ class InstitutionController(private val attendance: AttendanceService, private v
     fun updateTenantUserDevelopmentCategoryPermission(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable userId: UUID, @RequestBody request: UpdateTenantUserDevelopmentCategoryPermissionRequest) = administration.updateTenantUserDevelopmentCategoryPermission(jwt, organizationId, userId, request)
 
     @GetMapping("/branches")
-    fun branches(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = branchManagement.branches(jwt, organizationId)
+    fun branches(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) search: String?) = branchManagement.branches(jwt, organizationId, search)
 
     @PostMapping("/branches") @ResponseStatus(HttpStatus.CREATED)
     fun createBranch(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateTenantBranchRequest) = branchManagement.create(jwt, organizationId, request)
@@ -394,31 +442,40 @@ class InstitutionController(private val attendance: AttendanceService, private v
     fun createAcademicYear(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateAcademicYearRequest) = academic.createAcademicYear(jwt, organizationId, request)
 
     @GetMapping("/curriculum-programs")
-    fun curriculumPrograms(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) search: String?) = academic.curriculumPrograms(jwt, organizationId, search)
+    fun curriculumPrograms(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) search: String?, @RequestParam(defaultValue = "false") includeArchived: Boolean) = academic.curriculumPrograms(jwt, organizationId, search, includeArchived)
 
     @PostMapping("/curriculum-programs") @ResponseStatus(HttpStatus.CREATED)
     fun createCurriculumProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateCurriculumProgramRequest) = academic.createCurriculumProgram(jwt, organizationId, request)
 
+    @PatchMapping("/curriculum-programs/{programId}")
+    fun updateCurriculumProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable programId: UUID, @Valid @RequestBody request: CreateCurriculumProgramRequest) = academic.updateCurriculumProgram(jwt, organizationId, programId, request)
+
+    @PatchMapping("/curriculum-programs/{programId}/active")
+    fun setCurriculumProgramActive(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable programId: UUID, @RequestBody request: SetCurriculumProgramActiveRequest) = academic.setCurriculumProgramActive(jwt, organizationId, programId, request.active)
+
     @GetMapping("/curriculum-activities")
     fun activities(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = academic.activities(jwt, organizationId)
 
-    @GetMapping("/goal-templates")
-    fun goalTemplates(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) search: String?) = goalService.templates(jwt, organizationId, search)
+    @GetMapping("/development-programs")
+    fun developmentPrograms(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) search: String?) = goalService.programs(jwt, organizationId, search)
 
-    @PostMapping("/goal-templates") @ResponseStatus(HttpStatus.CREATED)
-    fun createGoalTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertGoalTemplateRequest) = goalService.createTemplate(jwt, organizationId, request)
+    @PostMapping("/development-programs") @ResponseStatus(HttpStatus.CREATED)
+    fun createDevelopmentProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertDevelopmentProgramRequest) = goalService.createProgram(jwt, organizationId, request)
 
-    @PatchMapping("/goal-templates/{templateId}")
-    fun updateGoalTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID, @Valid @RequestBody request: UpsertGoalTemplateRequest) = goalService.updateTemplate(jwt, organizationId, templateId, request)
+    @PatchMapping("/development-programs/{programId}")
+    fun updateDevelopmentProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable programId: UUID, @Valid @RequestBody request: UpsertDevelopmentProgramRequest) = goalService.updateProgram(jwt, organizationId, programId, request)
 
-    @PostMapping("/goal-templates/{templateId}/indicators") @ResponseStatus(HttpStatus.CREATED)
-    fun createGoalIndicator(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID, @Valid @RequestBody request: UpsertGoalIndicatorRequest) = goalService.createIndicator(jwt, organizationId, templateId, request)
+    @DeleteMapping("/development-programs/{programId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteDevelopmentProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable programId: UUID) = goalService.deleteProgram(jwt, organizationId, programId)
 
-    @PatchMapping("/goal-templates/{templateId}/indicators/{indicatorId}")
-    fun updateGoalIndicator(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID, @PathVariable indicatorId: UUID, @Valid @RequestBody request: UpsertGoalIndicatorRequest) = goalService.updateIndicator(jwt, organizationId, templateId, indicatorId, request)
+    @PostMapping("/development-programs/{programId}/indicators") @ResponseStatus(HttpStatus.CREATED)
+    fun createGoalIndicator(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable programId: UUID, @Valid @RequestBody request: UpsertGoalIndicatorRequest) = goalService.createIndicator(jwt, organizationId, programId, request)
 
-    @PostMapping("/goal-templates/{templateId}/indicators/{indicatorId}/archive")
-    fun archiveGoalIndicator(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID, @PathVariable indicatorId: UUID) = goalService.archiveIndicator(jwt, organizationId, templateId, indicatorId)
+    @PatchMapping("/development-programs/{programId}/indicators/{indicatorId}")
+    fun updateGoalIndicator(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable programId: UUID, @PathVariable indicatorId: UUID, @Valid @RequestBody request: UpsertGoalIndicatorRequest) = goalService.updateIndicator(jwt, organizationId, programId, indicatorId, request)
+
+    @PostMapping("/development-programs/{programId}/indicators/{indicatorId}/archive")
+    fun archiveGoalIndicator(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable programId: UUID, @PathVariable indicatorId: UUID) = goalService.archiveIndicator(jwt, organizationId, programId, indicatorId)
 
     @PostMapping("/curriculum-activities") @ResponseStatus(HttpStatus.CREATED)
     fun createActivity(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertCurriculumActivityRequest) = academic.createActivity(jwt, organizationId, request)
@@ -488,6 +545,9 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @GetMapping("/children/{childId}/placements")
     fun childPlacements(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = learning.placements(jwt, organizationId, childId)
+
+    @GetMapping("/children/{childId}/placement-options")
+    fun childPlacementOptions(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = learning.placementOptions(jwt, organizationId, childId)
 
     @PostMapping("/children/{childId}/placements") @ResponseStatus(HttpStatus.CREATED)
     fun placeChild(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateChildPlacementRequest) = learning.placeChild(jwt, organizationId, childId, request)

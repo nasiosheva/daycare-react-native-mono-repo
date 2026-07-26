@@ -52,6 +52,16 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/tenant-users/staff-id/child-program-permission", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ canManageChildPrograms: true }) }));
   });
 
+  it("resolves a username before Firebase email-password sign-in", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ email: "staff@example.test" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => null, getOrganizationId: () => null, getLanguage: () => "id" });
+
+    await expect(client.resolveLoginUsername("staff-satu")).resolves.toEqual({ email: "staff@example.test" });
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/auth/resolve-username", expect.objectContaining({ method: "POST", body: JSON.stringify({ username: "staff-satu" }) }));
+  });
+
   it("lists and creates Platform-managed institution types", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
     vi.stubGlobal("fetch", fetchMock);
@@ -93,6 +103,16 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/children?branchId=branch-id&learningLevelId=level-id&classroomId=classroom-id", expect.anything());
   });
 
+  it("requests server-authorized placement options for a child", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await client.childPlacementOptions("child-id");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/children/child-id/placement-options", expect.anything());
+  });
+
   it("sends one branch filter to every branch-scoped operational list", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
     vi.stubGlobal("fetch", fetchMock);
@@ -125,6 +145,26 @@ describe("ApiClient", () => {
     await client.curriculumPrograms("  fondasi anak  ");
 
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/curriculum-programs?search=fondasi+anak", expect.anything());
+  });
+
+  it("includes archived curriculum programs only when requested", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await client.curriculumPrograms(undefined, true);
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/curriculum-programs?includeArchived=true", expect.anything());
+  });
+
+  it("updates a curriculum program with its Goal template links", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await client.updateCurriculumProgram("program-id", { name: "Bahasa awal", description: "", developmentProgramIds: ["goal-id"] });
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/curriculum-programs/program-id", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ name: "Bahasa awal", description: "", developmentProgramIds: ["goal-id"] }) }));
   });
 
   it("records a daily child-goal outcome through the tenant-scoped endpoint", async () => {

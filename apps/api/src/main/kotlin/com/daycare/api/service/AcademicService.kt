@@ -8,7 +8,10 @@ import com.daycare.api.persistence.CurriculumActivityRepository
 import com.daycare.api.persistence.CurriculumActivityAssessment
 import com.daycare.api.persistence.CurriculumActivityAssessmentRepository
 import com.daycare.api.persistence.CurriculumProgram
+import com.daycare.api.persistence.CurriculumProgramDevelopmentProgram
+import com.daycare.api.persistence.CurriculumProgramDevelopmentProgramRepository
 import com.daycare.api.persistence.CurriculumProgramRepository
+import com.daycare.api.persistence.DevelopmentProgramRepository
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.springframework.security.oauth2.jwt.Jwt
@@ -27,9 +30,11 @@ data class CreateCurriculumProgramRequest(
     val academicYearId: UUID? = null,
     @field:NotBlank @field:Size(max = 120) val name: String,
     @field:Size(max = 2_000) val description: String = "",
+    val developmentProgramIds: Set<UUID> = emptySet(),
 )
+data class SetCurriculumProgramActiveRequest(val active: Boolean)
 enum class CurriculumProgramSource { GLOBAL, TENANT }
-data class CurriculumProgramResponse(val id: UUID, val academicYearId: UUID?, val name: String, val description: String, val source: CurriculumProgramSource)
+data class CurriculumProgramResponse(val id: UUID, val academicYearId: UUID?, val name: String, val description: String, val source: CurriculumProgramSource, val isTemplate: Boolean, val active: Boolean, val developmentProgramIds: Set<UUID>)
 data class UpsertCurriculumActivityRequest(
     @field:NotBlank @field:Size(max = 120) val name: String,
     @field:Size(max = 2_000) val description: String = "",
@@ -46,6 +51,8 @@ class AcademicService(
     private val access: AccessService,
     private val academicYears: AcademicYearRepository,
     private val curriculumPrograms: CurriculumProgramRepository,
+    private val programGoals: CurriculumProgramDevelopmentProgramRepository,
+    private val developmentPrograms: DevelopmentProgramRepository,
     private val curriculumActivities: CurriculumActivityRepository,
     private val curriculumActivityAssessments: CurriculumActivityAssessmentRepository,
 ) {
@@ -63,14 +70,15 @@ class AcademicService(
     }
 
     @Transactional(readOnly = true)
-    fun curriculumPrograms(jwt: Jwt, organizationId: UUID, search: String? = null): List<CurriculumProgramResponse> {
+    fun curriculumPrograms(jwt: Jwt, organizationId: UUID, search: String? = null, includeArchived: Boolean = false): List<CurriculumProgramResponse> {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
         val query = search?.trim().orEmpty()
         val programs = if (query.isBlank()) {
-            curriculumPrograms.findAllByOrganizationIdIsNullOrderByNameAsc() +
-                curriculumPrograms.findAllByOrganizationIdOrderByNameAsc(organizationId)
+            if (includeArchived) curriculumPrograms.findAllByOrganizationIdIsNullOrderByNameAsc() + curriculumPrograms.findAllByOrganizationIdOrderByNameAsc(organizationId)
+            else curriculumPrograms.findAllByOrganizationIdIsNullAndActiveTrueOrderByNameAsc() + curriculumPrograms.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId)
         } else {
-            curriculumPrograms.searchAvailableForOrganization(organizationId, query)
+            if (includeArchived) curriculumPrograms.searchIncludingArchivedForOrganization(organizationId, query)
+            else curriculumPrograms.searchAvailableForOrganization(organizationId, query)
         }
         return programs.map(::curriculumProgramResponse)
     }
@@ -78,11 +86,28 @@ class AcademicService(
     @Transactional
     fun createCurriculumProgram(jwt: Jwt, organizationId: UUID, request: CreateCurriculumProgramRequest): CurriculumProgramResponse {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
-        request.academicYearId?.let { yearId ->
-            val academicYear = academicYears.findById(yearId).orElseThrow { IllegalArgumentException("Learning period was not found") }
-            require(academicYear.organizationId == organizationId) { "Learning period belongs to a different organization" }
-        }
-        return curriculumProgramResponse(curriculumPrograms.save(CurriculumProgram(organizationId = organizationId, academicYearId = request.academicYearId, name = request.name.trim(), description = request.description.trim())))
+        validateTenantProgramRequest(organizationId, request, existingProgramId = null)
+        val program = curriculumPrograms.save(CurriculumProgram(organizationId = organizationId, academicYearId = request.academicYearId, name = request.name.trim(), description = request.description.trim()))
+        replaceProgramGoals(program.id, request.developmentProgramIds)
+        return curriculumProgramResponse(program)
+    }
+
+    @Transactional
+    fun updateCurriculumProgram(jwt: Jwt, organizationId: UUID, programId: UUID, request: CreateCurriculumProgramRequest): CurriculumProgramResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        validateTenantProgramRequest(organizationId, request, existingProgramId = programId)
+        val program = tenantProgram(programId, organizationId)
+        program.academicYearId = request.academicYearId
+        program.name = request.name.trim()
+        program.description = request.description.trim()
+        replaceProgramGoals(program.id, request.developmentProgramIds)
+        return curriculumProgramResponse(program)
+    }
+
+    @Transactional
+    fun setCurriculumProgramActive(jwt: Jwt, organizationId: UUID, programId: UUID, active: Boolean): CurriculumProgramResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        return curriculumProgramResponse(tenantProgram(programId, organizationId).also { it.active = active })
     }
 
     @Transactional(readOnly = true)
@@ -137,7 +162,24 @@ class AcademicService(
 
     private fun activity(activityId: UUID, organizationId: UUID) = curriculumActivities.findById(activityId).orElseThrow { IllegalArgumentException("Curriculum activity was not found") }.also { require(it.organizationId == organizationId) { "Curriculum activity belongs to a different organization" } }
     private fun academicYearResponse(year: AcademicYear) = AcademicYearResponse(year.id, year.name, year.startsOn, year.endsOn, year.active)
-    private fun curriculumProgramResponse(program: CurriculumProgram) = CurriculumProgramResponse(program.id, program.academicYearId, program.name, program.description, if (program.organizationId == null) CurriculumProgramSource.GLOBAL else CurriculumProgramSource.TENANT)
+    private fun validateTenantProgramRequest(organizationId: UUID, request: CreateCurriculumProgramRequest, existingProgramId: UUID?) {
+        request.academicYearId?.let { yearId ->
+            val academicYear = academicYears.findById(yearId).orElseThrow { IllegalArgumentException("Learning period was not found") }
+            require(academicYear.organizationId == organizationId) { "Learning period belongs to a different organization" }
+        }
+        validateProgramGoals(organizationId, request.developmentProgramIds, globalProgram = false, existingProgramId = existingProgramId)
+    }
+    private fun validateProgramGoals(organizationId: UUID?, ids: Set<UUID>, globalProgram: Boolean, existingProgramId: UUID? = null) = ids.forEach { id ->
+        val program = developmentPrograms.findById(id).orElseThrow { IllegalArgumentException("Development program was not found") }
+        require(program.active || (existingProgramId != null && programGoals.existsByCurriculumProgramIdAndDevelopmentProgramId(existingProgramId, id))) { "Archived Goal template cannot be assigned to a new curriculum program" }
+        require(program.organizationId == null || (!globalProgram && program.organizationId == organizationId)) { "Development program belongs to a different organization" }
+    }
+    private fun replaceProgramGoals(programId: UUID, ids: Set<UUID>) {
+        programGoals.deleteAllByCurriculumProgramId(programId)
+        programGoals.saveAll(ids.map { CurriculumProgramDevelopmentProgram(curriculumProgramId = programId, developmentProgramId = it) })
+    }
+    private fun tenantProgram(programId: UUID, organizationId: UUID) = curriculumPrograms.findById(programId).orElseThrow { IllegalArgumentException("Curriculum program was not found") }.also { require(it.organizationId == organizationId) { "Curriculum program belongs to a different organization" } }
+    private fun curriculumProgramResponse(program: CurriculumProgram) = CurriculumProgramResponse(program.id, program.academicYearId, program.name, program.description, if (program.organizationId == null) CurriculumProgramSource.GLOBAL else CurriculumProgramSource.TENANT, program.isTemplate, program.active, programGoals.findAllByCurriculumProgramId(program.id).map { it.developmentProgramId }.toSet())
     private fun activityResponse(activity: CurriculumActivity) = CurriculumActivityResponse(activity.id, activity.name, activity.description, activity.active)
     private fun activityAssessmentResponse(assessment: CurriculumActivityAssessment) = CurriculumActivityAssessmentResponse(assessment.id, assessment.activityId, assessment.name, assessment.description)
 }

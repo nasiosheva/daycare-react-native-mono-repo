@@ -81,4 +81,14 @@ class ApiExceptionHandlerTest {
         assertEquals("The password must contain at least 6 characters.", problem.detail)
         assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
     }
+
+    @Test
+    fun `localizes child placement scope errors`() {
+        LocaleContextHolder.setLocale(Locale.ENGLISH)
+
+        val problem = handler.invalidRequest(IllegalArgumentException("Staff member cannot place this child in the selected classroom"))
+
+        assertEquals("The staff member can select only a class group within their assignment scope.", problem.detail)
+        assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
+    }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import { useInvoices, useMarkInvoicePaid, useServicePlans } from "@/booking/useB
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { servicePlanTypeKey } from "@/i18n/translations";
+import { notify } from "@/notify/notify";
 import { DatePicker } from "@/date-picker/DatePicker";
 import type { ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, UnusedCreditPolicy } from "@daycare/core";
 import type { ServicePlanTemplate } from "@daycare/api-client";
@@ -20,16 +21,44 @@ const emptyDiscountForm = () => ({ name: "", kind: "AUTOMATIC" as ServicePlanDis
 const planTypes: ServicePlanType[] = ["DAILY", "WEEKLY", "MONTHLY"];
 type PlanFields = { name: string; price: string; type: ServicePlanType; credits: string; policy: UnusedCreditPolicy; carryDays: string; capacity: string };
 const emptyPlanFields = (): PlanFields => ({ name: "", price: "", type: "DAILY", credits: "1", policy: "EXPIRE", carryDays: "30", capacity: "" });
+const MAX_DAILY_CAPACITY = 999;
+const digitsOnly = (value: string) => value.replace(/\D/g, "");
+const formatThousands = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+const formatPriceInput = (value: string) => formatThousands(digitsOnly(value));
+const formatCapacityInput = (value: string) => { const digits = digitsOnly(value); return digits ? String(Math.min(MAX_DAILY_CAPACITY, Number(digits))) : ""; };
 function templateToFields(template: ServicePlanTemplate): PlanFields {
-  return { name: template.name, type: template.type, price: template.suggestedPrice?.toString() ?? "", credits: template.creditCount?.toString() ?? (template.type === "DAILY" ? "1" : ""), policy: template.unusedCreditPolicy ?? "EXPIRE", carryDays: template.carryForwardDays?.toString() ?? "30", capacity: template.dailyCapacity?.toString() ?? "" };
+  return { name: template.name, type: template.type, price: template.suggestedPrice != null ? formatThousands(String(template.suggestedPrice)) : "", credits: template.creditCount?.toString() ?? (template.type === "DAILY" ? "1" : ""), policy: template.unusedCreditPolicy ?? "EXPIRE", carryDays: template.carryForwardDays?.toString() ?? "30", capacity: template.dailyCapacity?.toString() ?? "" };
 }
 function toPlanInput(fields: PlanFields) {
-  const price = fields.price.trim() ? Number(fields.price) : undefined;
-  const creditCount = fields.type === "MONTHLY" ? undefined : Number(fields.credits);
+  const priceDigits = digitsOnly(fields.price);
+  const price = priceDigits ? Number(priceDigits) : undefined;
+  const creditCount = fields.type === "MONTHLY" || !fields.credits.trim() ? undefined : Number(fields.credits);
   const dailyCapacity = fields.capacity.trim() ? Number(fields.capacity) : undefined;
   const carryForwardDays = fields.type === "WEEKLY" && fields.policy === "CARRY_FORWARD" ? Number(fields.carryDays) : undefined;
-  if (!fields.name.trim() || (price !== undefined && (!Number.isFinite(price) || price <= 0)) || (creditCount !== undefined && (!Number.isInteger(creditCount) || creditCount < 1)) || (dailyCapacity !== undefined && (!Number.isInteger(dailyCapacity) || dailyCapacity < 1)) || (carryForwardDays !== undefined && (!Number.isInteger(carryForwardDays) || carryForwardDays < 1))) return undefined;
+  if (!fields.name.trim() || (price !== undefined && (!Number.isFinite(price) || price <= 0)) || (creditCount !== undefined && (!Number.isInteger(creditCount) || creditCount < 1)) || (dailyCapacity !== undefined && (!Number.isInteger(dailyCapacity) || dailyCapacity < 1 || dailyCapacity > MAX_DAILY_CAPACITY)) || (carryForwardDays !== undefined && (!Number.isInteger(carryForwardDays) || carryForwardDays < 1))) return undefined;
   return { name: fields.name.trim(), type: fields.type, price, creditCount, unusedCreditPolicy: fields.type === "WEEKLY" ? fields.policy : undefined, carryForwardDays, bookingRequiresApproval: true, dailyCapacity };
+}
+function planFieldError(fields: PlanFields, isTemplateEditor: boolean): "billing.nameRequired" | "billing.priceRequired" | "billing.daysRequired" | "billing.invalidCapacity" | "billing.invalidCarryDays" | null {
+  if (!fields.name.trim()) return "billing.nameRequired";
+  const priceDigits = digitsOnly(fields.price);
+  if (!isTemplateEditor && !priceDigits) return "billing.priceRequired";
+  if (priceDigits) {
+    const price = Number(priceDigits);
+    if (!Number.isFinite(price) || price <= 0) return "billing.priceRequired";
+  }
+  if (fields.type !== "MONTHLY") {
+    const credits = fields.credits.trim() ? Number(fields.credits) : NaN;
+    if (!Number.isInteger(credits) || credits < 1) return "billing.daysRequired";
+  }
+  if (fields.capacity.trim()) {
+    const capacity = Number(fields.capacity);
+    if (!Number.isInteger(capacity) || capacity < 1 || capacity > MAX_DAILY_CAPACITY) return "billing.invalidCapacity";
+  }
+  if (fields.type === "WEEKLY" && fields.policy === "CARRY_FORWARD") {
+    const carryDays = fields.carryDays.trim() ? Number(fields.carryDays) : NaN;
+    if (!Number.isInteger(carryDays) || carryDays < 1) return "billing.invalidCarryDays";
+  }
+  return null;
 }
 
 export default function BillingAdminScreen() {
@@ -78,8 +107,8 @@ export default function BillingAdminScreen() {
   const openCapacity = (branchId: string, current?: number | null) => { setListSheet(null); setCapacityBranchId(branchId); setCapacity(current?.toString() ?? ""); };
   const saveCapacity = async () => {
     const dailyCapacity = Number(capacity);
-    if (!capacityBranchId || !Number.isInteger(dailyCapacity) || dailyCapacity < 1) return Alert.alert(t("billing.invalidCapacity"));
-    try { await setBranchCapacity.mutateAsync({ branchId: capacityBranchId, dailyCapacity }); setCapacityBranchId(undefined); } catch (error) { Alert.alert(t("billing.capacityFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    if (!capacityBranchId || !Number.isInteger(dailyCapacity) || dailyCapacity < 1 || dailyCapacity > MAX_DAILY_CAPACITY) return notify(t("billing.invalidCapacity"));
+    try { await setBranchCapacity.mutateAsync({ branchId: capacityBranchId, dailyCapacity }); setCapacityBranchId(undefined); } catch (error) { notify(t("billing.capacityFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
   const closeListSheet = () => setListSheet(null);
   const openCreateDiscount = () => { setListSheet(null); setDiscount(emptyDiscountForm()); setDiscountFormOpen(true); };
@@ -88,10 +117,10 @@ export default function BillingAdminScreen() {
     if (!selectedPlanId) return;
     const value = Number(discount.value);
     const usageLimit = discount.usageLimit.trim() ? Number(discount.usageLimit) : undefined;
-    if (!discount.name.trim() || !Number.isFinite(value) || value <= 0 || (discount.type === "PERCENTAGE" && value >= 100) || (discount.kind === "PROMO_CODE" && !discount.promoCode.trim()) || (usageLimit !== undefined && (!Number.isInteger(usageLimit) || usageLimit < 1))) return Alert.alert(t("billing.invalidDiscount"));
+    if (!discount.name.trim() || !Number.isFinite(value) || value <= 0 || (discount.type === "PERCENTAGE" && value >= 100) || (discount.kind === "PROMO_CODE" && !discount.promoCode.trim()) || (usageLimit !== undefined && (!Number.isInteger(usageLimit) || usageLimit < 1))) return notify(t("billing.invalidDiscount"));
     try {
       await createDiscount.mutateAsync({ targetPlanId: selectedPlanId, input: { kind: discount.kind, name: discount.name.trim(), promoCode: discount.kind === "PROMO_CODE" ? discount.promoCode.trim() : undefined, type: discount.type, value, startsOn: discount.startsOn.trim() || undefined, endsOn: discount.endsOn.trim() || undefined, usageLimit: discount.kind === "PROMO_CODE" ? usageLimit : undefined } });
-    } catch (error) { Alert.alert(t("billing.discountFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    } catch (error) { notify(t("billing.discountFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
   const isTemplateEditor = planFormMode === "template";
   const openCreatePlan = () => { setListSheet(null); setPlanFormTemplateId(undefined); setPlanFields(emptyPlanFields()); setPlanFormMode("plan"); };
@@ -101,8 +130,10 @@ export default function BillingAdminScreen() {
   const closePlanForm = () => closePlanFormState();
   const updatePlanFields = (patch: Partial<PlanFields>) => setPlanFields((current) => ({ ...current, ...patch }));
   const savePlanForm = async () => {
+    const fieldError = planFieldError(planFields, isTemplateEditor);
+    if (fieldError) return notify(t(fieldError));
     const input = toPlanInput(planFields);
-    if (!input || (!isTemplateEditor && input.price === undefined)) return Alert.alert(t("billing.invalid"));
+    if (!input || (!isTemplateEditor && input.price === undefined)) return notify(t("billing.invalid"));
     try {
       if (isTemplateEditor) {
         const { price: suggestedPrice, ...templateInput } = input;
@@ -112,7 +143,7 @@ export default function BillingAdminScreen() {
         await createPlan.mutateAsync({ ...input, price: input.price! });
       }
     } catch (error) {
-      Alert.alert(isTemplateEditor ? t("billing.templateFailed") : t("billing.failed"), error instanceof Error ? error.message : t("auth.tryAgain"));
+      notify(isTemplateEditor ? t("billing.templateFailed") : t("billing.failed"), error instanceof Error ? error.message : t("auth.tryAgain"));
     }
   };
   const planFormTitle = isTemplateEditor ? t(planFormTemplateId ? "billing.editTemplate" : "billing.createTemplate") : t("billing.createPlan");
@@ -212,7 +243,7 @@ export default function BillingAdminScreen() {
       {!invoices.isFetching && pendingInvoices.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     </BottomSheet>
 
-    <BottomSheet visible={Boolean(capacityBranchId)} onClose={() => setCapacityBranchId(undefined)} closeAccessibilityLabel={t("common.close")} title={t("billing.branchCapacity")} negativeAction={{ label: t("common.cancel"), onPress: () => setCapacityBranchId(undefined) }} positiveAction={{ label: t("billing.saveCapacity"), loading: setBranchCapacity.isPending, onPress: () => void saveCapacity() }}><TextInput style={styles.input} placeholder={t("billing.dailyCapacity")} keyboardType="numeric" value={capacity} onChangeText={setCapacity} /></BottomSheet>
+    <BottomSheet visible={Boolean(capacityBranchId)} onClose={() => setCapacityBranchId(undefined)} closeAccessibilityLabel={t("common.close")} title={t("billing.branchCapacity")} negativeAction={{ label: t("common.cancel"), onPress: () => setCapacityBranchId(undefined) }} positiveAction={{ label: t("billing.saveCapacity"), loading: setBranchCapacity.isPending, onPress: () => void saveCapacity() }}><TextInput style={styles.input} placeholder={t("billing.dailyCapacity")} keyboardType="numeric" maxLength={3} value={capacity} onChangeText={(value) => setCapacity(formatCapacityInput(value))} /></BottomSheet>
 
     <BottomSheet visible={discountFormOpen} onClose={closeDiscountForm} closeAccessibilityLabel={t("common.close")} title={t("billing.createDiscount")} negativeAction={{ label: t("common.cancel"), onPress: closeDiscountForm }} positiveAction={{ label: t("billing.saveDiscount"), loading: createDiscount.isPending, onPress: () => void saveDiscount() }}>
       <TextInput style={styles.input} placeholder={t("billing.discountName")} value={discount.name} onChangeText={(name) => setDiscount((current) => ({ ...current, name }))} />
@@ -228,8 +259,8 @@ export default function BillingAdminScreen() {
     <BottomSheet visible={planFormMode !== null} onClose={closePlanForm} closeAccessibilityLabel={t("common.close")} title={planFormTitle} negativeAction={{ label: t("common.cancel"), onPress: closePlanForm }} positiveAction={{ label: t(isTemplateEditor ? "common.save" : "billing.savePlan"), loading: createPlan.isPending || createTemplate.isPending || updateTemplate.isPending, onPress: () => void savePlanForm() }}>
       <TextInput style={styles.input} placeholder={t("billing.planName")} value={planFields.name} onChangeText={(name) => updatePlanFields({ name })} />
       <Choice values={planTypes} value={planFields.type} onChange={(type) => updatePlanFields({ type, credits: type === "DAILY" ? "1" : planFields.credits })} labels={{ DAILY: t(servicePlanTypeKey("DAILY")), WEEKLY: t(servicePlanTypeKey("WEEKLY")), MONTHLY: t(servicePlanTypeKey("MONTHLY")) }} />
-      <TextInput style={styles.input} placeholder={t(isTemplateEditor ? "billing.suggestedPrice" : "billing.price")} keyboardType="numeric" value={planFields.price} onChangeText={(price) => updatePlanFields({ price })} />
-      <TextInput style={styles.input} placeholder={t("billing.dailyCapacity")} keyboardType="numeric" value={planFields.capacity} onChangeText={(capacity) => updatePlanFields({ capacity })} />
+      <TextInput style={styles.input} placeholder={t(isTemplateEditor ? "billing.suggestedPrice" : "billing.price")} keyboardType="numeric" value={planFields.price} onChangeText={(price) => updatePlanFields({ price: formatPriceInput(price) })} />
+      <TextInput style={styles.input} placeholder={t("billing.dailyCapacity")} keyboardType="numeric" maxLength={3} value={planFields.capacity} onChangeText={(capacity) => updatePlanFields({ capacity: formatCapacityInput(capacity) })} />
       {planFields.type !== "MONTHLY" && <TextInput style={styles.input} placeholder={t("billing.days")} keyboardType="numeric" value={planFields.credits} onChangeText={(credits) => updatePlanFields({ credits })} />}
       {planFields.type === "WEEKLY" && <><View style={styles.options}><Button variant={planFields.policy === "EXPIRE" ? "primary" : "secondary"} onPress={() => updatePlanFields({ policy: "EXPIRE" })}>{t("billing.expire")}</Button><Button variant={planFields.policy === "CARRY_FORWARD" ? "primary" : "secondary"} onPress={() => updatePlanFields({ policy: "CARRY_FORWARD" })}>{t("billing.carry")}</Button></View>{planFields.policy === "CARRY_FORWARD" && <TextInput style={styles.input} placeholder={t("billing.carryForwardDays")} keyboardType="numeric" value={planFields.carryDays} onChangeText={(carryDays) => updatePlanFields({ carryDays })} />}</>}
     </BottomSheet>

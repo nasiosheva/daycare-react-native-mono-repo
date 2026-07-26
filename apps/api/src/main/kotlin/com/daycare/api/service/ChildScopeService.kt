@@ -46,6 +46,18 @@ class ChildScopeService(
         else -> false
     }
 
+    fun canStaffPlaceChildInClassroom(scope: AccessScope, childId: UUID, classroomId: UUID, organizationId: UUID): Boolean = when (scope.membership.role) {
+        Role.STAFF_ADMIN -> true
+        Role.STAFF -> {
+            val directlyAssigned = staffAssignments.existsByOrganizationIdAndChildIdAndUserId(organizationId, childId, scope.user.id)
+            val currentPlacement = placements.findByChildIdAndEndedOnIsNull(childId)
+            directlyAssigned || (currentPlacement != null &&
+                classroomAssignments.existsByOrganizationIdAndClassroomIdAndUserId(organizationId, currentPlacement.classroomId, scope.user.id) &&
+                classroomAssignments.existsByOrganizationIdAndClassroomIdAndUserId(organizationId, classroomId, scope.user.id))
+        }
+        else -> false
+    }
+
     fun requireParentLinkedChild(scope: AccessScope, childId: UUID, organizationId: UUID): Child {
         val child = requireOrganizationChild(childId, organizationId)
         if (!guardians.existsByChildIdAndUserId(childId, scope.user.id)) throw AccessDeniedException("You cannot access this child")

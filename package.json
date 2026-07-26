@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "turbo run dev --parallel",
     "dev:app": "corepack pnpm --filter @daycare/app start",
-    "dev:api": "gradle -p apps/api bootRun",
-    "dev:api:simulation": "set -a && . ./.env.simulation && set +a && SPRING_PROFILES_ACTIVE=simulation gradle -p apps/api bootRun",
+    "dev:api": "./apps/api/gradlew -p apps/api bootRun",
     "lint": "corepack pnpm -r --if-present lint",
     "typecheck": "corepack pnpm -r --if-present typecheck",
     "test": "corepack pnpm -r --if-present test",

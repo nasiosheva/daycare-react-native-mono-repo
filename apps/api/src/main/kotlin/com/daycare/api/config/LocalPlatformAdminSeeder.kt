@@ -38,7 +38,9 @@ class LocalPlatformAdminSeeder(
         user.username = username
         user.email = email
         user.displayName = displayName
-        if (user.localPasswordHash == null) user.localPasswordHash = passwordEncoder.encode(password)
+        if (user.localPasswordHash == null || !passwordEncoder.matches(password, user.localPasswordHash)) {
+            user.localPasswordHash = passwordEncoder.encode(password)
+        }
         val savedUser = users.save(user)
         if (!platformAdministrators.existsById(savedUser.id)) {
             platformAdministrators.save(PlatformAdministrator(userId = savedUser.id))

@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, colors, PasswordInput, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, PasswordInput, radius, spacing } from "@daycare/ui";
 import { tenantSubscriptionPlans, type TenantSubscriptionPlan } from "@daycare/core";
 import type { TenantStaffAdmin } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
@@ -27,7 +27,7 @@ export default function TenantDetailScreen() {
   const update = useMutation({ mutationFn: (input: Parameters<typeof api.updateTenant>[1]) => api.updateTenant(tenantId, input), onSuccess: refresh });
   const renew = useMutation({ mutationFn: (monthlyFee?: number) => api.renewTenantSubscription(tenantId, monthlyFee), onSuccess: refresh });
   const changeStatus = useMutation({ mutationFn: (status: "ACTIVE" | "SUSPENDED") => api.setTenantSubscriptionStatus(tenantId, status), onSuccess: refresh });
-  const createStaffAdmin = useMutation({ mutationFn: (input: { displayName: string; email: string; password: string }) => api.createTenantStaffAdmin(tenantId, input), onSuccess: refresh });
+  const createStaffAdmin = useMutation({ mutationFn: (input: { displayName: string; username?: string; email: string; password: string }) => api.createTenantStaffAdmin(tenantId, input), onSuccess: refresh });
   const updateStaffAdmin = useMutation({ mutationFn: ({ membershipId, displayName }: { membershipId: string; displayName: string }) => api.updateTenantStaffAdmin(tenantId, membershipId, { displayName }), onSuccess: refresh });
   const removeStaffAdmin = useMutation({ mutationFn: (membershipId: string) => api.removeTenantStaffAdmin(tenantId, membershipId), onSuccess: refresh });
   const markPaid = useMutation({ mutationFn: (paymentId: string) => api.markTenantPaymentPaid(tenantId, paymentId), onSuccess: refresh });
@@ -40,6 +40,7 @@ export default function TenantDetailScreen() {
   const [plan, setPlan] = useState<TenantSubscriptionPlan>("STARTER");
   const [monthlyFee, setMonthlyFee] = useState("");
   const [staffAdminName, setStaffAdminName] = useState("");
+  const [staffAdminUsername, setStaffAdminUsername] = useState("");
   const [staffAdminEmail, setStaffAdminEmail] = useState("");
   const [staffAdminPassword, setStaffAdminPassword] = useState("");
   const [staffAdminToRemove, setStaffAdminToRemove] = useState<TenantStaffAdmin | null>(null);
@@ -91,6 +92,7 @@ export default function TenantDetailScreen() {
   };
   const closeStaffAdminSheet = () => {
     setStaffAdminName("");
+    setStaffAdminUsername("");
     setStaffAdminEmail("");
     setStaffAdminPassword("");
     setSheet(null);
@@ -98,7 +100,7 @@ export default function TenantDetailScreen() {
   const submitStaffAdmin = async () => {
     if (!staffAdminName.trim() || !staffAdminEmail.trim() || staffAdminPassword.length < 6) return notify(t("tenant.staffAdminRequired"));
     try {
-      await createStaffAdmin.mutateAsync({ displayName: staffAdminName.trim(), email: staffAdminEmail.trim(), password: staffAdminPassword });
+      await createStaffAdmin.mutateAsync({ displayName: staffAdminName.trim(), username: staffAdminUsername.trim() || undefined, email: staffAdminEmail.trim(), password: staffAdminPassword });
       closeStaffAdminSheet();
       notify(t("tenant.staffAdminCreated"));
     } catch (error) { notify(t("tenant.staffAdminCreateFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
@@ -122,7 +124,7 @@ export default function TenantDetailScreen() {
     } catch (error) { notify(t("tenant.staffAdminRemoveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
   return <AppScreen showBottomNavigation={false} title={t("tenant.detailTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    {tenant.isLoading && <AppText>{t("tenant.load")}</AppText>}
+    {tenant.isLoading && <ShimmerList variant="card" count={4} />}
     {tenant.isError && <Button variant="secondary" onPress={() => tenant.refetch()}>{t("common.retry")}</Button>}
     {tenant.data && <View style={styles.content}>
       <View style={styles.card}>
@@ -182,6 +184,7 @@ export default function TenantDetailScreen() {
     </BottomSheet>
     <BottomSheet visible={sheet === "staffAdmin"} onClose={closeStaffAdminSheet} closeAccessibilityLabel={t("common.close")} title={t("tenant.addStaffAdmin")} negativeAction={{ label: t("common.cancel"), onPress: closeStaffAdminSheet }} positiveAction={{ label: t("common.save"), loading: createStaffAdmin.isPending, onPress: () => void submitStaffAdmin() }}>
       <TextInput style={styles.input} placeholder={t("tenantUsers.displayName")} value={staffAdminName} onChangeText={setStaffAdminName} />
+      <TextInput style={styles.input} autoCapitalize="none" placeholder={t("tenant.staffAdminUsernameOptional")} value={staffAdminUsername} onChangeText={setStaffAdminUsername} />
       <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder={t("tenantUsers.email")} value={staffAdminEmail} onChangeText={setStaffAdminEmail} />
       <PasswordInput placeholder={t("tenantUsers.password")} value={staffAdminPassword} onChangeText={setStaffAdminPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
     </BottomSheet>

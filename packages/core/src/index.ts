@@ -11,10 +11,8 @@ export type AttendanceMethod = (typeof attendanceMethods)[number];
 export const attendanceActions = ["CHECK_IN", "CHECK_OUT"] as const;
 export type AttendanceAction = (typeof attendanceActions)[number];
 
-export const developmentCategories = ["ACTIVITY", "MEAL", "NAP", "OBSERVATION"] as const;
-export type DevelopmentCategory = (typeof developmentCategories)[number];
-export const goalCategories = ["KEMANDIRIAN", "BAHASA_KOMUNIKASI", "KOGNITIF", "MOTORIK_HALUS", "MOTORIK_KASAR", "SOSIAL_EMOSI"] as const;
-export type GoalCategory = (typeof goalCategories)[number];
+export const goalDomains = ["KEMANDIRIAN", "BAHASA_KOMUNIKASI", "KOGNITIF", "MOTORIK_HALUS", "MOTORIK_KASAR", "SOSIAL_EMOSI"] as const;
+export type GoalDomain = (typeof goalDomains)[number];
 export const childGenders = ["MALE", "FEMALE"] as const;
 export type ChildGender = (typeof childGenders)[number];
 export type PersonGender = ChildGender | "UNSPECIFIED";
@@ -42,7 +40,6 @@ export type TenantSubscriptionStatus = (typeof tenantSubscriptionStatuses)[numbe
 export const tenantPaymentStatuses = ["PENDING", "PAID", "VOID"] as const;
 export type TenantPaymentStatus = (typeof tenantPaymentStatuses)[number];
 
-export const builtInInstitutionTypes = ["DAYCARE", "PAUD", "TK"] as const;
 export type InstitutionType = string;
 export const institutionCapabilities = ["DAYCARE_OPERATIONS", "ACADEMIC_CURRICULUM"] as const;
 export type InstitutionCapability = (typeof institutionCapabilities)[number];
@@ -72,7 +69,7 @@ export const permissions = {
   recordAttendance: ["STAFF"],
   recordDevelopment: ["STAFF_ADMIN", "STAFF"],
   viewChildDevelopment: ["STAFF_ADMIN", "STAFF", "PARENT"],
-  manageGoalTemplates: ["STAFF_ADMIN"],
+  manageGoalCategories: ["STAFF_ADMIN"],
   assignChildGoals: ["STAFF_ADMIN"],
   recordChildGoalProgress: ["STAFF_ADMIN", "STAFF"],
   viewChildGoalProgress: ["STAFF_ADMIN", "STAFF", "PARENT"],
@@ -107,7 +104,7 @@ export const attendanceCommandSchema = z.object({
 });
 
 export const developmentEntrySchema = z.object({
-  category: z.union([z.enum(developmentCategories), z.string().uuid()]),
+  category: z.string().trim().min(1),
   title: z.string().trim().min(1).max(120),
   content: z.string().trim().min(1).max(2_000),
 });

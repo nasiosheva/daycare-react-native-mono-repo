@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -31,7 +31,6 @@ export default function ClassroomsScreen() {
   const updateClassroom = useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof api.updateClassroom>[1] }) => api.updateClassroom(id, input), onSuccess: refresh });
   const archiveClassroom = useMutation({ mutationFn: api.archiveClassroom.bind(api), onSuccess: refresh });
   const [visible, setVisible] = useState(false);
-  const [classroomsListOpen, setClassroomsListOpen] = useState(false);
   const [editingClassroomId, setEditingClassroomId] = useState<string>();
   const [name, setName] = useState(""); const [levelId, setLevelId] = useState<string>(); const [branchId, setBranchId] = useState<string>(); const [periodId, setPeriodId] = useState<string>(); const [capacity, setCapacity] = useState("");
   useEffect(() => { if (!branchId && branches.data?.[0]) setBranchId(branches.data[0].id); }, [branches.data, branchId]);
@@ -42,8 +41,8 @@ export default function ClassroomsScreen() {
   const failure = (error: unknown) => Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"));
   const editClassroom = (classroom: Classroom) => { setEditingClassroomId(classroom.id); setName(classroom.name); setBranchId(classroom.branchId); setLevelId(classroom.learningLevelId ?? undefined); setPeriodId(classroom.learningPeriodId ?? undefined); setCapacity(classroom.capacity?.toString() ?? ""); };
   const cancelEdit = () => { setEditingClassroomId(undefined); setName(""); setLevelId(undefined); setPeriodId(undefined); setCapacity(""); };
-  const openCreate = () => { setClassroomsListOpen(false); cancelEdit(); setVisible(true); };
-  const openEdit = (classroom: Classroom) => { setClassroomsListOpen(false); editClassroom(classroom); setVisible(true); };
+  const openCreate = () => { cancelEdit(); setVisible(true); };
+  const openEdit = (classroom: Classroom) => { editClassroom(classroom); setVisible(true); };
   const close = () => { cancelEdit(); setVisible(false); };
   const save = async () => {
     if (!name.trim() || !levelId || !branchId) return Alert.alert(t("learning.selectLevel"));
@@ -54,22 +53,14 @@ export default function ClassroomsScreen() {
     } catch (error) { failure(error); }
   };
 
-  return <AppScreen showBottomNavigation={false} title={t("learning.classroom")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
+  return <AppScreen showBottomNavigation={false} title={t("learning.classroom")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton accessibilityLabel={t("learning.addClassroom")} onPress={openCreate}>+ {t("learning.addClassroom")}</FloatingActionButton> : undefined}>
     {isStaffAdmin && <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
       <BranchTab label={t("branchFilter.allBranches")} selected={!filterBranchId} onPress={() => setFilterBranchId(undefined)} />
       {filterBranches.data?.map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
     </ScrollView>}
-    <NavigationCard accessibilityLabel={t("learning.classroom")} onPress={() => setClassroomsListOpen(true)}>
-      <AppText variant="h5">{t("learning.classroom")}</AppText>
-      <AppText tone={classrooms.data?.length ? "default" : "muted"}>{classrooms.data?.length ? t("learning.classroomsSummary", { count: classrooms.data.length }) : t("learning.noClassrooms")}</AppText>
-    </NavigationCard>
-
-    <BottomSheet visible={classroomsListOpen} onClose={() => setClassroomsListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("learning.classroom")}>
-      {canManage && <Button onPress={openCreate}>{t("learning.addClassroom")}</Button>}
-      {classrooms.isFetching && <ShimmerList />}
-      {!classrooms.isFetching && classrooms.data?.map((classroom) => <ClassroomCard key={classroom.id} classroom={classroom} levelName={levels.data?.find((level) => level.id === classroom.learningLevelId)?.name} branchName={branches.data?.find((branch) => branch.id === classroom.branchId)?.name} periodName={periods.data?.find((period) => period.id === classroom.learningPeriodId)?.name} canManage={canManage} onEdit={() => openEdit(classroom)} onArchive={() => void archiveClassroom.mutateAsync(classroom.id)} />)}
-      {!classrooms.isFetching && classrooms.data?.length === 0 && <AppText tone="muted">{t("learning.noClassrooms")}</AppText>}
-    </BottomSheet>
+    {classrooms.isFetching && <ShimmerList />}
+    {!classrooms.isFetching && classrooms.data?.map((classroom) => <ClassroomCard key={classroom.id} classroom={classroom} levelName={levels.data?.find((level) => level.id === classroom.learningLevelId)?.name} branchName={branches.data?.find((branch) => branch.id === classroom.branchId)?.name} periodName={periods.data?.find((period) => period.id === classroom.learningPeriodId)?.name} canManage={canManage} onEdit={() => openEdit(classroom)} onArchive={() => void archiveClassroom.mutateAsync(classroom.id)} />)}
+    {!classrooms.isFetching && classrooms.data?.length === 0 && <AppText tone="muted">{t("learning.noClassrooms")}</AppText>}
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t(editingClassroomId ? "learning.editClassroom" : "learning.addClassroom")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t(editingClassroomId ? "common.save" : "learning.addClassroom"), loading: createClassroom.isPending || updateClassroom.isPending, onPress: () => void save() }}>
       <View style={styles.options}>{branches.data?.map((branch) => <Button key={branch.id} variant={branchId === branch.id ? "primary" : "secondary"} onPress={() => setBranchId(branch.id)}>{branch.name}</Button>)}</View>
