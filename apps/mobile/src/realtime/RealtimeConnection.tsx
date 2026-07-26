@@ -12,10 +12,10 @@ const MAX_RECONNECT_DELAY_MILLIS = 30_000;
 
 export function RealtimeConnection() {
   const queryClient = useQueryClient();
-  const { api, getRealtimeToken, isSimulationSession, organizationId, profile, refreshProfile } = useAuth();
+  const { api, getRealtimeToken, organizationId, profile, refreshProfile } = useAuth();
 
   useEffect(() => {
-    if (isSimulationSession || !profile) return;
+    if (!profile) return;
     let closed = false;
     let socket: WebSocket | null = null;
     let reconnectDelay = INITIAL_RECONNECT_DELAY_MILLIS;
@@ -56,7 +56,7 @@ export function RealtimeConnection() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, [api, getRealtimeToken, isSimulationSession, organizationId, profile, queryClient, refreshProfile]);
+  }, [api, getRealtimeToken, organizationId, profile, queryClient, refreshProfile]);
 
   return null;
 }

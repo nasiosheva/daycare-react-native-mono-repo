@@ -16,8 +16,8 @@ describe("permissions", () => {
   });
 
   it("validates a parent-visible development entry", () => {
-    expect(developmentEntrySchema.safeParse({ category: "OBSERVATION", title: "Komunikasi", content: "Mampu mengikuti instruksi sederhana." }).success).toBe(true);
-    expect(developmentEntrySchema.safeParse({ category: "OTHER", title: "Catatan", content: "..." }).success).toBe(false);
+    expect(developmentEntrySchema.safeParse({ category: "07d3bc4b-137d-4a92-b8dd-6b56224f02b7", title: "Komunikasi", content: "Mampu mengikuti instruksi sederhana." }).success).toBe(true);
+    expect(developmentEntrySchema.safeParse({ category: "", title: "Catatan", content: "..." }).success).toBe(false);
   });
 
   it("requires a supported gender when creating a child", () => {

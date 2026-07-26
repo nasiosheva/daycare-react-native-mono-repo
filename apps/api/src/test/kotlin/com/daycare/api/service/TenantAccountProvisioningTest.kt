@@ -63,6 +63,23 @@ class TenantAccountProvisioningTest {
     }
 
     @Test
+    fun `stores a unique username when one is provided`() {
+        val users = mock(UserProfileRepository::class.java)
+        val firebase = mock(FirebaseAdminIdentityService::class.java)
+        val passwordEncoder = mock(PasswordEncoder::class.java)
+        `when`(users.findByEmailIgnoreCase("staff@tenant.test")).thenReturn(null)
+        `when`(users.findByUsernameIgnoreCase("staffbaru")).thenReturn(null)
+        `when`(firebase.createEmailPasswordUser("staff@tenant.test", "staffbaru", "123123")).thenReturn("firebase-staff")
+        `when`(users.save(any(UserProfile::class.java))).thenAnswer { it.arguments[0] }
+        val service = TenantUserAccountService(users, firebase, passwordEncoder, false)
+
+        val user = service.create("Staff Baru", "staff@tenant.test", "123123", "staffbaru")
+
+        assertEquals("staffbaru", user.username)
+        verify(firebase).createEmailPasswordUser("staff@tenant.test", "staffbaru", "123123")
+    }
+
+    @Test
     fun `rejects an email that already belongs to an account`() {
         val users = mock(UserProfileRepository::class.java)
         val firebase = mock(FirebaseAdminIdentityService::class.java)

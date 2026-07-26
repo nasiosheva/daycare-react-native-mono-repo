@@ -47,7 +47,9 @@ export default function BookingScreen() {
   };
   return <AppScreen title={t("booking.title")}>
     <AppText tone="muted">{t("booking.subtitle")}</AppText>
-    <AppText variant="heading">{t("booking.child")}</AppText><View style={styles.row}>{children.data?.map((child) => <Button key={child.id} variant={child.id === childId ? "primary" : "secondary"} onPress={() => setChildId(child.id)}>{child.fullName}</Button>)}</View>
+    <AppText variant="heading">{t("booking.child")}</AppText>
+    {children.isFetching && <ShimmerList variant="tile" />}
+    {!children.isFetching && <View style={styles.row}>{children.data?.map((child) => <Button key={child.id} variant={child.id === childId ? "primary" : "secondary"} onPress={() => setChildId(child.id)}>{child.fullName}</Button>)}</View>}
     <View style={styles.grid}>
       <NavigationCard accessibilityLabel={t("booking.plan")} onPress={() => setListSheet("plan")} style={styles.tile}>
         <AppText variant="label">{t("booking.plan")}</AppText>
@@ -61,7 +63,7 @@ export default function BookingScreen() {
         <AppText variant="label">{t("booking.invoices")}</AppText>
         <AppText tone={pendingChildInvoices.length > 0 ? "danger" : "muted"}>{pendingChildInvoices.length > 0 ? t("booking.pendingInvoicesSummary", { count: pendingChildInvoices.length, amount: formatCurrency(pendingChildInvoicesTotal) }) : t("booking.noPendingInvoices")}</AppText>
       </NavigationCard>
-      <NavigationCard accessibilityLabel={t("booking.history")} onPress={() => setListSheet("history")} style={styles.tile}>
+      <NavigationCard accessibilityLabel={t("booking.history")} onPress={() => { setListSheet("history"); void bookings.refetch(); }} style={styles.tile}>
         <AppText variant="label">{t("booking.history")}</AppText>
         <AppText tone="muted">{childBookings.length > 0 ? t("booking.historySummary", { count: childBookings.length }) : t("booking.noBookingsYet")}</AppText>
       </NavigationCard>
@@ -91,8 +93,8 @@ export default function BookingScreen() {
     <BottomSheet visible={listSheet === "history"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.history")}>
       <AppText tone="muted">{t("booking.historyDescription")}</AppText>
       {bookings.isFetching && <ShimmerList />}
-      {!bookings.isFetching && bookings.data?.map((item) => <View key={item.id} style={styles.card}><AppText variant="label">{item.childName} · {formatDate(item.bookingDate)}</AppText><AppText>{item.planName} · {t(bookingStatusKey(item.status))}</AppText></View>)}
-      {!bookings.isFetching && bookings.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+      {!bookings.isFetching && childBookings.map((item) => <View key={item.id} style={styles.card}><AppText variant="label">{item.childName} · {formatDate(item.bookingDate)}</AppText><AppText>{item.planName} · {t(bookingStatusKey(item.status))}</AppText></View>)}
+      {!bookings.isFetching && childBookings.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     </BottomSheet>
 
     <BottomSheet

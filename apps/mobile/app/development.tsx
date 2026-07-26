@@ -70,7 +70,8 @@ export default function DevelopmentScreen() {
     {isStaffAdmin && <Button variant="secondary" onPress={() => setFilterVisible(true)}>{t("children.filter")}</Button>}
     {isStaffAdmin && (childFilter.branchId || childFilter.learningLevelId || childFilter.classroomId) && <AppText tone="muted">{t("children.filterActive")}</AppText>}
     {hasFixedChild && selectedChild && <AppText variant="heading">{selectedChild.fullName}</AppText>}
-    {!hasFixedChild && <View style={styles.selector}>
+    {!hasFixedChild && children.isFetching && <ShimmerList variant="tile" />}
+    {!hasFixedChild && !children.isFetching && <View style={styles.selector}>
       {children.data?.map((child) => <Button key={child.id} variant={child.id === childId ? "primary" : "secondary"} onPress={() => selectChild(child.id)}>{child.fullName}</Button>)}
     </View>}
     {hasFixedChild && !children.isLoading && !selectedChild && <AppText tone="muted">{t("children.empty")}</AppText>}

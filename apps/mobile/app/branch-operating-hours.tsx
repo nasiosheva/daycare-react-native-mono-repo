@@ -3,7 +3,7 @@ import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, BackButton, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import type { BranchOperatingHour, OperatingDay, OvertimeRateTier } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -39,8 +39,8 @@ export default function BranchOperatingHoursScreen() {
 
   return <AppScreen showBottomNavigation={false} title={t("overtime.operatingHours")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("overtime.operatingHoursDescription")}</AppText>
-    {operatingHours.isLoading && <AppText>{t("common.loading")}</AppText>}
-    {hours.map((hour) => <View key={hour.dayOfWeek} style={styles.card}>
+    {operatingHours.isLoading && <ShimmerList variant="row" count={7} />}
+    {!operatingHours.isLoading && hours.map((hour) => <View key={hour.dayOfWeek} style={styles.card}>
       <View style={styles.row}><AppText variant="h5">{t(`overtime.day.${hour.dayOfWeek}`)}</AppText><Button variant="secondary" onPress={() => updateHour(hour.dayOfWeek, { active: !hour.active })}>{hour.active ? t("overtime.active") : t("overtime.inactive")}</Button></View>
       {hour.active && <View style={styles.row}><View style={styles.field}><AppText variant="caption" tone="muted">{t("overtime.opensAt")}</AppText><DatePicker mode="time" placeholder={t("overtime.opensAt")} value={hour.opensAt ?? ""} onChange={(opensAt) => updateHour(hour.dayOfWeek, { opensAt })} /></View><View style={styles.field}><AppText variant="caption" tone="muted">{t("overtime.closesAt")}</AppText><DatePicker mode="time" placeholder={t("overtime.closesAt")} value={hour.closesAt ?? ""} onChange={(closesAt) => updateHour(hour.dayOfWeek, { closesAt })} /></View></View>}
     </View>)}

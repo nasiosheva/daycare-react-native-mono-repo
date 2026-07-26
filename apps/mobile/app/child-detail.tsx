@@ -12,6 +12,7 @@ import { GenderPicker } from "@/children/GenderPicker";
 import { useI18n } from "@/i18n/I18nProvider";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate, isIsoDate } from "@/date-picker/date";
+import { notify } from "@/notify/notify";
 
 const assignmentRoles = ["STAFF", "NURSE", "MISS"] as const;
 
@@ -25,7 +26,6 @@ export default function ChildDetailScreen() {
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canManage = membership?.role === "STAFF_ADMIN" && membership.active;
   const canManagePrograms = canManage || (membership?.role === "STAFF" && membership.active && membership.canManageChildPrograms);
-  const canPlaceChild = membership?.active !== false;
   const childProfile = useChildProfile(childId);
   const updateChild = useUpdateChild(childId ?? "");
   const deactivateChild = useDeactivateChild(childId ?? "");
@@ -34,10 +34,10 @@ export default function ChildDetailScreen() {
   const assignStaff = useAssignChildStaff(childId ?? "");
   const unassignStaff = useUnassignChildStaff(childId ?? "");
   const staff = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: membership?.role === "STAFF_ADMIN" && Boolean(childId) });
-  const classrooms = useQuery({ queryKey: ["classrooms", organizationId], queryFn: () => api.classrooms(), enabled: Boolean(childId && membership) });
+  const placementOptions = useQuery({ queryKey: ["child-placement-options", organizationId, childId], queryFn: () => api.childPlacementOptions(childId!), enabled: Boolean(childId && membership?.active) });
   const academicYears = useQuery({ queryKey: ["academic-years", organizationId], queryFn: () => api.academicYears(), enabled: Boolean(childId && membership) });
   const placements = useQuery({ queryKey: ["child-placements", organizationId, childId], queryFn: () => api.childPlacements(childId!), enabled: Boolean(childId && membership) });
-  const placeChild = useMutation({ mutationFn: (input: { classroomId: string; startsOn?: string }) => api.placeChild(childId!, input), onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["child-placements", organizationId, childId] }); void queryClient.invalidateQueries({ queryKey: ["children", organizationId] }); } });
+  const placeChild = useMutation({ mutationFn: (input: { classroomId: string; startsOn?: string }) => api.placeChild(childId!, input), onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["child-placements", organizationId, childId] }); void queryClient.invalidateQueries({ queryKey: ["child-placement-options", organizationId, childId] }); void queryClient.invalidateQueries({ queryKey: ["children", organizationId] }); } });
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [nisn, setNisn] = useState("");
@@ -58,6 +58,14 @@ export default function ChildDetailScreen() {
   const assignmentRoleLabel = (role: (typeof assignmentRoles)[number]) => role === "NURSE" ? t("children.nurse") : role === "MISS" ? t("children.miss") : t("children.staff");
   const currentPlacement = placements.data?.find((placement) => !placement.endedOn) ?? null;
   const academicYearName = (id?: string | null) => academicYears.data?.find((year) => year.id === id)?.name;
+  const canPlaceChild = membership?.active === true && (placementOptions.data?.length ?? 0) > 0;
+  const errorMessage = (error: unknown) => error instanceof Error ? error.message : t("auth.tryAgain");
+
+  const closePlacementSheet = () => {
+    setClassroomId(null);
+    setPlacementStart("");
+    setSheet(null);
+  };
 
   useEffect(() => {
     if (!childProfile.data) return;
@@ -68,37 +76,57 @@ export default function ChildDetailScreen() {
     setDateOfBirth(childProfile.data.child.dateOfBirth);
   }, [childProfile.data]);
 
+  useEffect(() => {
+    if (classroomId && !placementOptions.data?.some((classroom) => classroom.id === classroomId)) setClassroomId(null);
+  }, [classroomId, placementOptions.data]);
+
   if (!profile) return null;
   if (!childId || !membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
   const saveChild = async () => {
-    if (!firstName.trim() || !gender || !isIsoDate(dateOfBirth)) return Alert.alert(t("children.required"));
+    if (!firstName.trim() || !gender || !isIsoDate(dateOfBirth)) return notify(t("children.required"));
     const payload = { firstName: firstName.trim(), lastName: lastName.trim() || undefined, nisn: nisn.trim() || undefined, gender, dateOfBirth };
     try {
       await updateChild.mutateAsync(payload);
       setSheet(null);
-      Alert.alert(t("children.updated"));
-    } catch (error) { Alert.alert(t("children.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+      notify(t("children.updated"));
+    } catch (error) { notify(t("children.saveFailed"), errorMessage(error)); }
   };
   const saveProgram = async () => {
     if (!childId || !programName.trim()) return;
     try { await addProgram.mutateAsync({ name: programName.trim(), description: programDescription.trim() || undefined }); setProgramName(""); setProgramDescription(""); setSheet(null); }
-    catch (error) { Alert.alert(t("children.programFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    catch (error) { notify(t("children.programFailed"), errorMessage(error)); }
   };
   const saveAssignment = async () => {
     if (!childId || !staffUserId) return;
     try { await assignStaff.mutateAsync({ userId: staffUserId, assignmentRole }); setStaffUserId(null); setSheet(null); }
-    catch (error) { Alert.alert(t("children.assignmentFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    catch (error) { notify(t("children.assignmentFailed"), errorMessage(error)); }
+  };
+  const removeChildProgram = async (programId: string) => {
+    try { await removeProgram.mutateAsync(programId); }
+    catch (error) { notify(t("children.programFailed"), errorMessage(error)); }
+  };
+  const removeAssignedStaff = async (assignmentId: string) => {
+    try { await unassignStaff.mutateAsync(assignmentId); }
+    catch (error) { notify(t("children.assignmentFailed"), errorMessage(error)); }
+  };
+  const savePlacement = async () => {
+    if (!classroomId) return;
+    try {
+      const placement = await placeChild.mutateAsync({ classroomId, startsOn: placementStart || undefined });
+      closePlacementSheet();
+      if (placement.ageGuidanceWarning) notify(t("learning.ageGuidance"));
+    } catch (error) { notify(t("learning.saveFailed"), errorMessage(error)); }
   };
   const deactivate = () => {
     if (!childId) return;
     Alert.alert(t("children.deactivate"), t("children.deactivateDescription"), [
       { text: t("common.cancel"), style: "cancel" },
-      { text: t("children.deactivate"), style: "destructive", onPress: () => void deactivateChild.mutateAsync().then(() => router.replace("/children")).catch((error: unknown) => Alert.alert(t("children.deactivateFailed"), error instanceof Error ? error.message : t("auth.tryAgain"))) },
+      { text: t("children.deactivate"), style: "destructive", onPress: () => void deactivateChild.mutateAsync().then(() => router.replace("/children")).catch((error: unknown) => notify(t("children.deactivateFailed"), errorMessage(error))) },
     ]);
   };
 
   return <AppScreen showBottomNavigation={false} title={t("children.detailTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    {childProfile.isLoading ? <AppText>{t("children.loading")}</AppText> : childProfile.data && <View style={styles.form}>
+    {childProfile.isLoading ? <ShimmerList variant="tile" /> : childProfile.isError ? <View style={styles.errorState}><AppText tone="muted">{t("auth.profileLoadFailed")}</AppText><Button variant="secondary" onPress={() => void childProfile.refetch()}>{t("common.retry")}</Button></View> : childProfile.data && <View style={styles.form}>
       <AppText variant="h5">{childProfile.data.child.fullName}</AppText>
       <AppText tone="muted">{childProfile.data.child.gender === "MALE" ? t("children.genderMale") : childProfile.data.child.gender === "FEMALE" ? t("children.genderFemale") : t("children.genderUnspecified")}</AppText>
       <AppText tone="muted">{childProfile.data.child.dateOfBirth}</AppText>
@@ -123,6 +151,7 @@ export default function ChildDetailScreen() {
     <BottomSheet visible={placementsOpen} onClose={() => setPlacementsOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("learning.placements")}>
       {canPlaceChild && <Button variant="secondary" onPress={() => { setPlacementsOpen(false); setSheet("placement"); }}>{t("learning.placeChild")}</Button>}
       {placements.isFetching && <ShimmerList variant="row" />}
+      {placements.isError && <View style={styles.errorState}><AppText tone="muted">{t("common.error")}</AppText><Button variant="secondary" onPress={() => void placements.refetch()}>{t("common.retry")}</Button></View>}
       {!placements.isFetching && placements.data?.map((placement) => <View key={placement.id} style={styles.item}><View style={styles.itemContent}><View style={styles.row}><AppText variant="label">{placement.learningLevelName ?? "–"} · {placement.classroomName}</AppText>{!placement.endedOn && <AppText variant="caption" style={styles.activeBadge}>{t("learning.active")}</AppText>}</View><AppText variant="bodySmall" tone="muted">{placement.startsOn}{placement.endedOn ? ` – ${placement.endedOn}` : ""}{academicYearName(placement.learningPeriodId) ? ` · ${academicYearName(placement.learningPeriodId)}` : ""}</AppText></View></View>)}
       {!placements.isFetching && placements.data?.length === 0 && <AppText tone="muted">{t("learning.noPlacements")}</AppText>}
     </BottomSheet>
@@ -130,14 +159,15 @@ export default function ChildDetailScreen() {
     <BottomSheet visible={programsOpen} onClose={() => setProgramsOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("children.programs")}>
       <Button variant="secondary" onPress={() => { setProgramsOpen(false); setSheet("program"); }}>{t("children.addProgram")}</Button>
       {childProfile.isFetching && <ShimmerList variant="row" />}
-      {!childProfile.isFetching && childProfile.data?.programs.map((program) => <View key={program.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{program.name}</AppText>{program.description && <AppText variant="bodySmall" tone="muted">{program.description}</AppText>}</View><Button variant="danger" onPress={() => void removeProgram.mutateAsync(program.id)}>{t("children.remove")}</Button></View>)}
+      {!childProfile.isFetching && childProfile.data?.programs.map((program) => <View key={program.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{program.name}</AppText>{program.description && <AppText variant="bodySmall" tone="muted">{program.description}</AppText>}</View><Button variant="danger" loading={removeProgram.isPending} onPress={() => void removeChildProgram(program.id)}>{t("children.remove")}</Button></View>)}
       {!childProfile.isFetching && childProfile.data?.programs.length === 0 && <AppText tone="muted">{t("children.noPrograms")}</AppText>}
     </BottomSheet>
 
     <BottomSheet visible={staffListOpen} onClose={() => setStaffListOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("children.staffAssignments")}>
       <Button variant="secondary" onPress={() => { setStaffListOpen(false); setSheet("staff"); }}>{t("children.assign")}</Button>
       {childProfile.isFetching && <ShimmerList variant="row" />}
-      {!childProfile.isFetching && childProfile.data?.staffAssignments.map((assignment) => <View key={assignment.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{assignment.displayName}</AppText><AppText variant="bodySmall" tone="muted">{assignmentRoleLabel(assignment.assignmentRole)} · {assignment.email}</AppText></View><Button variant="danger" onPress={() => void unassignStaff.mutateAsync(assignment.id)}>{t("children.unassign")}</Button></View>)}
+      {childProfile.isError && <View style={styles.errorState}><AppText tone="muted">{t("common.error")}</AppText><Button variant="secondary" onPress={() => void childProfile.refetch()}>{t("common.retry")}</Button></View>}
+      {!childProfile.isFetching && childProfile.data?.staffAssignments.map((assignment) => <View key={assignment.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{assignment.displayName}</AppText><AppText variant="bodySmall" tone="muted">{assignmentRoleLabel(assignment.assignmentRole)} · {assignment.email}</AppText></View><Button variant="danger" loading={unassignStaff.isPending} onPress={() => void removeAssignedStaff(assignment.id)}>{t("children.unassign")}</Button></View>)}
       {!childProfile.isFetching && childProfile.data?.staffAssignments.length === 0 && <AppText tone="muted">{t("children.noStaff")}</AppText>}
     </BottomSheet>
     <BottomSheet visible={sheet === "edit"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("children.edit")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("children.save"), loading: updateChild.isPending, onPress: () => void saveChild() }}>
@@ -147,10 +177,13 @@ export default function ChildDetailScreen() {
       <GenderPicker value={gender} onChange={setGender} />
       <DatePicker placeholder={t("children.birthDate")} value={dateOfBirth} onChange={setDateOfBirth} maximumDate={formatIsoDate(new Date())} />
     </BottomSheet>
-    <BottomSheet visible={sheet === "placement"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("learning.placeChild")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("learning.placeChild"), loading: placeChild.isPending, disabled: !classroomId, onPress: () => { if (!classroomId) return; void placeChild.mutateAsync({ classroomId, startsOn: placementStart || undefined }).then((placement) => { if (placement.ageGuidanceWarning) Alert.alert(t("learning.ageGuidance")); setClassroomId(null); setPlacementStart(""); setSheet(null); }).catch((error: unknown) => Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"))); } }}>
+    <BottomSheet visible={sheet === "placement"} onClose={closePlacementSheet} closeAccessibilityLabel={t("common.close")} title={t("learning.placeChild")} negativeAction={{ label: t("common.cancel"), onPress: closePlacementSheet }} positiveAction={{ label: t("learning.placeChild"), loading: placeChild.isPending, disabled: !classroomId, onPress: () => void savePlacement() }}>
       <AppText tone="muted">{currentPlacement ? t("learning.currentPlacementContext", { level: currentPlacement.learningLevelName ?? "–", classroom: currentPlacement.classroomName }) : t("learning.noCurrentPlacement")}</AppText>
       <AppText variant="label">{t("learning.selectClassroom")}</AppText>
-      <View style={styles.options}>{classrooms.data?.filter((classroom) => classroom.active).map((classroom) => <Button key={classroom.id} variant={classroomId === classroom.id ? "primary" : "secondary"} onPress={() => setClassroomId(classroom.id)}>{classroom.name}</Button>)}</View>
+      {placementOptions.isFetching && <ShimmerList variant="row" />}
+      {placementOptions.isError && <View style={styles.errorState}><AppText tone="muted">{t("common.error")}</AppText><Button variant="secondary" onPress={() => void placementOptions.refetch()}>{t("common.retry")}</Button></View>}
+      {!placementOptions.isFetching && !placementOptions.isError && <View style={styles.options}>{placementOptions.data?.map((classroom) => <Button key={classroom.id} variant={classroomId === classroom.id ? "primary" : "secondary"} onPress={() => setClassroomId(classroom.id)}>{classroom.name}</Button>)}</View>}
+      {!placementOptions.isFetching && !placementOptions.isError && placementOptions.data?.length === 0 && <AppText tone="muted">{t("learning.noPlacementOptions")}</AppText>}
       <DatePicker placeholder={t("learning.startDate")} value={placementStart} onChange={setPlacementStart} onClear={() => setPlacementStart("")} clearAccessibilityLabel={t("common.clear")} />
       {currentPlacement && <AppText variant="caption" tone="muted">{t("learning.placeChildWarning")}</AppText>}
     </BottomSheet>
@@ -159,6 +192,8 @@ export default function ChildDetailScreen() {
       <TextInput style={styles.input} placeholder={t("children.programDescription")} value={programDescription} onChangeText={setProgramDescription} />
     </BottomSheet>
     <BottomSheet visible={sheet === "staff"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("children.assign")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("children.assign"), loading: assignStaff.isPending, disabled: !staffUserId, onPress: () => void saveAssignment() }}>
+      {staff.isFetching && <ShimmerList variant="row" />}
+      {staff.isError && <View style={styles.errorState}><AppText tone="muted">{t("common.error")}</AppText><Button variant="secondary" onPress={() => void staff.refetch()}>{t("common.retry")}</Button></View>}
       <View style={styles.options}>{assignableStaff.map((user) => <Button key={user.id} variant={staffUserId === user.userId ? "primary" : "secondary"} onPress={() => setStaffUserId(user.userId)}>{user.displayName ?? user.email ?? t("children.selectStaff")}</Button>)}</View>
       <AppText variant="label">{t("children.assignmentRole")}</AppText>
       <View style={styles.options}>{assignmentRoles.map((role) => <Button key={role} variant={assignmentRole === role ? "primary" : "secondary"} onPress={() => setAssignmentRole(role)}>{assignmentRoleLabel(role)}</Button>)}</View>
@@ -173,5 +208,6 @@ const styles = StyleSheet.create({
   item: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
   itemContent: { flex: 1, gap: spacing.xs },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  errorState: { gap: spacing.sm, alignItems: "flex-start" },
   activeBadge: { color: colors.primary, fontWeight: "700" },
 });

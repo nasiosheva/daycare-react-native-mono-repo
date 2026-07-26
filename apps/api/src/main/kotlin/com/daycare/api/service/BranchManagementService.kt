@@ -26,9 +26,10 @@ class BranchManagementService(
     private val branches: BranchRepository,
 ) {
     @Transactional
-    fun branches(jwt: Jwt, organizationId: UUID): List<TenantBranchResponse> {
+    fun branches(jwt: Jwt, organizationId: UUID, search: String? = null): List<TenantBranchResponse> {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
-        return branches.findAllByOrganizationId(organizationId)
+        val query = search?.trim().orEmpty()
+        return (if (query.isBlank()) branches.findAllByOrganizationId(organizationId) else branches.findAllByOrganizationIdAndNameContainingIgnoreCase(organizationId, query))
             .sortedWith(compareByDescending<Branch> { it.primary }.thenBy { it.name })
             .map(::response)
     }

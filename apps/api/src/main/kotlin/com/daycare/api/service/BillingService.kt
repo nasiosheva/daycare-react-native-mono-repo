@@ -64,7 +64,7 @@ data class UpsertServicePlanTemplateRequest(@field:NotBlank @field:Size(max = 12
 data class ServicePlanTemplateResponse(val id: String, val source: String, val name: String, val type: ServicePlanType, val suggestedPrice: BigDecimal?, val creditCount: Int?, val unusedCreditPolicy: UnusedCreditPolicy?, val carryForwardDays: Int?, val bookingRequiresApproval: Boolean, val dailyCapacity: Int?)
 data class ServicePlanResponse(val id: UUID, val name: String, val type: ServicePlanType, val price: BigDecimal, val creditCount: Int?, val unusedCreditPolicy: UnusedCreditPolicy?, val carryForwardDays: Int?, val bookingRequiresApproval: Boolean, val dailyCapacity: Int?)
 data class EntitlementResponse(val id: UUID, val branchId: UUID, val childId: UUID, val childName: String, val parentName: String?, val parentEmail: String?, val planName: String, val type: ServicePlanType, val status: EntitlementStatus, val totalCredits: Int?, val remainingCredits: Int?, val validUntil: LocalDate)
-data class BookingResponse(val id: UUID, val branchId: UUID, val childId: UUID, val childName: String, val bookingDate: LocalDate, val status: BookingStatus, val planName: String, val invoiceId: UUID)
+data class BookingResponse(val id: UUID, val branchId: UUID, val childId: UUID, val childName: String, val bookingDate: LocalDate, val status: BookingStatus, val planName: String, val invoiceId: UUID, val invoiceNumber: String, val invoiceTotalAmount: BigDecimal)
 data class PaymentProofResponse(val status: PaymentProofStatus, val fileName: String, val note: String?, val submittedAt: Instant, val rejectionReason: String?)
 data class PaymentProofImageResponse(val fileName: String, val contentType: String, val dataBase64: String, val note: String?)
 data class SubmitPaymentProofRequest(@field:NotBlank @field:Size(max = 255) val fileName: String, @field:NotBlank @field:Size(max = 100) val contentType: String, @field:NotBlank @field:Size(max = 7_000_000) val imageBase64: String, @field:Size(max = 500) val note: String? = null)
@@ -386,11 +386,13 @@ class BillingService(
         branchFilters.validate(organizationId, filter)
         val query = search?.trim().orEmpty()
         val source = if (pendingOnly) bookings.findAllByOrganizationIdAndStatusOrderByBookingDateAsc(organizationId, BookingStatus.PENDING_APPROVAL) else bookings.findAllByOrganizationIdOrderByBookingDateDesc(organizationId)
-        return source.filter { booking ->
+        val visibleBookings = source.filter { booking ->
             (filter.branchId == null || booking.branchId == filter.branchId) &&
                 (!pendingOnly || parentEnrollments.findByInvoiceId(booking.invoiceId) == null) &&
                 if (scope.membership.role == Role.PARENT) entitlements.findById(booking.entitlementId).map { it.ownerUserId == scope.user.id }.orElse(false) else childScopes.isStaffManagedChild(scope, booking.childId, organizationId)
-        }.map { bookingResponse(it, childName(it.childId)) }
+        }
+        val invoicesById = invoices.findAllById(visibleBookings.map { it.invoiceId }.toSet()).associateBy { it.id }
+        return visibleBookings.map { booking -> bookingResponse(booking, childName(booking.childId), invoicesById[booking.invoiceId] ?: throw IllegalArgumentException("Invoice was not found")) }
             .filter { query.isEmpty() || it.childName.contains(query, ignoreCase = true) || it.planName.contains(query, ignoreCase = true) }
     }
 
@@ -409,7 +411,7 @@ class BillingService(
 
     private fun validatePlanConfiguration(type: ServicePlanType, price: BigDecimal?, creditCount: Int?, unusedCreditPolicy: UnusedCreditPolicy?, carryForwardDays: Int?, dailyCapacity: Int?) {
         if (price != null) require(price > BigDecimal.ZERO) { "Price must be positive" }
-        require(dailyCapacity == null || dailyCapacity > 0) { "Daily capacity must be positive" }
+        require(dailyCapacity == null || dailyCapacity in 1..999) { "Daily capacity must be an integer between 1 and 999" }
         if (type == ServicePlanType.MONTHLY) require(creditCount == null) { "Monthly plans do not use credits" }
         else require((creditCount ?: 0) > 0) { "Daily and weekly plans require credits" }
         if (type == ServicePlanType.DAILY) require(creditCount == 1) { "Daily plans require exactly one credit" }
@@ -502,7 +504,7 @@ class BillingService(
     private fun templateResponse(template: ServicePlanTemplate) = ServicePlanTemplateResponse(template.id.toString(), "TENANT", template.name, template.type, template.suggestedPrice, template.creditCount, template.unusedCreditPolicy, template.carryForwardDays, template.bookingRequiresApproval, template.dailyCapacity)
     private fun templateFromRequest(organizationId: UUID, request: UpsertServicePlanTemplateRequest) = ServicePlanTemplate(organizationId = organizationId, name = request.name.trim(), type = request.type, suggestedPrice = request.suggestedPrice, creditCount = request.creditCount, unusedCreditPolicy = request.unusedCreditPolicy, carryForwardDays = request.carryForwardDays, bookingRequiresApproval = request.bookingRequiresApproval, dailyCapacity = request.dailyCapacity)
     private fun entitlementResponse(entitlement: ServiceEntitlement): EntitlementResponse { val parent = users.findById(entitlement.ownerUserId).orElse(null); return EntitlementResponse(entitlement.id, entitlement.branchId, entitlement.childId, childName(entitlement.childId), parent?.displayName, parent?.email, entitlement.planName, entitlement.planType, entitlement.status, entitlement.totalCredits, entitlement.totalCredits?.let { remainingCredits(entitlement) }, entitlement.validUntil) }
-    private fun bookingResponse(booking: Booking, childName: String) = BookingResponse(booking.id, booking.branchId, booking.childId, childName, booking.bookingDate, booking.status, booking.planName, booking.invoiceId)
+    private fun bookingResponse(booking: Booking, childName: String, invoice: Invoice = invoices.findById(booking.invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }) = BookingResponse(booking.id, booking.branchId, booking.childId, childName, booking.bookingDate, booking.status, booking.planName, booking.invoiceId, invoice.invoiceNumber, invoice.totalAmount)
     private fun invoiceResponse(invoice: Invoice): InvoiceResponse {
         val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull()
         val branchId = entitlement?.branchId ?: invoice.branchId ?: throw IllegalArgumentException("Invoice branch was not found")

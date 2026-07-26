@@ -55,9 +55,9 @@ class CapacityReservationService(
 
     @Transactional
     fun setBranchCapacity(organizationId: UUID, branchId: UUID, dailyCapacity: Int): BranchCapacitySetting {
-        require(dailyCapacity > 0) { "Daily capacity must be positive" }
+        require(dailyCapacity in 1..999) { "Daily capacity must be an integer between 1 and 999" }
         val branch = branches.findWithLockById(branchId) ?: throw IllegalArgumentException("Branch was not found")
-        require(branch.organizationId == organizationId) { "Branch belongs to a different organization" }
+        require(branch.organizationId == organizationId && branch.active) { "Branch is not available for this organization" }
         val peakHeldReservations = reservations.findAllByOrganizationIdAndBranchIdAndCapacityDateGreaterThanEqualAndStatus(organizationId, branchId, LocalDate.now(), CapacityReservationStatus.HELD)
             .groupingBy { it.capacityDate }.eachCount().values.maxOrNull() ?: 0
         require(dailyCapacity >= peakHeldReservations) { "Daily capacity cannot be lower than held reservations" }

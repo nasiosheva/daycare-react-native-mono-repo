@@ -79,6 +79,7 @@ data class UpdateTenantRequest(
 data class RenewTenantSubscriptionRequest(@field:DecimalMin("1") val monthlyFee: BigDecimal?)
 data class CreateTenantStaffAdminRequest(
     @field:NotBlank @field:Size(min = 2, max = 100) val displayName: String,
+    @field:Size(min = 2, max = 100) val username: String? = null,
     @field:Email @field:NotBlank val email: String,
     @field:NotBlank @field:Size(min = 6, max = 128) val password: String,
 )
@@ -157,7 +158,7 @@ class PlatformAdministrationService(
     fun createTenantStaffAdmin(jwt: Jwt, organizationId: UUID, request: CreateTenantStaffAdminRequest): TenantResponse {
         platformAccess.requirePlatformAdmin(jwt)
         val organization = requireOrganization(organizationId)
-        val user = tenantUserAccounts.create(request.displayName, request.email, request.password)
+        val user = tenantUserAccounts.create(request.displayName, request.email, request.password, request.username)
         memberships.save(Membership(userId = user.id, organizationId = organizationId, role = Role.STAFF_ADMIN))
         return tenantResponse(organization)
     }

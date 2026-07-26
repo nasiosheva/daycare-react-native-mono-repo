@@ -70,7 +70,7 @@ class AccessService(
     @Transactional
     fun currentUser(jwt: Jwt): CurrentUserResponse {
         val user = identityService.sync(jwt)
-        return CurrentUserResponse(user.id, user.displayName, user.gender, user.dateOfBirth, user.registrationRole, platformAccess.isPlatformAdmin(user), memberships.findAllByUserId(user.id).filter { it.active || it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }.sortedByDescending { it.active }.map { membership ->
+        return CurrentUserResponse(user.id, user.displayName, user.gender, user.dateOfBirth, user.registrationRole, platformAccess.isPlatformAdmin(user), memberships.findAllByUserId(user.id).sortedByDescending { it.active }.map { membership ->
             val name = organizations.findById(membership.organizationId).map { it.name }.orElse("Unknown organization")
             val capabilities = organizationCapabilities.forOrganization(membership.organizationId)
             MembershipResponse(membership.organizationId, name, membership.role, membership.active, membership.branchId, membership.classroomId, membership.canManageChildPrograms, membership.canManageDevelopmentCategories, capabilities.types, capabilities.capabilities)
@@ -80,7 +80,7 @@ class AccessService(
     @Transactional
     fun require(jwt: Jwt, organizationId: UUID, allowedRoles: Set<Role>, requiredCapability: InstitutionCapability? = null, readOnly: Boolean = false): AccessScope {
         val user = identityService.sync(jwt)
-        val membership = memberships.findAllByUserIdAndOrganizationId(user.id, organizationId).sortedByDescending { it.active }.firstOrNull { (it.active || (readOnly && it.role in setOf(Role.STAFF_ADMIN, Role.STAFF))) && it.role in allowedRoles }
+        val membership = memberships.findAllByUserIdAndOrganizationId(user.id, organizationId).sortedByDescending { it.active }.firstOrNull { (it.active || readOnly) && it.role in allowedRoles }
             ?: throw AccessDeniedException("You do not have permission for this organization")
         val subscription = subscriptions.findByOrganizationId(organizationId)
         if (subscription != null) {

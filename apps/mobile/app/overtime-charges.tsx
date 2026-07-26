@@ -50,7 +50,8 @@ export default function OvertimeChargesScreen() {
     {!charges.isFetching && charges.data?.length === 0 && <AppText tone="muted">{t("overtime.noCharges")}</AppText>}
     <BottomSheet visible={Boolean(form)} onClose={() => setForm(null)} closeAccessibilityLabel={t("common.close")} title={form?.charge ? t("overtime.editCharge") : t("overtime.addCharge")} negativeAction={{ label: t("common.cancel"), onPress: () => setForm(null) }} positiveAction={{ label: t("common.save"), loading: create.isPending || update.isPending, disabled: !form?.childId, onPress: () => void submit() }}>
       <AppText variant="label">{t("overtime.child")}</AppText>
-      {children.data?.map((child) => <Pressable key={child.id} disabled={Boolean(form?.charge)} onPress={() => setForm((current) => current ? { ...current, childId: child.id } : current)} style={({ pressed }) => [styles.child, form?.childId === child.id && styles.selectedChild, pressed && styles.pressed]}><AppText>{child.fullName}</AppText></Pressable>)}
+      {children.isFetching && <ShimmerList variant="row" />}
+      {!children.isFetching && children.data?.map((child) => <Pressable key={child.id} disabled={Boolean(form?.charge)} onPress={() => setForm((current) => current ? { ...current, childId: child.id } : current)} style={({ pressed }) => [styles.child, form?.childId === child.id && styles.selectedChild, pressed && styles.pressed]}><AppText>{child.fullName}</AppText></Pressable>)}
       {selectedChild && <AppText tone="muted">{selectedChild.fullName}</AppText>}
       <DatePicker placeholder={t("overtime.operationalDate")} value={form?.operationalDate ?? ""} onChange={(operationalDate) => setForm((current) => current ? { ...current, operationalDate } : current)} disabled={Boolean(form?.charge)} />
       <DatePicker mode="time" placeholder={t("overtime.pickedUpAt")} value={form?.pickedUpAt ?? ""} onChange={(pickedUpAt) => setForm((current) => current ? { ...current, pickedUpAt } : current)} />

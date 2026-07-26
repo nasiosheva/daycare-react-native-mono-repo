@@ -15,7 +15,7 @@ const queryKeysByFlag: Record<RealtimeFlag, readonly string[]> = {
   SERVICE_PLANS: ["service-plans", "service-plan-templates", "service-plan-discounts", "branch-capacities"],
   BRANCHES: ["tenant-branches", "learning-branches", "branch-capacities"],
   TENANT_USERS: ["tenant-users"],
-  LEARNING: ["learning-levels", "classrooms", "classroom-staff", "classroom-programs", "child-placements"],
+  LEARNING: ["learning-levels", "classrooms", "classroom-staff", "classroom-programs", "child-placements", "child-placement-options"],
   ACADEMIC: ["learning-periods", "curriculum-programs", "curriculum-activities", "curriculum-activity-assessments", "learning-level-templates"],
   TENANTS: ["platform-tenants", "platform-tenant"],
   GLOBAL_CURRICULUM: ["global-curriculum-programs"],

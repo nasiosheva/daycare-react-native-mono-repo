@@ -5,15 +5,13 @@ import { AppText, Button, colors, PasswordInput, radius, Screen, spacing } from 
 import { useAuth } from "@/auth/AuthProvider";
 import { authErrorMessage } from "@/auth/authErrorMessage";
 import { clearRememberedCredentials, loadRememberedCredentials, saveRememberedCredentials } from "@/auth/rememberedCredentialsStorage";
-import { simulationRoleOptions } from "@/auth/simulation";
 import { env } from "@/config/env";
 import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useI18n } from "@/i18n/I18nProvider";
-import { roleKey } from "@/i18n/translations";
 
 export default function SignInScreen() {
   const router = useRouter();
-  const { signInWithEmail, signInWithGoogle, signInAsSimulationRole } = useAuth();
+  const { signInWithEmail, signInWithGoogle } = useAuth();
   const { t } = useI18n();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -55,26 +53,14 @@ export default function SignInScreen() {
     catch (error) { Alert.alert(t("auth.googleFailed"), authErrorMessage(error, t)); }
     finally { setLoading(false); }
   };
-  const submitSimulationRole = (role: (typeof simulationRoleOptions)[number]["role"]) => {
-    signInAsSimulationRole(role);
-    router.replace("/");
-  };
-
   return <Screen><View style={styles.container}>
     <View style={styles.topBar}>
       <LanguageSwitcher compact />
     </View>
     <Image source={require("../assets/images/login-icon.png")} style={styles.logo} resizeMode="contain" />
     <AppText variant="title">Umur Emas</AppText>
-    {env.isSimulation && <View style={styles.simulationSection}>
-      <AppText variant="label">{t("auth.simulation")}</AppText>
-      <AppText variant="caption" tone="muted">{t("auth.simulationDescription")}</AppText>
-      {simulationRoleOptions.map(({ role }) => <Button key={role} variant="secondary" onPress={() => submitSimulationRole(role)}>{t("auth.simulationPrefix", { role: t(roleKey(role)) })}</Button>)}
-      <AppText variant="caption" tone="muted">{t("auth.simulationWarning")}</AppText>
-    </View>}
-    {env.isSimulation && <AppText variant="caption" tone="muted">{t("auth.orFirebase")}</AppText>}
-    <AppText variant="label">{env.isLocalAuth ? t("auth.identifier") : t("auth.email")}</AppText>
-    <TextInput style={styles.input} autoCapitalize="none" keyboardType={env.isLocalAuth ? "default" : "email-address"} value={identifier} onChangeText={(value) => { setIdentifier(value); setErrorMessage(null); }} />
+    <AppText variant="label">{t("auth.identifier")}</AppText>
+    <TextInput style={styles.input} autoCapitalize="none" keyboardType="default" value={identifier} onChangeText={(value) => { setIdentifier(value); setErrorMessage(null); }} />
     <AppText variant="label">{t("auth.password")}</AppText>
     <PasswordInput value={password} onChangeText={(value) => { setPassword(value); setErrorMessage(null); }} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
     {errorMessage && <View style={styles.errorMessage}><AppText tone="danger">{errorMessage}</AppText></View>}
@@ -96,7 +82,6 @@ const styles = StyleSheet.create({
   container: { width: "100%", maxWidth: 420, alignSelf: "center", gap: spacing.sm, paddingTop: 40 },
   topBar: { alignItems: "flex-end", marginBottom: spacing.sm },
   logo: { width: 96, height: 96, alignSelf: "center", marginBottom: spacing.sm },
-  simulationSection: { gap: spacing.sm, paddingVertical: spacing.sm },
   input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 12, backgroundColor: colors.surface },
   errorMessage: { padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.dangerSoft },
   rememberRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },

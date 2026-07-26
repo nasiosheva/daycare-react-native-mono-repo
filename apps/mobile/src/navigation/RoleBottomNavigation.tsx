@@ -12,7 +12,7 @@ const navigationByRole: Record<NavigationRole, NavigationItem[]> = {
   ADMIN: [
     { href: "/home", labelKey: "nav.home" },
     { href: "/platform-tenants", labelKey: "nav.tenant" },
-    { href: "/profile", labelKey: "nav.profile" },
+    { href: "/platform-catalog", labelKey: "nav.catalog" },
   ],
   STAFF_ADMIN: [
     { href: "/home", labelKey: "nav.home" },
@@ -31,12 +31,10 @@ const navigationByRole: Record<NavigationRole, NavigationItem[]> = {
     { href: "/parent-qr", labelKey: "nav.qr" },
     { href: "/booking", labelKey: "nav.booking", requiredCapability: "DAYCARE_OPERATIONS" },
     { href: "/operational-hours", labelKey: "nav.operatingHours", requiredCapability: "DAYCARE_OPERATIONS" },
-    { href: "/profile", labelKey: "nav.profile" },
   ],
   PARENT_ONBOARDING: [
     { href: "/home", labelKey: "nav.home" },
     { href: "/parent-enrollment", labelKey: "nav.enrollment" },
-    { href: "/profile", labelKey: "nav.profile" },
   ],
 };
 

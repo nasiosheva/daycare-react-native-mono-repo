@@ -79,17 +79,17 @@ export default function LearningLevelsScreen() {
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t(editingLevelId ? "learning.editLevel" : "learning.addLevel")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t(editingLevelId ? "common.save" : "learning.addLevel"), loading: createLevel.isPending || updateLevel.isPending, onPress: () => void save() }}>
       {formError && <AppText accessibilityRole="alert" tone="danger">{formError}</AppText>}
       <AppText variant="label">{t("learning.templates")}</AppText>
-      {templates.isLoading && <AppText tone="muted">{t("common.loading")}</AppText>}
+      {templates.isLoading && <ShimmerList variant="tile" />}
       {templates.isError && <View style={styles.feedback}><AppText accessibilityRole="alert" tone="danger">{t("learning.loadFailed")}</AppText><Button variant="secondary" onPress={() => void templates.refetch()}>{t("common.retry")}</Button></View>}
-      <View style={styles.options}>{templates.data?.map((template) => <Button key={template.code} variant="secondary" onPress={() => useTemplate(template.name, template.minAgeMonths, template.maxAgeMonths)}>{template.name}</Button>)}</View>
+      {!templates.isLoading && <View style={styles.options}>{templates.data?.map((template) => <Button key={template.code} variant="secondary" onPress={() => useTemplate(template.name, template.minAgeMonths, template.maxAgeMonths)}>{template.name}</Button>)}</View>}
       <TextInput style={styles.input} placeholder={t("learning.levelName")} value={name} onChangeText={(value) => { setName(value); setFormError(null); }} />
       <TextInput style={styles.input} inputMode="numeric" placeholder={t("learning.minAge")} value={minAge} onChangeText={(value) => { setMinAge(value); setFormError(null); }} />
       <TextInput style={styles.input} inputMode="numeric" placeholder={t("learning.maxAge")} value={maxAge} onChangeText={(value) => { setMaxAge(value); setFormError(null); }} />
       <TextInput style={styles.input} inputMode="numeric" placeholder={t("learning.order")} value={displayOrder} onChangeText={(value) => { setDisplayOrder(value); setFormError(null); }} />
       <AppText variant="label">{t("academic.program")}</AppText>
-      {programs.isLoading && <AppText tone="muted">{t("common.loading")}</AppText>}
+      {programs.isLoading && <ShimmerList variant="tile" />}
       {programs.isError && <View style={styles.feedback}><AppText accessibilityRole="alert" tone="danger">{t("learning.loadFailed")}</AppText><Button variant="secondary" onPress={() => void programs.refetch()}>{t("common.retry")}</Button></View>}
-      <View style={styles.options}>{programs.data?.map((program) => <Button key={program.id} variant={selectedPrograms.includes(program.id) ? "primary" : "secondary"} onPress={() => toggleProgram(program.id)}>{program.name}{program.source === "GLOBAL" ? ` · ${t("globalCurriculum.global")}` : ""}</Button>)}</View>
+      {!programs.isLoading && <View style={styles.options}>{programs.data?.map((program) => <Button key={program.id} variant={selectedPrograms.includes(program.id) ? "primary" : "secondary"} onPress={() => toggleProgram(program.id)}>{program.name}{program.source === "GLOBAL" ? ` · ${t("globalCurriculum.global")}` : ""}</Button>)}</View>}
     </BottomSheet>
 
     <BottomSheet visible={pendingArchive !== null} onClose={() => setPendingArchive(null)} closeAccessibilityLabel={t("common.close")} title={t("learning.archive")} negativeAction={{ label: t("common.cancel"), onPress: () => setPendingArchive(null) }} positiveAction={{ label: t("learning.archive"), variant: "danger", loading: archiveLevel.isPending, onPress: () => pendingArchive && archiveLevel.mutate(pendingArchive.id) }}>

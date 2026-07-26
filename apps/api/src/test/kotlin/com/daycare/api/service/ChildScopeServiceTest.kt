@@ -14,7 +14,9 @@ import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.Membership
 import com.daycare.api.persistence.UserProfile
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.`when`
@@ -70,5 +72,36 @@ class ChildScopeServiceTest {
 
         assertEquals(listOf(child), service.visibleChildren(scope, organizationId))
         assertEquals(child, service.requireStaffManagedChild(scope, child.id, organizationId))
+    }
+
+    @Test
+    fun `directly assigned staff can place their child in any same branch classroom`() {
+        val childId = UUID.randomUUID()
+        `when`(assignments.existsByOrganizationIdAndChildIdAndUserId(organizationId, childId, staffId)).thenReturn(true)
+
+        assertTrue(service.canStaffPlaceChildInClassroom(scope, childId, UUID.randomUUID(), organizationId))
+    }
+
+    @Test
+    fun `classroom scoped staff can place a child only into another assigned classroom`() {
+        val childId = UUID.randomUUID()
+        val currentClassroomId = UUID.randomUUID()
+        val allowedClassroomId = UUID.randomUUID()
+        val unavailableClassroomId = UUID.randomUUID()
+        `when`(assignments.existsByOrganizationIdAndChildIdAndUserId(organizationId, childId, staffId)).thenReturn(false)
+        `when`(placements.findByChildIdAndEndedOnIsNull(childId)).thenReturn(ChildPlacement(organizationId = organizationId, childId = childId, classroomId = currentClassroomId))
+        `when`(classroomAssignments.existsByOrganizationIdAndClassroomIdAndUserId(organizationId, currentClassroomId, staffId)).thenReturn(true)
+        `when`(classroomAssignments.existsByOrganizationIdAndClassroomIdAndUserId(organizationId, allowedClassroomId, staffId)).thenReturn(true)
+        `when`(classroomAssignments.existsByOrganizationIdAndClassroomIdAndUserId(organizationId, unavailableClassroomId, staffId)).thenReturn(false)
+
+        assertTrue(service.canStaffPlaceChildInClassroom(scope, childId, allowedClassroomId, organizationId))
+        assertFalse(service.canStaffPlaceChildInClassroom(scope, childId, unavailableClassroomId, organizationId))
+    }
+
+    @Test
+    fun `Staff Admin can place any tenant child`() {
+        val adminScope = AccessScope(UserProfile(), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), emptySet())
+
+        assertTrue(service.canStaffPlaceChildInClassroom(adminScope, UUID.randomUUID(), UUID.randomUUID(), organizationId))
     }
 }

@@ -1,4 +1,4 @@
-import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, GoalCategory, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffReminderTarget, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
+import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, GoalDomain, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffReminderTarget, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -89,7 +89,7 @@ export type CreateServicePlanDiscountInput = Omit<ServicePlanDiscount, "id" | "p
 export type ServicePlanTemplate = { id: string; source: "SYSTEM" | "TENANT"; name: string; type: ServicePlanType; suggestedPrice?: number | null; creditCount?: number | null; unusedCreditPolicy?: UnusedCreditPolicy | null; carryForwardDays?: number | null; bookingRequiresApproval: boolean; dailyCapacity?: number | null };
 export type UpsertServicePlanTemplateInput = Omit<ServicePlanTemplate, "id" | "source">;
 export type ServiceEntitlement = { id: string; branchId: string; childId: string; childName: string; parentName?: string | null; parentEmail?: string | null; planName: string; type: ServicePlanType; status: "PENDING_PAYMENT" | "ACTIVE" | "EXPIRED" | "EXHAUSTED"; totalCredits?: number | null; remainingCredits?: number | null; validUntil: string };
-export type Booking = { id: string; branchId: string; childId: string; childName: string; bookingDate: string; status: BookingStatus; planName: string; invoiceId: string };
+export type Booking = { id: string; branchId: string; childId: string; childName: string; bookingDate: string; status: BookingStatus; planName: string; invoiceId: string; invoiceNumber: string; invoiceTotalAmount: number };
 export type PaymentProofStatus = "SUBMITTED" | "VERIFIED" | "REJECTED";
 export type PaymentProof = { status: PaymentProofStatus; fileName: string; note?: string | null; submittedAt: string; rejectionReason?: string | null };
 export type PaymentProofImage = { fileName: string; contentType: string; dataBase64: string; note?: string | null };
@@ -110,17 +110,18 @@ export type Tenant = { id: string; name: string; branchName: string | null; bran
 export type CreateTenantInput = { tenantName: string; branchName: string; institutionTypes: InstitutionType[]; subscriptionPlan: TenantSubscriptionPlan; monthlyFee?: number; trialMonths?: number; staffAdminName: string; staffAdminEmail: string; staffAdminPassword: string };
 export type UpdateTenantInput = { tenantName: string; institutionTypes: InstitutionType[]; subscriptionPlan: TenantSubscriptionPlan; monthlyFee?: number };
 export type CreatePlatformAdminInput = { email: string; username: string; password: string };
+export type LoginIdentifierResolution = { email: string | null };
 export type AcademicYear = { id: string; name: string; startsOn: string; endsOn: string; active: boolean };
 export type CreateAcademicYearInput = { name: string; startsOn: string; endsOn: string };
-export type CurriculumProgram = { id: string; academicYearId?: string | null; name: string; description: string; source: "GLOBAL" | "TENANT" };
-export type CreateCurriculumProgramInput = { academicYearId?: string; name: string; description: string };
+export type CurriculumProgram = { id: string; academicYearId?: string | null; name: string; description: string; source: "GLOBAL" | "TENANT"; isTemplate: boolean; active: boolean; developmentProgramIds: string[] };
+export type CreateCurriculumProgramInput = { academicYearId?: string; name: string; description: string; developmentProgramIds?: string[] };
 export type CurriculumActivity = { id: string; name: string; description: string; active: boolean };
 export type UpsertCurriculumActivityInput = { name: string; description?: string };
 export type CurriculumActivityAssessment = { id: string; activityId: string; name: string; description: string };
 export type CreateCurriculumActivityAssessmentInput = { name: string; description?: string };
 export type LearningLevelTemplate = { code: string; name: string; minAgeMonths?: number | null; maxAgeMonths?: number | null };
 export type LearningBranch = { id: string; name: string };
-export type LearningLevel = { id: string; name: string; minAgeMonths?: number | null; maxAgeMonths?: number | null; displayOrder: number; active: boolean; curriculumProgramIds: string[] };
+export type LearningLevel = { id: string; name: string; minAgeMonths?: number | null; maxAgeMonths?: number | null; displayOrder: number; source: "GLOBAL" | "TENANT"; isTemplate: boolean; active: boolean; curriculumProgramIds: string[] };
 export type UpsertLearningLevelInput = { name: string; minAgeMonths?: number; maxAgeMonths?: number; displayOrder?: number; curriculumProgramIds?: string[] };
 export type Classroom = { id: string; branchId: string; learningLevelId?: string | null; learningPeriodId?: string | null; name: string; capacity?: number | null; active: boolean; activeChildren: number };
 export type UpsertClassroomInput = { branchId: string; learningLevelId: string; learningPeriodId?: string; name: string; capacity?: number };
@@ -128,10 +129,14 @@ export type ClassroomStaffAssignment = { id: string; userId: string; displayName
 export type ClassroomProgram = { id: string; name: string; description: string };
 export type GoalIndicator = { id: string; name: string; displayOrder: number; active: boolean };
 export type UpsertGoalIndicatorInput = { name: string; displayOrder?: number };
-export type GoalTemplate = { id: string; learningLevelId?: string | null; classroomId?: string | null; name: string; description: string; durationDays: number; minimumYesPercent: number; minimumYesStreak: number; minAgeMonths?: number | null; maxAgeMonths?: number | null; category?: GoalCategory | null; source: "GLOBAL" | "TENANT"; active: boolean; indicators: GoalIndicator[] };
-export type UpsertGoalTemplateInput = Omit<GoalTemplate, "id" | "active" | "indicators" | "source">;
-export type GoalIndicatorCheckIn = { indicatorId: string; date: string; outcome: GoalCheckInOutcome; recordedAt: string };
-export type ChildGoal = { id: string; childId: string; templateId: string; name: string; description: string; startsOn: string; targetEndsOn: string; durationDays: number; minimumYesPercent: number; minimumYesStreak: number; status: "ACTIVE" | "COMPLETED"; finalOutcome?: ChildGoalOutcome | null; finalSummary?: string | null; finalizedAt?: string | null; recordedDays: number; yesDays: number; noDays: number; yesPercent?: number | null; currentYesStreak: number; longestYesStreak: number; meetsYesPercent: boolean; meetsYesStreak: boolean; missedDays: number; indicators: GoalIndicator[]; checkIns: GoalIndicatorCheckIn[] };
+export type DevelopmentProgram = { id: string; learningLevelId: string; name: string; description: string; durationDays: number; minimumYesPercent: number; minimumYesStreak: number; domain: GoalDomain; source: "GLOBAL" | "TENANT"; isTemplate: boolean; active: boolean; indicators: GoalIndicator[]; minAgeMonths?: number | null; maxAgeMonths?: number | null };
+export type UpsertDevelopmentProgramInput = Omit<DevelopmentProgram, "id" | "active" | "indicators" | "source" | "isTemplate"> & { indicatorNames?: string[] };
+export type GoalIndicatorCheckIn = { indicatorId: string; date: string; outcome: GoalCheckInOutcome; note?: string | null; hasPhoto: boolean; hasAudio: boolean; audioDurationMs?: number | null; recordedAt: string };
+export type GoalCheckInPhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
+export type GoalCheckInAudioInput = { contentType: string; dataBase64: string; durationMs?: number };
+export type GoalCheckInPhoto = { contentType: string; dataBase64: string };
+export type GoalCheckInAudio = { contentType: string; dataBase64: string; durationMs?: number | null };
+export type ChildGoal = { id: string; childId: string; programId: string; name: string; description: string; startsOn: string; targetEndsOn: string; durationDays: number; minimumYesPercent: number; minimumYesStreak: number; status: "ACTIVE" | "COMPLETED"; finalOutcome?: ChildGoalOutcome | null; finalSummary?: string | null; finalizedAt?: string | null; recordedDays: number; yesDays: number; noDays: number; yesPercent?: number | null; currentYesStreak: number; longestYesStreak: number; meetsYesPercent: boolean; meetsYesStreak: boolean; missedDays: number; indicators: GoalIndicator[]; checkIns: GoalIndicatorCheckIn[] };
 export type ChildPlacement = { id: string; classroomId: string; classroomName: string; learningLevelId?: string | null; learningLevelName?: string | null; learningPeriodId?: string | null; startsOn: string; endedOn?: string | null; ageGuidanceWarning: boolean };
 export type TenantInvitationInput = { email?: string; phoneNumber?: string; role: Extract<Role, "STAFF" | "PARENT">; branchId?: string; classroomId?: string };
 export type CreateTenantUserInput = { displayName: string; email: string; password: string; role: Extract<Role, "STAFF_ADMIN" | "STAFF">; branchId?: string; canManageChildPrograms?: boolean; canManageDevelopmentCategories?: boolean };
@@ -179,6 +184,7 @@ export function realtimeUrl(apiUrl: string, override?: string): string {
 export class ApiClient {
   constructor(private readonly options: ApiClientOptions) {}
 
+  async resolveLoginUsername(username: string): Promise<LoginIdentifierResolution> { return this.request("/auth/resolve-username", { method: "POST", body: JSON.stringify({ username }) }); }
   async me(): Promise<CurrentUser> {
     return this.request("/me");
   }
@@ -204,10 +210,10 @@ export class ApiClient {
   async tenant(organizationId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}`); }
   async createTenant(input: CreateTenantInput): Promise<Tenant> { return this.request("/platform/tenants", { method: "POST", body: JSON.stringify(input) }); }
   async updateTenant(organizationId: string, input: UpdateTenantInput): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}`, { method: "PATCH", body: JSON.stringify(input) }); }
-  async createTenantStaffAdmin(organizationId: string, input: { displayName: string; email: string; password: string }): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/staff-admins`, { method: "POST", body: JSON.stringify(input) }); }
+  async createTenantStaffAdmin(organizationId: string, input: { displayName: string; username?: string; email: string; password: string }): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/staff-admins`, { method: "POST", body: JSON.stringify(input) }); }
   async updateTenantStaffAdmin(organizationId: string, membershipId: string, input: { displayName: string }): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/staff-admins/${membershipId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async removeTenantStaffAdmin(organizationId: string, membershipId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/staff-admins/${membershipId}/remove`, { method: "POST" }); }
-  async branches(): Promise<TenantBranch[]> { return this.request("/branches"); }
+  async branches(search?: string): Promise<TenantBranch[]> { const query = search?.trim(); return this.request(`/branches${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
   async createBranch(input: { name: string; timezone?: string }): Promise<TenantBranch> { return this.request("/branches", { method: "POST", body: JSON.stringify(input) }); }
   async updateBranch(branchId: string, input: { name: string; timezone: string }): Promise<TenantBranch> { return this.request(`/branches/${branchId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async setPrimaryBranch(branchId: string): Promise<TenantBranch> { return this.request(`/branches/${branchId}/primary`, { method: "POST" }); }
@@ -223,8 +229,18 @@ export class ApiClient {
   async setTenantSubscriptionStatus(organizationId: string, status: Extract<TenantSubscriptionStatus, "ACTIVE" | "SUSPENDED">): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/subscription/${status}`, { method: "POST" }); }
   async createPlatformAdmin(input: CreatePlatformAdminInput): Promise<{ id: string }> { return this.request("/platform/admins", { method: "POST", body: JSON.stringify(input) }); }
   async changePlatformAdminPin(pin: string): Promise<void> { await this.request<void>("/platform/pin", { method: "POST", body: JSON.stringify({ pin }) }); }
-  async globalCurriculumPrograms(): Promise<CurriculumProgram[]> { return this.request("/platform/curriculum-programs"); }
+  async globalCurriculumPrograms(includeArchived = false): Promise<CurriculumProgram[]> { return this.request(`/platform/curriculum-programs${includeArchived ? "?includeArchived=true" : ""}`); }
+  async globalDevelopmentPrograms(search?: string): Promise<DevelopmentProgram[]> { const query = search?.trim(); return this.request(`/platform/development-programs${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
+  async createGlobalDevelopmentProgram(input: UpsertDevelopmentProgramInput): Promise<DevelopmentProgram> { return this.request("/platform/development-programs", { method: "POST", body: JSON.stringify(input) }); }
+  async updateGlobalDevelopmentProgram(programId: string, input: UpsertDevelopmentProgramInput): Promise<DevelopmentProgram> { return this.request(`/platform/development-programs/${programId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async deleteGlobalDevelopmentProgram(programId: string): Promise<void> { await this.request<void>(`/platform/development-programs/${programId}`, { method: "DELETE" }); }
+  async globalLearningLevels(): Promise<LearningLevel[]> { return this.request("/platform/learning-levels"); }
+  async createGlobalLearningLevel(input: UpsertLearningLevelInput): Promise<LearningLevel> { return this.request("/platform/learning-levels", { method: "POST", body: JSON.stringify(input) }); }
+  async updateGlobalLearningLevel(levelId: string, input: UpsertLearningLevelInput): Promise<LearningLevel> { return this.request(`/platform/learning-levels/${levelId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async deleteGlobalLearningLevel(levelId: string): Promise<void> { await this.request<void>(`/platform/learning-levels/${levelId}`, { method: "DELETE" }); }
   async createGlobalCurriculumProgram(input: Omit<CreateCurriculumProgramInput, "academicYearId">): Promise<CurriculumProgram> { return this.request("/platform/curriculum-programs", { method: "POST", body: JSON.stringify(input) }); }
+  async updateGlobalCurriculumProgram(programId: string, input: Omit<CreateCurriculumProgramInput, "academicYearId">): Promise<CurriculumProgram> { return this.request(`/platform/curriculum-programs/${programId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async setGlobalCurriculumProgramActive(programId: string, active: boolean): Promise<CurriculumProgram> { return this.request(`/platform/curriculum-programs/${programId}/active`, { method: "PATCH", body: JSON.stringify({ active }) }); }
   async markTenantPaymentPaid(organizationId: string, paymentId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/payments/${paymentId}/mark-paid`, { method: "POST" }); }
   async voidTenantPayment(organizationId: string, paymentId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/payments/${paymentId}/void`, { method: "POST" }); }
   async refreshTenantStaffAdminInvitation(organizationId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/staff-admin-invitation/refresh`, { method: "POST" }); }
@@ -249,11 +265,16 @@ export class ApiClient {
   async syncStaffReminderSchedules(input: { installationId: string; schedules: Array<{ reminderId: string; ruleVersion: number; scheduled: boolean }> }): Promise<void> { await this.request<void>("/staff-reminders/local-schedules", { method: "PUT", body: JSON.stringify(input) }); }
   async academicYears(): Promise<AcademicYear[]> { return this.request("/academic-years"); }
   async createAcademicYear(input: CreateAcademicYearInput): Promise<AcademicYear> { return this.request("/academic-years", { method: "POST", body: JSON.stringify(input) }); }
-  async curriculumPrograms(search?: string): Promise<CurriculumProgram[]> {
+  async curriculumPrograms(search?: string, includeArchived = false): Promise<CurriculumProgram[]> {
+    const params = new URLSearchParams();
     const query = search?.trim();
-    return this.request(`/curriculum-programs${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`);
+    if (query) params.set("search", query);
+    if (includeArchived) params.set("includeArchived", "true");
+    return this.request(`/curriculum-programs${params.size ? `?${params.toString()}` : ""}`);
   }
   async createCurriculumProgram(input: CreateCurriculumProgramInput): Promise<CurriculumProgram> { return this.request("/curriculum-programs", { method: "POST", body: JSON.stringify(input) }); }
+  async updateCurriculumProgram(programId: string, input: CreateCurriculumProgramInput): Promise<CurriculumProgram> { return this.request(`/curriculum-programs/${programId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async setCurriculumProgramActive(programId: string, active: boolean): Promise<CurriculumProgram> { return this.request(`/curriculum-programs/${programId}/active`, { method: "PATCH", body: JSON.stringify({ active }) }); }
   async curriculumActivities(): Promise<CurriculumActivity[]> { return this.request("/curriculum-activities"); }
   async createCurriculumActivity(input: UpsertCurriculumActivityInput): Promise<CurriculumActivity> { return this.request("/curriculum-activities", { method: "POST", body: JSON.stringify(input) }); }
   async updateCurriculumActivity(activityId: string, input: UpsertCurriculumActivityInput): Promise<CurriculumActivity> { return this.request(`/curriculum-activities/${activityId}`, { method: "PATCH", body: JSON.stringify(input) }); }
@@ -277,17 +298,21 @@ export class ApiClient {
   async classroomPrograms(classroomId: string): Promise<ClassroomProgram[]> { return this.request(`/classrooms/${classroomId}/programs`); }
   async createClassroomProgram(classroomId: string, input: { name: string; description?: string }): Promise<ClassroomProgram> { return this.request(`/classrooms/${classroomId}/programs`, { method: "POST", body: JSON.stringify(input) }); }
   async removeClassroomProgram(classroomId: string, programId: string): Promise<void> { await this.request<void>(`/classrooms/${classroomId}/programs/${programId}`, { method: "DELETE" }); }
-  async goalTemplates(search?: string): Promise<GoalTemplate[]> { const query = search?.trim(); return this.request(`/goal-templates${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
-  async createGoalTemplate(input: UpsertGoalTemplateInput): Promise<GoalTemplate> { return this.request("/goal-templates", { method: "POST", body: JSON.stringify(input) }); }
-  async updateGoalTemplate(templateId: string, input: UpsertGoalTemplateInput): Promise<GoalTemplate> { return this.request(`/goal-templates/${templateId}`, { method: "PATCH", body: JSON.stringify(input) }); }
-  async createGoalIndicator(templateId: string, input: UpsertGoalIndicatorInput): Promise<GoalTemplate> { return this.request(`/goal-templates/${templateId}/indicators`, { method: "POST", body: JSON.stringify(input) }); }
-  async updateGoalIndicator(templateId: string, indicatorId: string, input: UpsertGoalIndicatorInput): Promise<GoalTemplate> { return this.request(`/goal-templates/${templateId}/indicators/${indicatorId}`, { method: "PATCH", body: JSON.stringify(input) }); }
-  async archiveGoalIndicator(templateId: string, indicatorId: string): Promise<GoalTemplate> { return this.request(`/goal-templates/${templateId}/indicators/${indicatorId}/archive`, { method: "POST" }); }
+  async developmentPrograms(search?: string): Promise<DevelopmentProgram[]> { const query = search?.trim(); return this.request(`/development-programs${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
+  async createDevelopmentProgram(input: UpsertDevelopmentProgramInput): Promise<DevelopmentProgram> { return this.request("/development-programs", { method: "POST", body: JSON.stringify(input) }); }
+  async updateDevelopmentProgram(programId: string, input: UpsertDevelopmentProgramInput): Promise<DevelopmentProgram> { return this.request(`/development-programs/${programId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async deleteDevelopmentProgram(programId: string): Promise<void> { await this.request<void>(`/development-programs/${programId}`, { method: "DELETE" }); }
+  async createGoalIndicator(programId: string, input: UpsertGoalIndicatorInput): Promise<DevelopmentProgram> { return this.request(`/development-programs/${programId}/indicators`, { method: "POST", body: JSON.stringify(input) }); }
+  async updateGoalIndicator(programId: string, indicatorId: string, input: UpsertGoalIndicatorInput): Promise<DevelopmentProgram> { return this.request(`/development-programs/${programId}/indicators/${indicatorId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async archiveGoalIndicator(programId: string, indicatorId: string): Promise<DevelopmentProgram> { return this.request(`/development-programs/${programId}/indicators/${indicatorId}/archive`, { method: "POST" }); }
   async childGoals(childId: string): Promise<ChildGoal[]> { return this.request(`/children/${childId}/goals`); }
-  async assignChildGoal(childId: string, input: { templateId: string; startsOn?: string }): Promise<ChildGoal> { return this.request(`/children/${childId}/goals`, { method: "POST", body: JSON.stringify(input) }); }
-  async recordGoalCheckIn(goalId: string, date: string, indicatorId: string, outcome: GoalCheckInOutcome): Promise<ChildGoal> { return this.request(`/child-goals/${goalId}/check-ins/${date}`, { method: "PUT", body: JSON.stringify({ indicatorId, outcome }) }); }
+  async assignChildGoal(childId: string, input: { programId: string; startsOn?: string }): Promise<ChildGoal> { return this.request(`/children/${childId}/goals`, { method: "POST", body: JSON.stringify(input) }); }
+  async recordGoalCheckIn(goalId: string, date: string, indicatorId: string, outcome: GoalCheckInOutcome, detail?: { note?: string; photo?: GoalCheckInPhotoInput; audio?: GoalCheckInAudioInput }): Promise<ChildGoal> { return this.request(`/child-goals/${goalId}/check-ins/${date}`, { method: "PUT", body: JSON.stringify({ indicatorId, outcome, ...detail }) }); }
+  async goalCheckInPhoto(goalId: string, date: string, indicatorId: string): Promise<GoalCheckInPhoto> { return this.request(`/child-goals/${goalId}/check-ins/${date}/${indicatorId}/photo`); }
+  async goalCheckInAudio(goalId: string, date: string, indicatorId: string): Promise<GoalCheckInAudio> { return this.request(`/child-goals/${goalId}/check-ins/${date}/${indicatorId}/audio`); }
   async finalizeChildGoal(goalId: string, input: { outcome: ChildGoalOutcome; summary: string }): Promise<ChildGoal> { return this.request(`/child-goals/${goalId}/finalize`, { method: "POST", body: JSON.stringify(input) }); }
   async childPlacements(childId: string): Promise<ChildPlacement[]> { return this.request(`/children/${childId}/placements`); }
+  async childPlacementOptions(childId: string): Promise<Classroom[]> { return this.request(`/children/${childId}/placement-options`); }
   async placeChild(childId: string, input: { classroomId: string; startsOn?: string }): Promise<ChildPlacement> { return this.request(`/children/${childId}/placements`, { method: "POST", body: JSON.stringify(input) }); }
 
   async children(filter: ChildListFilter = {}): Promise<Child[]> {

@@ -12,7 +12,7 @@ enum class ChildCareRole { STAFF, NURSE, MISS }
 enum class AttendanceMethod { MANUAL, QR }
 enum class AttendanceAction { CHECK_IN, CHECK_OUT }
 enum class DevelopmentCategory { ACTIVITY, MEAL, NAP, OBSERVATION }
-enum class GoalCategory { KEMANDIRIAN, BAHASA_KOMUNIKASI, KOGNITIF, MOTORIK_HALUS, MOTORIK_KASAR, SOSIAL_EMOSI }
+enum class GoalDomain { KEMANDIRIAN, BAHASA_KOMUNIKASI, KOGNITIF, MOTORIK_HALUS, MOTORIK_KASAR, SOSIAL_EMOSI }
 enum class ServicePlanType { DAILY, WEEKLY, MONTHLY }
 enum class UnusedCreditPolicy { CARRY_FORWARD, EXPIRE }
 enum class ServicePlanDiscountKind { AUTOMATIC, PROMO_CODE }

@@ -2,6 +2,8 @@
 
 Use repository-local context only for this project. Do not read, use, or update global Codex memories for work in this checkout.
 
+Before taking any action in this repository, including exploration, planning, review, implementation, or running commands, read `README.md` and `docs/business-rules.md` first. Treat both documents as required repository context. If the requested behavior, current code, project memory, another document, or either required document contains business logic that differs from or conflicts with `README.md` or `docs/business-rules.md`, do not choose an interpretation or proceed silently. Clearly describe the difference and ask the user for clarification before acting.
+
 Read `.codex/project-memory.md` before non-trivial implementation, review, or architecture work. Keep durable project decisions there; do not store secrets, personal data, access tokens, or environment values.
 
 Every change requires a documentation review in the same change set. Create or update a daily context note at `docs/changes/YYYY-MM-DD/<context>.md` that records the change, affected behavior, verification, and any follow-up. Update `README.md` for any change to user flow, business rules, API contracts, configuration, local/prod operation, or verification. Update the relevant module documentation for implementation-level changes when it exists. If no documentation changes are materially needed, state that explicitly in the final handoff with the reason; do not silently omit the review.

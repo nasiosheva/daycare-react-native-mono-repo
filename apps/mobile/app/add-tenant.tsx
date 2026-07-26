@@ -3,7 +3,7 @@ import { StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, Button, colors, PasswordInput, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Button, ShimmerList, colors, PasswordInput, radius, spacing } from "@daycare/ui";
 import { isApiNetworkError, type InstitutionTypeDefinition } from "@daycare/api-client";
 import { tenantSubscriptionPlans, type TenantSubscriptionPlan } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
@@ -66,8 +66,8 @@ export default function AddTenantScreen() {
       <TextInput style={styles.input} placeholder={t("tenant.name")} value={tenantName} onChangeText={setTenantName} />
       <TextInput style={styles.input} placeholder={t("tenant.branch")} value={branchName} onChangeText={setBranchName} />
       <AppText variant="label">{t("tenant.institutionTypes")}</AppText>
-      <View style={styles.options}>{institutionTypes.data?.map((type) => <Button key={type.code} variant={selectedInstitutionTypes.includes(type.code) ? "primary" : "secondary"} onPress={() => toggleInstitutionType(type)}>{type.name}</Button>)}</View>
-      {institutionTypes.isLoading && <AppText tone="muted">{t("institutionCatalog.load")}</AppText>}
+      {institutionTypes.isLoading && <ShimmerList variant="tile" />}
+      {!institutionTypes.isLoading && <View style={styles.options}>{institutionTypes.data?.map((type) => <Button key={type.code} variant={selectedInstitutionTypes.includes(type.code) ? "primary" : "secondary"} onPress={() => toggleInstitutionType(type)}>{type.name}</Button>)}</View>}
       {institutionTypes.isError && <Button variant="secondary" onPress={() => institutionTypes.refetch()}>{t("institutionCatalog.reload")}</Button>}
       <TextInput style={styles.input} placeholder={t("tenant.staffAdminName")} value={staffAdminName} onChangeText={setStaffAdminName} />
       <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder={t("tenant.staffAdminEmail")} value={staffAdminEmail} onChangeText={setStaffAdminEmail} />

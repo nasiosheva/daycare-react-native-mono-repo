@@ -5,6 +5,7 @@ import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AcademicYearRepository
 import com.daycare.api.persistence.BranchCapacitySettingRepository
 import com.daycare.api.persistence.BranchRepository
+import com.daycare.api.persistence.Branch
 import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildPlacementRepository
 import com.daycare.api.persistence.ChildRepository
@@ -22,6 +23,7 @@ import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.UserProfileRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
@@ -34,6 +36,7 @@ import java.util.UUID
 
 class LearningStructureServiceTest {
     private val access = mock(AccessService::class.java)
+    private val platformAccess = mock(PlatformAccessService::class.java)
     private val levels = mock(LearningLevelRepository::class.java)
     private val levelPrograms = mock(LearningLevelCurriculumProgramRepository::class.java)
     private val programs = mock(CurriculumProgramRepository::class.java)
@@ -91,6 +94,43 @@ class LearningStructureServiceTest {
     }
 
     @Test
+    fun `placement options include only current staff permitted same branch classrooms`() {
+        val staffId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId, branchId = UUID.randomUUID(), enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        val allowed = Classroom(organizationId = organizationId, branchId = child.branchId, learningLevelId = UUID.randomUUID(), name = "Kelas Boleh")
+        val differentBranch = Classroom(organizationId = organizationId, branchId = UUID.randomUUID(), learningLevelId = UUID.randomUUID(), name = "Cabang Lain")
+        val noLevel = Classroom(organizationId = organizationId, branchId = child.branchId, name = "Tanpa Tingkatan")
+        val scope = AccessScope(UserProfile(id = staffId), Membership(userId = staffId, organizationId = organizationId, role = Role.STAFF), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
+        `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId)).thenReturn(listOf(Branch(id = child.branchId, organizationId = organizationId, name = "Utama")))
+        `when`(classrooms.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId)).thenReturn(listOf(allowed, differentBranch, noLevel))
+        `when`(childScopes.canStaffPlaceChildInClassroom(scope, child.id, allowed.id, organizationId)).thenReturn(true)
+        `when`(placements.countByClassroomIdAndActiveEnrollmentStatus(allowed.id, ChildEnrollmentStatus.ACTIVE)).thenReturn(0)
+
+        val options = service().placementOptions(jwt, organizationId, child.id)
+
+        assertEquals(listOf(allowed.id), options.map { it.id })
+        assertTrue(options.single().active)
+    }
+
+    @Test
+    fun `placement mutation rejects a classroom outside the staff assignment scope`() {
+        val staffId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId, branchId = UUID.randomUUID(), enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        val classroom = Classroom(organizationId = organizationId, branchId = child.branchId, learningLevelId = UUID.randomUUID(), name = "Kelas Lain")
+        val scope = AccessScope(UserProfile(id = staffId), Membership(userId = staffId, organizationId = organizationId, role = Role.STAFF), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
+        `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(classrooms.findById(classroom.id)).thenReturn(Optional.of(classroom))
+        `when`(childScopes.canStaffPlaceChildInClassroom(scope, child.id, classroom.id, organizationId)).thenReturn(false)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            service().placeChild(jwt, organizationId, child.id, CreateChildPlacementRequest(classroom.id))
+        }
+    }
+
+    @Test
     fun `tenant level can link a global curriculum program`() {
         val program = CurriculumProgram(name = "Fase Fondasi", description = "Program bersama")
         val scope = AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet())
@@ -109,7 +149,7 @@ class LearningStructureServiceTest {
     }
 
     private fun service() = LearningStructureService(
-        access, levels, levelPrograms, programs, classrooms, placements, children, academicYears,
+        access, platformAccess, levels, levelPrograms, programs, classrooms, placements, children, academicYears,
         memberships, users, classroomAssignments, classroomPrograms, branchCapacities, branches, childScopes, branchFilters,
     )
 }

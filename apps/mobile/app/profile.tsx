@@ -16,11 +16,10 @@ type ProfileSheet = "profile" | "password" | "admin" | null;
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { api, user, profile, organizationId, isSimulationSession, signOut, updateDisplayName, updatePersonalDetails, changePassword, selectOrganization } = useAuth();
+  const { api, user, profile, organizationId, signOut, updateDisplayName, updatePersonalDetails, changePassword, selectOrganization } = useAuth();
   const { t, formatDate } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
-  const isStaffProfile = isStaffAdmin || membership?.role === "STAFF";
   const parentMemberships = profile?.memberships.filter((item) => item.role === "PARENT") ?? [];
   const [displayName, setDisplayName] = useState("");
   const [gender, setGender] = useState<ChildGender | undefined>(undefined);
@@ -89,7 +88,7 @@ export default function ProfileScreen() {
     finally { setCreatingAdmin(false); }
   };
 
-  return <AppScreen showBottomNavigation={!isStaffProfile} title={t("profile.title")} header={isStaffProfile ? <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} /> : undefined} headerAction={<LanguageSwitcher compact />}>
+  return <AppScreen showBottomNavigation={false} title={t("profile.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} headerAction={<LanguageSwitcher compact />}>
     <View style={styles.card}>
       <AppText variant="heading">{profile?.displayName ?? user?.displayName ?? t("common.noData")}</AppText>
       {profile?.gender && profile.gender !== "UNSPECIFIED" && <AppText tone="muted">{t(profile.gender === "MALE" ? "children.genderMale" : "children.genderFemale")}</AppText>}
@@ -101,7 +100,6 @@ export default function ProfileScreen() {
         <AppText>{membership.organizationName}</AppText>
         <AppText tone="muted">{t("profile.roleTenant", { role: t(roleKey(membership.role)) })}</AppText>
       </>}
-      {isSimulationSession && <AppText variant="caption" tone="muted">{t("profile.simulation")}</AppText>}
     </View>
 
     {parentMemberships.length > 0 && <NavigationCard accessibilityLabel={t("profile.manageTenants")} onPress={() => setTenantSheetOpen(true)}>
@@ -115,8 +113,7 @@ export default function ProfileScreen() {
       {organizationId && !isStaffAdmin && <Button variant="secondary" onPress={() => router.push("/notifications" as never)}>{t("profile.notifications")}</Button>}
       {membership?.role === "STAFF" && <Button variant="secondary" onPress={() => router.push("/staff-reminders" as never)}>{t("profile.reminders")}</Button>}
       <Button variant="secondary" onPress={() => setProfileSheet("profile")}>{t("profile.savePersonal")}</Button>
-      <Button variant="secondary" disabled={isSimulationSession} onPress={() => setProfileSheet("password")}>{t("profile.changePassword")}</Button>
-      {isSimulationSession && <AppText variant="caption" tone="muted">{t("profile.passwordSimulation")}</AppText>}
+      <Button variant="secondary" onPress={() => setProfileSheet("password")}>{t("profile.changePassword")}</Button>
       {profile?.isPlatformAdmin && <Button variant="secondary" onPress={() => setProfileSheet("admin")}>{t("profile.addAdmin")}</Button>}
     </View>
 

@@ -7,7 +7,7 @@ import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.ChildEnrollmentStatus
 import com.daycare.api.domain.Gender
 import com.daycare.api.domain.GoalCheckInOutcome
-import com.daycare.api.domain.GoalCategory
+import com.daycare.api.domain.GoalDomain
 import com.daycare.api.domain.ChildGoalStatus
 import com.daycare.api.domain.ChildGoalOutcome
 import com.daycare.api.domain.ParentEnrollmentStatus
@@ -77,6 +77,15 @@ class CurriculumProgram(
     @Column(name = "academic_year_id") var academicYearId: UUID? = null,
     @Column(nullable = false) var name: String = "",
     @Column(nullable = false) var description: String = "",
+    @Column(name = "is_template", nullable = false) var isTemplate: Boolean = false,
+    @Column(nullable = false) var active: Boolean = true,
+)
+
+@Entity @Table(name = "curriculum_program_development_programs")
+class CurriculumProgramDevelopmentProgram(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "curriculum_program_id", nullable = false) var curriculumProgramId: UUID = UUID.randomUUID(),
+    @Column(name = "development_program_id", nullable = false) var developmentProgramId: UUID = UUID.randomUUID(),
 )
 
 @Entity @Table(name = "curriculum_activities")
@@ -144,11 +153,12 @@ class Branch(
 @Entity @Table(name = "learning_levels")
 class LearningLevel(
     @Id var id: UUID = UUID.randomUUID(),
-    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id") var organizationId: UUID? = null,
     @Column(nullable = false) var name: String = "",
     @Column(name = "min_age_months") var minAgeMonths: Int? = null,
     @Column(name = "max_age_months") var maxAgeMonths: Int? = null,
     @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
+    @Column(name = "is_template", nullable = false) var isTemplate: Boolean = false,
     @Column(nullable = false) var active: Boolean = true,
 )
 
@@ -236,29 +246,27 @@ class Child(
     @Column(nullable = false) var active: Boolean = true,
 )
 
-@Entity @Table(name = "goal_templates")
-class GoalTemplate(
+@Entity @Table(name = "development_programs")
+class DevelopmentProgram(
     @Id var id: UUID = UUID.randomUUID(),
     @Column(name = "organization_id") var organizationId: UUID? = null,
-    @Column(name = "learning_level_id") var learningLevelId: UUID? = null,
-    @Column(name = "classroom_id") var classroomId: UUID? = null,
+    @Column(name = "learning_level_id", nullable = false) var learningLevelId: UUID = UUID.randomUUID(),
     @Column(nullable = false) var name: String = "",
     @Column(nullable = false) var description: String = "",
     @Column(name = "duration_days", nullable = false) var durationDays: Int = 1,
     @Column(name = "minimum_yes_percent", nullable = false) var minimumYesPercent: Int = 0,
     @Column(name = "minimum_yes_streak", nullable = false) var minimumYesStreak: Int = 0,
-    @Column(name = "min_age_months") var minAgeMonths: Int? = null,
-    @Column(name = "max_age_months") var maxAgeMonths: Int? = null,
-    @Enumerated(EnumType.STRING) @Column var category: GoalCategory? = null,
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var domain: GoalDomain = GoalDomain.KEMANDIRIAN,
+    @Column(name = "is_template", nullable = false) var isTemplate: Boolean = false,
     @Column(nullable = false) var active: Boolean = true,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
-@Entity @Table(name = "goal_template_indicators")
-class GoalTemplateIndicator(
+@Entity @Table(name = "development_program_items")
+class DevelopmentProgramItem(
     @Id var id: UUID = UUID.randomUUID(),
     @Column(name = "organization_id") var organizationId: UUID? = null,
-    @Column(name = "goal_template_id", nullable = false) var goalTemplateId: UUID = UUID.randomUUID(),
+    @Column(name = "development_program_id", nullable = false) var developmentProgramId: UUID = UUID.randomUUID(),
     @Column(nullable = false) var name: String = "",
     @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
     @Column(nullable = false) var active: Boolean = true,
@@ -270,7 +278,7 @@ class ChildGoal(
     @Id var id: UUID = UUID.randomUUID(),
     @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
     @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
-    @Column(name = "template_id", nullable = false) var templateId: UUID = UUID.randomUUID(),
+    @Column(name = "program_id", nullable = false) var programId: UUID = UUID.randomUUID(),
     @Column(name = "starts_on", nullable = false) var startsOn: LocalDate = LocalDate.now(),
     @Enumerated(EnumType.STRING) @Column(nullable = false) var status: ChildGoalStatus = ChildGoalStatus.ACTIVE,
     @Enumerated(EnumType.STRING) @Column(name = "final_outcome") var finalOutcome: ChildGoalOutcome? = null,
@@ -288,6 +296,12 @@ class ChildGoalCheckIn(
     @Column(name = "indicator_id", nullable = false) var indicatorId: UUID = UUID.randomUUID(),
     @Column(name = "check_in_date", nullable = false) var checkInDate: LocalDate = LocalDate.now(),
     @Enumerated(EnumType.STRING) @Column(nullable = false) var outcome: GoalCheckInOutcome = GoalCheckInOutcome.NO,
+    @Column(length = 500) var note: String? = null,
+    @Column(name = "photo_content_type", length = 50) var photoContentType: String? = null,
+    @Column(name = "photo_data") var photoData: ByteArray? = null,
+    @Column(name = "audio_content_type", length = 50) var audioContentType: String? = null,
+    @Column(name = "audio_data") var audioData: ByteArray? = null,
+    @Column(name = "audio_duration_ms") var audioDurationMs: Int? = null,
     @Column(name = "recorded_by_user_id", nullable = false) var recordedByUserId: UUID = UUID.randomUUID(),
     @Column(name = "recorded_at", nullable = false) var recordedAt: Instant = Instant.now(),
 )

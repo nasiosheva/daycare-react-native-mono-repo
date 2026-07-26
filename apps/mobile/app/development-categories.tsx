@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
@@ -47,9 +47,8 @@ export default function DevelopmentCategoriesScreen() {
     try { await deleteCategory.mutateAsync(deletingCategory.id); closeDeleteSheet(); }
     catch (error) { notify(t("development.deleteCategoryFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
-  return <AppScreen showBottomNavigation={false} title={t("development.categories")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
+  return <AppScreen showBottomNavigation={false} title={t("development.categories")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton accessibilityLabel={t("development.addCategory")} onPress={() => setAddVisible(true)}>+ {t("development.addCategory")}</FloatingActionButton>}>
     <AppText tone="muted">{t("development.categoriesSubtitle")}</AppText>
-    <Button onPress={() => setAddVisible(true)}>{t("development.addCategory")}</Button>
     {categories.isFetching && <ShimmerList />}
     {categories.isError && <Button variant="secondary" onPress={() => categories.refetch()}>{t("common.retry")}</Button>}
     {!categories.isFetching && categories.data?.map((item) => <View key={item.id} style={styles.item}>
