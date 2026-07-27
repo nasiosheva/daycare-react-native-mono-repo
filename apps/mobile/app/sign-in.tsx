@@ -1,17 +1,16 @@
 import { useEffect, useState } from "react";
-import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Image, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { AppText, Button, colors, PasswordInput, radius, Screen, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { authErrorMessage } from "@/auth/authErrorMessage";
 import { clearRememberedCredentials, loadRememberedCredentials, saveRememberedCredentials } from "@/auth/rememberedCredentialsStorage";
-import { env } from "@/config/env";
 import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useI18n } from "@/i18n/I18nProvider";
 
 export default function SignInScreen() {
   const router = useRouter();
-  const { signInWithEmail, signInWithGoogle } = useAuth();
+  const { signInWithEmail } = useAuth();
   const { t } = useI18n();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -48,11 +47,6 @@ export default function SignInScreen() {
     catch (error) { setErrorMessage(authErrorMessage(error, t)); }
     finally { setLoading(false); }
   };
-  const submitGoogle = async () => {
-    try { setLoading(true); await signInWithGoogle(); router.replace("/"); }
-    catch (error) { Alert.alert(t("auth.googleFailed"), authErrorMessage(error, t)); }
-    finally { setLoading(false); }
-  };
   return <Screen><View style={styles.container}>
     <View style={styles.topBar}>
       <LanguageSwitcher compact />
@@ -72,7 +66,6 @@ export default function SignInScreen() {
     </Pressable>
     <Button loading={loading} onPress={submitEmail}>{t("auth.signIn")}</Button>
     <Button variant="secondary" disabled={loading} onPress={() => router.push("/sign-up" as never)}>{t("auth.createParentAccount")}</Button>
-    {!env.isLocalAuth && <Button variant="secondary" loading={loading} onPress={submitGoogle}>{t("auth.google")}</Button>}
   </View></Screen>;
 }
 const styles = StyleSheet.create({

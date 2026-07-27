@@ -440,6 +440,8 @@ class DevelopmentEntry(
     @Column(nullable = false, length = 64) var category: String = "OBSERVATION",
     @Column(nullable = false) var title: String = "",
     @Column(nullable = false) var content: String = "",
+    @Column(name = "photo_content_type", length = 50) var photoContentType: String? = null,
+    @Column(name = "photo_data") var photoData: ByteArray? = null,
     @Column(name = "recorded_at", nullable = false) var recordedAt: Instant = Instant.now(),
 )
 

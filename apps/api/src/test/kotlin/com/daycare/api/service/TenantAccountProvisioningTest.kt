@@ -44,14 +44,13 @@ import java.util.UUID
 
 class TenantAccountProvisioningTest {
     @Test
-    fun `creates local credentials without Firebase`() {
+    fun `creates application credentials without Firebase`() {
         val users = mock(UserProfileRepository::class.java)
-        val firebase = mock(FirebaseAdminIdentityService::class.java)
         val passwordEncoder = mock(PasswordEncoder::class.java)
         `when`(users.findByEmailIgnoreCase("staff@tenant.test")).thenReturn(null)
         `when`(passwordEncoder.encode("123123")).thenReturn("hashed-password")
         `when`(users.save(any(UserProfile::class.java))).thenAnswer { it.arguments[0] }
-        val service = TenantUserAccountService(users, firebase, passwordEncoder, true)
+        val service = TenantUserAccountService(users, passwordEncoder)
 
         val user = service.create("Staff Baru", "Staff@Tenant.Test", "123123")
 
@@ -59,54 +58,65 @@ class TenantAccountProvisioningTest {
         assertEquals("Staff Baru", user.displayName)
         assertEquals("hashed-password", user.localPasswordHash)
         assert(user.firebaseUid.startsWith("local:"))
-        verify(firebase, never()).createEmailPasswordUser("staff@tenant.test", "Staff Baru", "123123")
     }
 
     @Test
     fun `stores a unique username when one is provided`() {
         val users = mock(UserProfileRepository::class.java)
-        val firebase = mock(FirebaseAdminIdentityService::class.java)
         val passwordEncoder = mock(PasswordEncoder::class.java)
         `when`(users.findByEmailIgnoreCase("staff@tenant.test")).thenReturn(null)
         `when`(users.findByUsernameIgnoreCase("staffbaru")).thenReturn(null)
-        `when`(firebase.createEmailPasswordUser("staff@tenant.test", "staffbaru", "123123")).thenReturn("firebase-staff")
+        `when`(passwordEncoder.encode("123123")).thenReturn("hashed-password")
         `when`(users.save(any(UserProfile::class.java))).thenAnswer { it.arguments[0] }
-        val service = TenantUserAccountService(users, firebase, passwordEncoder, false)
+        val service = TenantUserAccountService(users, passwordEncoder)
 
         val user = service.create("Staff Baru", "staff@tenant.test", "123123", "staffbaru")
 
         assertEquals("staffbaru", user.username)
-        verify(firebase).createEmailPasswordUser("staff@tenant.test", "staffbaru", "123123")
+        assertEquals("hashed-password", user.localPasswordHash)
+        assertTrue(user.firebaseUid.startsWith("local:"))
+    }
+
+    @Test
+    fun `updates a staff account and permits its existing email and username`() {
+        val users = mock(UserProfileRepository::class.java)
+        val passwordEncoder = mock(PasswordEncoder::class.java)
+        val user = UserProfile(displayName = "Staff Lama", email = "staff@tenant.test", username = "stafflama")
+        `when`(users.findByEmailIgnoreCase("staff@tenant.test")).thenReturn(user)
+        `when`(users.findByUsernameIgnoreCase("stafflama")).thenReturn(user)
+        val service = TenantUserAccountService(users, passwordEncoder)
+
+        service.update(user, "Staff Baru", "Staff@Tenant.Test", "stafflama")
+
+        assertEquals("Staff Baru", user.displayName)
+        assertEquals("staff@tenant.test", user.email)
+        assertEquals("stafflama", user.username)
     }
 
     @Test
     fun `rejects an email that already belongs to an account`() {
         val users = mock(UserProfileRepository::class.java)
-        val firebase = mock(FirebaseAdminIdentityService::class.java)
         val passwordEncoder = mock(PasswordEncoder::class.java)
         `when`(users.findByEmailIgnoreCase("staff@tenant.test")).thenReturn(UserProfile(email = "staff@tenant.test"))
-        val service = TenantUserAccountService(users, firebase, passwordEncoder, false)
+        val service = TenantUserAccountService(users, passwordEncoder)
 
         assertThrows(IllegalArgumentException::class.java) { service.create("Staff Baru", "staff@tenant.test", "123123") }
 
-        verify(firebase, never()).createEmailPasswordUser("staff@tenant.test", "Staff Baru", "123123")
     }
 
     @Test
-    fun `creates a Firebase account when local auth is disabled`() {
+    fun `creates application credentials when local auth is disabled`() {
         val users = mock(UserProfileRepository::class.java)
-        val firebase = mock(FirebaseAdminIdentityService::class.java)
         val passwordEncoder = mock(PasswordEncoder::class.java)
         `when`(users.findByEmailIgnoreCase("staff@tenant.test")).thenReturn(null)
-        `when`(firebase.createEmailPasswordUser("staff@tenant.test", "Staff Baru", "123123")).thenReturn("firebase-staff")
+        `when`(passwordEncoder.encode("123123")).thenReturn("hashed-password")
         `when`(users.save(any(UserProfile::class.java))).thenAnswer { it.arguments[0] }
-        val service = TenantUserAccountService(users, firebase, passwordEncoder, false)
+        val service = TenantUserAccountService(users, passwordEncoder)
 
         val user = service.create("Staff Baru", "staff@tenant.test", "123123")
 
-        assertEquals("firebase-staff", user.firebaseUid)
-        assertEquals(null, user.localPasswordHash)
-        verify(firebase).createEmailPasswordUser("staff@tenant.test", "Staff Baru", "123123")
+        assertTrue(user.firebaseUid.startsWith("local:"))
+        assertEquals("hashed-password", user.localPasswordHash)
     }
 
     @Test
@@ -122,7 +132,6 @@ class TenantAccountProvisioningTest {
         val memberships = mock(MembershipRepository::class.java)
         val users = mock(UserProfileRepository::class.java)
         val platformAdministrators = mock(PlatformAdministratorRepository::class.java)
-        val firebase = mock(FirebaseAdminIdentityService::class.java)
         val tenantAccounts = mock(TenantUserAccountService::class.java)
         val institutionTypes = mock(InstitutionTypeCatalogService::class.java)
         val organization = Organization(name = "Tenant Baru")
@@ -142,7 +151,7 @@ class TenantAccountProvisioningTest {
         `when`(branches.findFirstByOrganizationId(organization.id)).thenReturn(Branch(organizationId = organization.id, name = "Cabang Utama"))
         `when`(invitations.findAllByOrganizationIdAndStatus(organization.id, InvitationStatus.PENDING)).thenReturn(emptyList())
         `when`(payments.findAllByOrganizationIdOrderByCreatedAtDesc(organization.id)).thenReturn(emptyList())
-        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, firebase, tenantAccounts, institutionTypes)
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, tenantAccounts, institutionTypes)
 
         val response = service.createTenant(jwt, CreateTenantRequest("Tenant Baru", "Cabang Utama", setOf(InstitutionTypeCodes.DAYCARE), TenantSubscriptionPlan.STARTER, null, 1, "Owner Tenant", "owner@tenant.test", "123123"))
 
@@ -167,7 +176,6 @@ class TenantAccountProvisioningTest {
         val memberships = mock(MembershipRepository::class.java)
         val users = mock(UserProfileRepository::class.java)
         val platformAdministrators = mock(PlatformAdministratorRepository::class.java)
-        val firebase = mock(FirebaseAdminIdentityService::class.java)
         val tenantAccounts = mock(TenantUserAccountService::class.java)
         val institutionTypes = mock(InstitutionTypeCatalogService::class.java)
         val organization = Organization(name = "Tenant")
@@ -176,7 +184,7 @@ class TenantAccountProvisioningTest {
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
         `when`(organizations.findById(organization.id)).thenReturn(Optional.of(organization))
         `when`(memberships.findById(primaryMembership.id)).thenReturn(Optional.of(primaryMembership))
-        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, firebase, tenantAccounts, institutionTypes)
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, tenantAccounts, institutionTypes)
 
         assertThrows(IllegalArgumentException::class.java) { service.removeTenantStaffAdmin(jwt, organization.id, primaryMembership.id) }
         assertTrue(primaryMembership.active)
@@ -195,7 +203,6 @@ class TenantAccountProvisioningTest {
         val memberships = mock(MembershipRepository::class.java)
         val users = mock(UserProfileRepository::class.java)
         val platformAdministrators = mock(PlatformAdministratorRepository::class.java)
-        val firebase = mock(FirebaseAdminIdentityService::class.java)
         val tenantAccounts = mock(TenantUserAccountService::class.java)
         val institutionTypes = mock(InstitutionTypeCatalogService::class.java)
         val organization = Organization(name = "Tenant Trial")
@@ -204,7 +211,7 @@ class TenantAccountProvisioningTest {
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
         `when`(organizations.findById(organization.id)).thenReturn(Optional.of(organization))
         `when`(subscriptions.findByOrganizationId(organization.id)).thenReturn(subscription)
-        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, firebase, tenantAccounts, institutionTypes)
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, tenantAccounts, institutionTypes)
 
         assertThrows(IllegalArgumentException::class.java) {
             service.updateTenant(jwt, organization.id, UpdateTenantRequest("Tenant Trial", setOf(InstitutionTypeCodes.DAYCARE), TenantSubscriptionPlan.STARTER, BigDecimal("100000")))
@@ -226,19 +233,21 @@ class TenantAccountProvisioningTest {
         val tenantAccounts = mock(TenantUserAccountService::class.java)
         val jwt = mock(Jwt::class.java)
         val organizationId = UUID.randomUUID()
-        val user = UserProfile(displayName = "Admin Baru", email = "admin-baru@tenant.test")
+        val user = UserProfile(displayName = "Admin Baru", username = "admin-baru", email = "admin-baru@tenant.test")
         val membership = Membership(userId = user.id, organizationId = organizationId, role = Role.STAFF_ADMIN)
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(), emptySet(), emptySet()))
-        `when`(tenantAccounts.create("Admin Baru", "admin-baru@tenant.test", "123123")).thenReturn(user)
+        `when`(tenantAccounts.create("Admin Baru", "admin-baru@tenant.test", "123123", "admin-baru")).thenReturn(user)
         `when`(memberships.save(any(Membership::class.java))).thenReturn(membership)
         val branchFilters = mock(BranchListFilterService::class.java)
         val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts, branchFilters)
 
-        val response = service.createTenantUser(jwt, organizationId, CreateTenantUserRequest("Admin Baru", "admin-baru@tenant.test", "123123", Role.STAFF_ADMIN))
+        val response = service.createTenantUser(jwt, organizationId, CreateTenantUserRequest("Admin Baru", "admin-baru@tenant.test", "123123", Role.STAFF_ADMIN, username = "admin-baru"))
 
         assertEquals(Role.STAFF_ADMIN, response.role)
         assertEquals("ACTIVE", response.status)
+        assertEquals("admin-baru", response.username)
         assertEquals("admin-baru@tenant.test", response.email)
+        verify(tenantAccounts).create("Admin Baru", "admin-baru@tenant.test", "123123", "admin-baru")
         assertThrows(IllegalArgumentException::class.java) { service.createTenantUser(jwt, organizationId, CreateTenantUserRequest("Parent", "parent@tenant.test", "123123", Role.PARENT)) }
     }
 

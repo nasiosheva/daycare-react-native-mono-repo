@@ -79,12 +79,21 @@ local_postgres_ready() {
   pg_isready -h "$postgres_host" -p "$postgres_port" >/dev/null 2>&1
 }
 
-local_api_ready() {
-  curl --silent --fail --max-time 2 http://localhost:8080/api/v3/api-docs >/dev/null 2>&1
-}
-
 local_api_port_pid() {
   lsof -ti tcp:8080 -sTCP:LISTEN 2>/dev/null | head -n 1
+}
+
+local_api_process_belongs_to_repository() {
+  process_id=$1
+  process_command=$(ps -p "$process_id" -o command= 2>/dev/null || true)
+  case "$process_command" in
+    *"$repository_root/apps/api"*|*"com.daycare.api.DaycareApplicationKt"*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 ensure_local_postgres() {
@@ -118,13 +127,32 @@ ensure_local_postgres() {
   exit 1
 }
 
-ensure_api_port_available() {
+stop_existing_local_api() {
   existing_api_pid=$(local_api_port_pid || true)
   if [ -z "$existing_api_pid" ]; then
     return
   fi
 
-  echo "Port 8080 is already in use by PID $existing_api_pid and is not the ready local API." >&2
+  if ! local_api_process_belongs_to_repository "$existing_api_pid"; then
+    echo "Port 8080 is already in use by PID $existing_api_pid, which is not the local API owned by this repository." >&2
+    echo "Stop that process manually before running this launcher." >&2
+    exit 1
+  fi
+
+  echo "Stopping existing local API owned by this repo (PID $existing_api_pid)..."
+  kill "$existing_api_pid"
+
+  attempts=0
+  while [ "$attempts" -lt 15 ]; do
+    current_api_pid=$(local_api_port_pid || true)
+    if [ -z "$current_api_pid" ] || [ "$current_api_pid" != "$existing_api_pid" ]; then
+      return
+    fi
+    attempts=$((attempts + 1))
+    sleep 1
+  done
+
+  echo "Timed out waiting for the existing local API to stop." >&2
   exit 1
 }
 
@@ -137,12 +165,8 @@ set +a
 
 ensure_local_backend_tools
 require_local_backend_values
-if local_api_ready; then
-  echo "Local API is already ready at http://localhost:8080/api."
-  exit 0
-fi
-ensure_api_port_available
 ensure_local_postgres
+stop_existing_local_api
 
 echo "Starting local API at http://localhost:8080/api. Press Ctrl+C to stop it."
 cd "$repository_root"

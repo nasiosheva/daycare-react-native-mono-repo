@@ -14,8 +14,6 @@ function configureGoogleSignIn() {
 
 export const firebaseAuth: AuthGateway = {
   observe(listener) { return auth().onAuthStateChanged((user) => listener(toUser(user))); },
-  async signInWithEmail(email, password) { await auth().signInWithEmailAndPassword(email, password); },
-  async signUpWithEmail(email, password, displayName) { const result = await auth().createUserWithEmailAndPassword(email, password); await result.user.updateProfile({ displayName }); },
   async signInWithGoogle() {
     configureGoogleSignIn();
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
@@ -36,11 +34,6 @@ export const firebaseAuth: AuthGateway = {
     const user = toUser(auth().currentUser);
     if (!user) throw new Error("Profil Firebase tidak dapat diperbarui.");
     return user;
-  },
-  async changePassword(newPassword) {
-    const currentUser = auth().currentUser;
-    if (!currentUser) throw new Error("Tidak ada akun Firebase yang sedang masuk.");
-    await currentUser.updatePassword(newPassword);
   },
   signOut: () => auth().signOut(),
   async getIdToken(forceRefresh = false) { return auth().currentUser?.getIdToken(forceRefresh) ?? null; },

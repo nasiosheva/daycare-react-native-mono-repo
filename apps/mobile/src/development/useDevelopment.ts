@@ -7,6 +7,11 @@ export function useDevelopmentEntries(childId: string | null) {
   return useQuery({ queryKey: ["development-entries", organizationId, childId], queryFn: () => api.developmentEntries(childId as string), enabled: Boolean(childId && organizationId) });
 }
 
+export function useDevelopmentEntryPhoto(childId: string | null, entryId: string | null) {
+  const { api, organizationId } = useAuth();
+  return useQuery({ queryKey: ["development-entry-photo", organizationId, childId, entryId], queryFn: () => api.developmentEntryPhoto(childId as string, entryId as string), enabled: Boolean(childId && entryId && organizationId) });
+}
+
 export function useDevelopmentCategories() {
   const { api, organizationId } = useAuth();
   return useQuery({ queryKey: ["development-categories", organizationId], queryFn: () => api.developmentCategories(), enabled: Boolean(organizationId) });

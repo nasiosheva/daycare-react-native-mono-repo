@@ -105,7 +105,6 @@ class PlatformAdministrationService(
     private val memberships: MembershipRepository,
     private val users: UserProfileRepository,
     private val platformAdministrators: PlatformAdministratorRepository,
-    private val firebaseAdminIdentity: FirebaseAdminIdentityService,
     private val tenantUserAccounts: TenantUserAccountService,
     private val institutionTypeCatalog: InstitutionTypeCatalogService,
 ) {
@@ -238,8 +237,7 @@ class PlatformAdministrationService(
         platformAccess.requirePlatformAdmin(jwt)
         val email = request.email.trim().lowercase()
         val username = request.username.trim()
-        val firebaseUid = firebaseAdminIdentity.createEmailPasswordUser(email, username, request.password)
-        val user = users.save(UserProfile(firebaseUid = firebaseUid, email = email, displayName = username))
+        val user = tenantUserAccounts.create(username, email, request.password, username)
         return platformAdministrators.save(PlatformAdministrator(userId = user.id)).userId
     }
 

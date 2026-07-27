@@ -2,9 +2,11 @@ package com.daycare.api.web
 
 import com.daycare.api.service.AttendanceConflict
 import com.daycare.api.service.InvalidLocalCredentialsException
+import com.daycare.api.service.IdentityRegistrationRequiredException
 import com.daycare.api.service.LocalAuthenticationError
 import com.daycare.api.service.FirebaseIdentityError
 import com.daycare.api.service.TenantUserAccountError
+import com.daycare.api.service.DevelopmentEntryMediaError
 import com.daycare.api.service.ParentEnrollmentError
 import com.daycare.api.service.TenantPaymentInstructionError
 import org.springframework.context.MessageSource
@@ -21,6 +23,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 class ApiExceptionHandler(private val messages: MessageSource) {
     @ExceptionHandler(InvalidLocalCredentialsException::class)
     fun invalidLocalCredentials(error: InvalidLocalCredentialsException): ProblemDetail = problem(HttpStatus.UNAUTHORIZED, "AUTHENTICATION_FAILED", error.message)
+    @ExceptionHandler(IdentityRegistrationRequiredException::class)
+    fun registrationRequired(error: IdentityRegistrationRequiredException): ProblemDetail = problem(HttpStatus.CONFLICT, "REGISTRATION_REQUIRED", error.message)
     @ExceptionHandler(IllegalArgumentException::class)
     fun invalidRequest(error: IllegalArgumentException): ProblemDetail = problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", error.message)
     @ExceptionHandler(IllegalStateException::class)
@@ -47,14 +51,26 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             LocalAuthenticationError.PASSWORD_TOO_SHORT to "error.localPasswordTooShort",
             LocalAuthenticationError.EMAIL_REGISTERED to "error.emailRegistered",
             LocalAuthenticationError.USER_NOT_FOUND to "error.localUserNotFound",
+            LocalAuthenticationError.VERIFIED_EMAIL_MISMATCH to "error.verifiedEmailMismatch",
+            LocalAuthenticationError.PHONE_REGISTERED to "error.phoneRegistered",
+            "identity.registration_required" to "error.identityRegistrationRequired",
             FirebaseIdentityError.ACCOUNT_READ_FAILED to "error.firebaseAccountReadFailed",
             FirebaseIdentityError.ACCOUNT_CREATE_FAILED to "error.firebaseAccountCreateFailed",
             FirebaseIdentityError.PASSWORD_UPDATE_FAILED to "error.firebasePasswordUpdateFailed",
             FirebaseIdentityError.SERVICE_ACCOUNT_MISSING to "error.firebaseConfiguration",
             TenantUserAccountError.DISPLAY_NAME_REQUIRED to "error.tenantUserDisplayNameRequired",
+            TenantUserAccountError.USERNAME_REQUIRED to "error.tenantUserUsernameRequired",
+            TenantUserAccountError.USERNAME_REGISTERED to "error.tenantUserUsernameRegistered",
             TenantUserAccountError.EMAIL_REQUIRED to "error.tenantUserEmailRequired",
             TenantUserAccountError.PASSWORD_TOO_SHORT to "error.tenantUserPasswordTooShort",
             TenantUserAccountError.EMAIL_REGISTERED to "error.emailRegistered",
+            TenantUserAccountError.STAFF_EDIT_NOT_ALLOWED to "error.tenantUserStaffEditNotAllowed",
+            DevelopmentEntryMediaError.NOT_FOUND to "error.developmentEntryNotFound",
+            DevelopmentEntryMediaError.UNAVAILABLE to "error.developmentEntryUnavailable",
+            DevelopmentEntryMediaError.PHOTO_MISSING to "error.developmentPhotoMissing",
+            DevelopmentEntryMediaError.PHOTO_TYPE to "error.developmentPhotoType",
+            DevelopmentEntryMediaError.PHOTO_INVALID to "error.developmentPhotoInvalid",
+            DevelopmentEntryMediaError.PHOTO_TOO_LARGE to "error.developmentPhotoTooLarge",
             ParentEnrollmentError.ALREADY_ACTIVE to "error.parentEnrollmentAlreadyActive",
             ParentEnrollmentError.BOOKINGS_NOT_ALLOWED to "error.parentEnrollmentBookingsNotAllowed",
             ParentEnrollmentError.NOT_FOUND to "error.parentEnrollmentNotFound",

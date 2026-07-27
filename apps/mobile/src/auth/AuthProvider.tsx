@@ -14,13 +14,15 @@ type AuthContextValue = {
   organizationId: string | null;
   loading: boolean;
   profileError: Error | null;
+  usesPassword: boolean;
+  registrationRequired: boolean;
   api: ApiClient;
   getRealtimeToken: () => Promise<string | null>;
-  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signInWithEmail: (identifier: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: () => Promise<{ needsRegistration: boolean; email: string | null }>;
   sendPhoneCode: (phoneNumber: string) => Promise<PhoneChallenge>;
-  verifyPhoneCode: (code: string) => Promise<void>;
+  verifyPhoneCode: (code: string) => Promise<{ needsRegistration: boolean }>;
   updateDisplayName: (displayName: string) => Promise<void>;
   updatePersonalDetails: (gender: ChildGender, dateOfBirth: string) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
@@ -30,24 +32,27 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+type FirebaseIdentityState = "idle" | "checking" | "existing" | "registrationRequired";
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const { locale, t } = useI18n();
   const [firebaseUser, setFirebaseUser] = useState<AuthUser | null>(null);
   const [firebaseProfile, setFirebaseProfile] = useState<CurrentUser | null>(null);
   const [localSession, setLocalSession] = useState<LocalAuthSession | null>(null);
+  const [localSessionLoaded, setLocalSessionLoaded] = useState(false);
+  const [firebaseObserved, setFirebaseObserved] = useState(false);
+  const [firebaseIdentityState, setFirebaseIdentityState] = useState<FirebaseIdentityState>("idle");
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [phoneChallenge, setPhoneChallenge] = useState<PhoneChallenge | null>(null);
-  const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState<Error | null>(null);
+  const loading = !localSessionLoaded || !firebaseObserved;
   const api = useMemo(() => new ApiClient({
     baseUrl: env.apiUrl,
-    getToken: async () => env.isLocalAuth ? localSession?.token ?? null : firebaseAuth.getIdToken(),
+    getToken: async () => localSession?.token ?? firebaseAuth.getIdToken(),
     getOrganizationId: () => organizationId,
     getLanguage: () => locale,
   }), [localSession, organizationId, locale]);
   const user = localSession?.user ?? firebaseUser;
-  const profile = firebaseProfile;
 
   const refreshProfile = useCallback(async () => {
     setProfileError(null);
@@ -63,62 +68,65 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [api, t]);
 
   useEffect(() => {
-    if (env.isLocalAuth) {
-      let active = true;
-      void loadLocalSession()
-        .then((session) => {
-          if (!active) return;
-          setLocalSession(session);
-        })
-        .catch(() => {
-          if (!active) return;
-          setLocalSession(null);
-        })
-        .finally(() => {
-          if (active) setLoading(false);
-        });
-      return () => { active = false; };
-    }
-
-    return firebaseAuth.observe((nextUser) => {
-      setFirebaseUser(nextUser);
-      setFirebaseProfile(null);
-      setProfileError(null);
-      setLoading(false);
-    });
+    let active = true;
+    void loadLocalSession()
+      .then((session) => { if (active) setLocalSession(session); })
+      .catch(() => { if (active) setLocalSession(null); })
+      .finally(() => { if (active) setLocalSessionLoaded(true); });
+    return () => { active = false; };
   }, []);
 
+  useEffect(() => firebaseAuth.observe((nextUser) => {
+    setFirebaseUser(nextUser);
+    setFirebaseIdentityState(nextUser ? "idle" : "existing");
+    setFirebaseObserved(true);
+  }), []);
+
   useEffect(() => {
-    if (!(localSession || firebaseUser)) return;
+    if (!firebaseUser || localSession || firebaseIdentityState !== "idle") return;
+    setFirebaseIdentityState("checking");
+    void api.identityCheck()
+      .then((status) => setFirebaseIdentityState(status.exists ? "existing" : "registrationRequired"))
+      .catch((error: unknown) => {
+        const failure = error instanceof Error ? error : new Error(t("auth.tryAgain"));
+        setProfileError(failure);
+        setFirebaseIdentityState("registrationRequired");
+      });
+  }, [api, firebaseIdentityState, firebaseUser, localSession, t]);
+
+  useEffect(() => {
+    if (!(localSession || (firebaseUser && firebaseIdentityState === "existing"))) return;
     void refreshProfile().catch((error: unknown) => {
       if (!(error instanceof ApiError) || error.status !== 401) return;
-      if (env.isLocalAuth) {
+      if (localSession) {
         void clearLocalSession().catch(() => undefined);
         setLocalSession(null);
-      } else void firebaseAuth.signOut();
+      } else {
+        void firebaseAuth.signOut();
+      }
       setFirebaseProfile(null);
       setOrganizationId(null);
     });
-  }, [firebaseUser, localSession, refreshProfile]);
+  }, [firebaseIdentityState, firebaseUser, localSession, refreshProfile]);
+
+  const resolveFirebaseIdentity = async () => {
+    setFirebaseIdentityState("checking");
+    const status = await api.identityCheck();
+    setFirebaseIdentityState(status.exists ? "existing" : "registrationRequired");
+    return status;
+  };
 
   const signInWithLocalCredentials = async (identifier: string, password: string) => {
     const session = await localAuth.signIn(env.apiUrl, identifier, password, t("common.error"));
     await saveLocalSession(session);
     setLocalSession(session);
   };
-  const signInWithIdentifier = async (identifier: string, password: string) => {
-    if (env.isLocalAuth) return signInWithLocalCredentials(identifier, password);
-    const normalizedIdentifier = identifier.trim();
-    const resolvedEmail = normalizedIdentifier.includes("@")
-      ? normalizedIdentifier
-      : (await api.resolveLoginUsername(normalizedIdentifier)).email;
-    if (!resolvedEmail) throw new Error(t("auth.signInFailed"));
-    await firebaseAuth.signInWithEmail(resolvedEmail, password);
-  };
   const signUpWithLocalCredentials = async (email: string, password: string, displayName: string) => {
-    const session = await localAuth.signUp(env.apiUrl, email, password, displayName, t("common.error"));
+    const verificationToken = firebaseIdentityState === "registrationRequired" ? await firebaseAuth.getIdToken() : null;
+    const session = await localAuth.signUp(env.apiUrl, email, password, displayName, t("common.error"), verificationToken);
     await saveLocalSession(session);
     setLocalSession(session);
+    if (verificationToken) await firebaseAuth.signOut();
   };
 
   const sendPhoneCode = async (phoneNumber: string) => {
@@ -130,25 +138,30 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (!phoneChallenge) throw new Error(t("auth.otpUnavailable"));
     await phoneChallenge.confirmation(code);
     setPhoneChallenge(null);
+    const status = await resolveFirebaseIdentity();
+    return { needsRegistration: !status.exists };
+  };
+  const signInWithGoogle = async () => {
+    await firebaseAuth.signInWithGoogle();
+    const status = await resolveFirebaseIdentity();
+    return { needsRegistration: !status.exists, email: status.email };
   };
   const signOut = async () => {
-    if (env.isLocalAuth) {
+    if (localSession) {
       await clearLocalSession();
       setLocalSession(null);
-      setFirebaseProfile(null);
-      setOrganizationId(null);
-      setProfileError(null);
-      return;
     }
     await firebaseAuth.signOut();
+    setFirebaseProfile(null);
+    setOrganizationId(null);
+    setProfileError(null);
   };
   const updateDisplayName = async (displayName: string) => {
     const normalizedName = displayName.trim();
     if (!normalizedName) throw new Error(t("profile.name"));
-    if (env.isLocalAuth) {
-      if (!localSession) throw new Error(t("auth.signInFailed"));
-      const user = await localAuth.updateDisplayName(env.apiUrl, localSession.token, normalizedName, t("common.error"));
-      const nextSession = { ...localSession, user };
+    if (localSession) {
+      const nextUser = await localAuth.updateDisplayName(env.apiUrl, localSession.token, normalizedName, t("common.error"));
+      const nextSession = { ...localSession, user: nextUser };
       await saveLocalSession(nextSession);
       setLocalSession(nextSession);
       setFirebaseProfile((current) => current ? { ...current, displayName: normalizedName } : current);
@@ -164,17 +177,32 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setFirebaseProfile(nextProfile);
   };
   const changePassword = async (newPassword: string) => {
-    if (env.isLocalAuth) {
-      if (!localSession) throw new Error(t("auth.signInFailed"));
-      await localAuth.changePassword(env.apiUrl, localSession.token, newPassword, t("common.error"));
-      return;
-    }
-    await firebaseAuth.changePassword(newPassword);
+    if (!localSession) throw new Error(t("auth.passwordUnavailable"));
+    await localAuth.changePassword(env.apiUrl, localSession.token, newPassword, t("common.error"));
   };
-  const getRealtimeToken = useCallback(async () => {
-    return env.isLocalAuth ? localSession?.token ?? null : firebaseAuth.getIdToken();
-  }, [localSession]);
-  const value = { user, profile, organizationId, loading, profileError, api, getRealtimeToken, signInWithEmail: signInWithIdentifier, signUpWithEmail: env.isLocalAuth ? signUpWithLocalCredentials : firebaseAuth.signUpWithEmail, signInWithGoogle: firebaseAuth.signInWithGoogle, sendPhoneCode, verifyPhoneCode, updateDisplayName, updatePersonalDetails, changePassword, refreshProfile, selectOrganization: setOrganizationId, signOut };
+  const getRealtimeToken = useCallback(async () => localSession?.token ?? firebaseAuth.getIdToken(), [localSession]);
+  const value: AuthContextValue = {
+    user,
+    profile: firebaseProfile,
+    organizationId,
+    loading,
+    profileError,
+    usesPassword: Boolean(localSession),
+    registrationRequired: firebaseIdentityState === "registrationRequired",
+    api,
+    getRealtimeToken,
+    signInWithEmail: signInWithLocalCredentials,
+    signUpWithEmail: signUpWithLocalCredentials,
+    signInWithGoogle,
+    sendPhoneCode,
+    verifyPhoneCode,
+    updateDisplayName,
+    updatePersonalDetails,
+    changePassword,
+    refreshProfile,
+    selectOrganization: setOrganizationId,
+    signOut,
+  };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

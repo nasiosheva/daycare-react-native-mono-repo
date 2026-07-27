@@ -9,8 +9,8 @@ import com.nimbusds.jose.crypto.MACSigner
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm
+import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtValidators
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
@@ -24,7 +24,7 @@ import java.util.UUID
 import java.util.Date
 import javax.crypto.spec.SecretKeySpec
 
-private const val localTokenIssuer = "daycare-local"
+const val LOCAL_TOKEN_ISSUER = "daycare-local"
 private const val localTokenLifetimeHours = 12L
 
 data class LocalLoginResponse(val token: String, val user: LocalAuthenticatedUser)
@@ -38,12 +38,13 @@ object LocalAuthenticationError {
     const val EMAIL_REGISTERED = "local.email_registered"
     const val USER_NOT_FOUND = "local.user_not_found"
     const val JWT_SECRET_TOO_SHORT = "local.jwt_secret_too_short"
+    const val VERIFIED_EMAIL_MISMATCH = "local.verified_email_mismatch"
+    const val PHONE_REGISTERED = "local.phone_registered"
 }
 
 class InvalidLocalCredentialsException : RuntimeException(LocalAuthenticationError.INVALID_CREDENTIALS)
 
 @Service
-@ConditionalOnProperty(prefix = "daycare", name = ["local-auth-enabled"], havingValue = "true")
 class LocalJwtService(@Value("\${daycare.local-auth-jwt-secret}") secret: String) {
     private val secretBytes = secret.toByteArray(StandardCharsets.UTF_8).also {
         require(it.size >= 32) { LocalAuthenticationError.JWT_SECRET_TOO_SHORT }
@@ -53,7 +54,7 @@ class LocalJwtService(@Value("\${daycare.local-auth-jwt-secret}") secret: String
     fun issue(user: UserProfile): String {
         val now = Instant.now()
         val claims = JWTClaimsSet.Builder()
-            .issuer(localTokenIssuer)
+            .issuer(LOCAL_TOKEN_ISSUER)
             .subject(user.firebaseUid)
             .issueTime(Date.from(now))
             .expirationTime(Date.from(now.plus(Duration.ofHours(localTokenLifetimeHours))))
@@ -66,24 +67,27 @@ class LocalJwtService(@Value("\${daycare.local-auth-jwt-secret}") secret: String
     fun decoder(): JwtDecoder = NimbusJwtDecoder.withSecretKey(key)
         .macAlgorithm(MacAlgorithm.HS256)
         .build()
-        .apply { setJwtValidator(JwtValidators.createDefaultWithIssuer(localTokenIssuer)) }
+        .apply { setJwtValidator(JwtValidators.createDefaultWithIssuer(LOCAL_TOKEN_ISSUER)) }
 }
 
 @Service
-@ConditionalOnProperty(prefix = "daycare", name = ["local-auth-enabled"], havingValue = "true")
 class LocalAuthenticationService(
     private val users: UserProfileRepository,
     private val passwordEncoder: PasswordEncoder,
     private val localJwt: LocalJwtService,
 ) {
     @Transactional
-    fun register(displayName: String, email: String, password: String): LocalLoginResponse {
+    fun register(displayName: String, email: String, password: String, verifiedIdentity: Jwt? = null): LocalLoginResponse {
         val normalizedEmail = email.trim().lowercase()
+        val verifiedEmail = verifiedIdentity?.getClaimAsString("email")?.trim()?.lowercase()
+        val verifiedPhoneNumber = verifiedIdentity?.getClaimAsString("phone_number")?.trim()?.ifBlank { null }
         require(displayName.trim().isNotBlank()) { LocalAuthenticationError.DISPLAY_NAME_REQUIRED }
         require(normalizedEmail.contains("@")) { LocalAuthenticationError.EMAIL_REQUIRED }
         require(password.length >= 6) { LocalAuthenticationError.PASSWORD_TOO_SHORT }
+        require(verifiedEmail == null || verifiedEmail == normalizedEmail) { LocalAuthenticationError.VERIFIED_EMAIL_MISMATCH }
         require(users.findByEmailIgnoreCase(normalizedEmail) == null) { LocalAuthenticationError.EMAIL_REGISTERED }
-        val user = users.save(UserProfile(firebaseUid = "local:${UUID.randomUUID()}", displayName = displayName.trim(), email = normalizedEmail, registrationRole = RegistrationRole.PARENT, localPasswordHash = passwordEncoder.encode(password)))
+        require(verifiedPhoneNumber == null || users.findByPhoneNumber(verifiedPhoneNumber) == null) { LocalAuthenticationError.PHONE_REGISTERED }
+        val user = users.save(UserProfile(firebaseUid = "local:${UUID.randomUUID()}", displayName = displayName.trim(), email = normalizedEmail, phoneNumber = verifiedPhoneNumber, registrationRole = RegistrationRole.PARENT, localPasswordHash = passwordEncoder.encode(password)))
         return LocalLoginResponse(localJwt.issue(user), LocalAuthenticatedUser(user.firebaseUid, user.email, user.displayName))
     }
     @Transactional(readOnly = true)

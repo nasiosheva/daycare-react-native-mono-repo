@@ -1,6 +1,7 @@
 package com.daycare.api.web
 
 import com.daycare.api.service.AccessService
+import com.daycare.api.service.IdentityService
 import com.daycare.api.service.AdministrationService
 import com.daycare.api.service.AttendanceCommand
 import com.daycare.api.service.AttendanceService
@@ -25,6 +26,7 @@ import com.daycare.api.service.CreatePlatformAdminRequest
 import com.daycare.api.service.ChangeTenantUserPasswordRequest
 import com.daycare.api.service.UpdateTenantUserChildProgramPermissionRequest
 import com.daycare.api.service.UpdateTenantUserDevelopmentCategoryPermissionRequest
+import com.daycare.api.service.UpdateTenantUserRequest
 import com.daycare.api.service.AcademicService
 import com.daycare.api.service.LearningStructureService
 import com.daycare.api.service.UpsertLearningLevelRequest
@@ -61,7 +63,6 @@ import com.daycare.api.service.AssignChildStaffRequest
 import com.daycare.api.service.SetBranchCapacityRequest
 import com.daycare.api.service.UpsertServicePlanTemplateRequest
 import com.daycare.api.service.LocalAuthenticationService
-import com.daycare.api.service.LoginIdentifierService
 import com.daycare.api.service.ParentEnrollmentService
 import com.daycare.api.service.ParentEnrollmentCheckoutRequest
 import com.daycare.api.service.ParentEnrollmentApprovalRequest
@@ -109,7 +110,6 @@ import java.time.LocalDate
 import java.util.UUID
 
 data class LocalLoginRequest(@field:NotBlank @field:Size(max = 128) val identifier: String, @field:Size(min = 6, max = 128) val password: String)
-data class LoginIdentifierRequest(@field:NotBlank @field:Size(min = 2, max = 100) val username: String)
 data class LocalPasswordRequest(@field:Size(min = 6, max = 128) val password: String)
 data class LocalProfileRequest(@field:NotBlank @field:Size(max = 128) val displayName: String)
 data class UpdatePersonalDetailsRequest(@field:NotNull val gender: Gender, @field:NotNull val dateOfBirth: LocalDate)
@@ -117,10 +117,9 @@ data class LocalRegistrationRequest(@field:NotBlank @field:Size(max = 128) val d
 
 @RestController
 @RequestMapping("/v1/auth/local")
-@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(prefix = "daycare", name = ["local-auth-enabled"], havingValue = "true")
 class LocalAuthenticationController(private val localAuthentication: LocalAuthenticationService) {
     @PostMapping("/register") @ResponseStatus(HttpStatus.CREATED)
-    fun register(@Valid @RequestBody request: LocalRegistrationRequest) = localAuthentication.register(request.displayName, request.email, request.password)
+    fun register(@AuthenticationPrincipal verifiedIdentity: Jwt?, @Valid @RequestBody request: LocalRegistrationRequest) = localAuthentication.register(request.displayName, request.email, request.password, verifiedIdentity)
 
     @PostMapping("/login")
     fun login(@Valid @RequestBody request: LocalLoginRequest) = localAuthentication.login(request.identifier, request.password)
@@ -133,17 +132,13 @@ class LocalAuthenticationController(private val localAuthentication: LocalAuthen
 }
 
 @RestController
-@RequestMapping("/v1/auth")
-class LoginIdentifierController(private val loginIdentifiers: LoginIdentifierService) {
-    @PostMapping("/resolve-username")
-    fun resolveUsername(@Valid @RequestBody request: LoginIdentifierRequest) = loginIdentifiers.resolveUsername(request.username)
-}
-
-@RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class IdentityController(private val access: AccessService) {
+class IdentityController(private val access: AccessService, private val identity: IdentityService) {
     @GetMapping("/me") fun me(@AuthenticationPrincipal jwt: Jwt) = access.currentUser(jwt)
+
+    @GetMapping("/auth/identity-check")
+    fun identityCheck(@AuthenticationPrincipal jwt: Jwt) = identity.checkIdentity(jwt)
 
     @PatchMapping("/me")
     fun updateMe(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: UpdatePersonalDetailsRequest) = access.updatePersonalDetails(jwt, request.gender, request.dateOfBirth)
@@ -372,6 +367,9 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @PostMapping("/children/{childId}/development-entries") @ResponseStatus(HttpStatus.CREATED)
     fun createDevelopmentEntry(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateDevelopmentEntryRequest) = development.create(jwt, organizationId, childId, request)
 
+    @GetMapping("/children/{childId}/development-entries/{entryId}/photo")
+    fun developmentEntryPhoto(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable entryId: UUID) = development.photo(jwt, organizationId, childId, entryId)
+
     @GetMapping("/development-categories")
     fun developmentCategories(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = development.categories(jwt, organizationId)
 
@@ -413,6 +411,9 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PostMapping("/tenant-users/{userId}/deactivate") @ResponseStatus(HttpStatus.NO_CONTENT)
     fun deactivateTenantUser(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable userId: UUID) = administration.deactivateTenantUser(jwt, organizationId, userId)
+
+    @PatchMapping("/tenant-users/{userId}")
+    fun updateTenantUser(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable userId: UUID, @Valid @RequestBody request: UpdateTenantUserRequest) = administration.updateTenantUser(jwt, organizationId, userId, request)
 
     @PatchMapping("/tenant-users/{userId}/child-program-permission")
     fun updateTenantUserChildProgramPermission(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable userId: UUID, @RequestBody request: UpdateTenantUserChildProgramPermissionRequest) = administration.updateTenantUserChildProgramPermission(jwt, organizationId, userId, request)

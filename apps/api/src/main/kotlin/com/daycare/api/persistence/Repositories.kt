@@ -9,7 +9,7 @@ import org.springframework.data.jpa.repository.Lock
 import java.time.LocalDate
 import java.util.UUID
 
-interface UserProfileRepository : JpaRepository<UserProfile, UUID> { fun findByFirebaseUid(firebaseUid: String): UserProfile?; fun findByEmailIgnoreCase(email: String): UserProfile?; fun findByUsernameIgnoreCase(username: String): UserProfile? }
+interface UserProfileRepository : JpaRepository<UserProfile, UUID> { fun findByFirebaseUid(firebaseUid: String): UserProfile?; fun findByEmailIgnoreCase(email: String): UserProfile?; fun findByPhoneNumber(phoneNumber: String): UserProfile?; fun findByUsernameIgnoreCase(username: String): UserProfile? }
 interface MembershipRepository : JpaRepository<Membership, UUID> {
     fun findAllByUserIdAndOrganizationId(userId: UUID, organizationId: UUID): List<Membership>
     fun findAllByUserId(userId: UUID): List<Membership>

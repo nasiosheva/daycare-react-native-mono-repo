@@ -33,11 +33,7 @@ class IdentityService(
     fun sync(jwt: Jwt): UserProfile {
         val email = jwt.getClaimAsString("email")
         val phoneNumber = jwt.getClaimAsString("phone_number")
-        val user = users.findByFirebaseUid(jwt.subject) ?: UserProfile(firebaseUid = jwt.subject, registrationRole = RegistrationRole.PARENT)
-        user.displayName = jwt.getClaimAsString("name") ?: email ?: phoneNumber ?: "Pengguna"
-        user.email = email
-        user.phoneNumber = phoneNumber
-        val saved = users.save(user)
+        val saved = findExistingIdentity(jwt) ?: throw IdentityRegistrationRequiredException()
         invitations.findAllByStatus(InvitationStatus.PENDING)
             .filter { invitation -> invitation.expiresAt.isAfter(Instant.now()) && ((email != null && invitation.email.equals(email, true)) || (phoneNumber != null && invitation.phoneNumber == phoneNumber)) }
             .forEach { invitation ->
@@ -54,7 +50,25 @@ class IdentityService(
         user.dateOfBirth = dateOfBirth
         return users.save(user)
     }
+
+    @Transactional(readOnly = true)
+    fun checkIdentity(jwt: Jwt): IdentityCheckResponse {
+        val existing = findExistingIdentity(jwt)
+        return IdentityCheckResponse(existing != null, jwt.getClaimAsString("email"), jwt.getClaimAsString("phone_number"))
+    }
+
+    private fun findExistingIdentity(jwt: Jwt): UserProfile? {
+        val email = jwt.getClaimAsString("email")?.trim()?.lowercase()?.ifBlank { null }
+        val phoneNumber = jwt.getClaimAsString("phone_number")?.trim()?.ifBlank { null }
+        return users.findByFirebaseUid(jwt.subject)
+            ?: email?.let(users::findByEmailIgnoreCase)
+            ?: phoneNumber?.let(users::findByPhoneNumber)
+    }
 }
+
+data class IdentityCheckResponse(val exists: Boolean, val email: String?, val phoneNumber: String?)
+
+class IdentityRegistrationRequiredException : RuntimeException("identity.registration_required")
 
 data class AccessScope(val user: UserProfile, val membership: Membership, val institutionTypes: Set<String>, val capabilities: Set<InstitutionCapability>)
 

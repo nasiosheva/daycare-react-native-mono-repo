@@ -25,8 +25,9 @@ async function request<T>(apiUrl: string, path: string, init: RequestInit, fallb
 }
 
 export const localAuth = {
-  async signUp(apiUrl: string, email: string, password: string, displayName: string, fallbackMessage: string): Promise<LocalAuthSession> {
-    const response = await request<LocalAuthResponse>(apiUrl, "/auth/local/register", { method: "POST", body: JSON.stringify({ email, password, displayName }) }, fallbackMessage);
+  async signUp(apiUrl: string, email: string, password: string, displayName: string, fallbackMessage: string, verificationToken: string | null): Promise<LocalAuthSession> {
+    const headers = verificationToken ? { Authorization: `Bearer ${verificationToken}` } : undefined;
+    const response = await request<LocalAuthResponse>(apiUrl, "/auth/local/register", { method: "POST", body: JSON.stringify({ email, password, displayName }), headers }, fallbackMessage);
     return { token: response.token, user: { uid: response.user.uid, email: response.user.email, phoneNumber: null, displayName: response.user.displayName } };
   },
   async signIn(apiUrl: string, identifier: string, password: string, fallbackMessage: string): Promise<LocalAuthSession> {
