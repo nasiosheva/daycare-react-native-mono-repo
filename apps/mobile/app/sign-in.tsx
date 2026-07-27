@@ -72,10 +72,7 @@ export default function SignInScreen() {
     </Pressable>
     <Button loading={loading} onPress={submitEmail}>{t("auth.signIn")}</Button>
     <Button variant="secondary" disabled={loading} onPress={() => router.push("/sign-up" as never)}>{t("auth.createParentAccount")}</Button>
-    {!env.isLocalAuth && !env.isProduction && <>
-      <Button variant="secondary" loading={loading} onPress={submitGoogle}>{t("auth.google")}</Button>
-      <Button variant="secondary" onPress={() => router.push("/verify-phone")}>{t("auth.phone")}</Button>
-    </>}
+    {!env.isLocalAuth && <Button variant="secondary" loading={loading} onPress={submitGoogle}>{t("auth.google")}</Button>}
   </View></Screen>;
 }
 const styles = StyleSheet.create({
