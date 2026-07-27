@@ -4,9 +4,9 @@ import { AppText } from "./AppText";
 import { colors, radius, spacing } from "./theme";
 
 type Variant = "primary" | "secondary" | "danger" | "ghost";
-type Props = { children: ReactNode; onPress: () => void; variant?: Variant; disabled?: boolean; loading?: boolean; accessibilityLabel?: string; style?: StyleProp<ViewStyle> };
+type Props = { children: ReactNode; onPress: () => void; variant?: Variant; disabled?: boolean; loading?: boolean; leadingIcon?: ReactNode; accessibilityLabel?: string; style?: StyleProp<ViewStyle> };
 
-export function Button({ children, onPress, variant = "primary", disabled = false, loading = false, accessibilityLabel, style }: Props) {
+export function Button({ children, onPress, variant = "primary", disabled = false, loading = false, leadingIcon, accessibilityLabel, style }: Props) {
   const inactive = disabled || loading;
   const textTone = variant === "primary" || variant === "danger" ? "onDark" : "onLight";
   return (
@@ -19,7 +19,7 @@ export function Button({ children, onPress, variant = "primary", disabled = fals
       style={({ pressed }) => [styles.base, styles[variant], inactive && styles.disabled, pressed && !inactive && styles.pressed, style]}
     >
       <View style={styles.content}>
-        {loading && <ActivityIndicator color={textTone === "onDark" ? colors.onPrimary : colors.primary} />}
+        {loading ? <ActivityIndicator color={textTone === "onDark" ? colors.onPrimary : colors.primary} /> : leadingIcon}
         <AppText variant="label" style={textTone === "onDark" ? styles.onDark : undefined}>{children}</AppText>
       </View>
     </Pressable>

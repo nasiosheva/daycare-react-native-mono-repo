@@ -107,6 +107,10 @@ export const developmentEntrySchema = z.object({
   category: z.string().trim().min(1),
   title: z.string().trim().min(1).max(120),
   content: z.string().trim().min(1).max(2_000),
+  photo: z.object({
+    contentType: z.enum(["image/jpeg", "image/png"]),
+    dataBase64: z.string().min(1),
+  }).optional(),
 });
 
 export const purchaseServiceSchema = z.object({

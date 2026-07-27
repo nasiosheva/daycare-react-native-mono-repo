@@ -10,6 +10,7 @@ import com.daycare.api.service.InvalidLocalCredentialsException
 import com.daycare.api.service.LocalAuthenticationError
 import com.daycare.api.service.FirebaseIdentityError
 import com.daycare.api.service.TenantUserAccountError
+import com.daycare.api.service.DevelopmentEntryMediaError
 import java.util.Locale
 
 class ApiExceptionHandlerTest {
@@ -79,6 +80,36 @@ class ApiExceptionHandlerTest {
         val problem = handler.invalidRequest(IllegalArgumentException(TenantUserAccountError.PASSWORD_TOO_SHORT))
 
         assertEquals("The password must contain at least 6 characters.", problem.detail)
+        assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
+    }
+
+    @Test
+    fun `localizes duplicate tenant username validation`() {
+        LocaleContextHolder.setLocale(Locale.ENGLISH)
+
+        val problem = handler.invalidRequest(IllegalArgumentException(TenantUserAccountError.USERNAME_REGISTERED))
+
+        assertEquals("The username is already registered.", problem.detail)
+        assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
+    }
+
+    @Test
+    fun `localizes development photo validation`() {
+        LocaleContextHolder.setLocale(Locale.ENGLISH)
+
+        val problem = handler.invalidRequest(IllegalArgumentException(DevelopmentEntryMediaError.PHOTO_TOO_LARGE))
+
+        assertEquals("The development photo must be at most 5 MB.", problem.detail)
+        assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
+    }
+
+    @Test
+    fun `localizes staff edit scope validation`() {
+        LocaleContextHolder.setLocale(Locale.ENGLISH)
+
+        val problem = handler.invalidRequest(IllegalArgumentException(TenantUserAccountError.STAFF_EDIT_NOT_ALLOWED))
+
+        assertEquals("Only active Staff accounts in this tenant can be edited.", problem.detail)
         assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
     }
 

@@ -11,23 +11,40 @@ import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.UserProfileRepository
 import com.daycare.api.realtime.RealtimeFlag
 import com.daycare.api.realtime.RealtimePublisher
+import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
+import java.util.Base64
 import java.util.UUID
 
+private const val MAX_DEVELOPMENT_PHOTO_BYTES = 5 * 1024 * 1024
+private val DEVELOPMENT_PHOTO_CONTENT_TYPES = setOf("image/jpeg", "image/png")
+
+object DevelopmentEntryMediaError {
+    const val NOT_FOUND = "development_entry.not_found"
+    const val UNAVAILABLE = "development_entry.unavailable"
+    const val PHOTO_MISSING = "development_entry.photo_missing"
+    const val PHOTO_TYPE = "development_entry.photo_type"
+    const val PHOTO_INVALID = "development_entry.photo_invalid"
+    const val PHOTO_TOO_LARGE = "development_entry.photo_too_large"
+}
+
+data class DevelopmentPhotoInput(@field:NotBlank val contentType: String, @field:NotBlank val dataBase64: String)
 data class CreateDevelopmentEntryRequest(
     @field:NotBlank @field:Size(max = 64) val category: String,
     @field:NotBlank @field:Size(max = 120) val title: String,
     @field:NotBlank @field:Size(max = 2_000) val content: String,
+    @field:Valid val photo: DevelopmentPhotoInput? = null,
 )
 data class CreateDevelopmentCategoryRequest(@field:NotBlank @field:Size(max = 120) val name: String)
 data class UpdateDevelopmentCategoryRequest(@field:Size(max = 120) val name: String? = null, val active: Boolean? = null)
 data class DevelopmentCategoryResponse(val id: String, val name: String, val active: Boolean, val system: Boolean)
-data class DevelopmentEntryResponse(val id: UUID, val childId: UUID, val category: String, val categoryName: String, val title: String, val content: String, val recordedAt: Instant, val recordedBy: String)
+data class DevelopmentEntryResponse(val id: UUID, val childId: UUID, val category: String, val categoryName: String, val title: String, val content: String, val hasPhoto: Boolean, val recordedAt: Instant, val recordedBy: String)
+data class DevelopmentEntryPhotoResponse(val contentType: String, val dataBase64: String)
 
 @Service
 class DevelopmentService(
@@ -144,10 +161,25 @@ class DevelopmentService(
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         val categoryId = request.category.trim()
         val categoryName = categoryName(organizationId, categoryId, requireActive = true)
-        val entry = entries.save(DevelopmentEntry(organizationId = organizationId, branchId = child.branchId, childId = child.id, authorUserId = scope.user.id, category = categoryId, title = request.title.trim(), content = request.content.trim()))
+        val entry = DevelopmentEntry(organizationId = organizationId, branchId = child.branchId, childId = child.id, authorUserId = scope.user.id, category = categoryId, title = request.title.trim(), content = request.content.trim())
+        request.photo?.let { photo ->
+            entry.photoContentType = photo.contentType.lowercase()
+            entry.photoData = decodePhoto(photo)
+        }
+        entries.save(entry)
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "DEVELOPMENT_ENTRY", entityId = entry.id, action = "CREATED", source = "STAFF_NOTE"))
         guardians.findAllByChildId(child.id).forEach { guardian -> notifications.notify(organizationId, guardian.userId, "Perkembangan ${child.firstName}", "$categoryName: ${entry.title}", realtimeFlags = setOf(RealtimeFlag.DEVELOPMENT)) }
         return toResponse(entry, organizationId, categoryName)
+    }
+
+    @Transactional(readOnly = true)
+    fun photo(jwt: Jwt, organizationId: UUID, childId: UUID, entryId: UUID): DevelopmentEntryPhotoResponse {
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
+        if (scope.membership.role == Role.PARENT) childScopes.requireParentLinkedChild(scope, childId, organizationId) else childScopes.requireStaffManagedChild(scope, childId, organizationId)
+        val entry = entries.findById(entryId).orElseThrow { IllegalArgumentException(DevelopmentEntryMediaError.NOT_FOUND) }
+        require(entry.organizationId == organizationId && entry.childId == childId) { DevelopmentEntryMediaError.UNAVAILABLE }
+        val data = entry.photoData ?: throw IllegalArgumentException(DevelopmentEntryMediaError.PHOTO_MISSING)
+        return DevelopmentEntryPhotoResponse(entry.photoContentType ?: "image/jpeg", Base64.getEncoder().encodeToString(data))
     }
 
     private fun requireCategoryCreator(jwt: Jwt, organizationId: UUID): AccessScope {
@@ -159,7 +191,18 @@ class DevelopmentService(
 
     private fun toResponse(entry: DevelopmentEntry, organizationId: UUID, name: String = categoryName(organizationId, entry.category, requireActive = false)): DevelopmentEntryResponse {
         val author = users.findById(entry.authorUserId).map { it.displayName }.orElse("Staf daycare")
-        return DevelopmentEntryResponse(entry.id, entry.childId, entry.category, name, entry.title, entry.content, entry.recordedAt, author)
+        return DevelopmentEntryResponse(entry.id, entry.childId, entry.category, name, entry.title, entry.content, entry.photoData != null, entry.recordedAt, author)
+    }
+
+    private fun decodePhoto(input: DevelopmentPhotoInput): ByteArray {
+        require(input.contentType.lowercase() in DEVELOPMENT_PHOTO_CONTENT_TYPES) { DevelopmentEntryMediaError.PHOTO_TYPE }
+        val bytes = try { Base64.getDecoder().decode(input.dataBase64) } catch (_: IllegalArgumentException) { throw IllegalArgumentException(DevelopmentEntryMediaError.PHOTO_INVALID) }
+        require(bytes.isNotEmpty()) { DevelopmentEntryMediaError.PHOTO_INVALID }
+        require(bytes.size <= MAX_DEVELOPMENT_PHOTO_BYTES) { DevelopmentEntryMediaError.PHOTO_TOO_LARGE }
+        val isJpeg = bytes.size >= 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte()
+        val isPng = bytes.size >= 8 && bytes.copyOfRange(0, 8).contentEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
+        require(isJpeg || isPng) { DevelopmentEntryMediaError.PHOTO_INVALID }
+        return bytes
     }
 
     private fun categoryName(organizationId: UUID, id: String, requireActive: Boolean): String {

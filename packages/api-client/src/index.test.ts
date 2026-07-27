@@ -52,14 +52,35 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/tenant-users/staff-id/child-program-permission", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ canManageChildPrograms: true }) }));
   });
 
-  it("resolves a username before Firebase email-password sign-in", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ email: "staff@example.test" }) });
+  it("creates a staff account with its optional username", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
-    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => null, getOrganizationId: () => null, getLanguage: () => "id" });
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
 
-    await expect(client.resolveLoginUsername("staff-satu")).resolves.toEqual({ email: "staff@example.test" });
+    await client.createTenantUser({ displayName: "Guru Baru", username: "guru.baru", email: "guru@tenant.test", password: "123123", role: "STAFF" });
 
-    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/auth/resolve-username", expect.objectContaining({ method: "POST", body: JSON.stringify({ username: "staff-satu" }) }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/tenant-users", expect.objectContaining({ method: "POST", body: JSON.stringify({ displayName: "Guru Baru", username: "guru.baru", email: "guru@tenant.test", password: "123123", role: "STAFF" }) }));
+  });
+
+  it("updates a staff account through the tenant-scoped endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+    const input = { displayName: "Guru Diperbarui", email: "guru@tenant.test", username: "guru.baru", branchId: "branch-id", canManageChildPrograms: true, canManageDevelopmentCategories: false };
+
+    await client.updateTenantUser("staff-id", input);
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/tenant-users/staff-id", expect.objectContaining({ method: "PATCH", body: JSON.stringify(input) }));
+  });
+
+  it("checks whether the signed-in identity already has an account", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ exists: false, email: null, phoneNumber: "+6281234567890" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
+
+    await expect(client.identityCheck()).resolves.toEqual({ exists: false, email: null, phoneNumber: "+6281234567890" });
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/auth/identity-check", expect.anything());
   });
 
   it("lists and creates Platform-managed institution types", async () => {
@@ -180,6 +201,19 @@ describe("ApiClient", () => {
     await client.recordGoalCheckIn("goal-id", "2026-07-23", "indicator-id", "YES");
 
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/child-goals/goal-id/check-ins/2026-07-23", expect.objectContaining({ method: "PUT", body: JSON.stringify({ indicatorId: "indicator-id", outcome: "YES" }) }));
+  });
+
+  it("creates and reads a development entry photo through the scoped child endpoints", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+    const input = { category: "category-id", title: "Melukis", content: "Menggambar dengan krayon.", photo: { contentType: "image/jpeg" as const, dataBase64: "/9j/" } };
+
+    await client.createDevelopmentEntry("child-id", input);
+    await client.developmentEntryPhoto("child-id", "entry-id");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/children/child-id/development-entries", expect.objectContaining({ method: "POST", body: JSON.stringify(input) }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/children/child-id/development-entries/entry-id/photo", expect.anything());
   });
 
   it("downloads a backend-built child report as a binary file", async () => {

@@ -79,9 +79,12 @@ export type DevelopmentEntry = {
   categoryName: string;
   title: string;
   content: string;
+  hasPhoto: boolean;
   recordedAt: string;
   recordedBy: string;
 };
+export type DevelopmentEntryPhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
+export type DevelopmentEntryPhoto = { contentType: string; dataBase64: string };
 export type ServicePlan = { id: string; name: string; type: ServicePlanType; price: number; creditCount?: number; unusedCreditPolicy?: UnusedCreditPolicy; carryForwardDays?: number; bookingRequiresApproval: boolean; dailyCapacity?: number | null };
 export type BranchCapacity = { branchId: string; dailyCapacity?: number | null };
 export type ServicePlanDiscount = { id: string; planId: string; kind: ServicePlanDiscountKind; name: string; promoCode?: string | null; type: ServicePlanDiscountType; value: number; startsOn?: string | null; endsOn?: string | null; usageLimit?: number | null; active: boolean };
@@ -110,7 +113,7 @@ export type Tenant = { id: string; name: string; branchName: string | null; bran
 export type CreateTenantInput = { tenantName: string; branchName: string; institutionTypes: InstitutionType[]; subscriptionPlan: TenantSubscriptionPlan; monthlyFee?: number; trialMonths?: number; staffAdminName: string; staffAdminEmail: string; staffAdminPassword: string };
 export type UpdateTenantInput = { tenantName: string; institutionTypes: InstitutionType[]; subscriptionPlan: TenantSubscriptionPlan; monthlyFee?: number };
 export type CreatePlatformAdminInput = { email: string; username: string; password: string };
-export type LoginIdentifierResolution = { email: string | null };
+export type IdentityCheckResult = { exists: boolean; email: string | null; phoneNumber: string | null };
 export type AcademicYear = { id: string; name: string; startsOn: string; endsOn: string; active: boolean };
 export type CreateAcademicYearInput = { name: string; startsOn: string; endsOn: string };
 export type CurriculumProgram = { id: string; academicYearId?: string | null; name: string; description: string; source: "GLOBAL" | "TENANT"; isTemplate: boolean; active: boolean; developmentProgramIds: string[] };
@@ -139,8 +142,9 @@ export type GoalCheckInAudio = { contentType: string; dataBase64: string; durati
 export type ChildGoal = { id: string; childId: string; programId: string; name: string; description: string; startsOn: string; targetEndsOn: string; durationDays: number; minimumYesPercent: number; minimumYesStreak: number; status: "ACTIVE" | "COMPLETED"; finalOutcome?: ChildGoalOutcome | null; finalSummary?: string | null; finalizedAt?: string | null; recordedDays: number; yesDays: number; noDays: number; yesPercent?: number | null; currentYesStreak: number; longestYesStreak: number; meetsYesPercent: boolean; meetsYesStreak: boolean; missedDays: number; indicators: GoalIndicator[]; checkIns: GoalIndicatorCheckIn[] };
 export type ChildPlacement = { id: string; classroomId: string; classroomName: string; learningLevelId?: string | null; learningLevelName?: string | null; learningPeriodId?: string | null; startsOn: string; endedOn?: string | null; ageGuidanceWarning: boolean };
 export type TenantInvitationInput = { email?: string; phoneNumber?: string; role: Extract<Role, "STAFF" | "PARENT">; branchId?: string; classroomId?: string };
-export type CreateTenantUserInput = { displayName: string; email: string; password: string; role: Extract<Role, "STAFF_ADMIN" | "STAFF">; branchId?: string; canManageChildPrograms?: boolean; canManageDevelopmentCategories?: boolean };
-export type TenantUser = { id: string; userId: string | null; displayName: string | null; email: string | null; role: Extract<Role, "STAFF_ADMIN" | "STAFF" | "PARENT">; status: "ACTIVE" | "INACTIVE" | "PENDING"; branchId: string | null; canManageChildPrograms: boolean; canManageDevelopmentCategories: boolean };
+export type CreateTenantUserInput = { displayName: string; email: string; password: string; role: Extract<Role, "STAFF_ADMIN" | "STAFF">; username?: string; branchId?: string; canManageChildPrograms?: boolean; canManageDevelopmentCategories?: boolean };
+export type UpdateTenantUserInput = { displayName: string; email: string; username?: string; branchId: string; canManageChildPrograms: boolean; canManageDevelopmentCategories: boolean };
+export type TenantUser = { id: string; userId: string | null; displayName: string | null; username: string | null; email: string | null; role: Extract<Role, "STAFF_ADMIN" | "STAFF" | "PARENT">; status: "ACTIVE" | "INACTIVE" | "PENDING"; branchId: string | null; canManageChildPrograms: boolean; canManageDevelopmentCategories: boolean };
 export type DevelopmentCategoryOption = { id: string; name: string; active: boolean; system: boolean };
 export type ParentTenantPlan = { id: string; name: string; type: ServicePlanType; price: number; creditCount?: number | null; bookingRequiresApproval: boolean; dailyCapacity?: number | null };
 export type ParentTenantCatalog = { organizationId: string; organizationName: string; branches: Array<{ id: string; name: string; dailyCapacity?: number | null }>; plans: ParentTenantPlan[] };
@@ -184,10 +188,10 @@ export function realtimeUrl(apiUrl: string, override?: string): string {
 export class ApiClient {
   constructor(private readonly options: ApiClientOptions) {}
 
-  async resolveLoginUsername(username: string): Promise<LoginIdentifierResolution> { return this.request("/auth/resolve-username", { method: "POST", body: JSON.stringify({ username }) }); }
   async me(): Promise<CurrentUser> {
     return this.request("/me");
   }
+  async identityCheck(): Promise<IdentityCheckResult> { return this.request("/auth/identity-check"); }
   async updateMyProfile(input: { gender: ChildGender; dateOfBirth: string }): Promise<CurrentUser> { return this.request("/me", { method: "PATCH", body: JSON.stringify(input) }); }
   async parentEnrollmentCatalog(): Promise<ParentTenantCatalog[]> { return this.request("/parent-enrollment/catalog"); }
   async parentEnrollments(): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment"); }
@@ -248,6 +252,7 @@ export class ApiClient {
   async inviteTenantUser(input: TenantInvitationInput): Promise<{ id: string }> { return this.request("/invitations", { method: "POST", body: JSON.stringify(input) }); }
   async createTenantUser(input: CreateTenantUserInput): Promise<TenantUser> { return this.request("/tenant-users", { method: "POST", body: JSON.stringify(input) }); }
   async tenantUsers(filter: BranchListFilter = {}): Promise<TenantUser[]> { return this.request(withBranchFilter("/tenant-users", filter)); }
+  async updateTenantUser(userId: string, input: UpdateTenantUserInput): Promise<TenantUser> { return this.request(`/tenant-users/${userId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async deactivateTenantUser(userId: string): Promise<void> { await this.request<void>(`/tenant-users/${userId}/deactivate`, { method: "POST" }); }
   async updateTenantUserChildProgramPermission(userId: string, canManageChildPrograms: boolean): Promise<TenantUser> { return this.request(`/tenant-users/${userId}/child-program-permission`, { method: "PATCH", body: JSON.stringify({ canManageChildPrograms }) }); }
   async updateTenantUserDevelopmentCategoryPermission(userId: string, canManageDevelopmentCategories: boolean): Promise<TenantUser> { return this.request(`/tenant-users/${userId}/development-category-permission`, { method: "PATCH", body: JSON.stringify({ canManageDevelopmentCategories }) }); }
@@ -342,6 +347,10 @@ export class ApiClient {
 
   async developmentEntries(childId: string): Promise<DevelopmentEntry[]> {
     return this.request(`/children/${childId}/development-entries`);
+  }
+
+  async developmentEntryPhoto(childId: string, entryId: string): Promise<DevelopmentEntryPhoto> {
+    return this.request(`/children/${childId}/development-entries/${entryId}/photo`);
   }
 
   async developmentCategories(): Promise<DevelopmentCategoryOption[]> { return this.request("/development-categories"); }

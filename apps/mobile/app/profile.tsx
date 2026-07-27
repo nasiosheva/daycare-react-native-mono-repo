@@ -16,7 +16,7 @@ type ProfileSheet = "profile" | "password" | "admin" | null;
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { api, user, profile, organizationId, signOut, updateDisplayName, updatePersonalDetails, changePassword, selectOrganization } = useAuth();
+  const { api, user, profile, organizationId, signOut, updateDisplayName, updatePersonalDetails, changePassword, usesPassword, selectOrganization } = useAuth();
   const { t, formatDate } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
@@ -113,7 +113,7 @@ export default function ProfileScreen() {
       {organizationId && !isStaffAdmin && <Button variant="secondary" onPress={() => router.push("/notifications" as never)}>{t("profile.notifications")}</Button>}
       {membership?.role === "STAFF" && <Button variant="secondary" onPress={() => router.push("/staff-reminders" as never)}>{t("profile.reminders")}</Button>}
       <Button variant="secondary" onPress={() => setProfileSheet("profile")}>{t("profile.savePersonal")}</Button>
-      <Button variant="secondary" onPress={() => setProfileSheet("password")}>{t("profile.changePassword")}</Button>
+      {usesPassword && <Button variant="secondary" onPress={() => setProfileSheet("password")}>{t("profile.changePassword")}</Button>}
       {profile?.isPlatformAdmin && <Button variant="secondary" onPress={() => setProfileSheet("admin")}>{t("profile.addAdmin")}</Button>}
     </View>
 

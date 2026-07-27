@@ -26,7 +26,11 @@ export default function VerifyPhoneScreen() {
     }
   };
   const submit = async () => {
-    try { setLoading(true); await verifyPhoneCode(code); router.replace("/"); }
+    try {
+      setLoading(true);
+      const { needsRegistration } = await verifyPhoneCode(code);
+      router.replace(needsRegistration ? "/sign-up" : "/");
+    }
     catch (error) { Alert.alert(t("auth.invalidCode"), error instanceof Error ? error.message : t("auth.tryAgain")); }
     finally { setLoading(false); }
   };
