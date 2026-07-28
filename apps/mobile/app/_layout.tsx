@@ -3,12 +3,18 @@ import { Stack, useNavigationContainerRef, usePathname, useRouter } from "expo-r
 import { Alert, BackHandler, Platform } from "react-native";
 import { useEffect, useState, type PropsWithChildren } from "react";
 import * as Notifications from "expo-notifications";
+import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { bottomNavigationPaths } from "@/navigation/RoleBottomNavigation";
 import { RealtimeConnection } from "@/realtime/RealtimeConnection";
 import { getDeviceInstallationId } from "@/device/installationId";
 import { publishInlineFeedback } from "@daycare/ui";
+
+if (Platform.OS !== "web") {
+  SplashScreen.setOptions({ duration: 250, fade: true });
+  void SplashScreen.preventAutoHideAsync().catch(() => undefined);
+}
 
 if (Platform.OS !== "web") {
   Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }) });
@@ -70,7 +76,19 @@ function NativeNotificationRegistration() {
 
 function Providers({ children }: PropsWithChildren) {
   const [queryClient] = useState(() => new QueryClient());
-  return <QueryClientProvider client={queryClient}><I18nProvider><AuthProvider><NotificationRouteHandler /><NativeNotificationRegistration /><RealtimeConnection />{children}</AuthProvider></I18nProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><I18nProvider><AuthProvider><NativeSplashGate><NotificationRouteHandler /><NativeNotificationRegistration /><RealtimeConnection />{children}</NativeSplashGate></AuthProvider></I18nProvider></QueryClientProvider>;
+}
+
+function NativeSplashGate({ children }: PropsWithChildren) {
+  const { loading } = useAuth();
+
+  useEffect(() => {
+    if (Platform.OS === "web" || loading) return;
+    const frame = requestAnimationFrame(() => { void SplashScreen.hideAsync().catch(() => undefined); });
+    return () => cancelAnimationFrame(frame);
+  }, [loading]);
+
+  return children;
 }
 
 function BottomNavigationBackHandler({ children }: PropsWithChildren) {

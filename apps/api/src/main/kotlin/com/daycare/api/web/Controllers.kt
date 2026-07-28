@@ -63,6 +63,7 @@ import com.daycare.api.service.AssignChildStaffRequest
 import com.daycare.api.service.SetBranchCapacityRequest
 import com.daycare.api.service.UpsertServicePlanTemplateRequest
 import com.daycare.api.service.LocalAuthenticationService
+import com.daycare.api.service.AccessTokenRevocationService
 import com.daycare.api.service.ParentEnrollmentService
 import com.daycare.api.service.ParentEnrollmentCheckoutRequest
 import com.daycare.api.service.ParentEnrollmentApprovalRequest
@@ -129,6 +130,14 @@ class LocalAuthenticationController(private val localAuthentication: LocalAuthen
 
     @PatchMapping("/profile")
     fun updateProfile(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: LocalProfileRequest) = localAuthentication.updateDisplayName(jwt.subject, request.displayName)
+}
+
+@RestController
+@RequestMapping("/v1/auth")
+@SecurityRequirement(name = "bearerAuth")
+class AuthenticationSessionController(private val tokenRevocations: AccessTokenRevocationService) {
+    @PostMapping("/logout") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun logout(@AuthenticationPrincipal jwt: Jwt) = tokenRevocations.revoke(jwt)
 }
 
 @RestController

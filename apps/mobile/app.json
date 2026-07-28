@@ -8,6 +8,15 @@
     "userInterfaceStyle": "light",
     "plugins": [
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/login-icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFFFF"
+        }
+      ],
       "expo-notifications",
       "@react-native-firebase/app",
       "@react-native-firebase/auth",

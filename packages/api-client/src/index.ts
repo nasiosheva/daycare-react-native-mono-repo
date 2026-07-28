@@ -54,6 +54,16 @@ export type ApiClientOptions = {
   getToken: () => Promise<string | null>;
   getOrganizationId: () => string | null;
   getLanguage: () => string;
+  onRequestLog?: (entry: ApiRequestLogEntry) => void;
+};
+
+export type ApiRequestLogEntry = {
+  phase: "REQUEST" | "RESPONSE" | "FAILURE";
+  method: string;
+  url: string;
+  durationMs?: number;
+  status?: number;
+  failure?: "NETWORK" | "TIMEOUT";
 };
 
 export type Child = Omit<ChildInput, "gender"> & { id: string; fullName: string; organizationId: string; branchId: string; gender: ChildGender | "UNSPECIFIED"; todayCheckedInAt?: string | null; todayCheckedOutAt?: string | null };
@@ -187,6 +197,8 @@ export function realtimeUrl(apiUrl: string, override?: string): string {
 
 export class ApiClient {
   constructor(private readonly options: ApiClientOptions) {}
+
+  async logout(accessToken: string): Promise<void> { await this.request<void>("/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${accessToken}` } }); }
 
   async me(): Promise<CurrentUser> {
     return this.request("/me");
@@ -416,8 +428,12 @@ export class ApiClient {
   private async authorizedFetch(path: string, init: RequestInit = {}): Promise<Response> {
     const token = await this.options.getToken();
     const organizationId = this.options.getOrganizationId();
+    const method = init.method ?? "GET";
+    const url = `${this.options.baseUrl}${path}`;
+    const startedAt = Date.now();
+    this.logRequest({ phase: "REQUEST", method, url });
     try {
-      return await fetchWithTimeout(`${this.options.baseUrl}${path}`, {
+      const response = await fetchWithTimeout(url, {
         ...init,
         headers: {
           Accept: "application/json",
@@ -428,9 +444,23 @@ export class ApiClient {
           ...init.headers,
         },
       });
+      this.logRequest({ phase: "RESPONSE", method, url, status: response.status, durationMs: Date.now() - startedAt });
+      return response;
     } catch (error) {
-      if (isApiTimeoutError(error)) throw error;
+      if (isApiTimeoutError(error)) {
+        this.logRequest({ phase: "FAILURE", method, url, durationMs: Date.now() - startedAt, failure: "TIMEOUT" });
+        throw error;
+      }
+      this.logRequest({ phase: "FAILURE", method, url, durationMs: Date.now() - startedAt, failure: "NETWORK" });
       throw new ApiNetworkError();
+    }
+  }
+
+  private logRequest(entry: ApiRequestLogEntry) {
+    try {
+      this.options.onRequestLog?.(entry);
+    } catch {
+      // Local diagnostic logging must never affect API behavior.
     }
   }
 

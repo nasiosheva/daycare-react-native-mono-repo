@@ -54,6 +54,17 @@ class ApiIntegrationTest(
     }
 
     @Test
+    fun `logout revokes the active bearer token`() {
+        val token = login("admin@integration.test", "integration-password")
+
+        val logout = rest.exchange(url("/v1/auth/logout"), HttpMethod.POST, authenticated(token, null), String::class.java)
+        val rejected = rest.exchange(url("/v1/me"), HttpMethod.GET, authenticated(token, null), String::class.java)
+
+        assertEquals(HttpStatus.NO_CONTENT, logout.statusCode)
+        assertEquals(HttpStatus.UNAUTHORIZED, rejected.statusCode)
+    }
+
+    @Test
     fun `local platform admin creates tenant and tenant admin reaches protected routes`() {
         val platformToken = login("admin@integration.test", "integration-password")
         val tenant = rest.exchange(

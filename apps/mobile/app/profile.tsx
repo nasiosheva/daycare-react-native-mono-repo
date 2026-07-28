@@ -41,13 +41,10 @@ export default function ProfileScreen() {
   useEffect(() => { setGender(profile?.gender && profile.gender !== "UNSPECIFIED" ? profile.gender : undefined); }, [profile?.gender]);
   useEffect(() => { setDateOfBirth(profile?.dateOfBirth ?? ""); }, [profile?.dateOfBirth]);
 
-  const leave = async () => {
-    try {
-      setLeaving(true);
-      await signOut();
-      router.replace("/sign-in");
-    } catch (error) { Alert.alert(t("profile.signOutFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
-    finally { setLeaving(false); }
+  const leave = () => {
+    setLeaving(true);
+    void signOut();
+    router.replace("/sign-in");
   };
   const saveProfile = async () => {
     if (!gender || !isIsoDate(dateOfBirth)) return;

@@ -37,6 +37,35 @@ describe("ApiClient", () => {
     vi.useRealTimers();
   });
 
+  it("reports request and response metadata without inspecting credentials or payloads", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    const onRequestLog = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      getToken: async () => "secret-token",
+      getOrganizationId: () => "tenant-id",
+      getLanguage: () => "id",
+      onRequestLog,
+    });
+
+    await client.me();
+
+    expect(onRequestLog).toHaveBeenNthCalledWith(1, { phase: "REQUEST", method: "GET", url: "http://localhost:8080/api/v1/me" });
+    expect(onRequestLog).toHaveBeenNthCalledWith(2, expect.objectContaining({ phase: "RESPONSE", method: "GET", url: "http://localhost:8080/api/v1/me", status: 200, durationMs: expect.any(Number) }));
+    expect(JSON.stringify(onRequestLog.mock.calls)).not.toContain("secret-token");
+  });
+
+  it("revokes a supplied active token through the authenticated logout endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "current-token", getOrganizationId: () => null, getLanguage: () => "id" });
+
+    await client.logout("token-to-revoke");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/auth/logout", expect.objectContaining({ method: "POST", headers: expect.objectContaining({ Authorization: "Bearer token-to-revoke" }) }));
+  });
+
   it("updates a Staff child-program permission through the tenant-scoped endpoint", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);

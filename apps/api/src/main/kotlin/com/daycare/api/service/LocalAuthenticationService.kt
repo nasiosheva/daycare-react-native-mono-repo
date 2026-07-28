@@ -58,6 +58,7 @@ class LocalJwtService(@Value("\${daycare.local-auth-jwt-secret}") secret: String
             .subject(user.firebaseUid)
             .issueTime(Date.from(now))
             .expirationTime(Date.from(now.plus(Duration.ofHours(localTokenLifetimeHours))))
+            .jwtID(UUID.randomUUID().toString())
             .claim("email", user.email)
             .claim("name", user.displayName)
             .build()

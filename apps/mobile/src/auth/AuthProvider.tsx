@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from "react";
-import { ApiClient, ApiError } from "@daycare/api-client";
+import { ApiClient, ApiError, type ApiRequestLogEntry } from "@daycare/api-client";
 import type { ChildGender, CurrentUser } from "@daycare/core";
+import { Platform } from "react-native";
 import { env } from "@/config/env";
 import { useI18n } from "@/i18n/I18nProvider";
 import { firebaseAuth } from "./firebase";
@@ -33,6 +34,13 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 type FirebaseIdentityState = "idle" | "checking" | "existing" | "registrationRequired";
+const localAndroidApiUrlPrefix = "http://localhost:";
+
+function logLocalAndroidApi(entry: ApiRequestLogEntry) {
+  const duration = entry.durationMs == null ? "" : ` ${entry.durationMs}ms`;
+  const status = entry.status == null ? entry.failure ?? "" : String(entry.status);
+  console.info(`[API] ${entry.phase} ${entry.method} ${entry.url}${status ? ` ${status}` : ""}${duration}`);
+}
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const { locale, t } = useI18n();
@@ -51,6 +59,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     getToken: async () => localSession?.token ?? firebaseAuth.getIdToken(),
     getOrganizationId: () => organizationId,
     getLanguage: () => locale,
+    onRequestLog: Platform.OS === "android" && env.apiUrl.startsWith(localAndroidApiUrlPrefix) ? logLocalAndroidApi : undefined,
   }), [localSession, organizationId, locale]);
   const user = localSession?.user ?? firebaseUser;
 
@@ -147,14 +156,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return { needsRegistration: !status.exists, email: status.email };
   };
   const signOut = async () => {
+    const localAccessToken = localSession?.token ?? null;
+    const firebaseAccessToken = localAccessToken ? null : await firebaseAuth.getIdToken().catch(() => null);
+    const accessToken = localAccessToken ?? firebaseAccessToken;
+    if (accessToken) void api.logout(accessToken).catch(() => undefined);
     if (localSession) {
-      await clearLocalSession();
       setLocalSession(null);
+      void clearLocalSession().catch(() => undefined);
     }
-    await firebaseAuth.signOut();
     setFirebaseProfile(null);
     setOrganizationId(null);
     setProfileError(null);
+    await firebaseAuth.signOut().catch(() => undefined);
   };
   const updateDisplayName = async (displayName: string) => {
     const normalizedName = displayName.trim();
