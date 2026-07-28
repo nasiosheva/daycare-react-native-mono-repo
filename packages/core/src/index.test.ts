@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { can, attendanceCommandSchema, capabilitiesForInstitutionTypes, childSchema, developmentEntrySchema, hasInstitutionCapability, purchaseServiceSchema } from "./index";
+import { can, attendanceCommandSchema, capabilitiesForInstitutionTypes, childSchema, developmentEntrySchema, hasInstitutionCapability, parentFamilyProfileSchema, purchaseServiceSchema } from "./index";
 
 describe("permissions", () => {
   it("only permits staff to record attendance", () => {
@@ -36,5 +36,10 @@ describe("permissions", () => {
     expect(capabilitiesForInstitutionTypes(["DAYCARE"])).toEqual(["DAYCARE_OPERATIONS"]);
     expect(capabilitiesForInstitutionTypes(["PAUD", "TK"])).toEqual(["ACADEMIC_CURRICULUM"]);
     expect(hasInstitutionCapability(capabilitiesForInstitutionTypes(["DAYCARE", "TK"]), "ACADEMIC_CURRICULUM")).toBe(true);
+  });
+
+  it("permits an optional Parent family profile with supported dropdown values", () => {
+    expect(parentFamilyProfileSchema.safeParse({ husbandOccupation: "PNS", husbandIncomeRange: "THREE_TO_FIVE_MILLION", wifeDateOfBirth: null }).success).toBe(true);
+    expect(parentFamilyProfileSchema.safeParse({ husbandOccupation: "UNKNOWN" }).success).toBe(false);
   });
 });

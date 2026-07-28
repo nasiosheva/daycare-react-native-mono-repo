@@ -1,14 +1,16 @@
-# Android release APK
+# Android release APK and AAB
 
-This guide describes how to create a locally signed Android APK for direct distribution. It is separate from `run-android-prod.sh`, which starts an Expo development client against production services and does not create a distributable APK.
+This guide describes how to create a locally signed Android APK for direct distribution or Android App Bundle (AAB) for Google Play. Both are separate from `run-android-prod.sh`, which starts an Expo development client against production services and does not create a distributable artifact.
 
 ## Scope and output
 
-- Entry point: `./build-android-release-apk.sh` from the repository root.
-- Gradle task: `:app:assembleRelease` with `NODE_ENV=production`.
-- Output: `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`.
+- APK entry point: `./build-android-release-apk.sh`; Gradle task: `:app:assembleRelease`; output: `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`.
+- AAB entry point: `./build-android-release-aab.sh`; Gradle task: `:app:bundleRelease`; output: `apps/mobile/android/app/build/outputs/bundle/release/app-release.aab`.
+- Both formats use `NODE_ENV=production`, R8 minification, and Android resource shrinking.
+- The direct-distribution APK targets `arm64-v8a` by default, so it does not package emulator libraries or 32-bit libraries that most current Android devices do not use.
+- The AAB includes the configured native ABI variants by default; Google Play uses it to serve device-specific splits.
 - The launcher does not start Metro, an emulator, a device, the local API, or any production service.
-- The launcher validates the final APK with the Android SDK `apksigner` before reporting success.
+- The APK launcher validates the final APK with Android SDK `apksigner`; the AAB launcher validates the bundle with JDK `jarsigner`.
 
 ## One-time local setup
 
@@ -64,9 +66,25 @@ From the repository root, run:
 ./build-android-release-apk.sh
 ```
 
-The launcher checks the environment configuration, Android SDK, Firebase file, Gradle wrapper, signing properties, keystore, and Gradle release signing configuration before invoking Gradle. If workspace dependencies are absent, it performs a locked `pnpm install` first.
+The launcher checks the environment configuration, Android SDK, Firebase file, Gradle wrapper, signing properties, and keystore before invoking Gradle. It applies the ignored signing properties to the generated Android release variant only for that build, so a release APK never falls back to the debug keystore. If workspace dependencies are absent, it performs a locked `pnpm install` first.
 
 On success, the terminal prints the absolute APK path. Install it on a connected device manually, or upload that APK to the intended internal distribution channel. The APK and all local signing/configuration files remain ignored by Git.
+
+To produce a compatibility APK that also supports 32-bit Android devices, opt in explicitly:
+
+```sh
+ANDROID_RELEASE_ARCHITECTURES=armeabi-v7a,arm64-v8a ./build-android-release-apk.sh
+```
+
+The supported values are `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64`. Do not include emulator ABIs (`x86`, `x86_64`) in a direct-production APK unless that APK is specifically for an emulator or test device; every selected ABI adds native libraries to the download.
+
+For Google Play, create an AAB instead:
+
+```sh
+./build-android-release-aab.sh
+```
+
+The AAB is not directly installable on a device. Upload it to Google Play Console, which generates optimized APK splits for each device architecture.
 
 ## Verification
 
@@ -79,6 +97,15 @@ shasum -a 256 apps/mobile/android/app/build/outputs/apk/release/app-release.apk
 
 The project has minimum Android SDK 24, so a valid APK Signature Scheme v2 signature is sufficient for its supported Android versions. The absence of v1 signing is expected and does not make the APK invalid for this application.
 
+The AAB launcher runs `jarsigner` verification automatically and prints its detailed output only when verification fails. To inspect it afterward:
+
+```sh
+ls -lh apps/mobile/android/app/build/outputs/bundle/release/app-release.aab
+jarsigner -verify -verbose -certs apps/mobile/android/app/build/outputs/bundle/release/app-release.aab
+```
+
+When run manually, `jarsigner` can warn about an AAB's ZIP structure and self-signed local certificate even when it reports `jar verified.`. Those warnings do not replace Google Play Console's upload validation.
+
 ## Troubleshooting
 
 | Message or symptom | Resolution |
@@ -88,9 +115,12 @@ The project has minimum Android SDK 24, so a valid APK Signature Scheme v2 signa
 | Missing `google-services.json` | Download the Android configuration for the correct Firebase project/application ID and place it at `apps/mobile/google-services.json`. |
 | Missing production value | Fill the indicated `EXPO_PUBLIC_*` field in the ignored `.env.prod`; do not copy secrets into an `EXPO_PUBLIC_*` variable. |
 | Missing release signing property or keystore | Add the four `MYAPP_RELEASE_*` properties to ignored `android/gradle.properties` and ensure the referenced keystore exists under `android/app/`. |
+| APK will not install on a 32-bit device | Rebuild with `ANDROID_RELEASE_ARCHITECTURES=armeabi-v7a,arm64-v8a`; the default release APK is ARM64-only to reduce download size. |
+| AAB will not install through `adb install` | This is expected. Upload the AAB to Google Play or use the APK launcher for direct device installation. |
+| Release build breaks after R8 shrinking | Keep the failure output, add the smallest necessary rule to `android/app/proguard-rules.pro`, then rebuild and exercise the affected native flow. Do not disable shrinking globally as a first response. |
 | `apksigner` is not found | Install Android SDK Build Tools through Android Studio, then repeat the build. |
 | A native package or application ID changed | Synchronize the generated Android project, then restore/confirm the ignored local signing configuration before running the release launcher. |
 
 ## Security boundary
 
-This local build flow does not deploy the web app or API, run database migrations, access the production database, or activate a VPS release. Its only output is the locally signed APK. GitHub Actions deployment remains web-only as documented in the README.
+This local build flow does not deploy the web app or API, run database migrations, access the production database, or activate a VPS release. Its only output is the locally signed APK or AAB. GitHub Actions deployment remains web-only as documented in the README.

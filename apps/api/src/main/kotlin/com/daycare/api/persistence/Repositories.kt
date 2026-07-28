@@ -11,6 +11,7 @@ import java.time.LocalDate
 import java.util.UUID
 
 interface UserProfileRepository : JpaRepository<UserProfile, UUID> { fun findByFirebaseUid(firebaseUid: String): UserProfile?; fun findByEmailIgnoreCase(email: String): UserProfile?; fun findByPhoneNumber(phoneNumber: String): UserProfile?; fun findByUsernameIgnoreCase(username: String): UserProfile? }
+interface ParentFamilyProfileRepository : JpaRepository<ParentFamilyProfile, UUID> { fun findByUserId(userId: UUID): ParentFamilyProfile? }
 interface RevokedAccessTokenRepository : JpaRepository<RevokedAccessToken, UUID> { fun existsByTokenHash(tokenHash: String): Boolean; fun deleteAllByExpiresAtBefore(expiresAt: Instant) }
 interface MembershipRepository : JpaRepository<Membership, UUID> {
     fun findAllByUserIdAndOrganizationId(userId: UUID, organizationId: UUID): List<Membership>
@@ -112,6 +113,11 @@ interface ChildStaffAssignmentRepository : JpaRepository<ChildStaffAssignment, U
 }
 interface GuardianLinkRepository : JpaRepository<GuardianLink, UUID> { fun findAllByUserId(userId: UUID): List<GuardianLink>; fun existsByChildIdAndUserId(childId: UUID, userId: UUID): Boolean; fun findAllByChildId(childId: UUID): List<GuardianLink> }
 interface AttendanceRepository : JpaRepository<AttendanceRecord, UUID> { fun findByChildIdAndOperationalDate(childId: UUID, operationalDate: LocalDate): AttendanceRecord?; fun findAllByChildIdInAndOperationalDateIn(childIds: List<UUID>, operationalDates: List<LocalDate>): List<AttendanceRecord> }
+interface ChildAbsenceRequestRepository : JpaRepository<ChildAbsenceRequest, UUID> {
+    fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildAbsenceRequest>
+    fun findAllByOrganizationIdAndStatusOrderByStartDateAscCreatedAtAsc(organizationId: UUID, status: com.daycare.api.domain.ChildAbsenceRequestStatus): List<ChildAbsenceRequest>
+    fun findAllByChildIdAndStatusIn(childId: UUID, statuses: Collection<com.daycare.api.domain.ChildAbsenceRequestStatus>): List<ChildAbsenceRequest>
+}
 interface InvitationRepository : JpaRepository<Invitation, UUID> { fun findAllByStatus(status: InvitationStatus): List<Invitation>; fun findAllByOrganizationIdAndStatus(organizationId: UUID, status: InvitationStatus): List<Invitation> }
 interface NotificationRepository : JpaRepository<Notification, UUID> {
     fun findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDesc(recipientUserId: UUID, organizationId: UUID): List<Notification>
@@ -125,9 +131,14 @@ interface NotificationRepository : JpaRepository<Notification, UUID> {
     """)
     fun searchByRecipientUserIdAndOrganizationId(@Param("recipientUserId") recipientUserId: UUID, @Param("organizationId") organizationId: UUID, @Param("query") query: String): List<Notification>
 }
-interface DeviceTokenRepository : JpaRepository<DeviceToken, UUID> { fun findAllByUserIdAndOrganizationId(userId: UUID, organizationId: UUID): List<DeviceToken>; fun findByToken(token: String): DeviceToken?; fun findByInstallationId(installationId: String): DeviceToken? }
+interface DeviceTokenRepository : JpaRepository<DeviceToken, UUID> { fun findAllByUserIdAndOrganizationId(userId: UUID, organizationId: UUID): List<DeviceToken>; fun findAllByUserIdIn(userIds: Collection<UUID>): List<DeviceToken>; fun findByToken(token: String): DeviceToken?; fun findByInstallationId(installationId: String): DeviceToken? }
 interface StaffReminderRepository : JpaRepository<StaffReminder, UUID> { fun findAllByOrganizationIdAndUserIdOrderByCreatedAtDesc(organizationId: UUID, userId: UUID): List<StaffReminder>; fun findAllByActiveTrue(): List<StaffReminder> }
-interface StaffReminderDeviceScheduleRepository : JpaRepository<StaffReminderDeviceSchedule, UUID> { fun findByReminderIdAndInstallationId(reminderId: UUID, installationId: String): StaffReminderDeviceSchedule? }
+interface StaffReminderDeviceScheduleRepository : JpaRepository<StaffReminderDeviceSchedule, UUID> { fun findByReminderIdAndInstallationId(reminderId: UUID, installationId: String): StaffReminderDeviceSchedule?; fun findAllByReminderIdIn(reminderIds: Collection<UUID>): List<StaffReminderDeviceSchedule> }
+interface StaffLeaveRequestRepository : JpaRepository<StaffLeaveRequest, UUID> {
+    fun findAllByOrganizationIdAndRequesterUserIdOrderByCreatedAtDesc(organizationId: UUID, requesterUserId: UUID): List<StaffLeaveRequest>
+    fun findAllByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId: UUID, status: com.daycare.api.domain.StaffLeaveRequestStatus): List<StaffLeaveRequest>
+    fun findAllByOrganizationIdAndRequesterUserIdAndStatusIn(organizationId: UUID, requesterUserId: UUID, statuses: Collection<com.daycare.api.domain.StaffLeaveRequestStatus>): List<StaffLeaveRequest>
+}
 interface DevelopmentEntryRepository : JpaRepository<DevelopmentEntry, UUID> { fun findAllByOrganizationIdAndChildIdOrderByRecordedAtDesc(organizationId: UUID, childId: UUID): List<DevelopmentEntry>; fun existsByOrganizationIdAndCategory(organizationId: UUID, category: String): Boolean; fun existsByCategory(category: String): Boolean }
 interface DevelopmentCategoryConfigRepository : JpaRepository<DevelopmentCategoryConfig, UUID> {
     fun findAllByOrganizationIdOrderByNameAsc(organizationId: UUID): List<DevelopmentCategoryConfig>
@@ -168,6 +179,6 @@ interface DevelopmentProgramRepository : JpaRepository<DevelopmentProgram, UUID>
     """)
     fun searchVisibleToOrganization(@Param("organizationId") organizationId: UUID, @Param("search") search: String): List<DevelopmentProgram>
 }
-interface DevelopmentProgramItemRepository : JpaRepository<DevelopmentProgramItem, UUID> { fun findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(developmentProgramId: UUID): List<DevelopmentProgramItem> }
+interface DevelopmentProgramItemRepository : JpaRepository<DevelopmentProgramItem, UUID> { fun findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(developmentProgramId: UUID): List<DevelopmentProgramItem>; fun findAllByDevelopmentProgramIdIn(developmentProgramIds: Collection<UUID>): List<DevelopmentProgramItem> }
 interface ChildGoalRepository : JpaRepository<ChildGoal, UUID> { fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildGoal>; fun existsByChildIdAndProgramIdAndStatus(childId: UUID, programId: UUID, status: com.daycare.api.domain.ChildGoalStatus): Boolean; fun existsByProgramId(programId: UUID): Boolean; fun findAllByStatus(status: com.daycare.api.domain.ChildGoalStatus): List<ChildGoal> }
-interface ChildGoalCheckInRepository : JpaRepository<ChildGoalCheckIn, UUID> { fun findAllByChildGoalIdOrderByCheckInDateAsc(childGoalId: UUID): List<ChildGoalCheckIn>; fun findByChildGoalIdAndIndicatorIdAndCheckInDate(childGoalId: UUID, indicatorId: UUID, checkInDate: LocalDate): ChildGoalCheckIn? }
+interface ChildGoalCheckInRepository : JpaRepository<ChildGoalCheckIn, UUID> { fun findAllByChildGoalIdOrderByCheckInDateAsc(childGoalId: UUID): List<ChildGoalCheckIn>; fun findAllByChildGoalIdIn(childGoalIds: Collection<UUID>): List<ChildGoalCheckIn>; fun findAllByChildGoalIdInAndCheckInDate(childGoalIds: Collection<UUID>, checkInDate: LocalDate): List<ChildGoalCheckIn>; fun findByChildGoalIdAndIndicatorIdAndCheckInDate(childGoalId: UUID, indicatorId: UUID, checkInDate: LocalDate): ChildGoalCheckIn? }

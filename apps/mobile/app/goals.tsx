@@ -3,7 +3,7 @@ import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-nati
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ChildListFilter, DevelopmentProgram, GoalCheckInAudioInput, GoalCheckInPhotoInput, GoalIndicator, UpsertDevelopmentProgramInput } from "@daycare/api-client";
+import type { ChildListFilter, CurriculumProgram, DevelopmentProgram, GoalCheckInAudioInput, GoalCheckInPhotoInput, GoalIndicator, UpsertDevelopmentProgramInput } from "@daycare/api-client";
 import { childGoalOutcomes, goalDomains, goalCheckInOutcomes, type ChildGoalOutcome, type GoalDomain } from "@daycare/core";
 import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -48,13 +48,15 @@ export default function GoalsScreen() {
     return () => clearTimeout(handle);
   }, [programSearch]);
   const programs = useQuery({ queryKey: ["development-programs", organizationId, debouncedProgramSearch], queryFn: () => api.developmentPrograms(debouncedProgramSearch || undefined), enabled: canWrite });
+  const curriculumPrograms = useQuery({ queryKey: ["curriculum-programs", organizationId], queryFn: () => api.curriculumPrograms(), enabled: canWrite });
   const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: canWrite });
   const classrooms = useQuery({ queryKey: ["classrooms", organizationId], queryFn: () => api.classrooms(), enabled: canWrite });
   const goals = useQuery({ queryKey: ["child-goals", organizationId, childId], queryFn: () => api.childGoals(childId!), enabled: Boolean(selectedChild && membership) });
   const refreshGoals = () => { void queryClient.invalidateQueries({ queryKey: ["development-programs", organizationId] }); void queryClient.invalidateQueries({ queryKey: ["child-goals", organizationId, childId] }); };
   const [sheet, setSheet] = useState<Sheet>(null);
-  const [programId, setProgramId] = useState<string>(); const [finalGoalId, setFinalGoalId] = useState<string>(); const [finalOutcome, setFinalOutcome] = useState<ChildGoalOutcome>("ACHIEVED"); const [finalSummary, setFinalSummary] = useState("");
-  const assign = useMutation({ mutationFn: () => api.assignChildGoal(childId!, { programId: programId! }), onSuccess: () => { refreshGoals(); setSheet(null); setProgramId(undefined); } });
+  const [curriculumProgramId, setCurriculumProgramId] = useState<string>(); const [programId, setProgramId] = useState<string>(); const [finalGoalId, setFinalGoalId] = useState<string>(); const [finalOutcome, setFinalOutcome] = useState<ChildGoalOutcome>("ACHIEVED"); const [finalSummary, setFinalSummary] = useState("");
+  const assignPrograms = useQuery({ queryKey: ["development-programs", organizationId, curriculumProgramId, debouncedProgramSearch], queryFn: () => api.developmentPrograms(debouncedProgramSearch || undefined, curriculumProgramId), enabled: canWrite && Boolean(curriculumProgramId) });
+  const assign = useMutation({ mutationFn: () => api.assignChildGoal(childId!, { curriculumProgramId: curriculumProgramId!, programId: programId! }), onSuccess: () => { refreshGoals(); setSheet(null); setCurriculumProgramId(undefined); setProgramId(undefined); } });
   const finalize = useMutation({ mutationFn: () => api.finalizeChildGoal(finalGoalId!, { outcome: finalOutcome, summary: finalSummary.trim() }), onSuccess: () => { refreshGoals(); setSheet(null); setFinalGoalId(undefined); setFinalSummary(""); } });
   const checkIn = useMutation({
     mutationFn: ({ goalId, indicatorId, outcome, note, photo, audio }: { goalId: string; indicatorId: string; outcome: (typeof goalCheckInOutcomes)[number]; note?: string; photo?: GoalCheckInPhotoInput; audio?: GoalCheckInAudioInput }) =>
@@ -66,8 +68,9 @@ export default function GoalsScreen() {
   const selectedChildAgeMonths = selectedChild ? ageInMonths(selectedChild.dateOfBirth) : null;
   const matchesGlobalAgeRange = (program: DevelopmentProgram) => program.minAgeMonths == null || program.maxAgeMonths == null || selectedChildAgeMonths == null
     || (selectedChildAgeMonths >= program.minAgeMonths && selectedChildAgeMonths <= program.maxAgeMonths);
-  const availablePrograms = programs.data?.filter((program) => program.active
+  const availablePrograms = assignPrograms.data?.filter((program) => program.active
     && (program.source === "GLOBAL" ? matchesGlobalAgeRange(program) : program.learningLevelId === selectedClassroom?.learningLevelId)) ?? [];
+  const availableCurriculumPrograms = curriculumPrograms.data?.filter((program) => program.active) ?? [];
 
   const [goalsListOpen, setGoalsListOpen] = useState(false);
   const [programFormOpen, setProgramFormOpen] = useState(false);
@@ -138,11 +141,14 @@ export default function GoalsScreen() {
   };
   const activeIndicatorCount = editingProgram?.indicators.filter((indicator) => indicator.active).length ?? 0;
   const totalMissedDays = goals.data?.filter((goal) => goal.status === "ACTIVE").reduce((sum, goal) => sum + goal.missedDays, 0) ?? 0;
+  const openAssignment = () => { setGoalsListOpen(false); setCurriculumProgramId(undefined); setProgramId(undefined); setProgramSearch(""); setSheet("assign"); };
+  const selectCurriculumProgram = (program: CurriculumProgram) => { setCurriculumProgramId(program.id); setProgramId(undefined); };
   const goalsListContent = <>
-    {selectedChild && canWrite && <Button onPress={() => { setGoalsListOpen(false); setSheet("assign"); }}>{t("goals.assign")}</Button>}
+    {selectedChild && canWrite && <Button onPress={openAssignment}>{t("goals.assign")}</Button>}
     {goals.isFetching && <ShimmerList />}
     {!goals.isFetching && goals.data?.map((goal) => <View key={goal.id} style={styles.card}>
       <AppText variant="label">{goal.name}</AppText>
+      <AppText tone="muted" variant="caption">{t("academic.program")}: {goal.curriculumProgramName ?? t("common.noData")}</AppText>
       <AppText tone="muted">{formatDate(goal.startsOn)} – {formatDate(goal.targetEndsOn)}</AppText>
       <AppText>{t("goals.progress", { yes: goal.yesDays, recorded: goal.recordedDays, percent: goal.yesPercent ?? 0, streak: goal.longestYesStreak })}</AppText>
       <AppText tone="muted">{t(goal.meetsYesPercent && goal.meetsYesStreak ? "goals.targetsMet" : "goals.targetsPending")}</AppText>
@@ -202,7 +208,14 @@ export default function GoalsScreen() {
       {goalsListContent}
     </BottomSheet>}
 
-    <BottomSheet visible={sheet === "assign"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("goals.assign")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("goals.assign"), disabled: !programId, loading: assign.isPending, onPress: () => void assign.mutateAsync().catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) ) }}><TextInput accessibilityLabel={t("goals.searchTemplates")} style={styles.input} placeholder={t("goals.searchTemplates")} value={programSearch} onChangeText={setProgramSearch} />{programs.isFetching && <ShimmerList variant="tile" />}{!programs.isFetching && <View style={styles.options}>{availablePrograms.map((program) => <Button key={program.id} variant={programId === program.id ? "primary" : "secondary"} onPress={() => setProgramId(program.id)}>{program.name}</Button>)}</View>}{programs.isError && <Button variant="secondary" onPress={() => void programs.refetch()}>{t("common.retry")}</Button>}{!programs.isFetching && !programs.isError && availablePrograms.length === 0 && <AppText tone="muted">{t("goals.notInAgeRange")}</AppText>}</BottomSheet>
+    <BottomSheet visible={sheet === "assign"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("goals.assign")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("goals.assign"), disabled: !curriculumProgramId || !programId, loading: assign.isPending, onPress: () => void assign.mutateAsync().catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) ) }}>
+      <AppText variant="label">{t("academic.program")}</AppText>
+      {curriculumPrograms.isFetching && <ShimmerList variant="tile" />}
+      {!curriculumPrograms.isFetching && <View style={styles.options}>{availableCurriculumPrograms.map((program) => <Button key={program.id} variant={curriculumProgramId === program.id ? "primary" : "secondary"} onPress={() => selectCurriculumProgram(program)}>{program.name}</Button>)}</View>}
+      {curriculumPrograms.isError && <Button variant="secondary" onPress={() => void curriculumPrograms.refetch()}>{t("common.retry")}</Button>}
+      {!curriculumPrograms.isFetching && !curriculumPrograms.isError && availableCurriculumPrograms.length === 0 && <AppText tone="muted">{t("academic.noPrograms")}</AppText>}
+      {curriculumProgramId && <><AppText variant="label">{t("goals.templates")}</AppText><TextInput accessibilityLabel={t("goals.searchTemplates")} style={styles.input} placeholder={t("goals.searchTemplates")} value={programSearch} onChangeText={setProgramSearch} />{assignPrograms.isFetching && <ShimmerList variant="tile" />}{!assignPrograms.isFetching && <View style={styles.options}>{availablePrograms.map((program) => <Button key={program.id} variant={programId === program.id ? "primary" : "secondary"} onPress={() => setProgramId(program.id)}>{program.name}</Button>)}</View>}{assignPrograms.isError && <Button variant="secondary" onPress={() => void assignPrograms.refetch()}>{t("common.retry")}</Button>}{!assignPrograms.isFetching && !assignPrograms.isError && availablePrograms.length === 0 && <AppText tone="muted">{t("goals.notInAgeRange")}</AppText>}</>}
+    </BottomSheet>
     <BottomSheet visible={sheet === "finalize"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("goals.finalize")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("goals.finalize"), disabled: !finalSummary.trim(), loading: finalize.isPending, onPress: () => void finalize.mutateAsync().catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) ) }}><View style={styles.options}>{childGoalOutcomes.map((outcome) => <Button key={outcome} variant={finalOutcome === outcome ? "primary" : "secondary"} onPress={() => setFinalOutcome(outcome)}>{t(outcome === "ACHIEVED" ? "goals.achieved" : "goals.notAchieved")}</Button>)}</View><TextInput style={[styles.input, styles.summaryInput]} multiline placeholder={t("goals.finalSummary")} value={finalSummary} onChangeText={setFinalSummary} /></BottomSheet>
 
     <BottomSheet

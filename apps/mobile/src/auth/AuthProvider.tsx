@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from "react";
 import { ApiClient, ApiError, type ApiRequestLogEntry } from "@daycare/api-client";
-import type { ChildGender, CurrentUser } from "@daycare/core";
+import type { ChildGender, CurrentUser, ParentFamilyProfileInput } from "@daycare/core";
 import { Platform } from "react-native";
 import { env } from "@/config/env";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -26,6 +26,7 @@ type AuthContextValue = {
   verifyPhoneCode: (code: string) => Promise<{ needsRegistration: boolean }>;
   updateDisplayName: (displayName: string) => Promise<void>;
   updatePersonalDetails: (gender: ChildGender, dateOfBirth: string) => Promise<void>;
+  updateParentFamilyProfile: (input: ParentFamilyProfileInput) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
   selectOrganization: (organizationId: string) => void;
@@ -189,6 +190,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const nextProfile = await api.updateMyProfile({ gender, dateOfBirth });
     setFirebaseProfile(nextProfile);
   };
+  const updateParentFamilyProfile = async (input: ParentFamilyProfileInput) => {
+    const parentFamilyProfile = await api.updateParentFamilyProfile(input);
+    setFirebaseProfile((current) => current ? { ...current, parentFamilyProfile } : current);
+  };
   const changePassword = async (newPassword: string) => {
     if (!localSession) throw new Error(t("auth.passwordUnavailable"));
     await localAuth.changePassword(env.apiUrl, localSession.token, newPassword, t("common.error"));
@@ -211,6 +216,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     verifyPhoneCode,
     updateDisplayName,
     updatePersonalDetails,
+    updateParentFamilyProfile,
     changePassword,
     refreshProfile,
     selectOrganization: setOrganizationId,

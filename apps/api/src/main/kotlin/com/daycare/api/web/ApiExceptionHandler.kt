@@ -9,6 +9,7 @@ import com.daycare.api.service.TenantUserAccountError
 import com.daycare.api.service.DevelopmentEntryMediaError
 import com.daycare.api.service.ParentEnrollmentError
 import com.daycare.api.service.TenantPaymentInstructionError
+import com.daycare.api.service.StaffLeaveRequestError
 import org.springframework.context.MessageSource
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -80,6 +81,18 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             ParentEnrollmentError.CANNOT_RETRY to "error.parentEnrollmentCannotRetry",
             ParentEnrollmentError.CANNOT_CANCEL to "error.parentEnrollmentCannotCancel",
             TenantPaymentInstructionError.NOT_FOUND to "error.paymentInstructionNotFound",
+            StaffLeaveRequestError.NOT_FOUND to "error.staffLeaveRequestNotFound",
+            StaffLeaveRequestError.UNAVAILABLE to "error.staffLeaveRequestUnavailable",
+            StaffLeaveRequestError.EVIDENCE_MISSING to "error.staffLeaveEvidenceMissing",
+            StaffLeaveRequestError.EVIDENCE_TYPE to "error.staffLeaveEvidenceType",
+            StaffLeaveRequestError.EVIDENCE_INVALID to "error.staffLeaveEvidenceInvalid",
+            StaffLeaveRequestError.EVIDENCE_TOO_LARGE to "error.staffLeaveEvidenceTooLarge",
+            StaffLeaveRequestError.START_DATE_PAST to "error.staffLeaveStartDatePast",
+            StaffLeaveRequestError.DATE_RANGE to "error.staffLeaveDateRange",
+            StaffLeaveRequestError.PERIOD_CONFLICT to "error.staffLeavePeriodConflict",
+            StaffLeaveRequestError.REASON_REQUIRED to "error.staffLeaveReasonRequired",
+            StaffLeaveRequestError.NOT_PENDING to "error.staffLeaveNotPending",
+            StaffLeaveRequestError.REJECTION_REASON_REQUIRED to "error.staffLeaveRejectionReasonRequired",
             "You do not have permission for this organization" to "error.organizationAccess",
             "Tenant subscription is not active" to "error.subscriptionInactive",
             "This feature is not enabled for the institution" to "error.featureUnavailable",
@@ -114,6 +127,7 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             "Curriculum activity was not found" to "error.activityNotFound", "Curriculum activity belongs to a different organization" to "error.activityOrganization",
             "Curriculum activity assessment was not found" to "error.activityAssessmentNotFound", "Curriculum activity assessment belongs to a different activity" to "error.activityAssessmentScope",
             "Program is inactive" to "error.developmentProgramInactive", "Program does not match the child's class" to "error.developmentProgramChildScope",
+            "Curriculum program was not found" to "error.curriculumProgramNotFound", "Curriculum program is not available" to "error.curriculumProgramUnavailable", "Development program is not part of the curriculum program" to "error.curriculumProgramDevelopmentProgramScope",
             "Child already has this active program" to "error.goalAlreadyActive", "Goal is already completed" to "error.goalCompleted", "Check-in date must be within the program period" to "error.goalCheckInDateRange",
             "Program was not found" to "error.developmentProgramNotFound", "Program belongs to a different organization" to "error.developmentProgramOrganization", "Program is not global" to "error.developmentProgramNotGlobal", "Global program cannot be modified" to "error.developmentProgramGlobalReadOnly",
             "Child goal was not found" to "error.goalNotFound", "Child goal belongs to a different organization" to "error.goalOrganization",

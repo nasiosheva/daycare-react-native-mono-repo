@@ -7,10 +7,16 @@ enum class Gender { MALE, FEMALE, UNSPECIFIED }
 enum class GoalCheckInOutcome { YES, NO }
 enum class ChildGoalStatus { ACTIVE, COMPLETED }
 enum class ChildGoalOutcome { ACHIEVED, NOT_ACHIEVED }
+enum class StaffLeaveRequestType { LEAVE, SICK }
+enum class StaffLeaveRequestStatus { PENDING, APPROVED, REJECTED, CANCELLED }
+enum class ParentOccupation { PNS, PEGAWAI_SWASTA, PEGAWAI_BUMN, PENGUSAHA, WIRASWASTA, PROFESIONAL, FREELANCER, IBU_RUMAH_TANGGA, TIDAK_BEKERJA, LAINNYA }
+enum class ParentIncomeRange { NO_INCOME, UNDER_3_MILLION, THREE_TO_FIVE_MILLION, FIVE_TO_TEN_MILLION, TEN_TO_TWENTY_MILLION, OVER_TWENTY_MILLION }
 enum class ParentEnrollmentStatus { PENDING_APPROVAL, APPROVED, REJECTED, EXPIRED, CANCELLED }
 enum class ChildCareRole { STAFF, NURSE, MISS }
 enum class AttendanceMethod { MANUAL, QR }
 enum class AttendanceAction { CHECK_IN, CHECK_OUT }
+enum class ChildAbsencePurpose { SICK, OUT_OF_TOWN, FAMILY_EVENT, EMERGENCY, OTHER }
+enum class ChildAbsenceRequestStatus { PENDING, APPROVED, REJECTED, CANCELLED }
 enum class DevelopmentCategory { ACTIVITY, MEAL, NAP, OBSERVATION }
 enum class GoalDomain { KEMANDIRIAN, BAHASA_KOMUNIKASI, KOGNITIF, MOTORIK_HALUS, MOTORIK_KASAR, SOSIAL_EMOSI }
 enum class ServicePlanType { DAILY, WEEKLY, MONTHLY }
