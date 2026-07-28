@@ -49,6 +49,7 @@ data class CreateTenantRequest(
     @field:NotBlank @field:Size(min = 2, max = 100) val staffAdminName: String,
     @field:Email @field:NotBlank val staffAdminEmail: String,
     @field:NotBlank @field:Size(min = 6, max = 128) val staffAdminPassword: String,
+    @field:Size(min = 2, max = 100) val staffAdminUsername: String? = null,
 )
 
 data class TenantPaymentResponse(val id: UUID, val amount: BigDecimal, val status: TenantPaymentStatus, val dueDate: LocalDate, val paidAt: Instant?)
@@ -148,7 +149,7 @@ class PlatformAdministrationService(
             monthlyFee = request.monthlyFee,
         ))
         if (!isTrial) payments.save(TenantPayment(subscriptionId = subscription.id, organizationId = organization.id, amount = request.monthlyFee!!, dueDate = today))
-        val staffAdmin = tenantUserAccounts.create(request.staffAdminName, request.staffAdminEmail, request.staffAdminPassword)
+        val staffAdmin = tenantUserAccounts.create(request.staffAdminName, request.staffAdminEmail, request.staffAdminPassword, request.staffAdminUsername)
         memberships.save(Membership(userId = staffAdmin.id, organizationId = organization.id, role = Role.STAFF_ADMIN, primaryStaffAdmin = true))
         return tenantResponse(organization)
     }

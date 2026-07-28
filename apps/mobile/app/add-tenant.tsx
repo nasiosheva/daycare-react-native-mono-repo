@@ -26,6 +26,7 @@ export default function AddTenantScreen() {
   const [tenantName, setTenantName] = useState("");
   const [branchName, setBranchName] = useState("");
   const [staffAdminName, setStaffAdminName] = useState("");
+  const [staffAdminUsername, setStaffAdminUsername] = useState("");
   const [staffAdminEmail, setStaffAdminEmail] = useState("");
   const [staffAdminPassword, setStaffAdminPassword] = useState("");
   const [selectedInstitutionTypes, setSelectedInstitutionTypes] = useState<string[]>([]);
@@ -47,7 +48,7 @@ export default function AddTenantScreen() {
   };
   const checkout = async () => {
     try {
-      await createTenant.mutateAsync({ tenantName: tenantName.trim(), branchName: branchName.trim(), institutionTypes: selectedInstitutionTypes, subscriptionPlan: plan, ...(hasTrial ? { trialMonths: trialMonthsCount } : { monthlyFee: Number(monthlyFee) }), staffAdminName: staffAdminName.trim(), staffAdminEmail: staffAdminEmail.trim(), staffAdminPassword });
+      await createTenant.mutateAsync({ tenantName: tenantName.trim(), branchName: branchName.trim(), institutionTypes: selectedInstitutionTypes, subscriptionPlan: plan, ...(hasTrial ? { trialMonths: trialMonthsCount } : { monthlyFee: Number(monthlyFee) }), staffAdminName: staffAdminName.trim(), ...(staffAdminUsername.trim() ? { staffAdminUsername: staffAdminUsername.trim() } : {}), staffAdminEmail: staffAdminEmail.trim(), staffAdminPassword });
       notify(t("tenant.checkoutSuccess"), hasTrial ? t("tenant.checkoutTrial", { count: trialMonthsCount }) : t("tenant.checkoutPayment"));
       router.replace("/platform-tenants");
     } catch (error) {
@@ -70,6 +71,7 @@ export default function AddTenantScreen() {
       {!institutionTypes.isLoading && <View style={styles.options}>{institutionTypes.data?.map((type) => <Button key={type.code} variant={selectedInstitutionTypes.includes(type.code) ? "primary" : "secondary"} onPress={() => toggleInstitutionType(type)}>{type.name}</Button>)}</View>}
       {institutionTypes.isError && <Button variant="secondary" onPress={() => institutionTypes.refetch()}>{t("institutionCatalog.reload")}</Button>}
       <TextInput style={styles.input} placeholder={t("tenant.staffAdminName")} value={staffAdminName} onChangeText={setStaffAdminName} />
+      <TextInput style={styles.input} autoCapitalize="none" placeholder={t("tenant.staffAdminUsernameOptional")} value={staffAdminUsername} onChangeText={setStaffAdminUsername} />
       <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder={t("tenant.staffAdminEmail")} value={staffAdminEmail} onChangeText={setStaffAdminEmail} />
       <PasswordInput placeholder={t("tenant.staffAdminPassword")} value={staffAdminPassword} onChangeText={setStaffAdminPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
     </View>}
@@ -87,7 +89,7 @@ export default function AddTenantScreen() {
     {step === 2 && <View style={styles.form}>
       <AppText variant="heading">{t("tenant.stepCheckout")}</AppText>
       <AppText>{tenantName}</AppText>
-      <AppText tone="muted">{branchName} · {staffAdminName} · {staffAdminEmail}</AppText>
+      <AppText tone="muted">{branchName} · {staffAdminName}{staffAdminUsername.trim() ? ` · ${staffAdminUsername.trim()}` : ""} · {staffAdminEmail}</AppText>
       <AppText>{selectedInstitutionTypes.map((type) => institutionTypes.data?.find((item) => item.code === type)?.name ?? type).join(" + ")}</AppText>
       <AppText>{t(tenantSubscriptionPlanKey(plan))}</AppText>
       {hasTrial ? <><AppText>{t("tenant.checkoutTrial", { count: trialMonthsCount })}</AppText><AppText variant="caption" tone="muted">{t("tenant.accountTrial")}</AppText></> : <><AppText>{formatCurrency(Number(monthlyFee))}</AppText><AppText variant="caption" tone="muted">{t("tenant.accountPayment")}</AppText></>}

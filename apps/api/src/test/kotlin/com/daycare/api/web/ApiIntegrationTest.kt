@@ -78,6 +78,7 @@ class ApiIntegrationTest(
                 "monthlyFee" to 250000,
                 "trialMonths" to null,
                 "staffAdminName" to "Admin Tenant",
+                "staffAdminUsername" to "integration-tenant-admin",
                 "staffAdminEmail" to "staff-admin@integration.test",
                 "staffAdminPassword" to "tenant-password",
             )),
@@ -88,7 +89,7 @@ class ApiIntegrationTest(
         val tenantId = json.readTree(tenant.body).path("id").asText()
         assertFalse(tenantId.isBlank())
 
-        val tenantAdminToken = login("staff-admin@integration.test", "tenant-password")
+        val tenantAdminToken = login("integration-tenant-admin", "tenant-password")
         val children = rest.exchange(
             url("/v1/children"),
             HttpMethod.GET,
