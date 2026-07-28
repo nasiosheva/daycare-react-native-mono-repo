@@ -297,8 +297,8 @@ start_android_local_logs() {
     return
   fi
 
-  echo "Streaming Android and React Native logs. Press Ctrl+C to stop the launcher."
-  adb logcat -v time ReactNative:V ReactNativeJS:V AndroidRuntime:E '*:S' &
+  echo "Showing recent API request/response and Android runtime error logs, then streaming live logs. Press Ctrl+C to stop the launcher."
+  adb logcat -T 200 -v time ReactNativeJS:V AndroidRuntime:E System.err:W '*:S' &
   started_android_log_pid=$!
 }
 

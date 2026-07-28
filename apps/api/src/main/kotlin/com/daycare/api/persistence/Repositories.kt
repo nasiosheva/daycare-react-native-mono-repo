@@ -6,10 +6,12 @@ import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.Lock
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
 interface UserProfileRepository : JpaRepository<UserProfile, UUID> { fun findByFirebaseUid(firebaseUid: String): UserProfile?; fun findByEmailIgnoreCase(email: String): UserProfile?; fun findByPhoneNumber(phoneNumber: String): UserProfile?; fun findByUsernameIgnoreCase(username: String): UserProfile? }
+interface RevokedAccessTokenRepository : JpaRepository<RevokedAccessToken, UUID> { fun existsByTokenHash(tokenHash: String): Boolean; fun deleteAllByExpiresAtBefore(expiresAt: Instant) }
 interface MembershipRepository : JpaRepository<Membership, UUID> {
     fun findAllByUserIdAndOrganizationId(userId: UUID, organizationId: UUID): List<Membership>
     fun findAllByUserId(userId: UUID): List<Membership>

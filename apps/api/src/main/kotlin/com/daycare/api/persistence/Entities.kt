@@ -42,6 +42,14 @@ class UserProfile(
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
+@Entity @Table(name = "revoked_access_tokens")
+class RevokedAccessToken(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "token_hash", nullable = false, unique = true, length = 64) var tokenHash: String = "",
+    @Column(name = "expires_at", nullable = false) var expiresAt: Instant = Instant.now(),
+    @Column(name = "revoked_at", nullable = false) var revokedAt: Instant = Instant.now(),
+)
+
 @Entity @Table(name = "organizations")
 class Organization(@Id var id: UUID = UUID.randomUUID(), @Column(nullable = false) var name: String = "", @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now())
 

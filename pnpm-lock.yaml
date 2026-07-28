@@ -80,6 +80,9 @@ importers:
       expo-sharing:
         specifier: ~13.1.5
         version: 13.1.5(expo@53.0.27(@babel/core@7.29.7)(@expo/metro-runtime@5.0.5(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0)))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0))
+      expo-splash-screen:
+        specifier: ~0.30.10
+        version: 0.30.10(expo@53.0.27(@babel/core@7.29.7)(@expo/metro-runtime@5.0.5(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0)))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0))
       firebase:
         specifier: ^12.0.0
         version: 12.16.0
@@ -3115,6 +3118,11 @@ packages:
 
   expo-sharing@13.1.5:
     resolution: {integrity: sha512-X/5sAEiWXL2kdoGE3NO5KmbfcmaCWuWVZXHu8OQef7Yig4ZgHFkGD11HKJ5KqDrDg+SRZe4ISd6MxE7vGUgm4w==}
+    peerDependencies:
+      expo: '*'
+
+  expo-splash-screen@0.30.10:
+    resolution: {integrity: sha512-Tt9va/sLENQDQYeOQ6cdLdGvTZ644KR3YG9aRlnpcs2/beYjOX1LHT510EGzVN9ljUTg+1ebEo5GGt2arYtPjw==}
     peerDependencies:
       expo: '*'
 
@@ -8958,6 +8966,13 @@ snapshots:
   expo-sharing@13.1.5(expo@53.0.27(@babel/core@7.29.7)(@expo/metro-runtime@5.0.5(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0)))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0)):
     dependencies:
       expo: 53.0.27(@babel/core@7.29.7)(@expo/metro-runtime@5.0.5(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0)))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0)
+
+  expo-splash-screen@0.30.10(expo@53.0.27(@babel/core@7.29.7)(@expo/metro-runtime@5.0.5(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0)))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0)):
+    dependencies:
+      '@expo/prebuild-config': 9.0.12
+      expo: 53.0.27(@babel/core@7.29.7)(@expo/metro-runtime@5.0.5(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0)))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0)
+    transitivePeerDependencies:
+      - supports-color
 
   expo-updates-interface@1.1.0(expo@53.0.27(@babel/core@7.29.7)(@expo/metro-runtime@5.0.5(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0)))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0)):
     dependencies:

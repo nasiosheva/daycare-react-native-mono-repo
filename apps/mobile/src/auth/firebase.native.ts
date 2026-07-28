@@ -1,4 +1,4 @@
-import auth, { type FirebaseAuthTypes } from "@react-native-firebase/auth";
+import { getAuth, getIdToken, GoogleAuthProvider, onAuthStateChanged, signInWithCredential, signInWithPhoneNumber, signOut, updateProfile, type FirebaseAuthTypes } from "@react-native-firebase/auth";
 import { GoogleSignin, isSuccessResponse } from "@react-native-google-signin/google-signin";
 import { env } from "@/config/env";
 import type { AuthGateway, AuthUser, PhoneChallenge } from "./types";
@@ -12,8 +12,10 @@ function configureGoogleSignIn() {
   GoogleSignin.configure({ webClientId: env.googleWebClientId });
 }
 
+const authentication = getAuth();
+
 export const firebaseAuth: AuthGateway = {
-  observe(listener) { return auth().onAuthStateChanged((user) => listener(toUser(user))); },
+  observe(listener) { return onAuthStateChanged(authentication, (user) => listener(toUser(user))); },
   async signInWithGoogle() {
     configureGoogleSignIn();
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
@@ -21,20 +23,20 @@ export const firebaseAuth: AuthGateway = {
     if (!isSuccessResponse(response)) return;
     const idToken = response.idToken;
     if (!idToken) throw new Error("Google did not return an ID token.");
-    await auth().signInWithCredential(auth.GoogleAuthProvider.credential(idToken));
+    await signInWithCredential(authentication, GoogleAuthProvider.credential(idToken));
   },
   async sendPhoneCode(phoneNumber): Promise<PhoneChallenge> {
-    const confirmation = await auth().signInWithPhoneNumber(phoneNumber);
+    const confirmation = await signInWithPhoneNumber(authentication, phoneNumber);
     return { confirmation: async (code) => { await confirmation.confirm(code); } };
   },
   async updateDisplayName(displayName) {
-    const currentUser = auth().currentUser;
+    const currentUser = authentication.currentUser;
     if (!currentUser) throw new Error("Tidak ada akun Firebase yang sedang masuk.");
-    await currentUser.updateProfile({ displayName });
-    const user = toUser(auth().currentUser);
+    await updateProfile(currentUser, { displayName });
+    const user = toUser(authentication.currentUser);
     if (!user) throw new Error("Profil Firebase tidak dapat diperbarui.");
     return user;
   },
-  signOut: () => auth().signOut(),
-  async getIdToken(forceRefresh = false) { return auth().currentUser?.getIdToken(forceRefresh) ?? null; },
+  signOut: () => signOut(authentication),
+  async getIdToken(forceRefresh = false) { return authentication.currentUser ? getIdToken(authentication.currentUser, forceRefresh) : null; },
 };

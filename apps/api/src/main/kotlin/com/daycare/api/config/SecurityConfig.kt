@@ -1,6 +1,7 @@
 package com.daycare.api.config
 
 import com.daycare.api.service.LOCAL_TOKEN_ISSUER
+import com.daycare.api.service.AccessTokenRevocationService
 import com.daycare.api.service.LocalJwtService
 import com.nimbusds.jwt.SignedJWT
 import org.springframework.beans.factory.annotation.Value
@@ -47,11 +48,13 @@ class SecurityConfig {
     @Bean
     fun jwtDecoder(
         localJwtService: LocalJwtService,
+        tokenRevocations: AccessTokenRevocationService,
         @Value("\${spring.security.oauth2.resourceserver.jwt.issuer-uri}") firebaseIssuer: String,
     ): JwtDecoder {
         val localDecoder: JwtDecoder = localJwtService.decoder()
         val firebaseDecoder: JwtDecoder = JwtDecoders.fromIssuerLocation(firebaseIssuer)
         return JwtDecoder { token ->
+            if (tokenRevocations.isRevoked(token)) throw JwtException("Token has been revoked")
             val issuer = try { SignedJWT.parse(token).jwtClaimsSet.issuer } catch (error: Exception) { throw JwtException("Invalid token", error) }
             if (issuer == LOCAL_TOKEN_ISSUER) localDecoder.decode(token) else firebaseDecoder.decode(token)
         }
