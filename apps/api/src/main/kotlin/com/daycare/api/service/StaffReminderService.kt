@@ -111,10 +111,14 @@ class StaffReminderService(
     @Scheduled(cron = "0 * * * * *")
     @Transactional(readOnly = true)
     fun sendFallbackPushes() {
-        reminders.findAllByActiveTrue().forEach { reminder ->
-            deviceTokens.findAllByUserIdAndOrganizationId(reminder.userId, reminder.organizationId).forEach { device ->
+        val activeReminders = reminders.findAllByActiveTrue()
+        if (activeReminders.isEmpty()) return
+        val devicesByUser = deviceTokens.findAllByUserIdIn(activeReminders.map { it.userId }.toSet()).groupBy { it.userId }
+        val schedulesByReminderAndInstallation = deviceSchedules.findAllByReminderIdIn(activeReminders.map { it.id }.toSet()).associateBy { it.reminderId to it.installationId }
+        activeReminders.forEach { reminder ->
+            (devicesByUser[reminder.userId] ?: emptyList()).filter { it.organizationId == reminder.organizationId }.forEach { device ->
                 val localTime = runCatching { ZonedDateTime.now(ZoneId.of(device.timeZone ?: "UTC")) }.getOrElse { ZonedDateTime.now(ZoneId.of("UTC")) }
-                val locallyScheduled = device.installationId?.let { installationId -> deviceSchedules.findByReminderIdAndInstallationId(reminder.id, installationId)?.ruleVersion == reminder.ruleVersion } ?: false
+                val locallyScheduled = device.installationId?.let { installationId -> schedulesByReminderAndInstallation[reminder.id to installationId]?.ruleVersion == reminder.ruleVersion } ?: false
                 if (shouldSendReminderFallback(reminder, localTime, locallyScheduled)) notifications.sendPush(device, reminder.organizationId, reminder.title, reminder.description, reminder.actionPath)
             }
         }

@@ -1039,4 +1039,3 @@ INSERT INTO development_categories (id, organization_id, name, active, created_b
   (gen_random_uuid(), NULL, 'Tidur', TRUE, NULL, now()),
   (gen_random_uuid(), NULL, 'Observasi', TRUE, NULL, now())
 ON CONFLICT (lower(name)) WHERE organization_id IS NULL DO NOTHING;
-

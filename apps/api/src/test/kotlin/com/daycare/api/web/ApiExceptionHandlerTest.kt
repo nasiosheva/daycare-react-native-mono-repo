@@ -11,6 +11,7 @@ import com.daycare.api.service.LocalAuthenticationError
 import com.daycare.api.service.FirebaseIdentityError
 import com.daycare.api.service.TenantUserAccountError
 import com.daycare.api.service.DevelopmentEntryMediaError
+import com.daycare.api.service.StaffLeaveRequestError
 import java.util.Locale
 
 class ApiExceptionHandlerTest {
@@ -104,6 +105,16 @@ class ApiExceptionHandlerTest {
     }
 
     @Test
+    fun `localizes Staff leave request validation`() {
+        LocaleContextHolder.setLocale(Locale.ENGLISH)
+
+        val problem = handler.invalidRequest(IllegalArgumentException(StaffLeaveRequestError.PERIOD_CONFLICT))
+
+        assertEquals("The request period overlaps an active request.", problem.detail)
+        assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
+    }
+
+    @Test
     fun `localizes staff edit scope validation`() {
         LocaleContextHolder.setLocale(Locale.ENGLISH)
 
@@ -120,6 +131,36 @@ class ApiExceptionHandlerTest {
         val problem = handler.invalidRequest(IllegalArgumentException("Staff member cannot place this child in the selected classroom"))
 
         assertEquals("The staff member can select only a class group within their assignment scope.", problem.detail)
+        assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
+    }
+
+    @Test
+    fun `localizes a curriculum to development program mismatch`() {
+        LocaleContextHolder.setLocale(Locale.ENGLISH)
+
+        val problem = handler.invalidRequest(IllegalArgumentException("Development program is not part of the curriculum program"))
+
+        assertEquals("The development program is not included in the selected curriculum program.", problem.detail)
+        assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
+    }
+
+    @Test
+    fun `localizes a curriculum program not found`() {
+        LocaleContextHolder.setLocale(Locale.ENGLISH)
+
+        val problem = handler.invalidRequest(IllegalArgumentException("Curriculum program was not found"))
+
+        assertEquals("The curriculum program was not found.", problem.detail)
+        assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
+    }
+
+    @Test
+    fun `localizes an unavailable curriculum program`() {
+        LocaleContextHolder.setLocale(Locale.ENGLISH)
+
+        val problem = handler.invalidRequest(IllegalArgumentException("Curriculum program is not available"))
+
+        assertEquals("The curriculum program is unavailable for this tenant.", problem.detail)
         assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
     }
 }

@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { StyleSheet, View } from "react-native";
-import { AppText, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, NavigationCard, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -34,22 +34,25 @@ export default function StaffOperationsScreen() {
         description={t("staffOperations.developmentDescription")}
         onPress={() => router.push("/development")}
       />
+      <MenuItem
+        title={t("absence.menu")}
+        description={t("absence.menuDescription")}
+        onPress={() => router.push("/absence-requests")}
+      />
     </View>
   </AppScreen>;
 }
 
 function MenuItem({ title, description, onPress }: { title: string; description: string; onPress: () => void }) {
-  return <View style={styles.menuItem}>
+  return <NavigationCard accessibilityLabel={title} onPress={onPress}>
     <View style={styles.menuContent}>
       <AppText variant="h5">{title}</AppText>
       <AppText variant="bodySmall" tone="muted">{description}</AppText>
     </View>
-    <Button variant="secondary" onPress={onPress}>›</Button>
-  </View>;
+  </NavigationCard>;
 }
 
 const styles = StyleSheet.create({
   content: { gap: spacing.md },
-  menuItem: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   menuContent: { flex: 1, gap: spacing.xs },
 });

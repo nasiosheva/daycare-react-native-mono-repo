@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import * as ExpoImagePicker from "expo-image-picker";
+import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import {
   type ImagePickerController,
   type ImagePickerError,
@@ -10,6 +11,8 @@ import {
   IMAGE_PICKER_QUALITY,
   createPickedImages,
 } from "./types";
+
+const MAX_IMAGE_DIMENSION = 1600;
 
 const libraryOptions: ExpoImagePicker.ImagePickerOptions = {
   allowsEditing: false,
@@ -33,10 +36,18 @@ function toError(code: ImagePickerErrorCode, error?: unknown): ImagePickerError 
   return { code, message: error instanceof Error ? error.message : "Image picking is unavailable." };
 }
 
-function toPickedImages(result: ExpoImagePicker.ImagePickerResult, source: PickedImageSource): PickedImage[] {
+async function shrinkPickedImage(image: PickedImage): Promise<PickedImage> {
+  if (Math.max(image.width, image.height) <= MAX_IMAGE_DIMENSION) return image;
+  const resize = image.width >= image.height ? { width: MAX_IMAGE_DIMENSION } : { height: MAX_IMAGE_DIMENSION };
+  const result = await manipulateAsync(image.uri, [{ resize }], { compress: IMAGE_PICKER_QUALITY, format: SaveFormat.JPEG });
+  return { ...image, uri: result.uri, width: result.width, height: result.height, mimeType: "image/jpeg" };
+}
+
+async function toPickedImages(result: ExpoImagePicker.ImagePickerResult, source: PickedImageSource): Promise<PickedImage[]> {
   if (result.canceled || !result.assets) return [];
   const limit = source === "camera" ? 1 : IMAGE_PICKER_MAX_SELECTION;
-  return createPickedImages(result.assets, source, new Date(), limit);
+  const images = createPickedImages(result.assets, source, new Date(), limit);
+  return Promise.all(images.map(shrinkPickedImage));
 }
 
 function isErrorResult(result: ExpoImagePicker.ImagePickerResult | ExpoImagePicker.ImagePickerErrorResult): result is ExpoImagePicker.ImagePickerErrorResult {
@@ -48,8 +59,8 @@ export function useImagePicker(): ImagePickerController {
   const [images, setImages] = useState<PickedImage[]>([]);
   const [error, setError] = useState<ImagePickerError | null>(null);
 
-  const applyResult = useCallback((result: ExpoImagePicker.ImagePickerResult, source: PickedImageSource): PickedImage[] => {
-    const nextImages = toPickedImages(result, source);
+  const applyResult = useCallback(async (result: ExpoImagePicker.ImagePickerResult, source: PickedImageSource): Promise<PickedImage[]> => {
+    const nextImages = await toPickedImages(result, source);
     if (result.canceled) {
       setStatus("idle");
       return [];
@@ -66,7 +77,7 @@ export function useImagePicker(): ImagePickerController {
     setError(null);
 
     try {
-      return applyResult(await ExpoImagePicker.launchImageLibraryAsync(libraryOptions), "library");
+      return await applyResult(await ExpoImagePicker.launchImageLibraryAsync(libraryOptions), "library");
     } catch (nextError) {
       setError(toError("picker_failed", nextError));
       setStatus("error");
@@ -87,7 +98,7 @@ export function useImagePicker(): ImagePickerController {
       }
 
       setStatus("picking");
-      return applyResult(await ExpoImagePicker.launchCameraAsync(cameraOptions), "camera")[0] ?? null;
+      return (await applyResult(await ExpoImagePicker.launchCameraAsync(cameraOptions), "camera"))[0] ?? null;
     } catch (nextError) {
       setError(toError("picker_failed", nextError));
       setStatus("error");
@@ -105,7 +116,7 @@ export function useImagePicker(): ImagePickerController {
         return [];
       }
 
-      return applyResult(result, "recovered");
+      return await applyResult(result, "recovered");
     } catch (nextError) {
       setError(toError("recovery_failed", nextError));
       setStatus("error");

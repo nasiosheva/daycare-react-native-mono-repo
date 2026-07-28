@@ -49,7 +49,22 @@ data class ParentEnrollmentRetryRequest(val bookingDates: List<LocalDate> = empt
 data class ParentTenantPlanResponse(val id: UUID, val name: String, val type: com.daycare.api.domain.ServicePlanType, val price: java.math.BigDecimal, val creditCount: Int?, val bookingRequiresApproval: Boolean, val dailyCapacity: Int?)
 data class ParentTenantBranchResponse(val id: UUID, val name: String, val dailyCapacity: Int?)
 data class ParentTenantCatalogResponse(val organizationId: UUID, val organizationName: String, val branches: List<ParentTenantBranchResponse>, val plans: List<ParentTenantPlanResponse>)
-data class ParentEnrollmentResponse(val id: UUID, val organizationId: UUID, val branchId: UUID, val childId: UUID, val childName: String, val invoiceId: UUID?, val entitlementId: UUID?, val status: ParentEnrollmentStatus, val invoiceStatus: InvoiceStatus?, val planName: String, val totalAmount: java.math.BigDecimal, val rejectionReason: String?, val createdAt: Instant)
+data class ParentEnrollmentResponse(
+    val id: UUID,
+    val organizationId: UUID,
+    val branchId: UUID,
+    val childId: UUID,
+    val childName: String,
+    val invoiceId: UUID?,
+    val entitlementId: UUID?,
+    val status: ParentEnrollmentStatus,
+    val invoiceStatus: InvoiceStatus?,
+    val planName: String,
+    val totalAmount: java.math.BigDecimal,
+    val rejectionReason: String?,
+    val createdAt: Instant,
+    val parentFamilyProfile: ParentFamilyProfileForTenantResponse? = null,
+)
 
 object ParentEnrollmentError {
     const val ALREADY_ACTIVE = "parent_enrollment.already_active"
@@ -82,6 +97,7 @@ class ParentEnrollmentService(
     private val notifications: NotificationService,
     private val branchFilters: BranchListFilterService,
     private val paymentInstructions: TenantPaymentInstructionService,
+    private val familyProfileVisibility: ParentFamilyProfileVisibilityService,
 ) {
     @Transactional
     fun catalog(jwt: Jwt): List<ParentTenantCatalogResponse> {
@@ -131,7 +147,7 @@ class ParentEnrollmentService(
         val query = search?.trim().orEmpty()
         return enrollments.findAllByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId, ParentEnrollmentStatus.PENDING_APPROVAL)
             .filter { filter.branchId == null || it.branchId == filter.branchId }
-            .map(::response)
+            .map { response(it, includeParentFamilyProfile = true) }
             .filter { query.isEmpty() || it.childName.contains(query, ignoreCase = true) || it.planName.contains(query, ignoreCase = true) }
     }
 
@@ -214,10 +230,10 @@ class ParentEnrollmentService(
     private fun notifyStaffAdmins(organizationId: UUID, title: String, body: String, actionPath: String) {
         memberships.findAllByOrganizationId(organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.forEach { notifications.notify(organizationId, it.userId, title, body, actionPath, setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.BOOKINGS)) }
     }
-    private fun response(enrollment: ParentEnrollment): ParentEnrollmentResponse {
+    private fun response(enrollment: ParentEnrollment, includeParentFamilyProfile: Boolean = false): ParentEnrollmentResponse {
         val child = children.findById(enrollment.childId).orElseThrow { IllegalArgumentException("Child was not found") }
         val invoice = enrollment.invoiceId?.let { invoices.findById(it).orElseThrow { IllegalArgumentException("Invoice was not found") } }
-        return ParentEnrollmentResponse(enrollment.id, enrollment.organizationId, enrollment.branchId, child.id, child.fullName(), enrollment.invoiceId, enrollment.entitlementId, enrollment.status, invoice?.status, enrollment.selectedPlanName, enrollment.selectedTotalAmount, enrollment.rejectionReason, enrollment.createdAt)
+        return ParentEnrollmentResponse(enrollment.id, enrollment.organizationId, enrollment.branchId, child.id, child.fullName(), enrollment.invoiceId, enrollment.entitlementId, enrollment.status, invoice?.status, enrollment.selectedPlanName, enrollment.selectedTotalAmount, enrollment.rejectionReason, enrollment.createdAt, if (includeParentFamilyProfile) familyProfileVisibility.forTenant(enrollment.organizationId, enrollment.userId) else null)
     }
     private fun Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")
 }

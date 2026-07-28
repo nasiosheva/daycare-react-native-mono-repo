@@ -2,10 +2,12 @@ import { useEffect, useState, type ReactElement } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ParentFamilyProfileForTenant } from "@daycare/api-client";
 import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useBookingApproval } from "@/booking/useBooking";
 import { useI18n } from "@/i18n/I18nProvider";
+import type { TranslationKey } from "@/i18n/translations";
 import { useAuth } from "@/auth/AuthProvider";
 import { downloadPaymentProofImage } from "@/payment-proof/downloadImage";
 
@@ -77,6 +79,7 @@ export default function BookingApprovalsScreen() {
         key={enrollment.id}
         title={enrollment.childName}
         description={`${enrollment.planName} · ${formatCurrency(enrollment.totalAmount)} · ${formatDate(enrollment.createdAt)}`}
+        parentFamilyProfile={enrollment.parentFamilyProfile}
         actions={canDecideEnrollment ? <View style={styles.actionsRow}>
           <Button style={styles.actionButton} onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: true, name: enrollment.childName })}>{t("approval.approve")}</Button>
           <Button style={styles.actionButton} variant="danger" onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: false, name: enrollment.childName })}>{t("approval.reject")}</Button>
@@ -134,13 +137,31 @@ function ApprovalSection({ title, description, children }: { title: string; desc
   </View>;
 }
 
-function ApprovalCard({ title, description, detail, actions }: { title: string; description: string; detail?: string; actions?: ReactElement }) {
+function ApprovalCard({ title, description, detail, actions, parentFamilyProfile }: { title: string; description: string; detail?: string; actions?: ReactElement; parentFamilyProfile?: ParentFamilyProfileForTenant | null }) {
   return <View style={styles.card}>
     <AppText variant="heading">{title}</AppText>
     <AppText tone="muted">{description}</AppText>
     {detail && <AppText variant="label">{detail}</AppText>}
+    {parentFamilyProfile && <ParentFamilyProfileSummary profile={parentFamilyProfile} />}
     {actions}
   </View>;
+}
+
+function ParentFamilyProfileSummary({ profile }: { profile: ParentFamilyProfileForTenant }) {
+  const { t } = useI18n();
+  const husband = parentFamilyDetails(profile.husbandOccupation, profile.husbandIncomeRange, t);
+  const wife = parentFamilyDetails(profile.wifeOccupation, profile.wifeIncomeRange, t);
+  if (!husband && !wife) return null;
+  return <View style={styles.parentFamilyProfile}>
+    <AppText variant="label">{t("parentFamily.title")}</AppText>
+    {husband && <AppText tone="muted">{t("parentFamily.husband")}: {husband}</AppText>}
+    {wife && <AppText tone="muted">{t("parentFamily.wife")}: {wife}</AppText>}
+  </View>;
+}
+
+function parentFamilyDetails(occupation: ParentFamilyProfileForTenant["husbandOccupation"], incomeRange: ParentFamilyProfileForTenant["husbandIncomeRange"], t: (key: TranslationKey) => string) {
+  const values = [occupation ? t(`parentFamily.occupation.${occupation}` as TranslationKey) : null, incomeRange ? t(`parentFamily.income.${incomeRange}` as TranslationKey) : null].filter((value): value is string => value !== null);
+  return values.length ? values.join(" · ") : null;
 }
 
 function BranchTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
@@ -161,6 +182,7 @@ const styles = StyleSheet.create({
   section: { gap: spacing.sm },
   sectionHeader: { gap: spacing.xs },
   card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  parentFamilyProfile: { gap: spacing.xs, paddingTop: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
   actionsRow: { flexDirection: "row", gap: spacing.sm },
   actionButton: { flex: 1 },
   preview: { width: "100%", height: 280, borderRadius: radius.md, backgroundColor: colors.surfaceTint },

@@ -11,8 +11,17 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.Locale
 
-data class InstitutionTypeDefinitionResponse(val code: String, val name: String)
-data class CreateInstitutionTypeDefinitionRequest(@field:NotBlank @field:Size(max = 100) val name: String)
+data class InstitutionTypeDefinitionResponse(
+    val code: String,
+    val name: String,
+    val parentOccupationVisible: Boolean,
+    val parentIncomeRangeVisible: Boolean,
+)
+data class CreateInstitutionTypeDefinitionRequest(
+    @field:NotBlank @field:Size(max = 100) val name: String,
+    val parentOccupationVisible: Boolean? = null,
+    val parentIncomeRangeVisible: Boolean? = null,
+)
 
 @Service
 class InstitutionTypeCatalogService(
@@ -33,7 +42,12 @@ class InstitutionTypeCatalogService(
         require(!types.existsByNameIgnoreCase(name)) { "Institution type already exists" }
         val code = normalizeCode(name)
         require(!types.existsById(code)) { "Institution type already exists" }
-        return response(types.save(InstitutionTypeDefinition(code = code, name = name)))
+        return response(types.save(InstitutionTypeDefinition(
+            code = code,
+            name = name,
+            parentOccupationVisible = request.parentOccupationVisible ?: false,
+            parentIncomeRangeVisible = request.parentIncomeRangeVisible ?: false,
+        )))
     }
 
     @Transactional
@@ -44,6 +58,8 @@ class InstitutionTypeCatalogService(
         val matchingType = types.findByNameIgnoreCase(name)
         require(matchingType == null || matchingType.code == type.code) { "Institution type already exists" }
         type.name = name
+        request.parentOccupationVisible?.let { type.parentOccupationVisible = it }
+        request.parentIncomeRangeVisible?.let { type.parentIncomeRangeVisible = it }
         return response(type)
     }
 
@@ -72,5 +88,5 @@ class InstitutionTypeCatalogService(
 
     private fun normalizeExistingCode(code: String) = code.trim().uppercase(Locale.ROOT)
 
-    private fun response(type: InstitutionTypeDefinition) = InstitutionTypeDefinitionResponse(type.code, type.name)
+    private fun response(type: InstitutionTypeDefinition) = InstitutionTypeDefinitionResponse(type.code, type.name, type.parentOccupationVisible, type.parentIncomeRangeVisible)
 }

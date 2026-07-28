@@ -104,10 +104,15 @@ export default function ProfileScreen() {
       <AppText variant="bodySmall" tone="muted">{t("profile.manageTenantsDescription")}</AppText>
       <AppText>{t("profile.activeTenantsSummary", { count: parentMemberships.length })}</AppText>
     </NavigationCard>}
+    {profile?.registrationRole === "PARENT" && <NavigationCard accessibilityLabel={t("parentFamily.cardTitle")} onPress={() => router.push("/parent-family-profile" as never)}>
+      <AppText variant="h5">{t("parentFamily.cardTitle")}</AppText>
+      <AppText variant="bodySmall" tone="muted">{t("parentFamily.cardDescription")}</AppText>
+    </NavigationCard>}
 
     <View style={styles.form}>
       <AppText variant="heading">{t("profile.personal")}</AppText>
-      {organizationId && !isStaffAdmin && <Button variant="secondary" onPress={() => router.push("/notifications" as never)}>{t("profile.notifications")}</Button>}
+      {organizationId && membership?.role !== "STAFF_ADMIN" && membership?.role !== "STAFF" && <Button variant="secondary" onPress={() => router.push("/notifications" as never)}>{t("profile.notifications")}</Button>}
+      {membership?.role === "STAFF" && <NavigationCard accessibilityLabel={t("staffLeave.profileTitle")} onPress={() => router.push("/staff-leave-requests" as never)}><AppText variant="h5">{t("staffLeave.profileTitle")}</AppText><AppText variant="bodySmall" tone="muted">{t("staffLeave.profileDescription")}</AppText></NavigationCard>}
       {membership?.role === "STAFF" && <Button variant="secondary" onPress={() => router.push("/staff-reminders" as never)}>{t("profile.reminders")}</Button>}
       <Button variant="secondary" onPress={() => setProfileSheet("profile")}>{t("profile.savePersonal")}</Button>
       {usesPassword && <Button variant="secondary" onPress={() => setProfileSheet("password")}>{t("profile.changePassword")}</Button>}

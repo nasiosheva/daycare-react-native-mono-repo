@@ -462,14 +462,16 @@ class BillingService(
 
     private fun reconcileExpiredInvoices(organizationId: UUID) {
         val expired = invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())
+        if (expired.isEmpty()) return
+        val entitlementsByInvoiceId = entitlements.findAllByInvoiceIdIn(expired.map { it.id }).groupBy { it.invoiceId }
         expired.forEach { invoice ->
             invoice.status = InvoiceStatus.OVERDUE
-            val invoiceEntitlements = entitlements.findAllByInvoiceId(invoice.id)
+            val invoiceEntitlements = entitlementsByInvoiceId[invoice.id] ?: emptyList()
             invoiceEntitlements.forEach { it.status = EntitlementStatus.EXPIRED }
-            capacity.releaseForEntitlements(invoiceEntitlements.map { it.id })
-            discountRedemptions.deleteAllByInvoiceId(invoice.id)
             if (invoiceEntitlements.isNotEmpty()) events.publishEvent(InvoiceExpiredEvent(invoice.id))
         }
+        capacity.releaseForEntitlements(entitlementsByInvoiceId.values.flatten().map { it.id })
+        discountRedemptions.deleteAllByInvoiceIdIn(expired.map { it.id })
     }
 
     private fun requireAvailableDates(organizationId: UUID, childId: UUID, dates: List<LocalDate>) {

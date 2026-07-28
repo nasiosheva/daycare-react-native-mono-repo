@@ -54,9 +54,14 @@ function ProfileLoadFailure({ error }: { error: Error }) {
 
 function StaffHome({ displayName, organizationName, managedChildren, tasksByChildId }: { displayName: string; organizationName: string; managedChildren: ReturnType<typeof useChildren>; tasksByChildId: ReturnType<typeof useStaffDailyTasks> }) {
   const router = useRouter();
+  const { api, organizationId } = useAuth();
   const { t } = useI18n();
+  const notifications = useQuery({ queryKey: ["notifications", organizationId], queryFn: () => api.notifications(), enabled: Boolean(organizationId) });
+  const unreadNotificationsCount = unreadNotificationCount(notifications.data ?? []);
+  const unreadNotificationBadgeLabel = unreadNotificationBadge(unreadNotificationsCount);
+  const unreadNotificationsLabel = unreadNotificationBadgeLabel ? t("notifications.unreadCount", { count: unreadNotificationsCount }) : t("notifications.title");
   return <AppScreen><View style={styles.content}>
-    <View style={styles.staffToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.STAFF")}</AppText></View><Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable></View>
+    <View style={styles.staffToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.STAFF")}</AppText></View><Pressable accessibilityRole="button" accessibilityLabel={unreadNotificationsLabel} hitSlop={spacing.sm} onPress={() => router.push("/notifications")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="notifications-outline" size={28} color={colors.primary} />{unreadNotificationBadgeLabel && <View pointerEvents="none" style={styles.notificationBadge}><AppText variant="caption" style={styles.notificationBadgeText}>{unreadNotificationBadgeLabel}</AppText></View>}</Pressable><Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable></View>
     <AppText variant="heading">{t("home.managedChildren")}</AppText>
     {managedChildren.isFetching && <ShimmerList variant="tile" />}
     {!managedChildren.isFetching && managedChildren.data?.map((child) => {
@@ -96,6 +101,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
         <View style={styles.parentActions}>
           <Button variant="secondary" onPress={() => router.push({ pathname: "/development", params: { childId: child.id } })}>{t("development.title")}</Button>
           <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-qr", params: { childId: child.id } })}>{t("qr.title")}</Button>
+          <Button variant="secondary" onPress={() => router.push({ pathname: "/absence-requests", params: { childId: child.id } })}>{t("absence.menu")}</Button>
         </View>
       </View>)}
       {!childrenUnavailable && summary.children.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
@@ -228,6 +234,7 @@ function PlatformAdminHome() {
   const { api } = useAuth();
   const { t, formatCurrency } = useI18n();
   const tenants = useQuery({ queryKey: ["platform-tenants"], queryFn: () => api.tenants() });
+  const readiness = useQuery({ queryKey: ["platform-tenant-readiness"], queryFn: () => api.tenantReadiness() });
   const activeTenants = tenants.data?.filter((tenant) => tenant.subscriptionStatus === "ACTIVE") ?? [];
   const pendingTenants = tenants.data?.filter((tenant) => tenant.subscriptionStatus === "PENDING_PAYMENT") ?? [];
 
@@ -243,6 +250,13 @@ function PlatformAdminHome() {
     </View>
     {tenants.isFetching && <ShimmerList />}
     {tenants.isError && <AppText tone="danger">{t("home.tenantsError")}</AppText>}
+    <NavigationCard accessibilityLabel={t("tenantReadiness.open")} onPress={() => router.push("/tenant-readiness")}>
+      <AppText variant="h5">{t("tenantReadiness.menu")}</AppText>
+      <AppText variant="bodySmall" tone="muted">{t("tenantReadiness.menuDescription")}</AppText>
+      {readiness.isFetching && <AppText variant="caption" tone="muted">{t("common.loading")}</AppText>}
+      {readiness.isError && <AppText variant="caption" tone="danger">{t("tenantReadiness.loadFailed")}</AppText>}
+      {readiness.data && <AppText variant="caption" tone={readiness.data.needsAttentionCount > 0 ? "danger" : "muted"}>{readiness.data.needsAttentionCount > 0 ? t("tenantReadiness.needsAttentionSummary", { count: readiness.data.needsAttentionCount }) : t("tenantReadiness.allReadySummary", { count: readiness.data.readyCount })}</AppText>}
+    </NavigationCard>
     {!tenants.isFetching && <><TenantSection title={t("home.activeTenants")} tenants={activeTenants} emptyMessage={t("home.noActiveTenants")} formatCurrency={formatCurrency} t={t} />
     <TenantSection title={t("home.pendingPayments")} tenants={pendingTenants} emptyMessage={t("home.noPendingPayments")} formatCurrency={formatCurrency} t={t} /></>}
   </View></AppScreen>;

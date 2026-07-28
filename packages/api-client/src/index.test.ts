@@ -112,20 +112,41 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/auth/identity-check", expect.anything());
   });
 
+  it("updates the signed-in Parent family profile without an organization header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
+    const input = { husbandOccupation: "PNS" as const, husbandIncomeRange: "THREE_TO_FIVE_MILLION" as const, wifeDateOfBirth: "1994-06-10" };
+
+    await client.updateParentFamilyProfile(input);
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/parent-family-profile", expect.objectContaining({ method: "PUT", body: JSON.stringify(input), headers: expect.not.objectContaining({ "X-Organization-Id": expect.anything() }) }));
+  });
+
   it("lists and creates Platform-managed institution types", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
     vi.stubGlobal("fetch", fetchMock);
     const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
 
     await client.institutionTypes();
-    await client.createInstitutionType({ name: "Taman Bermain" });
-    await client.updateInstitutionType("TAMAN_BERMAIN", { name: "Kelompok Bermain" });
+    await client.createInstitutionType({ name: "Taman Bermain", parentOccupationVisible: true, parentIncomeRangeVisible: false });
+    await client.updateInstitutionType("TAMAN_BERMAIN", { name: "Kelompok Bermain", parentOccupationVisible: true, parentIncomeRangeVisible: true });
     await client.deleteInstitutionType("TAMAN_BERMAIN");
 
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types", expect.anything());
-    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types", expect.objectContaining({ method: "POST", body: JSON.stringify({ name: "Taman Bermain" }) }));
-    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types/TAMAN_BERMAIN", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ name: "Kelompok Bermain" }) }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types", expect.objectContaining({ method: "POST", body: JSON.stringify({ name: "Taman Bermain", parentOccupationVisible: true, parentIncomeRangeVisible: false }) }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types/TAMAN_BERMAIN", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ name: "Kelompok Bermain", parentOccupationVisible: true, parentIncomeRangeVisible: true }) }));
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types/TAMAN_BERMAIN", expect.objectContaining({ method: "DELETE" }));
+  });
+
+  it("loads the Platform Admin tenant-readiness dashboard", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ readyCount: 1, needsAttentionCount: 1, tenants: [] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
+
+    await client.tenantReadiness();
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/tenant-readiness", expect.anything());
   });
 
   it("updates a native device push-notification mute preference", async () => {
@@ -151,6 +172,22 @@ describe("ApiClient", () => {
     await client.children({ branchId: "branch-id", learningLevelId: "level-id", classroomId: "classroom-id" });
 
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/children?branchId=branch-id&learningLevelId=level-id&classroomId=classroom-id", expect.anything());
+  });
+
+  it("creates and decides a child absence request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await client.createChildAbsenceRequest({ childId: "child-id", purpose: "SICK", startDate: "2026-07-28", endDate: "2026-07-29" });
+    await client.decideChildAbsenceRequest("request-id", { approved: false, rejectionReason: "Tanggal tidak sesuai" });
+    await client.cancelChildAbsenceRequest("request-id");
+    await client.childAbsenceRequests({ childId: "child-id" });
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/child-absence-requests", expect.objectContaining({ method: "POST", body: JSON.stringify({ childId: "child-id", purpose: "SICK", startDate: "2026-07-28", endDate: "2026-07-29" }) }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/child-absence-requests/request-id/decision", expect.objectContaining({ method: "POST", body: JSON.stringify({ approved: false, rejectionReason: "Tanggal tidak sesuai" }) }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/child-absence-requests/request-id/cancel", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/child-absence-requests?childId=child-id", expect.anything());
   });
 
   it("requests server-authorized placement options for a child", async () => {
@@ -232,6 +269,26 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/child-goals/goal-id/check-ins/2026-07-23", expect.objectContaining({ method: "PUT", body: JSON.stringify({ indicatorId: "indicator-id", outcome: "YES" }) }));
   });
 
+  it("filters Development Programs by the selected curriculum program", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await client.developmentPrograms("bahasa", "curriculum-id");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/development-programs?search=bahasa&curriculumProgramId=curriculum-id", expect.anything());
+  });
+
+  it("assigns a child Goal with its curriculum-program source", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await client.assignChildGoal("child-id", { curriculumProgramId: "curriculum-id", programId: "development-program-id" });
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/children/child-id/goals", expect.objectContaining({ method: "POST", body: JSON.stringify({ curriculumProgramId: "curriculum-id", programId: "development-program-id" }) }));
+  });
+
   it("creates and reads a development entry photo through the scoped child endpoints", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
@@ -243,6 +300,21 @@ describe("ApiClient", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/children/child-id/development-entries", expect.objectContaining({ method: "POST", body: JSON.stringify(input) }));
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/children/child-id/development-entries/entry-id/photo", expect.anything());
+  });
+
+  it("creates and decides Staff leave requests through tenant-scoped endpoints", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+    const input = { type: "LEAVE" as const, startsOn: "2026-07-29", endsOn: "2026-07-30", reason: "Keperluan keluarga" };
+
+    await client.createStaffLeaveRequest(input);
+    await client.decideStaffLeaveRequest("request-id", { approved: false, rejectionReason: "Jadwal belum dapat diganti" });
+    await client.staffLeaveRequestEvidence("request-id");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/staff-leave-requests", expect.objectContaining({ method: "POST", body: JSON.stringify(input) }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/staff-leave-requests/request-id/approval", expect.objectContaining({ method: "POST", body: JSON.stringify({ approved: false, rejectionReason: "Jadwal belum dapat diganti" }) }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/staff-leave-requests/request-id/evidence", expect.anything());
   });
 
   it("downloads a backend-built child report as a binary file", async () => {

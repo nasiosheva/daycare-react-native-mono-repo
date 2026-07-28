@@ -10,6 +10,7 @@ enum class RealtimeFlag {
     PARENT_ENROLLMENTS,
     CHILDREN,
     ATTENDANCE,
+    ABSENCE_REQUESTS,
     DEVELOPMENT,
     DEVELOPMENT_CATEGORIES,
     BOOKINGS,
@@ -24,6 +25,7 @@ enum class RealtimeFlag {
     GLOBAL_CURRICULUM,
     GOALS,
     STAFF_REMINDERS,
+    STAFF_LEAVE_REQUESTS,
 }
 
 data class RealtimeConnectRequest(

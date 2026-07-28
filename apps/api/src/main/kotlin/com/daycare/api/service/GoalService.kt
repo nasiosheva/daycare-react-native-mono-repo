@@ -16,6 +16,8 @@ import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.ChildStaffAssignmentRepository
 import com.daycare.api.persistence.ClassroomRepository
 import com.daycare.api.persistence.ClassroomStaffAssignmentRepository
+import com.daycare.api.persistence.CurriculumProgramRepository
+import com.daycare.api.persistence.CurriculumProgramDevelopmentProgramRepository
 import com.daycare.api.persistence.DevelopmentProgram
 import com.daycare.api.persistence.DevelopmentProgramItem
 import com.daycare.api.persistence.DevelopmentProgramItemRepository
@@ -54,7 +56,7 @@ data class UpsertDevelopmentProgramRequest(
 )
 data class DevelopmentProgramResponse(val id: UUID, val learningLevelId: UUID, val name: String, val description: String, val durationDays: Int, val minimumYesPercent: Int, val minimumYesStreak: Int, val domain: GoalDomain, val source: DevelopmentProgramSource, val isTemplate: Boolean, val active: Boolean, val indicators: List<GoalIndicatorResponse>, val minAgeMonths: Int?, val maxAgeMonths: Int?)
 enum class DevelopmentProgramSource { GLOBAL, TENANT }
-data class AssignChildGoalRequest(val programId: UUID, val startsOn: LocalDate = LocalDate.now())
+data class AssignChildGoalRequest(val curriculumProgramId: UUID, val programId: UUID, val startsOn: LocalDate = LocalDate.now())
 data class UpsertGoalIndicatorRequest(@field:NotBlank @field:Size(max = 120) val name: String, val displayOrder: Int = 0)
 data class GoalIndicatorResponse(val id: UUID, val name: String, val displayOrder: Int, val active: Boolean)
 data class GoalPhotoInput(@field:NotBlank val contentType: String, @field:NotBlank val dataBase64: String)
@@ -65,7 +67,7 @@ data class GoalIndicatorCheckInResponse(val indicatorId: UUID, val date: LocalDa
 data class GoalPhotoResponse(val contentType: String, val dataBase64: String)
 data class GoalAudioResponse(val contentType: String, val dataBase64: String, val durationMs: Int?)
 data class ChildGoalResponse(
-    val id: UUID, val childId: UUID, val programId: UUID, val name: String, val description: String, val startsOn: LocalDate, val targetEndsOn: LocalDate,
+    val id: UUID, val childId: UUID, val curriculumProgramId: UUID?, val curriculumProgramName: String?, val programId: UUID, val name: String, val description: String, val startsOn: LocalDate, val targetEndsOn: LocalDate,
     val durationDays: Int, val minimumYesPercent: Int, val minimumYesStreak: Int, val status: ChildGoalStatus, val finalOutcome: ChildGoalOutcome?, val finalSummary: String?, val finalizedAt: Instant?,
     val recordedDays: Int, val yesDays: Int, val noDays: Int, val yesPercent: Int?, val currentYesStreak: Int, val longestYesStreak: Int, val meetsYesPercent: Boolean, val meetsYesStreak: Boolean, val missedDays: Int,
     val indicators: List<GoalIndicatorResponse>, val checkIns: List<GoalIndicatorCheckInResponse>,
@@ -77,6 +79,8 @@ class GoalService(
     private val platformAccess: PlatformAccessService,
     private val childScopes: ChildScopeService,
     private val programs: DevelopmentProgramRepository,
+    private val curriculumPrograms: CurriculumProgramRepository,
+    private val curriculumProgramPrograms: CurriculumProgramDevelopmentProgramRepository,
     private val goalIndicators: DevelopmentProgramItemRepository,
     private val goals: ChildGoalRepository,
     private val checkIns: ChildGoalCheckInRepository,
@@ -129,11 +133,16 @@ class GoalService(
     }
 
     @Transactional(readOnly = true)
-    fun programs(jwt: Jwt, organizationId: UUID, search: String? = null): List<DevelopmentProgramResponse> {
+    fun programs(jwt: Jwt, organizationId: UUID, search: String? = null, curriculumProgramId: UUID? = null): List<DevelopmentProgramResponse> {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
         val query = search?.trim().orEmpty()
         val visible = if (query.isBlank()) programs.findVisibleToOrganization(organizationId) else programs.searchVisibleToOrganization(organizationId, query)
-        return visible.map(::programResponse)
+        val linkedProgramIds = curriculumProgramId?.let { id ->
+            val curriculumProgram = curriculumPrograms.findById(id).orElseThrow { IllegalArgumentException("Curriculum program was not found") }
+            require(curriculumProgram.active && (curriculumProgram.organizationId == null || curriculumProgram.organizationId == organizationId)) { "Curriculum program is not available" }
+            curriculumProgramPrograms.findAllByCurriculumProgramId(id).map { it.developmentProgramId }.toSet()
+        }
+        return visible.filter { linkedProgramIds == null || it.id in linkedProgramIds }.map(::programResponse)
     }
 
     @Transactional
@@ -203,19 +212,34 @@ class GoalService(
     fun childGoals(jwt: Jwt, organizationId: UUID, childId: UUID): List<ChildGoalResponse> {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), readOnly = true)
         authorizeChild(scope, organizationId, childId)
-        return goals.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId).map(::goalResponse)
+        val childGoalsList = goals.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId)
+        if (childGoalsList.isEmpty()) return emptyList()
+        val programsById = programs.findAllById(childGoalsList.map { it.programId }.toSet()).associateBy { it.id }
+        val curriculumProgramIds = childGoalsList.mapNotNull { it.curriculumProgramId }.toSet()
+        val curriculumProgramNamesById = if (curriculumProgramIds.isEmpty()) emptyMap() else curriculumPrograms.findAllById(curriculumProgramIds).associateBy({ it.id }, { it.name })
+        val indicatorsByProgramId = goalIndicators.findAllByDevelopmentProgramIdIn(programsById.keys).groupBy { it.developmentProgramId }
+        val checkInsByGoalId = checkIns.findAllByChildGoalIdIn(childGoalsList.map { it.id }.toSet()).groupBy { it.childGoalId }
+        return childGoalsList.map { goal ->
+            val program = programsById[goal.programId] ?: throw IllegalArgumentException("Program was not found")
+            val indicators = (indicatorsByProgramId[goal.programId] ?: emptyList()).sortedBy { it.displayOrder }
+            val items = (checkInsByGoalId[goal.id] ?: emptyList()).sortedBy { it.checkInDate }
+            buildGoalResponse(goal, program, goal.curriculumProgramId?.let { curriculumProgramNamesById[it] }, indicators, items)
+        }
     }
 
     @Transactional
     fun assign(jwt: Jwt, organizationId: UUID, childId: UUID, request: AssignChildGoalRequest): ChildGoalResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF)); access.requireWritable(scope)
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
+        val curriculumProgram = curriculumPrograms.findById(request.curriculumProgramId).orElseThrow { IllegalArgumentException("Curriculum program was not found") }
+        require(curriculumProgram.active && (curriculumProgram.organizationId == null || curriculumProgram.organizationId == organizationId)) { "Curriculum program is not available" }
         val program = program(request.programId, organizationId)
+        require(curriculumProgramPrograms.existsByCurriculumProgramIdAndDevelopmentProgramId(curriculumProgram.id, program.id)) { "Development program is not part of the curriculum program" }
         require(program.active) { "Program is inactive" }
         require(goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id).any { it.active }) { "Program needs at least one active indicator" }
         require(matchesChildProgram(child, program)) { "Program does not match the child's class" }
         require(!goals.existsByChildIdAndProgramIdAndStatus(childId, program.id, ChildGoalStatus.ACTIVE)) { "Child already has this active program" }
-        val goal = goals.save(ChildGoal(organizationId = organizationId, childId = childId, programId = program.id, startsOn = request.startsOn))
+        val goal = goals.save(ChildGoal(organizationId = organizationId, childId = childId, curriculumProgramId = curriculumProgram.id, programId = program.id, startsOn = request.startsOn))
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "CHILD_GOAL", entityId = goal.id, action = "ASSIGNED", source = "GOAL"))
         publishGoal(organizationId, childId)
         return goalResponse(goal)
@@ -327,8 +351,13 @@ class GoalService(
     private fun indicatorResponse(indicator: DevelopmentProgramItem) = GoalIndicatorResponse(indicator.id, indicator.name, indicator.displayOrder, indicator.active)
     private fun goalResponse(goal: ChildGoal): ChildGoalResponse {
         val program = program(goal.programId, goal.organizationId)
-        val activeIndicators = goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id).filter { it.active }
+        val curriculumProgramName = goal.curriculumProgramId?.let { curriculumPrograms.findById(it).orElse(null)?.name }
+        val indicators = goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id)
         val items = checkIns.findAllByChildGoalIdOrderByCheckInDateAsc(goal.id)
+        return buildGoalResponse(goal, program, curriculumProgramName, indicators, items)
+    }
+    private fun buildGoalResponse(goal: ChildGoal, program: DevelopmentProgram, curriculumProgramName: String?, indicators: List<DevelopmentProgramItem>, items: List<ChildGoalCheckIn>): ChildGoalResponse {
+        val activeIndicators = indicators.filter { it.active }
         val combinedValues = items.groupBy { it.checkInDate }.mapNotNull { (date, dayCheckIns) ->
             if (activeIndicators.isEmpty()) return@mapNotNull null
             val byIndicator = dayCheckIns.associateBy { it.indicatorId }
@@ -342,10 +371,10 @@ class GoalService(
         val elapsedDays = if (elapsedEndsOn.isBefore(goal.startsOn)) 0 else ChronoUnit.DAYS.between(goal.startsOn, elapsedEndsOn).toInt() + 1
         val missedDays = (elapsedDays - progress.recordedDays).coerceAtLeast(0)
         return ChildGoalResponse(
-            goal.id, goal.childId, program.id, program.name, program.description, goal.startsOn, targetEndsOn, program.durationDays, program.minimumYesPercent, program.minimumYesStreak,
+            goal.id, goal.childId, goal.curriculumProgramId, curriculumProgramName, program.id, program.name, program.description, goal.startsOn, targetEndsOn, program.durationDays, program.minimumYesPercent, program.minimumYesStreak,
             goal.status, goal.finalOutcome, goal.finalSummary, goal.finalizedAt, progress.recordedDays, progress.yesDays, progress.noDays, progress.yesPercent, progress.currentYesStreak, progress.longestYesStreak,
             progress.yesPercent != null && progress.yesPercent >= program.minimumYesPercent, progress.longestYesStreak >= program.minimumYesStreak, missedDays,
-            goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id).map(::indicatorResponse),
+            indicators.map(::indicatorResponse),
             items.map { GoalIndicatorCheckInResponse(it.indicatorId, it.checkInDate, it.outcome, it.note, it.photoData != null, it.audioData != null, it.audioDurationMs, it.recordedAt) },
         )
     }
@@ -355,16 +384,25 @@ class GoalService(
     @Transactional
     fun sendMissedCheckInReminders() {
         val today = LocalDate.now(ZoneId.of("Asia/Jakarta"))
-        goals.findAllByStatus(ChildGoalStatus.ACTIVE).forEach { goal ->
-            val program = programs.findById(goal.programId).orElse(null) ?: return@forEach
+        val activeGoals = goals.findAllByStatus(ChildGoalStatus.ACTIVE)
+        if (activeGoals.isEmpty()) return
+        val programsById = programs.findAllById(activeGoals.map { it.programId }.toSet()).associateBy { it.id }
+        val goalsInPeriod = activeGoals.filter { goal ->
+            val program = programsById[goal.programId] ?: return@filter false
             val targetEndsOn = goal.startsOn.plusDays(program.durationDays.toLong() - 1)
-            if (today.isBefore(goal.startsOn) || today.isAfter(targetEndsOn)) return@forEach
-            val activeIndicators = goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id).filter { it.active }
-            if (activeIndicators.isEmpty()) return@forEach
-            val doneIndicatorIds = checkIns.findAllByChildGoalIdOrderByCheckInDateAsc(goal.id).filter { it.checkInDate == today }.map { it.indicatorId }.toSet()
+            !today.isBefore(goal.startsOn) && !today.isAfter(targetEndsOn)
+        }
+        if (goalsInPeriod.isEmpty()) return
+        val activeIndicatorsByProgramId = goalIndicators.findAllByDevelopmentProgramIdIn(goalsInPeriod.map { it.programId }.toSet()).filter { it.active }.groupBy { it.developmentProgramId }
+        val goalsNeedingCheckIn = goalsInPeriod.filter { goal -> (activeIndicatorsByProgramId[goal.programId] ?: emptyList()).isNotEmpty() }
+        if (goalsNeedingCheckIn.isEmpty()) return
+        val doneIndicatorIdsByGoalId = checkIns.findAllByChildGoalIdInAndCheckInDate(goalsNeedingCheckIn.map { it.id }.toSet(), today).groupBy({ it.childGoalId }, { it.indicatorId })
+        val childrenById = children.findAllById(goalsNeedingCheckIn.map { it.childId }.toSet()).associateBy { it.id }
+        goalsNeedingCheckIn.forEach { goal ->
+            val activeIndicators = activeIndicatorsByProgramId[goal.programId] ?: return@forEach
+            val doneIndicatorIds = (doneIndicatorIdsByGoalId[goal.id] ?: emptyList()).toSet()
             if (activeIndicators.all { it.id in doneIndicatorIds }) return@forEach
-            val child = children.findById(goal.childId).orElse(null) ?: return@forEach
-            if (!child.active) return@forEach
+            val child = childrenById[goal.childId]?.takeIf { it.active } ?: return@forEach
             notifyIncompleteCheckIn(goal.organizationId, child)
         }
     }

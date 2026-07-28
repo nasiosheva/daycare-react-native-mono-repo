@@ -11,6 +11,9 @@ import com.daycare.api.service.CreateEntitlementBookingsRequest
 import com.daycare.api.service.CreateServicePlanRequest
 import com.daycare.api.service.CreateServicePlanDiscountRequest
 import com.daycare.api.service.CreateChildRequest
+import com.daycare.api.service.CreateChildAbsenceRequest
+import com.daycare.api.service.DecideChildAbsenceRequest
+import com.daycare.api.service.ChildAbsenceService
 import com.daycare.api.service.CreateInvitationRequest
 import com.daycare.api.service.CreateTenantUserRequest
 import com.daycare.api.service.CreateTenantStaffAdminRequest
@@ -50,6 +53,9 @@ import com.daycare.api.service.CreateCurriculumActivityAssessmentRequest
 import com.daycare.api.service.ChangePlatformAdminPinRequest
 import com.daycare.api.service.PlatformAdminPinService
 import com.daycare.api.service.PlatformAdministrationService
+import com.daycare.api.service.ParentFamilyProfileService
+import com.daycare.api.service.UpdateParentFamilyProfileRequest
+import com.daycare.api.service.TenantReadinessService
 import com.daycare.api.service.PlatformCurriculumService
 import com.daycare.api.service.InstitutionTypeCatalogService
 import com.daycare.api.service.CreateInstitutionTypeDefinitionRequest
@@ -78,10 +84,13 @@ import com.daycare.api.service.UpsertStaffReminderRequest
 import com.daycare.api.service.UpdateStaffReminderActiveRequest
 import com.daycare.api.service.SyncStaffReminderSchedulesRequest
 import com.daycare.api.service.ChildReportExportService
+import com.daycare.api.service.CreateStaffLeaveRequest
+import com.daycare.api.service.DecideStaffLeaveRequest
 import com.daycare.api.service.ReportExportFormat
 import com.daycare.api.service.OvertimeService
 import com.daycare.api.service.UpdateBranchOperatingHoursRequest
 import com.daycare.api.service.CreateOvertimeChargeRequest
+import com.daycare.api.service.StaffLeaveRequestService
 import com.daycare.api.domain.Gender
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import jakarta.validation.Valid
@@ -143,7 +152,7 @@ class AuthenticationSessionController(private val tokenRevocations: AccessTokenR
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class IdentityController(private val access: AccessService, private val identity: IdentityService) {
+class IdentityController(private val access: AccessService, private val identity: IdentityService, private val parentFamilyProfiles: ParentFamilyProfileService) {
     @GetMapping("/me") fun me(@AuthenticationPrincipal jwt: Jwt) = access.currentUser(jwt)
 
     @GetMapping("/auth/identity-check")
@@ -151,6 +160,12 @@ class IdentityController(private val access: AccessService, private val identity
 
     @PatchMapping("/me")
     fun updateMe(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: UpdatePersonalDetailsRequest) = access.updatePersonalDetails(jwt, request.gender, request.dateOfBirth)
+
+    @GetMapping("/parent-family-profile")
+    fun parentFamilyProfile(@AuthenticationPrincipal jwt: Jwt) = parentFamilyProfiles.mine(jwt)
+
+    @PutMapping("/parent-family-profile")
+    fun updateParentFamilyProfile(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: UpdateParentFamilyProfileRequest) = parentFamilyProfiles.update(jwt, request)
 }
 
 @RestController
@@ -204,6 +219,7 @@ class TenantPaymentInstructionController(private val paymentInstructions: Tenant
 @SecurityRequirement(name = "bearerAuth")
 class PlatformController(
     private val platformAdministration: PlatformAdministrationService,
+    private val tenantReadiness: TenantReadinessService,
     private val platformAdminPin: PlatformAdminPinService,
     private val platformCurriculum: PlatformCurriculumService,
     private val institutionTypes: InstitutionTypeCatalogService,
@@ -263,6 +279,9 @@ class PlatformController(
     @GetMapping("/tenants")
     fun tenants(@AuthenticationPrincipal jwt: Jwt, @RequestParam(required = false) search: String?) = platformAdministration.tenants(jwt, search)
 
+    @GetMapping("/tenant-readiness")
+    fun tenantReadiness(@AuthenticationPrincipal jwt: Jwt) = tenantReadiness.readiness(jwt)
+
     @PostMapping("/tenants") @ResponseStatus(HttpStatus.CREATED)
     fun createTenant(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: CreateTenantRequest) = platformAdministration.createTenant(jwt, request)
 
@@ -321,7 +340,7 @@ class PlatformController(
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService) {
+class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService) {
     @GetMapping("/children")
     fun children(
         @AuthenticationPrincipal jwt: Jwt,
@@ -342,6 +361,36 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PostMapping("/children") @ResponseStatus(HttpStatus.CREATED)
     fun createChild(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateChildRequest) = administration.createChild(jwt, organizationId, request)
+
+    @GetMapping("/child-absence-requests")
+    fun childAbsenceRequests(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) childId: UUID?, @RequestParam(required = false) branchId: UUID?) = childAbsences.list(jwt, organizationId, childId, BranchListFilter(branchId))
+
+    @PostMapping("/child-absence-requests") @ResponseStatus(HttpStatus.CREATED)
+    fun createChildAbsenceRequest(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateChildAbsenceRequest) = childAbsences.create(jwt, organizationId, request)
+
+    @PostMapping("/child-absence-requests/{requestId}/decision")
+    fun decideChildAbsenceRequest(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable requestId: UUID, @Valid @RequestBody request: DecideChildAbsenceRequest) = childAbsences.decide(jwt, organizationId, requestId, request)
+
+    @PostMapping("/child-absence-requests/{requestId}/cancel")
+    fun cancelChildAbsenceRequest(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable requestId: UUID) = childAbsences.cancel(jwt, organizationId, requestId)
+
+    @GetMapping("/staff-leave-requests/pending-approval")
+    fun pendingStaffLeaveRequests(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = staffLeaveRequests.pending(jwt, organizationId)
+
+    @GetMapping("/staff-leave-requests")
+    fun staffLeaveRequests(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = staffLeaveRequests.mine(jwt, organizationId)
+
+    @PostMapping("/staff-leave-requests") @ResponseStatus(HttpStatus.CREATED)
+    fun createStaffLeaveRequest(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateStaffLeaveRequest) = staffLeaveRequests.create(jwt, organizationId, request)
+
+    @PostMapping("/staff-leave-requests/{requestId}/cancel")
+    fun cancelStaffLeaveRequest(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable requestId: UUID) = staffLeaveRequests.cancel(jwt, organizationId, requestId)
+
+    @PostMapping("/staff-leave-requests/{requestId}/approval")
+    fun decideStaffLeaveRequest(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable requestId: UUID, @Valid @RequestBody request: DecideStaffLeaveRequest) = staffLeaveRequests.decide(jwt, organizationId, requestId, request)
+
+    @GetMapping("/staff-leave-requests/{requestId}/evidence")
+    fun staffLeaveRequestEvidence(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable requestId: UUID) = staffLeaveRequests.evidence(jwt, organizationId, requestId)
 
     @GetMapping("/children/{childId}")
     fun childProfile(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childManagement.profile(jwt, organizationId, childId)
@@ -467,7 +516,7 @@ class InstitutionController(private val attendance: AttendanceService, private v
     fun activities(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = academic.activities(jwt, organizationId)
 
     @GetMapping("/development-programs")
-    fun developmentPrograms(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) search: String?) = goalService.programs(jwt, organizationId, search)
+    fun developmentPrograms(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) search: String?, @RequestParam(required = false) curriculumProgramId: UUID?) = goalService.programs(jwt, organizationId, search, curriculumProgramId)
 
     @PostMapping("/development-programs") @ResponseStatus(HttpStatus.CREATED)
     fun createDevelopmentProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertDevelopmentProgramRequest) = goalService.createProgram(jwt, organizationId, request)

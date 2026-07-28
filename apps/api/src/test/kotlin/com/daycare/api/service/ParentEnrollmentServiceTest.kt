@@ -62,6 +62,7 @@ class ParentEnrollmentServiceTest {
         val billing = mock(BillingService::class.java)
         val notifications = mock(NotificationService::class.java)
         val paymentInstructions = mock(TenantPaymentInstructionService::class.java)
+        val familyProfileVisibility = mock(ParentFamilyProfileVisibilityService::class.java)
         val organizationId = UUID.randomUUID()
         val branch = Branch(organizationId = organizationId, name = "Cabang Utama")
         val parent = UserProfile()
@@ -92,7 +93,7 @@ class ParentEnrollmentServiceTest {
         `when`(billing.quoteEnrollment(organizationId, planId, null)).thenReturn(snapshot(planId))
         `when`(billing.quoteEnrollment(additionalOrganizationId, additionalPlanId, null)).thenReturn(snapshot(additionalPlanId))
         val branchFilters = mock(BranchListFilterService::class.java)
-        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, capabilities, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters, paymentInstructions)
+        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, capabilities, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters, paymentInstructions, familyProfileVisibility)
 
         val response = service.checkout(jwt, ParentEnrollmentCheckoutRequest(organizationId, branch.id, planId, emptyList(), children = listOf(ParentEnrollmentChildInput("Alya", null, Gender.FEMALE, LocalDate.of(2022, 1, 1)), ParentEnrollmentChildInput("Bima", "Putra", Gender.MALE, LocalDate.of(2023, 2, 2)))))
         val additionalTenantResponse = service.checkout(jwt, ParentEnrollmentCheckoutRequest(additionalOrganizationId, additionalBranch.id, additionalPlanId, emptyList(), children = listOf(ParentEnrollmentChildInput("Citra", null, Gender.FEMALE, LocalDate.of(2021, 3, 3)))))
@@ -130,6 +131,7 @@ class ParentEnrollmentServiceTest {
         val notifications = mock(NotificationService::class.java)
         val branchFilters = mock(BranchListFilterService::class.java)
         val paymentInstructions = mock(TenantPaymentInstructionService::class.java)
+        val familyProfileVisibility = mock(ParentFamilyProfileVisibilityService::class.java)
         val organizationId = UUID.randomUUID()
         val parent = UserProfile(displayName = "Parent")
         val staffAdmin = UserProfile(displayName = "Staff Admin")
@@ -155,7 +157,7 @@ class ParentEnrollmentServiceTest {
         `when`(memberships.findAllByUserIdAndOrganizationId(parent.id, organizationId)).thenReturn(emptyList())
         `when`(guardians.existsByChildIdAndUserId(child.id, parent.id)).thenReturn(false)
         `when`(invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
-        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, capabilities, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters, paymentInstructions)
+        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, capabilities, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters, paymentInstructions, familyProfileVisibility)
 
         val response = service.decide(jwt, organizationId, enrollment.id, ParentEnrollmentApprovalRequest(approved = true))
 
@@ -194,6 +196,7 @@ class ParentEnrollmentServiceTest {
         val notifications = mock(NotificationService::class.java)
         val branchFilters = mock(BranchListFilterService::class.java)
         val paymentInstructions = mock(TenantPaymentInstructionService::class.java)
+        val familyProfileVisibility = mock(ParentFamilyProfileVisibilityService::class.java)
         val organizationId = UUID.randomUUID()
         val parent = UserProfile()
         val staffAdmin = UserProfile()
@@ -204,7 +207,7 @@ class ParentEnrollmentServiceTest {
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(scope)
         `when`(enrollments.findById(enrollment.id)).thenReturn(Optional.of(enrollment))
         `when`(children.findById(child.id)).thenReturn(Optional.of(child))
-        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, capabilities, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters, paymentInstructions)
+        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, capabilities, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters, paymentInstructions, familyProfileVisibility)
 
         val response = service.decide(jwt, organizationId, enrollment.id, ParentEnrollmentApprovalRequest(approved = false, rejectionReason = "Data belum lengkap"))
 

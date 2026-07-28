@@ -40,6 +40,8 @@ export default function StaffAdminScreen() {
     <MenuItem title={t("staffAdmin.branches")} description={t("staffAdmin.branchesDescription")} onPress={() => router.push("/branches" as never)} />
     <MenuItem title={t("overtime.chargesTitle")} description={t("overtime.chargesDescription")} onPress={() => router.push("/overtime-charges")} />
     <MenuItem title={t("staffAdmin.approvals")} description={t("staffAdmin.approvalsDescription")} onPress={() => router.push("/booking-approvals")} />
+    <MenuItem title={t("staffLeave.approvalsTitle")} description={t("staffLeave.approvalsDescription")} onPress={() => router.push("/staff-leave-approvals")} />
+    <MenuItem title={t("absence.menu")} description={t("absence.menuDescription")} onPress={() => router.push("/absence-requests")} />
     <MenuItem title={t("nav.profile")} description={t("profile.staffMenuDescription")} onPress={() => router.push("/profile")} />
   </AppScreen>;
 }

@@ -30,7 +30,7 @@ class InstitutionTypeCatalogServiceTest {
 
         val result = service.create(jwt, CreateInstitutionTypeDefinitionRequest("  Taman Bermain  "))
 
-        assertEquals(InstitutionTypeDefinitionResponse("TAMAN_BERMAIN", "Taman Bermain"), result)
+        assertEquals(InstitutionTypeDefinitionResponse("TAMAN_BERMAIN", "Taman Bermain", false, false), result)
         val type = ArgumentCaptor.forClass(InstitutionTypeDefinition::class.java)
         verify(types).save(type.capture())
         assertEquals("TAMAN_BERMAIN", type.value.code)
@@ -64,7 +64,7 @@ class InstitutionTypeCatalogServiceTest {
 
         val result = service.update(jwt, "taman_bermain", CreateInstitutionTypeDefinitionRequest("Kelompok Bermain"))
 
-        assertEquals(InstitutionTypeDefinitionResponse("TAMAN_BERMAIN", "Kelompok Bermain"), result)
+        assertEquals(InstitutionTypeDefinitionResponse("TAMAN_BERMAIN", "Kelompok Bermain", false, false), result)
     }
 
     @Test

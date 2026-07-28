@@ -5,12 +5,18 @@ import com.daycare.api.domain.InstitutionTypeCodes
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.ChildEnrollmentStatus
+import com.daycare.api.domain.ChildAbsencePurpose
+import com.daycare.api.domain.ChildAbsenceRequestStatus
 import com.daycare.api.domain.Gender
 import com.daycare.api.domain.GoalCheckInOutcome
 import com.daycare.api.domain.GoalDomain
 import com.daycare.api.domain.ChildGoalStatus
 import com.daycare.api.domain.ChildGoalOutcome
+import com.daycare.api.domain.StaffLeaveRequestStatus
+import com.daycare.api.domain.StaffLeaveRequestType
 import com.daycare.api.domain.ParentEnrollmentStatus
+import com.daycare.api.domain.ParentIncomeRange
+import com.daycare.api.domain.ParentOccupation
 import com.daycare.api.domain.ServicePlanType
 import com.daycare.api.domain.UnusedCreditPolicy
 import com.daycare.api.domain.TenantPaymentStatus
@@ -42,6 +48,21 @@ class UserProfile(
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
+@Entity
+@Table(name = "parent_family_profiles")
+class ParentFamilyProfile(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "user_id", nullable = false, unique = true) var userId: UUID = UUID.randomUUID(),
+    @Column(name = "husband_date_of_birth") var husbandDateOfBirth: LocalDate? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "husband_occupation") var husbandOccupation: ParentOccupation? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "husband_income_range") var husbandIncomeRange: ParentIncomeRange? = null,
+    @Column(name = "wife_date_of_birth") var wifeDateOfBirth: LocalDate? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "wife_occupation") var wifeOccupation: ParentOccupation? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "wife_income_range") var wifeIncomeRange: ParentIncomeRange? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
 @Entity @Table(name = "revoked_access_tokens")
 class RevokedAccessToken(
     @Id var id: UUID = UUID.randomUUID(),
@@ -66,6 +87,8 @@ class InstitutionTypeDefinition(
     @Id @Column(name = "code", nullable = false, updatable = false) var code: String = "",
     @Column(name = "name", nullable = false) var name: String = "",
     @Column(name = "active", nullable = false) var active: Boolean = true,
+    @Column(name = "parent_occupation_visible", nullable = false) var parentOccupationVisible: Boolean = false,
+    @Column(name = "parent_income_range_visible", nullable = false) var parentIncomeRangeVisible: Boolean = false,
 )
 
 @Entity @Table(name = "academic_years")
@@ -287,6 +310,7 @@ class ChildGoal(
     @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
     @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
     @Column(name = "program_id", nullable = false) var programId: UUID = UUID.randomUUID(),
+    @Column(name = "curriculum_program_id") var curriculumProgramId: UUID? = null,
     @Column(name = "starts_on", nullable = false) var startsOn: LocalDate = LocalDate.now(),
     @Enumerated(EnumType.STRING) @Column(nullable = false) var status: ChildGoalStatus = ChildGoalStatus.ACTIVE,
     @Enumerated(EnumType.STRING) @Column(name = "final_outcome") var finalOutcome: ChildGoalOutcome? = null,
@@ -392,6 +416,24 @@ class AttendanceRecord(
     @Column(name = "check_out_method") var checkOutMethod: String? = null,
 )
 
+@Entity @Table(name = "child_absence_requests")
+class ChildAbsenceRequest(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "requester_user_id", nullable = false) var requesterUserId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var purpose: ChildAbsencePurpose = ChildAbsencePurpose.OTHER,
+    @Column(length = 500) var note: String? = null,
+    @Column(name = "start_date", nullable = false) var startDate: LocalDate = LocalDate.now(),
+    @Column(name = "end_date", nullable = false) var endDate: LocalDate = LocalDate.now(),
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: ChildAbsenceRequestStatus = ChildAbsenceRequestStatus.PENDING,
+    @Column(name = "decided_by_user_id") var decidedByUserId: UUID? = null,
+    @Column(name = "decided_at") var decidedAt: Instant? = null,
+    @Column(name = "rejection_reason", length = 500) var rejectionReason: String? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
 @Entity @Table(name = "invitations")
 class Invitation(
     @Id var id: UUID = UUID.randomUUID(),
@@ -436,6 +478,24 @@ class StaffReminderDeviceSchedule(
     @Column(name = "installation_id", nullable = false) var installationId: String = "",
     @Column(name = "rule_version", nullable = false) var ruleVersion: Int = 0,
     @Column(name = "scheduled_at", nullable = false) var scheduledAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "staff_leave_requests")
+class StaffLeaveRequest(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "requester_user_id", nullable = false) var requesterUserId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var type: StaffLeaveRequestType = StaffLeaveRequestType.LEAVE,
+    @Column(name = "starts_on", nullable = false) var startsOn: LocalDate = LocalDate.now(),
+    @Column(name = "ends_on", nullable = false) var endsOn: LocalDate = LocalDate.now(),
+    @Column(nullable = false, length = 2_000) var reason: String = "",
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: StaffLeaveRequestStatus = StaffLeaveRequestStatus.PENDING,
+    @Column(name = "evidence_content_type", length = 50) var evidenceContentType: String? = null,
+    @Column(name = "evidence_data") var evidenceData: ByteArray? = null,
+    @Column(name = "reviewed_by_user_id") var reviewedByUserId: UUID? = null,
+    @Column(name = "rejection_reason", length = 2_000) var rejectionReason: String? = null,
+    @Column(name = "reviewed_at") var reviewedAt: Instant? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
 @Entity @Table(name = "development_entries")
