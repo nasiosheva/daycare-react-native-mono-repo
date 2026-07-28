@@ -16,7 +16,7 @@ Daily implementation history and known implementation gaps remain under `docs/ch
 ## Prerequisites
 
 - Node.js 20 or newer, Corepack, and pnpm 10.
-- JDK 21 and Gradle 8.14.2 for the API. The API Gradle Wrapper is intentionally local and ignored by Git; generate it locally when it is missing with `gradle -p apps/api wrapper --gradle-version 8.14.2`.
+- JDK 21 for the API. The tracked API Gradle Wrapper provides Gradle 8.14.2 for local and CI builds.
 - A local PostgreSQL 17 server. Docker Desktop is optional, not required.
 - A Firebase project with Phone and Google providers enabled. Firebase Email/Password is intentionally disabled because application passwords are stored and verified by the API.
 - Xcode for iOS development; Android Studio plus an emulator or device for Android development.
@@ -364,14 +364,14 @@ The API client package includes an OpenAPI generation script. The running API pu
 | iOS launcher rejects the target | Connect and trust the iPhone, enable developer mode, add its real `IOS_DEVICE_UDID`, and provide `apps/mobile/GoogleService-Info.plist`. |
 | Android native build fails early | Add `apps/mobile/google-services.json`, confirm Android Studio/SDK and `adb` are available, then recreate the development build. |
 | Firebase user has no organization access | Create an invitation or initial membership matching the user's Firebase email/phone; the first sign-in only synchronizes the user profile. |
-| Backend test or local launcher reports a missing Gradle Wrapper | Generate the ignored local wrapper once with `gradle -p apps/api wrapper --gradle-version 8.14.2`, then repeat the command. |
+| Backend test or local launcher reports a missing Gradle Wrapper | Restore the tracked `apps/api/gradlew` and `apps/api/gradle/wrapper/` files with `git restore apps/api/gradlew apps/api/gradlew.bat apps/api/gradle/wrapper`, then repeat the command. |
 | Local backend launcher reports no PostgreSQL service | Start PostgreSQL on `localhost:5432` or install and start Docker Desktop so the launcher can create the optional Compose PostgreSQL service. |
 
 ## GitHub Actions deployment
 
 `Pull request tests` runs only the TypeScript/mobile suite for pull requests targeting `production`. `Deploy production` runs only after a commit is pushed to `production` (normally the result of merging an approved pull request). Both workflows use `pnpm/action-setup@v6`, which supports the current GitHub Actions runtime. Protect `production` in GitHub so pull requests must pass `Pull request tests` and direct pushes are disallowed.
 
-The deployment workflow builds and uploads only the Expo web export. It deliberately does not run Gradle, build the API JAR, run API tests, apply database migrations, or restart the API. During activation, the VPS preserves the currently deployed API JAR while atomically switching the web release and reloading Caddy. API releases remain a separate manual operational process.
+The deployment workflow always builds and uploads the Expo web export. It detects changed paths from the pushed commit range: when at least one changed file is under `apps/api/`, it restores the Gradle cache, runs the API test suite, builds the API JAR with the tracked Gradle 8.14.2 wrapper and JDK 21, uploads that JAR into the same immutable release, activates it, restarts `umur-emas-api`, and waits for `/api/actuator/health` to return `UP`. If activation or health verification fails, the workflow switches the VPS back to the immediately preceding release, restarts the prior API artifact, checks its health, then marks the workflow failed. A web-only change preserves the currently active API JAR, does not restart the API, and only switches the web release/reloads Caddy. The workflow does not apply database migrations in a standalone step; Flyway validation and migrations run when the API starts. A rollback cannot reverse an already-applied database migration, so API migrations must remain backward-compatible with the preceding release.
 
 For a private repository on GitHub Free, configure these values as repository-level Actions Variables and Secrets before enabling the first deployment; Environment variables and secrets are not available to those workflow runs. On GitHub Pro, Team, or Enterprise, the same names may instead be scoped to a protected `production` Environment. Public build settings are preferably Actions Variables; the deployment workflow also accepts an Actions Secret with the same name when a value has been stored there instead.
 
@@ -385,7 +385,7 @@ For a private repository on GitHub Free, configure these values as repository-le
 | Secret | `VPS_SSH_PRIVATE_KEY` | A dedicated GitHub Actions deployment private key, never the developer's personal SSH key. |
 | Secret | `VPS_KNOWN_HOSTS` | Verified host-key line from the VPS; do not generate it in CI with an unverified `ssh-keyscan`. |
 
-Before the workflow can activate a release, provision the VPS with PostgreSQL, Java 21, Caddy, an `umur-emas-api` systemd service, and a non-login deployment user that can run only `/usr/local/sbin/umur-emas-activate-release` through `sudo`. Install [scripts/production/activate-release.sh](scripts/production/activate-release.sh) there as `/usr/local/sbin/umur-emas-activate-release` with root ownership and executable permissions; update that installed script before the next web-only deployment so it preserves the current API JAR. The API systemd environment file must remain only on the VPS and provide at least `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `FIREBASE_ISSUER_URI`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `CORS_ALLOWED_ORIGINS`, `PLATFORM_ADMIN_EMAILS`, and a strong `QR_SIGNING_SECRET`.
+Before the workflow can activate a release, provision the VPS with PostgreSQL, Java 21, Caddy, an `umur-emas-api` systemd service, and a non-login deployment user that can run only `/usr/local/sbin/umur-emas-activate-release` through `sudo`. Install [scripts/production/activate-release.sh](scripts/production/activate-release.sh) there as `/usr/local/sbin/umur-emas-activate-release` with root ownership and executable permissions. It preserves the existing API JAR for web-only releases, restarts the service only after an API release uploads a new `api.jar`, and supports `--rollback` to swap the current and immediately preceding releases. The API systemd environment file must remain only on the VPS and provide at least `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `FIREBASE_ISSUER_URI`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `CORS_ALLOWED_ORIGINS`, `PLATFORM_ADMIN_EMAILS`, and a strong `QR_SIGNING_SECRET`.
 
 ## Git workflow
 

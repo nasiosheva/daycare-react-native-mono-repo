@@ -39,10 +39,7 @@ apps/api/build/
 apps/api/.gradle/
 apps/api/.kotlin/
 apps/api/bin/
-# Keep the API Gradle Wrapper local to each developer machine.
-apps/api/gradle/
-apps/api/gradlew
-apps/api/gradlew.bat
+# Track the API Gradle Wrapper so local and CI API builds use Gradle 8.14.2.
 
 # IDE and operating-system files
 .DS_Store
