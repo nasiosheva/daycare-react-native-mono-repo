@@ -16,12 +16,13 @@ type ProfileSheet = "profile" | "password" | "admin" | null;
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { api, user, profile, organizationId, signOut, updateDisplayName, updatePersonalDetails, changePassword, usesPassword, selectOrganization } = useAuth();
+  const { api, user, profile, organizationId, signOut, updateDisplayName, updateUsername, updatePersonalDetails, changePassword, usesPassword, selectOrganization } = useAuth();
   const { t, formatDate } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
   const parentMemberships = profile?.memberships.filter((item) => item.role === "PARENT") ?? [];
   const [displayName, setDisplayName] = useState("");
+  const [username, setUsername] = useState("");
   const [gender, setGender] = useState<ChildGender | undefined>(undefined);
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -38,6 +39,7 @@ export default function ProfileScreen() {
   const [leaving, setLeaving] = useState(false);
 
   useEffect(() => { setDisplayName(profile?.displayName ?? user?.displayName ?? ""); }, [profile?.displayName, user?.displayName]);
+  useEffect(() => { setUsername(profile?.username ?? ""); }, [profile?.username]);
   useEffect(() => { setGender(profile?.gender && profile.gender !== "UNSPECIFIED" ? profile.gender : undefined); }, [profile?.gender]);
   useEffect(() => { setDateOfBirth(profile?.dateOfBirth ?? ""); }, [profile?.dateOfBirth]);
 
@@ -51,6 +53,7 @@ export default function ProfileScreen() {
     try {
       setSavingProfile(true);
       await updateDisplayName(displayName);
+      await updateUsername(username);
       await updatePersonalDetails(gender, dateOfBirth);
       setProfileSheet(null);
       Alert.alert(t("profile.saved"));
@@ -90,6 +93,7 @@ export default function ProfileScreen() {
       <AppText variant="heading">{profile?.displayName ?? user?.displayName ?? t("common.noData")}</AppText>
       {profile?.gender && profile.gender !== "UNSPECIFIED" && <AppText tone="muted">{t(profile.gender === "MALE" ? "children.genderMale" : "children.genderFemale")}</AppText>}
       {profile?.dateOfBirth && <AppText tone="muted">{t("profile.dateOfBirth")}: {formatDate(profile.dateOfBirth)}</AppText>}
+      {profile?.username && <AppText tone="muted">{t("profile.username")}: {profile.username}</AppText>}
       {user?.email && <AppText tone="muted">{user.email}</AppText>}
       {user?.phoneNumber && <AppText tone="muted">{user.phoneNumber}</AppText>}
       {profile?.isPlatformAdmin && <AppText tone="muted">{t("profile.rolePlatform")}</AppText>}
@@ -151,6 +155,7 @@ export default function ProfileScreen() {
       positiveAction={{ label: t("common.save"), loading: savingProfile, disabled: !displayName.trim() || !gender || !isIsoDate(dateOfBirth), onPress: () => void saveProfile() }}
     >
       <TextInput style={styles.input} placeholder={t("profile.name")} value={displayName} onChangeText={setDisplayName} />
+      <TextInput style={styles.input} autoCapitalize="none" autoCorrect={false} placeholder={t("profile.usernameOptional")} value={username} onChangeText={setUsername} />
       <GenderPicker value={gender} onChange={setGender} />
       <DatePicker placeholder={t("profile.dateOfBirth")} value={dateOfBirth} onChange={setDateOfBirth} maximumDate={formatIsoDate(new Date())} />
     </BottomSheet>

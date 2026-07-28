@@ -25,6 +25,7 @@ type AuthContextValue = {
   sendPhoneCode: (phoneNumber: string) => Promise<PhoneChallenge>;
   verifyPhoneCode: (code: string) => Promise<{ needsRegistration: boolean }>;
   updateDisplayName: (displayName: string) => Promise<void>;
+  updateUsername: (username: string) => Promise<void>;
   updatePersonalDetails: (gender: ChildGender, dateOfBirth: string) => Promise<void>;
   updateParentFamilyProfile: (input: ParentFamilyProfileInput) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
@@ -190,6 +191,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const nextProfile = await api.updateMyProfile({ gender, dateOfBirth });
     setFirebaseProfile(nextProfile);
   };
+  const updateUsername = async (username: string) => {
+    const nextProfile = await api.updateMyUsername(username.trim() || undefined);
+    setFirebaseProfile(nextProfile);
+  };
   const updateParentFamilyProfile = async (input: ParentFamilyProfileInput) => {
     const parentFamilyProfile = await api.updateParentFamilyProfile(input);
     setFirebaseProfile((current) => current ? { ...current, parentFamilyProfile } : current);
@@ -215,6 +220,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     sendPhoneCode,
     verifyPhoneCode,
     updateDisplayName,
+    updateUsername,
     updatePersonalDetails,
     updateParentFamilyProfile,
     changePassword,

@@ -112,6 +112,16 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/auth/identity-check", expect.anything());
   });
 
+  it("updates the signed-in user's optional username without an organization header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ username: "mories" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
+
+    await client.updateMyUsername("mories");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/me/username", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ username: "mories" }), headers: expect.not.objectContaining({ "X-Organization-Id": expect.anything() }) }));
+  });
+
   it("updates the signed-in Parent family profile without an organization header", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);

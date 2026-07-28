@@ -123,6 +123,7 @@ data class LocalLoginRequest(@field:NotBlank @field:Size(max = 128) val identifi
 data class LocalPasswordRequest(@field:Size(min = 6, max = 128) val password: String)
 data class LocalProfileRequest(@field:NotBlank @field:Size(max = 128) val displayName: String)
 data class UpdatePersonalDetailsRequest(@field:NotNull val gender: Gender, @field:NotNull val dateOfBirth: LocalDate)
+data class UpdateUsernameRequest(@field:Size(min = 2, max = 100) val username: String? = null)
 data class LocalRegistrationRequest(@field:NotBlank @field:Size(max = 128) val displayName: String, @field:NotBlank @field:Size(max = 254) val email: String, @field:NotBlank @field:Size(min = 6, max = 128) val password: String)
 
 @RestController
@@ -160,6 +161,9 @@ class IdentityController(private val access: AccessService, private val identity
 
     @PatchMapping("/me")
     fun updateMe(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: UpdatePersonalDetailsRequest) = access.updatePersonalDetails(jwt, request.gender, request.dateOfBirth)
+
+    @PatchMapping("/me/username")
+    fun updateUsername(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: UpdateUsernameRequest) = access.updateUsername(jwt, request.username)
 
     @GetMapping("/parent-family-profile")
     fun parentFamilyProfile(@AuthenticationPrincipal jwt: Jwt) = parentFamilyProfiles.mine(jwt)
