@@ -216,6 +216,7 @@ export class ApiClient {
   }
   async identityCheck(): Promise<IdentityCheckResult> { return this.request("/auth/identity-check"); }
   async updateMyProfile(input: { gender: ChildGender; dateOfBirth: string }): Promise<CurrentUser> { return this.request("/me", { method: "PATCH", body: JSON.stringify(input) }); }
+  async updateMyUsername(username?: string): Promise<CurrentUser> { return this.request("/me/username", { method: "PATCH", body: JSON.stringify({ username }) }); }
   async parentFamilyProfile(): Promise<CurrentUser["parentFamilyProfile"]> { return this.request("/parent-family-profile"); }
   async updateParentFamilyProfile(input: ParentFamilyProfileInput): Promise<NonNullable<CurrentUser["parentFamilyProfile"]>> { return this.request("/parent-family-profile", { method: "PUT", body: JSON.stringify(input) }); }
   async parentEnrollmentCatalog(): Promise<ParentTenantCatalog[]> { return this.request("/parent-enrollment/catalog"); }

@@ -90,16 +90,24 @@ class ApiIntegrationTest(
         assertFalse(tenantId.isBlank())
 
         val tenantAdminToken = login("integration-tenant-admin", "tenant-password")
+        val usernameUpdate = rest.exchange(
+            url("/v1/me/username"),
+            HttpMethod.PATCH,
+            authenticated(tenantAdminToken, mapOf("username" to "integration-admin-updated")),
+            String::class.java,
+        )
+        assertEquals(HttpStatus.OK, usernameUpdate.statusCode)
+        val updatedUsernameToken = login("integration-admin-updated", "tenant-password")
         val children = rest.exchange(
             url("/v1/children"),
             HttpMethod.GET,
-            authenticated(tenantAdminToken, null, tenantId),
+            authenticated(updatedUsernameToken, null, tenantId),
             String::class.java,
         )
         val notifications = rest.exchange(
             url("/v1/notifications"),
             HttpMethod.GET,
-            authenticated(tenantAdminToken, null, tenantId),
+            authenticated(updatedUsernameToken, null, tenantId),
             String::class.java,
         )
 

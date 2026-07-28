@@ -160,6 +160,7 @@ export type PurchaseServiceInput = z.infer<typeof purchaseServiceSchema>;
 export type CurrentUser = {
   id: string;
   displayName: string;
+  username?: string;
   gender: PersonGender;
   dateOfBirth?: string;
   registrationRole?: RegistrationRole;
