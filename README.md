@@ -87,6 +87,7 @@ Environment files are local-only and ignored by Git. Start from the correspondin
 | `POSTGRES_HOST`, `POSTGRES_PORT` | Local launcher | Optional | Existing PostgreSQL server checked by local launchers; defaults to `localhost:5432`. They do not change Spring's JDBC URL. |
 | `DATABASE_URL` | Default API | Optional | JDBC connection URL; set this for a local server that is not `jdbc:postgresql://localhost:5432/daycare`. |
 | `FIREBASE_ISSUER_URI` | Default API | Yes | Firebase token issuer, for example `https://securetoken.google.com/<project-id>`. |
+| `LOCAL_AUTH_JWT_SECRET` | API | Yes | At least 32 random bytes used to sign and verify the application-password access tokens. Keep it only in ignored local files or the production server environment. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | API | Not required for password account provisioning | Retained only for any future Firebase Admin operations. The current account and password flows do not create Firebase users. Keep it only in a secret manager or ignored local environment file when needed. |
 | `QR_SIGNING_SECRET` | Default API | Recommended | Secret used to sign attendance QR tokens. Use a random value of at least 32 characters outside local-only development. |
 | `PLATFORM_ADMIN_EMAILS` | API | Required to bootstrap platform admin access | Comma-separated Firebase email addresses that may manage tenants, subscriptions, and tenant payments. |
@@ -117,7 +118,7 @@ Environment files are local-only and ignored by Git. Start from the correspondin
    set -a && . ./.env && set +a && pnpm dev:api
    ```
 
-   The API runs at `http://localhost:8080/api`. Flyway applies the schema migrations automatically at startup. **Current branch migration notice:** this worktree also changes the contents of the already-applied `V1__initial_schema.sql`. A local database whose Flyway history still stores the earlier V1 checksum will stop at validation until its schema history is repaired or the database is recreated. Review the V1 change before repairing any shared or production database. Swagger UI is available at `http://localhost:8080/api/swagger-ui/index.html`, and the OpenAPI document is at `http://localhost:8080/api/v3/api-docs`.
+   The API runs at `http://localhost:8080/api`. Flyway applies the single `V1__initial_schema.sql` baseline automatically at startup. The baseline is for a new database only; it intentionally does not upgrade a database that has an earlier Flyway history. Recreate the database through an approved reset operation before adopting this baseline. Swagger UI is available at `http://localhost:8080/api/swagger-ui/index.html`, and the OpenAPI document is at `http://localhost:8080/api/v3/api-docs`.
 
 5. Start a client. For direct Expo development, `.env` supplies the public configuration.
 
@@ -130,6 +131,12 @@ Environment files are local-only and ignored by Git. Start from the correspondin
 ### Initial tenant data
 
 Flyway creates the schema only; it does not create demo tenant data. A Firebase identity is first matched to an existing application account by Firebase UID, email, or phone number. It is never synchronized into a new account automatically. A new Google or phone identity must complete Parent registration with an email and password before it can receive tenant access through an existing invitation or a selected tenant's approved Parent enrollment.
+
+### Database baseline reset
+
+The schema is intentionally consolidated into the one `V1__initial_schema.sql` baseline. This is a destructive, clean-install strategy: it is suitable only when the target database is deliberately recreated and all application data may be removed. Do not use `flyway repair` to force an existing database onto this baseline.
+
+Before a production reset, take an encrypted or access-controlled PostgreSQL dump, stop the API to prevent writes, drop and recreate the application database, deploy the API JAR built from the same baseline revision, and start the service. Confirm Flyway records exactly one successful migration and confirm `/api/actuator/health` is `UP`. The reset does not create tenant, staff, Parent, or Platform Admin accounts. A configured Firebase bootstrap email creates its Platform Admin record only after that Firebase identity calls a Platform Admin endpoint; application-password accounts must be provisioned explicitly afterwards.
 
 Flyway provides idempotent master data: built-in institution types and global development categories. The reference global curriculum (age-band levels, Program Perkembangan, and their indicators) is intentionally not part of the schema-building migrations, so a fresh schema starts with zero curriculum data; it is seeded separately, and only when `SEED_GLOBAL_CURRICULUM_ENABLED=true` is set. When `LOCAL_AUTH_ENABLED=true` and `LOCAL_SEED_ENABLED=true` are set in `.env`, a local launcher also creates or updates exactly one Platform Admin from `LOCAL_SEED_ADMIN_EMAIL`, `LOCAL_SEED_ADMIN_USERNAME`, `LOCAL_SEED_ADMIN_DISPLAY_NAME`, and `LOCAL_SEED_ADMIN_PASSWORD`. The configured password is reset on every local startup, so the `.env` value is always the valid local-admin credential. No tenant, membership, or transactional/demo data is created.
 
