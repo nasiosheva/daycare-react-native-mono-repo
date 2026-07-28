@@ -1039,3 +1039,237 @@ INSERT INTO development_categories (id, organization_id, name, active, created_b
   (gen_random_uuid(), NULL, 'Tidur', TRUE, NULL, now()),
   (gen_random_uuid(), NULL, 'Observasi', TRUE, NULL, now())
 ON CONFLICT (lower(name)) WHERE organization_id IS NULL DO NOTHING;
+
+-- ===================================================================
+-- Consolidated baseline: formerly V2__curriculum_program_goal_templates.sql
+-- ===================================================================
+ALTER TABLE curriculum_programs
+    ADD COLUMN is_template BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN active BOOLEAN NOT NULL DEFAULT TRUE;
+
+UPDATE curriculum_programs
+SET is_template = organization_id IS NULL;
+
+ALTER TABLE goal_templates
+    ADD COLUMN is_template BOOLEAN NOT NULL DEFAULT FALSE;
+
+UPDATE goal_templates
+SET is_template = organization_id IS NULL;
+
+CREATE TABLE curriculum_program_goal_templates (
+  id UUID PRIMARY KEY,
+  curriculum_program_id UUID NOT NULL REFERENCES curriculum_programs(id) ON DELETE CASCADE,
+  goal_template_id UUID NOT NULL REFERENCES goal_templates(id) ON DELETE CASCADE,
+  CONSTRAINT curriculum_program_goal_templates_unique UNIQUE (curriculum_program_id, goal_template_id)
+);
+
+CREATE INDEX curriculum_program_goal_templates_program_idx
+    ON curriculum_program_goal_templates (curriculum_program_id);
+CREATE INDEX curriculum_program_goal_templates_goal_idx
+    ON curriculum_program_goal_templates (goal_template_id);
+CREATE INDEX curriculum_programs_active_idx
+    ON curriculum_programs (organization_id, active, name);
+
+-- ===================================================================
+-- Consolidated baseline: formerly V3__goal_category_restructure.sql
+-- ===================================================================
+ALTER TABLE goal_templates RENAME TO goal_categories;
+ALTER TABLE goal_categories RENAME COLUMN category TO domain;
+ALTER TABLE goal_template_indicators RENAME TO goal_category_items;
+ALTER TABLE goal_category_items RENAME COLUMN goal_template_id TO goal_category_id;
+ALTER TABLE child_goals RENAME COLUMN template_id TO category_id;
+ALTER TABLE curriculum_program_goal_templates RENAME TO curriculum_program_goal_categories;
+ALTER TABLE curriculum_program_goal_categories RENAME COLUMN goal_template_id TO goal_category_id;
+
+ALTER INDEX goal_templates_organization_idx RENAME TO goal_categories_organization_idx;
+ALTER INDEX goal_template_indicators_template_idx RENAME TO goal_category_items_category_idx;
+ALTER INDEX child_goals_active_template_idx RENAME TO child_goals_active_category_idx;
+ALTER INDEX curriculum_program_goal_templates_program_idx RENAME TO curriculum_program_goal_categories_program_idx;
+ALTER INDEX curriculum_program_goal_templates_goal_idx RENAME TO curriculum_program_goal_categories_goal_idx;
+DROP INDEX goal_templates_global_idx;
+
+ALTER TABLE learning_levels ALTER COLUMN organization_id DROP NOT NULL;
+ALTER TABLE learning_levels ADD COLUMN is_template BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE UNIQUE INDEX learning_levels_global_name_idx ON learning_levels (name) WHERE organization_id IS NULL;
+
+INSERT INTO learning_levels (id, organization_id, name, min_age_months, max_age_months, display_order, is_template, active) VALUES
+(gen_random_uuid(), NULL, 'Toddler (1-2 Tahun)', 12, 24, 0, true, true),
+(gen_random_uuid(), NULL, 'Kelompok Bermain (2-3 Tahun)', 24, 36, 1, true, true),
+(gen_random_uuid(), NULL, 'Kelompok A (3-4 Tahun)', 36, 48, 2, true, true),
+(gen_random_uuid(), NULL, 'Kelompok B (4-5 Tahun)', 48, 60, 3, true, true);
+
+INSERT INTO goal_categories (id, organization_id, learning_level_id, name, description, duration_days, minimum_yes_percent, minimum_yes_streak, domain, is_template, active, created_at)
+SELECT
+  gen_random_uuid(),
+  NULL,
+  level.id,
+  CASE agg.domain
+    WHEN 'KEMANDIRIAN' THEN 'Kemandirian'
+    WHEN 'BAHASA_KOMUNIKASI' THEN 'Bahasa & Komunikasi'
+    WHEN 'KOGNITIF' THEN 'Kognitif'
+    WHEN 'MOTORIK_HALUS' THEN 'Motorik Halus'
+    WHEN 'MOTORIK_KASAR' THEN 'Motorik Kasar'
+    WHEN 'SOSIAL_EMOSI' THEN 'Sosial & Emosi'
+  END,
+  '',
+  agg.duration_days, agg.minimum_yes_percent, agg.minimum_yes_streak, agg.domain, true, true, now()
+FROM (
+  SELECT DISTINCT ON (min_age_months, domain) min_age_months, max_age_months, domain, duration_days, minimum_yes_percent, minimum_yes_streak
+  FROM goal_categories
+  WHERE organization_id IS NULL
+  ORDER BY min_age_months, domain
+) agg
+JOIN learning_levels level ON level.organization_id IS NULL AND level.is_template AND level.min_age_months = agg.min_age_months AND level.max_age_months = agg.max_age_months;
+
+CREATE TEMP TABLE goal_category_migration_map AS
+SELECT old_cat.id AS old_id, new_cat.id AS new_id
+FROM goal_categories old_cat
+JOIN learning_levels level ON level.organization_id IS NULL AND level.is_template AND level.min_age_months = old_cat.min_age_months AND level.max_age_months = old_cat.max_age_months
+JOIN goal_categories new_cat ON new_cat.organization_id IS NULL AND new_cat.learning_level_id = level.id AND new_cat.domain = old_cat.domain AND new_cat.id != old_cat.id
+WHERE old_cat.organization_id IS NULL AND old_cat.min_age_months IS NOT NULL;
+
+UPDATE goal_category_items item
+SET goal_category_id = map.new_id
+FROM goal_category_migration_map map
+WHERE item.goal_category_id = map.old_id;
+
+DELETE FROM goal_categories WHERE id IN (SELECT old_id FROM goal_category_migration_map);
+DROP TABLE goal_category_migration_map;
+
+UPDATE goal_categories gc
+SET learning_level_id = c.learning_level_id
+FROM classrooms c
+WHERE gc.classroom_id = c.id AND gc.learning_level_id IS NULL AND c.learning_level_id IS NOT NULL;
+
+UPDATE goal_categories SET domain = 'KEMANDIRIAN' WHERE domain IS NULL;
+
+ALTER TABLE goal_categories DROP CONSTRAINT goal_templates_scope;
+ALTER TABLE goal_categories ALTER COLUMN learning_level_id SET NOT NULL;
+ALTER TABLE goal_categories ALTER COLUMN domain SET NOT NULL;
+ALTER TABLE goal_categories DROP COLUMN classroom_id;
+ALTER TABLE goal_categories DROP COLUMN min_age_months;
+ALTER TABLE goal_categories DROP COLUMN max_age_months;
+CREATE UNIQUE INDEX goal_categories_tenant_scope_idx ON goal_categories (organization_id, learning_level_id, domain) WHERE organization_id IS NOT NULL;
+CREATE UNIQUE INDEX goal_categories_global_scope_idx ON goal_categories (learning_level_id, domain) WHERE organization_id IS NULL;
+
+-- ===================================================================
+-- Consolidated baseline: formerly V4__remove_global_curriculum_seed_from_schema_path.sql
+-- ===================================================================
+DELETE FROM goal_category_items
+WHERE goal_category_id IN (
+  SELECT gc.id FROM goal_categories gc
+  JOIN learning_levels ll ON ll.id = gc.learning_level_id
+  WHERE gc.organization_id IS NULL AND gc.is_template = true
+    AND ll.organization_id IS NULL AND ll.is_template = true
+    AND ll.name IN ('Toddler (1-2 Tahun)', 'Kelompok Bermain (2-3 Tahun)', 'Kelompok A (3-4 Tahun)', 'Kelompok B (4-5 Tahun)')
+);
+
+DELETE FROM goal_categories gc
+USING learning_levels ll
+WHERE gc.learning_level_id = ll.id AND gc.organization_id IS NULL AND gc.is_template = true
+  AND ll.organization_id IS NULL AND ll.is_template = true
+  AND ll.name IN ('Toddler (1-2 Tahun)', 'Kelompok Bermain (2-3 Tahun)', 'Kelompok A (3-4 Tahun)', 'Kelompok B (4-5 Tahun)');
+
+DELETE FROM learning_levels
+WHERE organization_id IS NULL AND is_template = true
+  AND name IN ('Toddler (1-2 Tahun)', 'Kelompok Bermain (2-3 Tahun)', 'Kelompok A (3-4 Tahun)', 'Kelompok B (4-5 Tahun)');
+
+-- ===================================================================
+-- Consolidated baseline: formerly V5__rename_goal_category_to_development_program.sql
+-- ===================================================================
+ALTER TABLE goal_categories RENAME TO development_programs;
+ALTER TABLE goal_category_items RENAME TO development_program_items;
+ALTER TABLE development_program_items RENAME COLUMN goal_category_id TO development_program_id;
+ALTER TABLE child_goals RENAME COLUMN category_id TO program_id;
+ALTER TABLE curriculum_program_goal_categories RENAME TO curriculum_program_development_programs;
+ALTER TABLE curriculum_program_development_programs RENAME COLUMN goal_category_id TO development_program_id;
+
+ALTER INDEX goal_categories_global_scope_idx RENAME TO development_programs_global_scope_idx;
+ALTER INDEX goal_categories_tenant_scope_idx RENAME TO development_programs_tenant_scope_idx;
+ALTER INDEX goal_categories_organization_idx RENAME TO development_programs_organization_idx;
+ALTER INDEX goal_category_items_category_idx RENAME TO development_program_items_program_idx;
+ALTER INDEX child_goals_active_category_idx RENAME TO child_goals_active_program_idx;
+
+ALTER TABLE child_goal_check_ins
+  ADD COLUMN note VARCHAR(500),
+  ADD COLUMN photo_content_type VARCHAR(50),
+  ADD COLUMN photo_data BYTEA,
+  ADD COLUMN audio_content_type VARCHAR(50),
+  ADD COLUMN audio_data BYTEA,
+  ADD COLUMN audio_duration_ms INTEGER;
+
+-- ===================================================================
+-- Consolidated baseline: formerly V6-V12
+-- ===================================================================
+ALTER TABLE development_entries
+    ADD COLUMN photo_content_type VARCHAR(50),
+    ADD COLUMN photo_data BYTEA;
+
+CREATE TABLE revoked_access_tokens (
+  id UUID PRIMARY KEY,
+  token_hash VARCHAR(64) NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX revoked_access_tokens_expires_at_idx ON revoked_access_tokens (expires_at);
+
+ALTER TABLE child_goals
+    ADD COLUMN curriculum_program_id UUID REFERENCES curriculum_programs(id);
+CREATE INDEX child_goals_curriculum_program_idx ON child_goals (curriculum_program_id);
+
+CREATE TABLE child_absence_requests (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  branch_id UUID NOT NULL REFERENCES branches(id),
+  child_id UUID NOT NULL REFERENCES children(id),
+  requester_user_id UUID NOT NULL REFERENCES users(id),
+  purpose VARCHAR(32) NOT NULL,
+  note VARCHAR(500),
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  decided_by_user_id UUID REFERENCES users(id),
+  decided_at TIMESTAMPTZ,
+  rejection_reason VARCHAR(500),
+  created_at TIMESTAMPTZ NOT NULL,
+  CONSTRAINT child_absence_requests_dates CHECK (end_date >= start_date)
+);
+CREATE INDEX child_absence_requests_child_idx ON child_absence_requests (organization_id, child_id, created_at DESC);
+CREATE INDEX child_absence_requests_pending_idx ON child_absence_requests (organization_id, branch_id, status, start_date ASC);
+
+CREATE TABLE staff_leave_requests (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  requester_user_id UUID NOT NULL REFERENCES users(id),
+  type VARCHAR(16) NOT NULL,
+  starts_on DATE NOT NULL,
+  ends_on DATE NOT NULL,
+  reason VARCHAR(2000) NOT NULL,
+  status VARCHAR(16) NOT NULL,
+  evidence_content_type VARCHAR(50),
+  evidence_data BYTEA,
+  reviewed_by_user_id UUID REFERENCES users(id),
+  rejection_reason VARCHAR(2000),
+  reviewed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL,
+  CONSTRAINT staff_leave_requests_date_range CHECK (ends_on >= starts_on)
+);
+CREATE INDEX staff_leave_requests_requester_idx ON staff_leave_requests (organization_id, requester_user_id, created_at DESC);
+CREATE INDEX staff_leave_requests_pending_idx ON staff_leave_requests (organization_id, status, created_at ASC);
+
+CREATE TABLE parent_family_profiles (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL UNIQUE REFERENCES users(id),
+  husband_date_of_birth DATE,
+  husband_occupation VARCHAR(32),
+  husband_income_range VARCHAR(32),
+  wife_date_of_birth DATE,
+  wife_occupation VARCHAR(32),
+  wife_income_range VARCHAR(32),
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
+ALTER TABLE institution_type_definitions
+  ADD COLUMN IF NOT EXISTS parent_occupation_visible BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS parent_income_range_visible BOOLEAN NOT NULL DEFAULT FALSE;
