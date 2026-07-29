@@ -62,6 +62,32 @@ ensure_android_java_21() {
   exit 1
 }
 
+resolve_android_sdk_directory() {
+  android_sdk_directory=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}
+  if [ -z "$android_sdk_directory" ] && [ -d "$HOME/Library/Android/sdk" ]; then
+    android_sdk_directory="$HOME/Library/Android/sdk"
+  fi
+
+  if [ -n "$android_sdk_directory" ] && [ -d "$android_sdk_directory" ]; then
+    printf '%s\n' "$android_sdk_directory"
+  fi
+}
+
+ensure_android_platform_tools() {
+  if command -v adb >/dev/null 2>&1; then
+    return
+  fi
+
+  android_sdk_directory=$(resolve_android_sdk_directory || true)
+  if [ -n "$android_sdk_directory" ] && [ -x "$android_sdk_directory/platform-tools/adb" ]; then
+    export PATH="$android_sdk_directory/platform-tools:$PATH"
+    return
+  fi
+
+  echo "Android SDK platform tools are required. Install Android Studio and set ANDROID_HOME or ANDROID_SDK_ROOT when the SDK is not at the standard macOS location, then run this launcher again." >&2
+  exit 1
+}
+
 ensure_corepack() {
   if ! command -v corepack >/dev/null 2>&1; then
     if ! command -v npm >/dev/null 2>&1; then
@@ -150,10 +176,7 @@ require_ios_physical_device() {
 ensure_platform_tools() {
   case "$platform" in
     android)
-      if ! command -v adb >/dev/null 2>&1; then
-        echo "Android SDK platform tools are required. Install Android Studio and add adb to PATH, then run this launcher again." >&2
-        exit 1
-      fi
+      ensure_android_platform_tools
 
       if [ ! -f "$repository_root/apps/mobile/google-services.json" ]; then
         echo "Missing apps/mobile/google-services.json. Add the Firebase Android configuration before building." >&2
@@ -230,12 +253,9 @@ ensure_android_development_build() {
 
   android_local_properties="$repository_root/apps/mobile/android/local.properties"
   if [ ! -f "$android_local_properties" ]; then
-    android_sdk_directory=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}
-    if [ -z "$android_sdk_directory" ] && [ -d "$HOME/Library/Android/sdk" ]; then
-      android_sdk_directory="$HOME/Library/Android/sdk"
-    fi
+    android_sdk_directory=$(resolve_android_sdk_directory || true)
 
-    if [ -z "$android_sdk_directory" ] || [ ! -d "$android_sdk_directory" ]; then
+    if [ -z "$android_sdk_directory" ]; then
       echo "Android SDK location is unavailable. Set ANDROID_HOME or ANDROID_SDK_ROOT, then run this launcher again." >&2
       exit 1
     fi

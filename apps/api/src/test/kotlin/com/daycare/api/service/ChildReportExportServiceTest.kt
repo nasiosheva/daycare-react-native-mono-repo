@@ -28,4 +28,22 @@ class ChildReportExportServiceTest {
         assertEquals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsx.contentType)
         assertTrue(xlsx.bytes.copyOfRange(0, 2).decodeToString() == "PK")
     }
+
+    @Test
+    fun `builds binary child attendance recap reports from authorized summary data`() {
+        val branchId = UUID.randomUUID()
+        val startsOn = LocalDate.of(2026, 7, 1)
+        val endsOn = LocalDate.of(2026, 7, 31)
+        `when`(attendance.childAttendanceReport(jwt, organizationId, branchId, startsOn, endsOn)).thenReturn(
+            ChildAttendanceReport("Cabang Utama", startsOn, endsOn, listOf(ChildAttendanceSummary(UUID.randomUUID(), "Alya", "123", 3, 2, 1))),
+        )
+
+        val pdf = service.childAttendance(jwt, organizationId, ReportExportFormat.PDF, branchId, startsOn, endsOn)
+        val xlsx = service.childAttendance(jwt, organizationId, ReportExportFormat.XLSX, branchId, startsOn, endsOn)
+
+        assertEquals("application/pdf", pdf.contentType)
+        assertTrue(pdf.bytes.copyOfRange(0, 4).decodeToString() == "%PDF")
+        assertEquals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsx.contentType)
+        assertTrue(xlsx.bytes.copyOfRange(0, 2).decodeToString() == "PK")
+    }
 }

@@ -112,7 +112,11 @@ interface ChildStaffAssignmentRepository : JpaRepository<ChildStaffAssignment, U
     fun existsByChildIdAndUserId(childId: UUID, userId: UUID): Boolean
 }
 interface GuardianLinkRepository : JpaRepository<GuardianLink, UUID> { fun findAllByUserId(userId: UUID): List<GuardianLink>; fun existsByChildIdAndUserId(childId: UUID, userId: UUID): Boolean; fun findAllByChildId(childId: UUID): List<GuardianLink> }
-interface AttendanceRepository : JpaRepository<AttendanceRecord, UUID> { fun findByChildIdAndOperationalDate(childId: UUID, operationalDate: LocalDate): AttendanceRecord?; fun findAllByChildIdInAndOperationalDateIn(childIds: List<UUID>, operationalDates: List<LocalDate>): List<AttendanceRecord> }
+interface AttendanceRepository : JpaRepository<AttendanceRecord, UUID> {
+    fun findByChildIdAndOperationalDate(childId: UUID, operationalDate: LocalDate): AttendanceRecord?
+    fun findAllByChildIdInAndOperationalDateIn(childIds: List<UUID>, operationalDates: List<LocalDate>): List<AttendanceRecord>
+    fun findAllByChildIdInAndOperationalDateBetween(childIds: List<UUID>, startsOn: LocalDate, endsOn: LocalDate): List<AttendanceRecord>
+}
 interface ChildAbsenceRequestRepository : JpaRepository<ChildAbsenceRequest, UUID> {
     fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildAbsenceRequest>
     fun findAllByOrganizationIdAndStatusOrderByStartDateAscCreatedAtAsc(organizationId: UUID, status: com.daycare.api.domain.ChildAbsenceRequestStatus): List<ChildAbsenceRequest>

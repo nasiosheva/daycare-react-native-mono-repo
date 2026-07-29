@@ -363,6 +363,15 @@ class InstitutionController(private val attendance: AttendanceService, private v
             .body(report.bytes)
     }
 
+    @GetMapping("/reports/children/attendance/export")
+    fun exportChildAttendance(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam format: ReportExportFormat, @RequestParam branchId: UUID, @RequestParam startsOn: LocalDate, @RequestParam endsOn: LocalDate): ResponseEntity<ByteArray> {
+        val report = childReports.childAttendance(jwt, organizationId, format, branchId, startsOn, endsOn)
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(report.contentType))
+            .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(report.fileName).build().toString())
+            .body(report.bytes)
+    }
+
     @PostMapping("/children") @ResponseStatus(HttpStatus.CREATED)
     fun createChild(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateChildRequest) = administration.createChild(jwt, organizationId, request)
 

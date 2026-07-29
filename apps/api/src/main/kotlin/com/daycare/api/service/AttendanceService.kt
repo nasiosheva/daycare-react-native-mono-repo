@@ -28,6 +28,10 @@ class AttendanceConflict(message: String) : RuntimeException(message)
 data class ChildResponse(val id: UUID, val organizationId: UUID, val branchId: UUID, val classroomId: UUID?, val firstName: String, val lastName: String?, val nisn: String?, val gender: Gender, val dateOfBirth: LocalDate, val todayCheckedInAt: Instant? = null, val todayCheckedOutAt: Instant? = null) { val fullName get() = listOfNotNull(firstName, lastName).joinToString(" ") }
 data class ChildListFilter(val branchId: UUID? = null, val learningLevelId: UUID? = null, val classroomId: UUID? = null)
 data class AttendanceResponse(val id: UUID, val childId: UUID, val operationalDate: LocalDate, val checkedInAt: Instant?, val checkedOutAt: Instant?, val method: AttendanceMethod)
+data class ChildAttendanceSummary(val childId: UUID, val fullName: String, val nisn: String?, val totalCheckIns: Int, val totalCheckOuts: Int, val pendingCheckOuts: Int)
+data class ChildAttendanceReport(val branchName: String, val startsOn: LocalDate, val endsOn: LocalDate, val rows: List<ChildAttendanceSummary>)
+
+enum class ChildAttendanceReportError { DATE_RANGE }
 
 @Service
 class AttendanceService(
@@ -53,6 +57,32 @@ class AttendanceService(
         val recordByChildAndDate = attendance.findAllByChildIdInAndOperationalDateIn(visibleChildren.map { it.id }, operationalDateByChild.values.distinct())
             .associateBy { it.childId to it.operationalDate }
         return visibleChildren.map { child -> toResponse(child, recordByChildAndDate[child.id to operationalDateByChild[child.id]]) }
+    }
+
+    @Transactional(readOnly = true)
+    fun childAttendanceReport(jwt: Jwt, organizationId: UUID, branchId: UUID, startsOn: LocalDate, endsOn: LocalDate): ChildAttendanceReport {
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
+        require(!endsOn.isBefore(startsOn)) { ChildAttendanceReportError.DATE_RANGE.name }
+        val branch = branches.findById(branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
+        require(branch.organizationId == organizationId) { "Branch belongs to a different organization" }
+        val children = childScopes.visibleChildren(scope, organizationId).filter { it.branchId == branchId }.sortedBy { it.fullName() }
+        if (children.isEmpty()) return ChildAttendanceReport(branch.name, startsOn, endsOn, emptyList())
+
+        val recordsByChildId = attendance.findAllByChildIdInAndOperationalDateBetween(children.map { it.id }, startsOn, endsOn)
+            .filter { it.organizationId == organizationId && it.branchId == branchId }
+            .groupBy { it.childId }
+        val rows = children.map { child ->
+            val records = recordsByChildId[child.id].orEmpty()
+            ChildAttendanceSummary(
+                childId = child.id,
+                fullName = child.fullName(),
+                nisn = child.nisn,
+                totalCheckIns = records.count { it.checkedInAt != null },
+                totalCheckOuts = records.count { it.checkedOutAt != null },
+                pendingCheckOuts = records.count { it.checkedInAt != null && it.checkedOutAt == null },
+            )
+        }
+        return ChildAttendanceReport(branch.name, startsOn, endsOn, rows)
     }
 
     @Transactional

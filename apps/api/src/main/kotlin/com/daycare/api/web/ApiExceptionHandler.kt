@@ -10,6 +10,7 @@ import com.daycare.api.service.DevelopmentEntryMediaError
 import com.daycare.api.service.ParentEnrollmentError
 import com.daycare.api.service.TenantPaymentInstructionError
 import com.daycare.api.service.StaffLeaveRequestError
+import com.daycare.api.service.ChildAttendanceReportError
 import org.springframework.context.MessageSource
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -93,6 +94,7 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             StaffLeaveRequestError.REASON_REQUIRED to "error.staffLeaveReasonRequired",
             StaffLeaveRequestError.NOT_PENDING to "error.staffLeaveNotPending",
             StaffLeaveRequestError.REJECTION_REASON_REQUIRED to "error.staffLeaveRejectionReasonRequired",
+            ChildAttendanceReportError.DATE_RANGE.name to "error.childAttendanceReportDateRange",
             "You do not have permission for this organization" to "error.organizationAccess",
             "Tenant subscription is not active" to "error.subscriptionInactive",
             "This feature is not enabled for the institution" to "error.featureUnavailable",
