@@ -338,6 +338,16 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/reports/children/export?format=PDF&branchId=branch-id", expect.anything());
   });
 
+  it("downloads a branch child attendance recap for the selected date range", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, headers: new Headers({ "Content-Type": "application/pdf", "Content-Disposition": "attachment; filename=child-attendance.pdf" }), arrayBuffer: async () => Uint8Array.from([1, 2, 3]).buffer });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await client.downloadChildAttendanceReport("PDF", { branchId: "branch-id", startsOn: "2026-07-01", endsOn: "2026-07-29" });
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/reports/children/attendance/export?format=PDF&branchId=branch-id&startsOn=2026-07-01&endsOn=2026-07-29", expect.anything());
+  });
+
   it("derives a secure websocket endpoint from the API URL", () => {
     expect(realtimeUrl("https://api.example.test/api/v1")).toBe("wss://api.example.test/api/v1/realtime");
     expect(realtimeUrl("http://localhost:8080/api/v1", "ws://realtime.example.test/socket")).toBe("ws://realtime.example.test/socket");

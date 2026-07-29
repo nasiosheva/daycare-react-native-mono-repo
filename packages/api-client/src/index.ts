@@ -69,6 +69,7 @@ export type ApiRequestLogEntry = {
 export type Child = Omit<ChildInput, "gender"> & { id: string; fullName: string; organizationId: string; branchId: string; gender: ChildGender | "UNSPECIFIED"; todayCheckedInAt?: string | null; todayCheckedOutAt?: string | null };
 export type BranchListFilter = { branchId?: string };
 export type ChildListFilter = { branchId?: string; learningLevelId?: string; classroomId?: string };
+export type ChildAttendanceReportFilter = { branchId: string; startsOn: string; endsOn: string };
 export type UpdateChildInput = Omit<ChildInput, "classroomId">;
 export type ChildProgram = { id: string; name: string; description: string };
 export type ChildAssignmentRole = "STAFF" | "NURSE" | "MISS";
@@ -405,6 +406,11 @@ export class ApiClient {
     if (filter.learningLevelId) params.set("learningLevelId", filter.learningLevelId);
     if (filter.classroomId) params.set("classroomId", filter.classroomId);
     return this.requestFile(`/reports/children/export?${params.toString()}`);
+  }
+
+  async downloadChildAttendanceReport(format: "PDF" | "XLSX", filter: ChildAttendanceReportFilter): Promise<DownloadedReport> {
+    const params = new URLSearchParams({ format, branchId: filter.branchId, startsOn: filter.startsOn, endsOn: filter.endsOn });
+    return this.requestFile(`/reports/children/attendance/export?${params.toString()}`);
   }
 
   async createDevelopmentEntry(childId: string, input: DevelopmentEntryInput): Promise<DevelopmentEntry> {
