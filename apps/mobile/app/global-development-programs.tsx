@@ -23,10 +23,12 @@ export default function GlobalDevelopmentProgramsScreen() {
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ["global-development-programs"] });
   const createProgram = useMutation({ mutationFn: (input: UpsertDevelopmentProgramInput) => api.createGlobalDevelopmentProgram(input), onSuccess: refresh });
   const updateProgram = useMutation({ mutationFn: ({ id, input }: { id: string; input: UpsertDevelopmentProgramInput }) => api.updateGlobalDevelopmentProgram(id, input), onSuccess: refresh });
+  const reviseProgram = useMutation({ mutationFn: ({ id, input }: { id: string; input: UpsertDevelopmentProgramInput }) => api.reviseGlobalDevelopmentProgram(id, input), onSuccess: refresh });
   const deleteProgram = useMutation({ mutationFn: (id: string) => api.deleteGlobalDevelopmentProgram(id), onSuccess: refresh });
 
   const [sheet, setSheet] = useState<Sheet>(null);
   const [editing, setEditing] = useState<DevelopmentProgram>();
+  const [revisionOf, setRevisionOf] = useState<DevelopmentProgram>();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [durationDays, setDurationDays] = useState("100");
@@ -42,6 +44,7 @@ export default function GlobalDevelopmentProgramsScreen() {
   const closeSheet = () => {
     setSheet(null);
     setEditing(undefined);
+    setRevisionOf(undefined);
     setName("");
     setDescription("");
     setDurationDays("100");
@@ -63,6 +66,18 @@ export default function GlobalDevelopmentProgramsScreen() {
     setDomain(program.domain);
     setSheet("form");
   };
+  const openRevision = (program: DevelopmentProgram) => {
+    setRevisionOf(program);
+    setName(program.name);
+    setDescription(program.description);
+    setDurationDays(String(program.durationDays));
+    setMinimumPercent(String(program.minimumYesPercent));
+    setMinimumStreak(String(program.minimumYesStreak));
+    setLearningLevelId(program.learningLevelId);
+    setDomain(program.domain);
+    setIndicatorNames(program.indicators.map((indicator) => indicator.name));
+    setSheet("form");
+  };
   const openDelete = (program: DevelopmentProgram) => { setEditing(program); setSheet("delete"); };
 
   const updateIndicatorName = (index: number, value: string) => setIndicatorNames((current) => current.map((item, itemIndex) => itemIndex === index ? value : item));
@@ -78,9 +93,10 @@ export default function GlobalDevelopmentProgramsScreen() {
       return;
     }
     const input: UpsertDevelopmentProgramInput = { learningLevelId, name: name.trim(), description: description.trim(), durationDays: duration, minimumYesPercent: percent, minimumYesStreak: streak, domain };
-    if (!editing) input.indicatorNames = indicatorNames.map((item) => item.trim()).filter(Boolean);
+    if (!editing || revisionOf) input.indicatorNames = indicatorNames.map((item) => item.trim()).filter(Boolean);
     try {
-      if (editing) await updateProgram.mutateAsync({ id: editing.id, input });
+      if (revisionOf) await reviseProgram.mutateAsync({ id: revisionOf.id, input });
+      else if (editing) await updateProgram.mutateAsync({ id: editing.id, input });
       else await createProgram.mutateAsync(input);
       closeSheet();
     } catch (error) {
@@ -106,9 +122,12 @@ export default function GlobalDevelopmentProgramsScreen() {
       <AppText variant="label">{program.name}</AppText>
       <AppText tone="muted">{t(goalDomainKey(program.domain))}</AppText>
       {program.description ? <AppText tone="muted">{program.description}</AppText> : null}
+      <AppText variant="caption" tone="muted">{t("globalDevelopmentPrograms.revision", { count: program.revisionNumber })}</AppText>
+      {!program.active && <AppText variant="caption" tone="muted">{t("globalDevelopmentPrograms.superseded")}</AppText>}
       <AppText variant="caption" tone="muted">{t("goals.target", { days: program.durationDays, percent: program.minimumYesPercent, streak: program.minimumYesStreak })}</AppText>
       <View style={styles.actions}>
         <Button variant="secondary" onPress={() => openEdit(program)}>{t("common.edit")}</Button>
+        {program.active && <Button variant="secondary" onPress={() => openRevision(program)}>{t("globalDevelopmentPrograms.revise")}</Button>}
         <Button variant="danger" onPress={() => openDelete(program)}>{t("common.delete")}</Button>
       </View>
     </View>)}
@@ -117,9 +136,9 @@ export default function GlobalDevelopmentProgramsScreen() {
       visible={sheet === "form"}
       onClose={closeSheet}
       closeAccessibilityLabel={t("common.close")}
-      title={t(editing ? "globalDevelopmentPrograms.edit" : "globalDevelopmentPrograms.add")}
+      title={t(revisionOf ? "globalDevelopmentPrograms.revise" : editing ? "globalDevelopmentPrograms.edit" : "globalDevelopmentPrograms.add")}
       negativeAction={{ label: t("common.cancel"), onPress: closeSheet }}
-      positiveAction={{ label: t("common.save"), loading: createProgram.isPending || updateProgram.isPending, onPress: () => void save() }}
+      positiveAction={{ label: t("common.save"), loading: createProgram.isPending || updateProgram.isPending || reviseProgram.isPending, onPress: () => void save() }}
     >
       <TextInput style={styles.input} placeholder={t("goals.templateName")} value={name} onChangeText={setName} />
       <TextInput style={styles.input} placeholder={t("goals.templateDescription")} value={description} onChangeText={setDescription} />
@@ -134,7 +153,7 @@ export default function GlobalDevelopmentProgramsScreen() {
       <TextInput style={styles.input} inputMode="numeric" value={minimumPercent} onChangeText={setMinimumPercent} />
       <AppText variant="label">{t("goals.minimumStreak")}</AppText>
       <TextInput style={styles.input} inputMode="numeric" value={minimumStreak} onChangeText={setMinimumStreak} />
-      {!editing && <View style={styles.field}>
+      {(!editing || revisionOf) && <View style={styles.field}>
         <View style={styles.fieldHeader}><AppText variant="label">{t("goals.indicators")}</AppText><Button variant="secondary" onPress={addIndicatorField}>{t("goals.addIndicator")}</Button></View>
         <AppText variant="caption" tone="muted">{t("goals.indicatorsInfo")}</AppText>
         {indicatorNames.map((value, index) => <View key={index} style={styles.indicatorRow}>
@@ -142,7 +161,7 @@ export default function GlobalDevelopmentProgramsScreen() {
           {indicatorNames.length > 1 && <Button variant="secondary" onPress={() => removeIndicatorField(index)}>{t("common.delete")}</Button>}
         </View>)}
       </View>}
-      {editing && <View style={styles.field}>
+      {editing && !revisionOf && <View style={styles.field}>
         <AppText variant="label">{t("goals.indicators")}</AppText>
         <AppText variant="caption" tone="muted">{t("globalDevelopmentPrograms.indicatorsLocked")}</AppText>
         {editing.indicators.map((indicator) => <AppText key={indicator.id} tone={indicator.active ? "default" : "muted"}>{indicator.name}</AppText>)}

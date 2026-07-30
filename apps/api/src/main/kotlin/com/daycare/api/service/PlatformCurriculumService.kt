@@ -23,7 +23,14 @@ class PlatformCurriculumService(
     private val programs: CurriculumProgramRepository,
     private val programGoals: CurriculumProgramDevelopmentProgramRepository,
     private val developmentPrograms: DevelopmentProgramRepository,
+    private val globalCurriculumSeeding: GlobalCurriculumSeedingService,
 ) {
+    @Transactional
+    fun seedGlobalCurriculum(jwt: Jwt): GlobalCurriculumSeedResult {
+        platformAccess.requirePlatformAdmin(jwt)
+        return globalCurriculumSeeding.seed()
+    }
+
     @Transactional(readOnly = true)
     fun programs(jwt: Jwt, includeArchived: Boolean = false): List<CurriculumProgramResponse> {
         platformAccess.requirePlatformAdmin(jwt)

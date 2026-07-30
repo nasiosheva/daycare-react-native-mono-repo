@@ -38,7 +38,6 @@ export default function DevelopmentScreen() {
   const entries = useDevelopmentEntries(childId);
   const developmentCategories = useDevelopmentCategories();
   const createEntry = useCreateDevelopmentEntry(childId);
-  const isOperationalChildScreen = membership?.role === "STAFF_ADMIN" || membership?.role === "STAFF";
   const canRecord = membership ? can(membership.role, "recordDevelopment") && membership.active : false;
   const canManageCategories = membership?.active && (membership.role === "STAFF_ADMIN" || (membership.role === "STAFF" && membership.canManageDevelopmentCategories));
 
@@ -83,8 +82,7 @@ export default function DevelopmentScreen() {
   const selectPhoto = async () => setPhoto((await imagePicker.pickFromLibrary())[0] ?? null);
   const takePhoto = async () => setPhoto(await imagePicker.takePhoto());
 
-  return <AppScreen showBottomNavigation={!isOperationalChildScreen} title={isOperationalChildScreen ? t("development.title") : undefined} header={isOperationalChildScreen ? <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} /> : undefined}>
-    {!isOperationalChildScreen && <AppText variant="title">{t("development.title")}</AppText>}
+  return <AppScreen showBottomNavigation={false} title={t("development.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("development.subtitle")}</AppText>
     {membership?.active === false && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     {isStaffAdmin && <Button variant="secondary" onPress={() => setFilterVisible(true)}>{t("children.filter")}</Button>}

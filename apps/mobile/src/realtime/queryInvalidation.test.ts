@@ -26,4 +26,15 @@ describe("invalidateRealtimeFlags", () => {
 
     expect(client.getQueryState(["child-placement-options", "tenant-a", "child-a"])?.isInvalidated).toBe(true);
   });
+
+  it("invalidates Parent and Staff Admin private tutoring queries", () => {
+    const client = new QueryClient();
+    client.setQueryData(["private-tutoring-services", "tenant-a", "child-a"], []);
+    client.setQueryData(["private-tutoring-admin-requests", "tenant-a"], []);
+
+    invalidateRealtimeFlags(client, ["PRIVATE_TUTORING"]);
+
+    expect(client.getQueryState(["private-tutoring-services", "tenant-a", "child-a"])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(["private-tutoring-admin-requests", "tenant-a"])?.isInvalidated).toBe(true);
+  });
 });

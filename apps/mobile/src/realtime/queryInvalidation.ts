@@ -23,6 +23,7 @@ const queryKeysByFlag: Record<RealtimeFlag, readonly string[]> = {
   GOALS: ["goal-templates", "child-goals"],
   STAFF_REMINDERS: ["staff-reminders"],
   STAFF_LEAVE_REQUESTS: ["staff-leave-requests", "staff-leave-approvals"],
+  PRIVATE_TUTORING: ["private-tutoring-services", "private-tutoring-requests", "private-tutoring-admin-services", "private-tutoring-tutors", "private-tutoring-admin-requests"],
 };
 
 export function invalidateRealtimeFlags(queryClient: QueryClient, flags: readonly RealtimeFlag[]): void {

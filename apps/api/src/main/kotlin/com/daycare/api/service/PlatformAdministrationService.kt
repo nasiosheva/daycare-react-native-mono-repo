@@ -307,5 +307,5 @@ class PlatformAdministrationService(
     }
 
     private fun requireOrganization(organizationId: UUID) = organizations.findById(organizationId).orElseThrow { IllegalArgumentException("Tenant was not found") }
-    private fun branchResponse(branch: Branch) = TenantBranchResponse(branch.id, branch.name, branch.timezone, branch.active, branch.primary)
+    private fun branchResponse(branch: Branch) = TenantBranchResponse(branch.id, branch.name, branch.timezone, branch.fullAddress, branch.googleMapsUrl, branch.active, branch.primary)
 }

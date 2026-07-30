@@ -12,6 +12,7 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { useI18n } from "@/i18n/I18nProvider";
 import { tenantPaymentStatusKey, tenantSubscriptionPlanKey, tenantSubscriptionStatusKey } from "@/i18n/translations";
 import { notify } from "@/notify/notify";
+import { capitalizeWords } from "@/text/capitalizeWords";
 
 type Sheet = "edit" | "renew" | "staffAdmin" | "editStaffAdmin" | "removeStaffAdmin" | null;
 
@@ -183,7 +184,7 @@ export default function TenantDetailScreen() {
       <TextInput style={styles.input} keyboardType="numeric" placeholder={t("tenant.monthlyFee")} value={monthlyFee} onChangeText={setMonthlyFee} />
     </BottomSheet>
     <BottomSheet visible={sheet === "staffAdmin"} onClose={closeStaffAdminSheet} closeAccessibilityLabel={t("common.close")} title={t("tenant.addStaffAdmin")} negativeAction={{ label: t("common.cancel"), onPress: closeStaffAdminSheet }} positiveAction={{ label: t("common.save"), loading: createStaffAdmin.isPending, onPress: () => void submitStaffAdmin() }}>
-      <TextInput style={styles.input} placeholder={t("tenantUsers.displayName")} value={staffAdminName} onChangeText={setStaffAdminName} />
+      <TextInput style={styles.input} autoCapitalize="words" placeholder={t("tenantUsers.displayName")} value={staffAdminName} onChangeText={(value) => setStaffAdminName(capitalizeWords(value))} />
       <TextInput style={styles.input} autoCapitalize="none" placeholder={t("tenant.staffAdminUsernameOptional")} value={staffAdminUsername} onChangeText={setStaffAdminUsername} />
       <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder={t("tenantUsers.email")} value={staffAdminEmail} onChangeText={setStaffAdminEmail} />
       <PasswordInput placeholder={t("tenantUsers.password")} value={staffAdminPassword} onChangeText={setStaffAdminPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />

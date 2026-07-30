@@ -14,11 +14,12 @@ import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate, isIsoDate } from "@/date-picker/date";
 import { ChildrenReportActions } from "@/document-export/ChildrenReportActions";
 import { ChildFilterTabs } from "@/children/ChildFilterTabs";
+import { capitalizeWords } from "@/text/capitalizeWords";
 
 export default function ChildrenScreen() {
   const router = useRouter();
   const { t } = useI18n();
-  const { profile, organizationId } = useAuth();
+  const { api, profile, organizationId } = useAuth();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
   const canManage = isStaffAdmin && membership.active;
@@ -32,6 +33,7 @@ export default function ChildrenScreen() {
   const [nisn, setNisn] = useState("");
   const [gender, setGender] = useState<ChildGender>();
   const [dateOfBirth, setDateOfBirth] = useState("");
+  const [guardianIdentifier, setGuardianIdentifier] = useState("");
   const closeAddChild = () => {
     setAddVisible(false);
     setFirstName("");
@@ -39,20 +41,23 @@ export default function ChildrenScreen() {
     setNisn("");
     setGender(undefined);
     setDateOfBirth("");
+    setGuardianIdentifier("");
   };
   const saveChild = async () => {
     if (!firstName.trim() || !gender || !isIsoDate(dateOfBirth)) return Alert.alert(t("children.required"));
     try {
-      await createChild.mutateAsync({ firstName: firstName.trim(), lastName: lastName.trim() || undefined, nisn: nisn.trim() || undefined, gender, dateOfBirth });
+      const child = await createChild.mutateAsync({ firstName: firstName.trim(), lastName: lastName.trim() || undefined, nisn: nisn.trim() || undefined, gender, dateOfBirth });
       closeAddChild();
-      Alert.alert(t("children.created"));
+      if (guardianIdentifier.trim()) {
+        try { await api.bindChildGuardian(child.id, guardianIdentifier.trim()); Alert.alert(t("children.created")); }
+        catch (error) { Alert.alert(t("children.created"), t("children.guardianBindFailed") + (error instanceof Error ? ` ${error.message}` : "")); }
+      } else Alert.alert(t("children.created"));
     } catch (error) { Alert.alert(t("children.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
   const openChild = (childId: string) => router.push({ pathname: "/child-detail", params: { childId} });
   return <AppScreen showBottomNavigation={false} title={t("children.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton accessibilityLabel={t("children.add")} onPress={() => setAddVisible(true)}>+ {t("children.add")}</FloatingActionButton> : undefined}>
     {isStaffAdmin && <ChildFilterTabs filter={childFilter} onChange={setChildFilter} />}
     {canOpenDetail && <ChildrenReportActions filter={childFilter} />}
-    <AppText variant="h5">{t("children.title")}</AppText>
     <AppText variant="bodySmall" tone="muted">{t("children.menuDescription")}</AppText>
     <AppText tone={children.data?.length ? "default" : "muted"}>{children.isFetching ? t("common.loading") : children.data?.length ? t("children.countSummary", { count: children.data.length }) : t("children.empty")}</AppText>
     {children.isError && <Button variant="secondary" onPress={() => void children.refetch()}>{t("common.retry")}</Button>}
@@ -65,11 +70,13 @@ export default function ChildrenScreen() {
       negativeAction={{ label: t("common.cancel"), onPress: closeAddChild }}
       positiveAction={{ label: t("children.save"), loading: createChild.isPending, disabled: !firstName.trim() || !gender || !dateOfBirth.trim(), onPress: () => void saveChild() }}
     >
-      <TextInput style={styles.input} placeholder={t("children.firstName")} value={firstName} onChangeText={setFirstName} />
-      <TextInput style={styles.input} placeholder={t("children.lastName")} value={lastName} onChangeText={setLastName} />
+      <TextInput style={styles.input} autoCapitalize="words" placeholder={t("children.firstName")} value={firstName} onChangeText={(value) => setFirstName(capitalizeWords(value))} />
+      <TextInput style={styles.input} autoCapitalize="words" placeholder={t("children.lastName")} value={lastName} onChangeText={(value) => setLastName(capitalizeWords(value))} />
       <TextInput style={styles.input} inputMode="numeric" placeholder={t("children.nisn")} value={nisn} onChangeText={setNisn} />
       <GenderPicker value={gender} onChange={setGender} />
       <DatePicker placeholder={t("children.birthDate")} value={dateOfBirth} onChange={setDateOfBirth} maximumDate={formatIsoDate(new Date())} />
+      <AppText variant="label">{t("children.guardianIdentifier")}</AppText>
+      <TextInput style={styles.input} autoCapitalize="none" autoCorrect={false} placeholder={t("children.guardianIdentifierOptional")} value={guardianIdentifier} onChangeText={setGuardianIdentifier} />
     </BottomSheet>
   </AppScreen>;
 }

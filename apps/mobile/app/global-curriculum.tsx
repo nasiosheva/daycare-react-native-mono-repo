@@ -7,7 +7,8 @@ import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, Shimmer
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
-import { goalDomainKey } from "@/i18n/translations";
+import { goalPickerLabel } from "@/i18n/translations";
+import { notify } from "@/notify/notify";
 import { AppScreen } from "@/navigation/AppScreen";
 
 export default function GlobalCurriculumScreen() {
@@ -20,6 +21,15 @@ export default function GlobalCurriculumScreen() {
   const createProgram = useMutation({ mutationFn: api.createGlobalCurriculumProgram.bind(api), onSuccess: refresh });
   const updateProgram = useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof api.updateGlobalCurriculumProgram>[1] }) => api.updateGlobalCurriculumProgram(id, input), onSuccess: refresh });
   const setActive = useMutation({ mutationFn: ({ id, active }: { id: string; active: boolean }) => api.setGlobalCurriculumProgramActive(id, active), onSuccess: refresh });
+  const seedReferenceData = useMutation({
+    mutationFn: () => api.seedGlobalCurriculum(),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ["global-development-programs"] });
+      const params = { levels: result.learningLevelCount, programs: result.developmentProgramCount, items: result.developmentProgramItemCount };
+      notify(t(result.alreadySeeded ? "globalCurriculum.seedAlreadyDone" : "globalCurriculum.seedSuccess", params));
+    },
+    onError: (error) => notify(t("globalCurriculum.seedFailed"), error instanceof Error ? error.message : t("auth.tryAgain")),
+  });
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<CurriculumProgram>();
   const [name, setName] = useState(""); const [description, setDescription] = useState(""); const [goalSearch, setGoalSearch] = useState(""); const [debouncedGoalSearch, setDebouncedGoalSearch] = useState(""); const [developmentProgramIds, setDevelopmentProgramIds] = useState<string[]>([]);
@@ -42,6 +52,7 @@ export default function GlobalCurriculumScreen() {
 
   return <AppScreen showBottomNavigation={false} title={t("globalCurriculum.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton accessibilityLabel={t("globalCurriculum.add")} onPress={openAdd}>+ {t("globalCurriculum.add")}</FloatingActionButton>}>
     <AppText tone="muted">{t("globalCurriculum.subtitle")}</AppText>
+    <Button variant="secondary" loading={seedReferenceData.isPending} onPress={() => void seedReferenceData.mutateAsync()}>{t("globalCurriculum.seed")}</Button>
     {programs.isFetching ? <ShimmerList /> : programs.data?.filter((program) => program.active).map((program) => <ProgramCard key={program.id} program={program} t={t} onEdit={() => openEdit(program)} onActiveChange={(active) => void setActive.mutateAsync({ id: program.id, active })} />)}
     {!programs.isFetching && programs.data?.filter((program) => program.active).length === 0 && <AppText tone="muted">{t("globalCurriculum.empty")}</AppText>}
     {programs.data?.some((program) => !program.active) && <View style={styles.archivedSection}><AppText variant="label">{t("learning.archived")}</AppText>{programs.data.filter((program) => !program.active).map((program) => <ProgramCard key={program.id} program={program} t={t} onEdit={() => openEdit(program)} onActiveChange={(active) => void setActive.mutateAsync({ id: program.id, active })} />)}</View>}
@@ -51,7 +62,7 @@ export default function GlobalCurriculumScreen() {
       <AppText variant="label">{t("academic.programGoals", { count: developmentProgramIds.length })}</AppText>
       <TextInput style={styles.input} placeholder={t("academic.searchProgramGoals")} value={goalSearch} onChangeText={setGoalSearch} />
       {goals.isFetching && <ShimmerList />}
-      {visibleGoals.map((goal) => <Button key={goal.id} variant={developmentProgramIds.includes(goal.id) ? "primary" : "secondary"} onPress={() => toggleGoal(goal.id)}>{t(goalDomainKey(goal.domain))} · {goal.name}</Button>)}
+      {visibleGoals.map((goal) => <Button key={goal.id} variant={developmentProgramIds.includes(goal.id) ? "primary" : "secondary"} onPress={() => toggleGoal(goal.id)}>{goalPickerLabel(t, goal.domain, goal.name)}</Button>)}
       {!goals.isFetching && visibleGoals.length === 0 && <AppText tone="muted">{t("academic.noProgramGoals")}</AppText>}
     </BottomSheet>
   </AppScreen>;

@@ -102,6 +102,32 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/tenant-users/staff-id", expect.objectContaining({ method: "PATCH", body: JSON.stringify(input) }));
   });
 
+  it("sends branch location fields and reads Parent child profile through tenant scope", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await client.createBranch({ name: "Utama", fullAddress: "Jl. Merdeka No. 1", googleMapsUrl: "https://maps.app.goo.gl/example" });
+    await client.parentChildProfile("child-id");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/branches", expect.objectContaining({ method: "POST", body: JSON.stringify({ name: "Utama", fullAddress: "Jl. Merdeka No. 1", googleMapsUrl: "https://maps.app.goo.gl/example" }) }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/parent/children/child-id/profile", expect.objectContaining({ headers: expect.objectContaining({ "X-Organization-Id": "tenant-id" }) }));
+  });
+
+  it("binds a Parent to a child by username or email and can unbind it again", async () => {
+    const guardian = { userId: "parent-id", displayName: "Budi", email: "budi@gmail.com", username: "budi" };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => guardian });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await expect(client.bindChildGuardian("child-id", "budi@gmail.com")).resolves.toEqual(guardian);
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/children/child-id/guardians", expect.objectContaining({ method: "POST", body: JSON.stringify({ identifier: "budi@gmail.com" }) }));
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 });
+    await client.unbindChildGuardian("child-id", "parent-id");
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/children/child-id/guardians/parent-id", expect.objectContaining({ method: "DELETE" }));
+  });
+
   it("checks whether the signed-in identity already has an account", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ exists: false, email: null, phoneNumber: "+6281234567890" }) });
     vi.stubGlobal("fetch", fetchMock);
@@ -346,6 +372,16 @@ describe("ApiClient", () => {
     await client.downloadChildAttendanceReport("PDF", { branchId: "branch-id", startsOn: "2026-07-01", endsOn: "2026-07-29" });
 
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/reports/children/attendance/export?format=PDF&branchId=branch-id&startsOn=2026-07-01&endsOn=2026-07-29", expect.anything());
+  });
+
+  it("triggers the global curriculum seed for a Platform Admin", async () => {
+    const result = { alreadySeeded: false, learningLevelCount: 4, developmentProgramCount: 24, developmentProgramItemCount: 138 };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => result });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
+
+    await expect(client.seedGlobalCurriculum()).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/global-curriculum-seed", expect.objectContaining({ method: "POST" }));
   });
 
   it("derives a secure websocket endpoint from the API URL", () => {

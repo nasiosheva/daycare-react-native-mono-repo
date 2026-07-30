@@ -115,7 +115,7 @@ export default function RootLayout() {
   return <Providers><BottomNavigationBackHandler><Stack initialRouteName="home" screenOptions={{ headerShown: false }}>
     {bottomNavigationScreenNames.map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none" }} />)}
     {[
-      "tenant-readiness", "absence-requests", "staff-leave-requests", "staff-leave-approvals", "parent-family-profile", "add-tenant", "institution-types", "branches", "branch-operating-hours", "overtime-charges", "global-curriculum", "global-development-programs", "goals", "development-categories", "notifications", "staff-reminders", "payment-instructions", "parent-enrollment-form", "parent-payment", "sign-up", "verify-phone",
+      "tenant-readiness", "absence-requests", "staff-leave-requests", "staff-leave-approvals", "parent-family-profile", "parent-child-profile", "add-tenant", "institution-types", "branches", "branch-operating-hours", "overtime-charges", "global-curriculum", "global-development-programs", "goals", "development-categories", "notifications", "staff-reminders", "payment-instructions", "parent-enrollment-form", "parent-payment", "sign-up", "verify-phone",
     ].map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none" }} />)}
   </Stack></BottomNavigationBackHandler></Providers>;
 }

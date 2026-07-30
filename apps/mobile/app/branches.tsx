@@ -20,13 +20,15 @@ export default function BranchesScreen() {
   const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: membership?.role === "STAFF_ADMIN" });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["tenant-branches", organizationId] });
   const create = useMutation({ mutationFn: api.createBranch.bind(api), onSuccess: refresh });
-  const update = useMutation({ mutationFn: ({ branchId, input }: { branchId: string; input: { name: string; timezone: string } }) => api.updateBranch(branchId, input), onSuccess: refresh });
+  const update = useMutation({ mutationFn: ({ branchId, input }: { branchId: string; input: { name: string; timezone: string; fullAddress: string; googleMapsUrl?: string } }) => api.updateBranch(branchId, input), onSuccess: refresh });
   const setPrimary = useMutation({ mutationFn: api.setPrimaryBranch.bind(api), onSuccess: refresh });
   const archive = useMutation({ mutationFn: api.archiveBranch.bind(api), onSuccess: refresh });
   const [sheet, setSheet] = useState<Sheet>(null);
   const [branchId, setBranchId] = useState<string>();
   const [name, setName] = useState("");
   const [timezone, setTimezone] = useState("Asia/Jakarta");
+  const [fullAddress, setFullAddress] = useState("");
+  const [googleMapsUrl, setGoogleMapsUrl] = useState("");
   const [listOpen, setListOpen] = useState(false);
   if (!profile) return null;
   if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
@@ -36,14 +38,17 @@ export default function BranchesScreen() {
     setBranchId(branch?.id);
     setName(branch?.name ?? "");
     setTimezone(branch?.timezone ?? "Asia/Jakarta");
+    setFullAddress(branch?.fullAddress ?? "");
+    setGoogleMapsUrl(branch?.googleMapsUrl ?? "");
     setListOpen(false);
     setSheet("branch");
   };
   const save = async () => {
-    if (!name.trim() || !timezone.trim()) return Alert.alert(t("tenant.branchFailed"));
+    if (!name.trim() || !timezone.trim() || !fullAddress.trim()) return Alert.alert(t("tenant.branchFailed"));
     try {
-      if (branchId) await update.mutateAsync({ branchId, input: { name: name.trim(), timezone: timezone.trim() } });
-      else await create.mutateAsync({ name: name.trim(), timezone: timezone.trim() });
+      const input = { name: name.trim(), timezone: timezone.trim(), fullAddress: fullAddress.trim(), googleMapsUrl: googleMapsUrl.trim() || undefined };
+      if (branchId) await update.mutateAsync({ branchId, input });
+      else await create.mutateAsync(input);
       setSheet(null);
       Alert.alert(branchId ? t("tenant.branchSaved") : t("tenant.branchAdded"));
     } catch (error) { Alert.alert(t("tenant.branchFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
@@ -61,13 +66,15 @@ export default function BranchesScreen() {
       {branches.isFetching && <ShimmerList />}
       {branches.isError && <Button variant="secondary" onPress={() => branches.refetch()}>{t("common.retry")}</Button>}
       {!branches.isFetching && branches.data?.map((branch) => <View key={branch.id} style={styles.card}>
-        <View style={styles.content}><AppText variant="label">{branch.name}{branch.primary ? ` · ${t("tenant.primaryBranch")}` : ""}</AppText><AppText tone="muted">{branch.timezone}{branch.active ? "" : ` · ${t("tenant.archivedBranch")}`}</AppText></View>
+        <View style={styles.content}><AppText variant="label">{branch.name}{branch.primary ? ` · ${t("tenant.primaryBranch")}` : ""}</AppText><AppText tone="muted">{branch.fullAddress ?? t("branch.locationUnavailable")}</AppText><AppText variant="caption" tone="muted">{branch.timezone}{branch.active ? "" : ` · ${t("tenant.archivedBranch")}`}</AppText></View>
         {canManage && <View style={styles.actions}><Button variant="secondary" onPress={() => openSheet(branch.id)}>{t("tenant.edit")}</Button>{branch.active && <Button variant="secondary" onPress={() => { setListOpen(false); router.push({ pathname: "/branch-operating-hours", params: { branchId: branch.id } }); }}>{t("overtime.operatingHours")}</Button>}{branch.active && !branch.primary && <Button variant="secondary" loading={setPrimary.isPending} onPress={() => void setPrimary.mutateAsync(branch.id)}>{t("tenant.makePrimary")}</Button>}{branch.active && !branch.primary && <Button variant="danger" loading={archive.isPending} onPress={() => void archive.mutateAsync(branch.id)}>{t("tenant.archiveBranch")}</Button>}</View>}
       </View>)}
     </BottomSheet>
     <BottomSheet visible={sheet === "branch"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={branchId ? t("tenant.edit") : t("tenant.addBranch")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("common.save"), loading: create.isPending || update.isPending, onPress: () => void save() }}>
       <TextInput style={styles.input} placeholder={t("tenant.branchName")} value={name} onChangeText={setName} />
       <TextInput style={styles.input} autoCapitalize="none" placeholder={t("tenant.timezone")} value={timezone} onChangeText={setTimezone} />
+      <TextInput style={[styles.input, styles.addressInput]} multiline placeholder={t("branch.fullAddress")} value={fullAddress} onChangeText={setFullAddress} />
+      <TextInput style={styles.input} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder={t("branch.googleMapsUrl")} value={googleMapsUrl} onChangeText={setGoogleMapsUrl} />
     </BottomSheet>
   </AppScreen>;
 }
@@ -77,4 +84,5 @@ const styles = StyleSheet.create({
   content: { gap: spacing.xs },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  addressInput: { minHeight: 104, paddingVertical: spacing.sm, textAlignVertical: "top" },
 });

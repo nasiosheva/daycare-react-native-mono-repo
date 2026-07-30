@@ -80,7 +80,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
   const { t, formatCurrency, formatDate } = useI18n();
   const children = useChildren(true);
   const entitlements = useEntitlements(hasDaycareOperations);
-  const invoices = useInvoices(hasDaycareOperations);
+  const invoices = useInvoices(true);
   const summary = createParentHomeSummary(children.data ?? [], entitlements.data ?? [], invoices.data ?? []);
   const childrenUnavailable = children.isFetching || children.isError;
   const servicesUnavailable = hasDaycareOperations && (entitlements.isFetching || entitlements.isError);
@@ -99,6 +99,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
           <AppText variant="caption" tone="muted">{entitlement.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: entitlement.remainingCredits })} · {t("booking.validUntil", { date: formatDate(entitlement.validUntil) })}</AppText>
         </View>)}</>)}
         <View style={styles.parentActions}>
+          <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-child-profile", params: { childId: child.id } })}>{t("children.parentProfile")}</Button>
           <Button variant="secondary" onPress={() => router.push({ pathname: "/development", params: { childId: child.id } })}>{t("development.title")}</Button>
           <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-qr", params: { childId: child.id } })}>{t("qr.title")}</Button>
           <Button variant="secondary" onPress={() => router.push({ pathname: "/absence-requests", params: { childId: child.id } })}>{t("absence.menu")}</Button>
@@ -106,7 +107,11 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
       </View>)}
       {!childrenUnavailable && summary.children.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
     </SummarySection>
-    {hasDaycareOperations && <SummarySection title={t("home.parentPayments")}>
+    <NavigationCard accessibilityLabel={t("privateTutoring.menu")} onPress={() => router.push("/private-tutoring")}>
+      <AppText variant="h5">{t("privateTutoring.menu")}</AppText>
+      <AppText tone="muted">{t("privateTutoring.description")}</AppText>
+    </NavigationCard>
+    <SummarySection title={t("home.parentPayments")}>
       {invoices.isFetching && <ShimmerList />}
       {invoices.isError && <Button variant="secondary" onPress={() => invoices.refetch()}>{t("common.retry")}</Button>}
       {!paymentsUnavailable && summary.actionableInvoices.map((invoice) => <View key={invoice.id} style={styles.parentCard}>
@@ -116,7 +121,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
         {invoice.status === "PENDING" ? <Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: invoice.id } })}>{t("parentEnrollment.pay")}</Button> : <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
       </View>)}
       {!paymentsUnavailable && summary.actionableInvoices.length === 0 && <AppText tone="muted">{t("home.noActionablePayments")}</AppText>}
-    </SummarySection>}
+    </SummarySection>
   </View></AppScreen>;
 }
 

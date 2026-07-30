@@ -6,15 +6,15 @@
     "version": "0.1.0",
     "orientation": "default",
     "userInterfaceStyle": "light",
+    "icon": "./assets/images/icon.png",
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/login-icon.png",
-          "imageWidth": 180,
-          "resizeMode": "contain",
-          "backgroundColor": "#FFFFFF"
+          "image": "./assets/splash/splash-background.png",
+          "resizeMode": "cover",
+          "backgroundColor": "#FFFDF6"
         }
       ],
       "expo-notifications",
@@ -43,11 +43,16 @@
     },
     "android": {
       "package": "com.children.platform",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon-foreground.png",
+        "backgroundColor": "#FFFDF6"
+      }
     },
     "web": {
       "bundler": "metro",
-      "output": "single"
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
     },
     "experiments": {
       "typedRoutes": true

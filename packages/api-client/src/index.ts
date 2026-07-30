@@ -74,7 +74,8 @@ export type UpdateChildInput = Omit<ChildInput, "classroomId">;
 export type ChildProgram = { id: string; name: string; description: string };
 export type ChildAssignmentRole = "STAFF" | "NURSE" | "MISS";
 export type ChildStaffAssignment = { id: string; userId: string; displayName: string; email?: string | null; assignmentRole: ChildAssignmentRole };
-export type ChildProfile = { child: Child; programs: ChildProgram[]; staffAssignments: ChildStaffAssignment[] };
+export type ChildGuardian = { userId: string; displayName: string; email?: string | null; username?: string | null };
+export type ChildProfile = { child: Child; programs: ChildProgram[]; staffAssignments: ChildStaffAssignment[]; guardians: ChildGuardian[] };
 export type Attendance = {
   id: string;
   childId: string;
@@ -110,7 +111,7 @@ export type PaymentProofStatus = "SUBMITTED" | "VERIFIED" | "REJECTED";
 export type PaymentProof = { status: PaymentProofStatus; fileName: string; note?: string | null; submittedAt: string; rejectionReason?: string | null };
 export type PaymentProofImage = { fileName: string; contentType: string; dataBase64: string; note?: string | null };
 export type SubmitPaymentProofInput = { fileName: string; contentType: "image/jpeg" | "image/png"; imageBase64: string; note?: string };
-export type Invoice = { id: string; invoiceNumber: string; source: "SERVICE" | "OVERTIME"; description?: string | null; branchId: string; childId: string; childName: string; parentName?: string | null; parentEmail?: string | null; subtotalAmount: number; discountAmount: number; discountName?: string | null; discountCode?: string | null; totalAmount: number; status: InvoiceStatus; dueDate: string; createdAt: string; paymentProof?: PaymentProof | null };
+export type Invoice = { id: string; invoiceNumber: string; source: "SERVICE" | "OVERTIME" | "PRIVATE_TUTORING"; description?: string | null; branchId: string; childId: string; childName: string; parentName?: string | null; parentEmail?: string | null; subtotalAmount: number; discountAmount: number; discountName?: string | null; discountCode?: string | null; totalAmount: number; status: InvoiceStatus; dueDate: string; createdAt: string; paymentProof?: PaymentProof | null };
 export type OperatingDay = "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
 export type BranchOperatingHour = { dayOfWeek: OperatingDay; active: boolean; opensAt?: string | null; closesAt?: string | null };
 export type OvertimeRateTier = { durationMinutes: number; amount: number };
@@ -120,7 +121,7 @@ export type CreateOvertimeChargeInput = { childId: string; operationalDate: stri
 export type OvertimeCharge = { id: string; invoiceId: string; branchId: string; childId: string; childName: string; operationalDate: string; pickedUpAt: string; closesAt: string; overtimeMinutes: number; totalAmount: number; dueDate: string; status: InvoiceStatus; tiers: OvertimeRateTier[] };
 export type TenantPayment = { id: string; amount: number; status: TenantPaymentStatus; dueDate: string; paidAt: string | null };
 export type TenantStaffAdmin = { id: string; email: string | null; displayName: string | null; status: "ACTIVE" | "INACTIVE" | "PENDING"; primary: boolean };
-export type TenantBranch = { id: string; name: string; timezone: string; active: boolean; primary: boolean };
+export type TenantBranch = { id: string; name: string; timezone: string; fullAddress?: string | null; googleMapsUrl?: string | null; active: boolean; primary: boolean };
 export type InstitutionTypeDefinition = { code: string; name: string; parentOccupationVisible: boolean; parentIncomeRangeVisible: boolean };
 export type ParentFamilyProfileForTenant = { husbandOccupation?: ParentOccupation | null; husbandIncomeRange?: ParentIncomeRange | null; wifeOccupation?: ParentOccupation | null; wifeIncomeRange?: ParentIncomeRange | null };
 export type Tenant = { id: string; name: string; branchName: string | null; branches: TenantBranch[]; institutionTypes: InstitutionType[]; capabilities: InstitutionCapability[]; subscriptionPlan: TenantSubscriptionPlan | null; subscriptionStatus: TenantSubscriptionStatus | null; periodStart: string | null; periodEnd: string | null; trialEndsAt: string | null; monthlyFee: number | null; staffAdmin: TenantStaffAdmin | null; staffAdmins: TenantStaffAdmin[]; payments: TenantPayment[] };
@@ -150,8 +151,8 @@ export type ClassroomStaffAssignment = { id: string; userId: string; displayName
 export type ClassroomProgram = { id: string; name: string; description: string };
 export type GoalIndicator = { id: string; name: string; displayOrder: number; active: boolean };
 export type UpsertGoalIndicatorInput = { name: string; displayOrder?: number };
-export type DevelopmentProgram = { id: string; learningLevelId: string; name: string; description: string; durationDays: number; minimumYesPercent: number; minimumYesStreak: number; domain: GoalDomain; source: "GLOBAL" | "TENANT"; isTemplate: boolean; active: boolean; indicators: GoalIndicator[]; minAgeMonths?: number | null; maxAgeMonths?: number | null };
-export type UpsertDevelopmentProgramInput = Omit<DevelopmentProgram, "id" | "active" | "indicators" | "source" | "isTemplate"> & { indicatorNames?: string[] };
+export type DevelopmentProgram = { id: string; learningLevelId: string; name: string; description: string; durationDays: number; minimumYesPercent: number; minimumYesStreak: number; domain: GoalDomain; source: "GLOBAL" | "TENANT"; isTemplate: boolean; active: boolean; revisedFromProgramId?: string | null; revisionNumber: number; indicators: GoalIndicator[]; minAgeMonths?: number | null; maxAgeMonths?: number | null };
+export type UpsertDevelopmentProgramInput = Omit<DevelopmentProgram, "id" | "active" | "indicators" | "source" | "isTemplate" | "revisedFromProgramId" | "revisionNumber" | "minAgeMonths" | "maxAgeMonths"> & { indicatorNames?: string[] };
 export type GoalIndicatorCheckIn = { indicatorId: string; date: string; outcome: GoalCheckInOutcome; note?: string | null; hasPhoto: boolean; hasAudio: boolean; audioDurationMs?: number | null; recordedAt: string };
 export type GoalCheckInPhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
 export type GoalCheckInAudioInput = { contentType: string; dataBase64: string; durationMs?: number };
@@ -168,7 +169,15 @@ export type ParentTenantPlan = { id: string; name: string; type: ServicePlanType
 export type ParentTenantCatalog = { organizationId: string; organizationName: string; branches: Array<{ id: string; name: string; dailyCapacity?: number | null }>; plans: ParentTenantPlan[] };
 export type ParentEnrollmentStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "EXPIRED" | "CANCELLED";
 export type ParentEnrollment = { id: string; organizationId: string; branchId: string; childId: string; childName: string; invoiceId?: string | null; entitlementId?: string | null; status: ParentEnrollmentStatus; invoiceStatus?: InvoiceStatus | null; planName: string; totalAmount: number; rejectionReason?: string | null; createdAt: string; parentFamilyProfile?: ParentFamilyProfileForTenant | null };
+export type ParentChildProfile = { child: Child; branch: { id: string; name: string; fullAddress?: string | null; googleMapsUrl?: string | null }; placement?: { classroomName: string; learningLevelName?: string | null } | null; programs: ChildProgram[]; staffAssignments: Array<{ displayName: string; assignmentRole: ChildAssignmentRole }> };
 export type ParentEnrollmentCheckoutInput = { organizationId: string; branchId: string; planId: string; bookingDates: string[]; promoCode?: string; children: Array<{ firstName: string; lastName?: string; gender: ChildGender; dateOfBirth: string }> };
+export type PrivateTutorType = "STAFF" | "EXTERNAL";
+export type PrivateTutoringRequestStatus = "PENDING_APPROVAL" | "PENDING_PAYMENT" | "CONFIRMED" | "REJECTED" | "CANCELLED";
+export type PrivateTutor = { id: string; type: PrivateTutorType; staffUserId?: string | null; displayName: string; bio: string; active: boolean };
+export type PrivateTutoringService = { id: string; branchId: string; name: string; description: string; minAgeMonths: number; maxAgeMonths: number; durationMinutes: number; price: number; learningLevelIds: string[]; tutors: PrivateTutor[]; active: boolean };
+export type UpsertPrivateTutoringServiceInput = Omit<PrivateTutoringService, "id" | "tutors"> & { tutorIds: string[] };
+export type UpsertPrivateTutorInput = { type: PrivateTutorType; staffUserId?: string; displayName?: string; bio?: string; active: boolean };
+export type PrivateTutoringRequest = { id: string; childId: string; childName: string; serviceName: string; providerName?: string | null; durationMinutes: number; price: number; preferredAt?: string | null; scheduledAt?: string | null; note?: string | null; decisionReason?: string | null; status: PrivateTutoringRequestStatus; invoiceId?: string | null; invoiceStatus?: InvoiceStatus | null; createdAt: string };
 export type PaymentInstruction = { id: string; name: string; accountHolder: string; accountNumber: string; note?: string | null; active: boolean; displayOrder: number };
 export type UpsertPaymentInstructionInput = Omit<PaymentInstruction, "id">;
 export type AppNotification = { id: string; title: string; body: string; actionPath?: string | null; createdAt: string; readAt?: string | null };
@@ -181,7 +190,8 @@ export type StaffLeaveEvidenceInput = { contentType: "image/jpeg" | "image/png";
 export type CreateStaffLeaveRequestInput = { type: StaffLeaveRequestType; startsOn: string; endsOn: string; reason: string; evidence?: StaffLeaveEvidenceInput };
 export type StaffLeaveRequest = { id: string; requesterUserId: string; requesterName: string; type: StaffLeaveRequestType; startsOn: string; endsOn: string; reason: string; status: StaffLeaveRequestStatus; hasEvidence: boolean; rejectionReason?: string | null; reviewedAt?: string | null; createdAt: string };
 export type StaffLeaveEvidence = { contentType: string; dataBase64: string };
-export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS";
+export type GlobalCurriculumSeedResult = { alreadySeeded: boolean; learningLevelCount: number; developmentProgramCount: number; developmentProgramItemCount: number };
+export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS" | "PRIVATE_TUTORING";
 export type RealtimeEvent<TPayload = unknown> = { type: "EVENT"; id: string; organizationId?: string | null; flags: RealtimeFlag[]; payload?: TPayload | null; occurredAt: string };
 export type RealtimeConnectRequest = { type: "CONNECT"; token: string; organizationId?: string | null };
 
@@ -232,6 +242,18 @@ export class ApiClient {
   async createPaymentInstruction(input: UpsertPaymentInstructionInput): Promise<PaymentInstruction> { return this.request("/payment-instructions", { method: "POST", body: JSON.stringify(input) }); }
   async updatePaymentInstruction(instructionId: string, input: UpsertPaymentInstructionInput): Promise<PaymentInstruction> { return this.request(`/payment-instructions/${instructionId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async deletePaymentInstruction(instructionId: string): Promise<void> { await this.request<void>(`/payment-instructions/${instructionId}`, { method: "DELETE" }); }
+  async privateTutoringServices(): Promise<PrivateTutoringService[]> { return this.request("/private-tutoring/manage/services"); }
+  async createPrivateTutoringService(input: UpsertPrivateTutoringServiceInput): Promise<PrivateTutoringService> { return this.request("/private-tutoring/manage/services", { method: "POST", body: JSON.stringify(input) }); }
+  async updatePrivateTutoringService(serviceId: string, input: UpsertPrivateTutoringServiceInput): Promise<PrivateTutoringService> { return this.request(`/private-tutoring/manage/services/${serviceId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async privateTutors(): Promise<PrivateTutor[]> { return this.request("/private-tutoring/manage/tutors"); }
+  async createPrivateTutor(input: UpsertPrivateTutorInput): Promise<PrivateTutor> { return this.request("/private-tutoring/manage/tutors", { method: "POST", body: JSON.stringify(input) }); }
+  async updatePrivateTutor(tutorId: string, input: UpsertPrivateTutorInput): Promise<PrivateTutor> { return this.request(`/private-tutoring/manage/tutors/${tutorId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async privateTutoringRequests(): Promise<PrivateTutoringRequest[]> { return this.request("/private-tutoring/manage/requests"); }
+  async decidePrivateTutoringRequest(requestId: string, input: { approved: boolean; tutorId?: string; scheduledAt?: string; rejectionReason?: string }): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/manage/requests/${requestId}/decision`, { method: "POST", body: JSON.stringify(input) }); }
+  async parentPrivateTutoringServices(childId: string): Promise<PrivateTutoringService[]> { return this.request(`/private-tutoring/parent/services?${new URLSearchParams({ childId }).toString()}`); }
+  async parentPrivateTutoringRequests(): Promise<PrivateTutoringRequest[]> { return this.request("/private-tutoring/parent/requests"); }
+  async createParentPrivateTutoringRequest(serviceId: string, input: { childId: string; preferredAt?: string; note?: string }): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/services/${serviceId}/requests`, { method: "POST", body: JSON.stringify(input) }); }
+  async cancelParentPrivateTutoringRequest(requestId: string): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/requests/${requestId}/cancel`, { method: "POST" }); }
 
   async tenants(search?: string): Promise<Tenant[]> { const query = search?.trim(); return this.request(`/platform/tenants${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
   async tenantReadiness(): Promise<TenantReadinessSummary> { return this.request("/platform/tenant-readiness"); }
@@ -246,8 +268,9 @@ export class ApiClient {
   async updateTenantStaffAdmin(organizationId: string, membershipId: string, input: { displayName: string }): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/staff-admins/${membershipId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async removeTenantStaffAdmin(organizationId: string, membershipId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/staff-admins/${membershipId}/remove`, { method: "POST" }); }
   async branches(search?: string): Promise<TenantBranch[]> { const query = search?.trim(); return this.request(`/branches${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
-  async createBranch(input: { name: string; timezone?: string }): Promise<TenantBranch> { return this.request("/branches", { method: "POST", body: JSON.stringify(input) }); }
-  async updateBranch(branchId: string, input: { name: string; timezone: string }): Promise<TenantBranch> { return this.request(`/branches/${branchId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async createBranch(input: { name: string; timezone?: string; fullAddress: string; googleMapsUrl?: string }): Promise<TenantBranch> { return this.request("/branches", { method: "POST", body: JSON.stringify(input) }); }
+  async updateBranch(branchId: string, input: { name: string; timezone: string; fullAddress: string; googleMapsUrl?: string }): Promise<TenantBranch> { return this.request(`/branches/${branchId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async parentChildProfile(childId: string): Promise<ParentChildProfile> { return this.request(`/parent/children/${childId}/profile`); }
   async setPrimaryBranch(branchId: string): Promise<TenantBranch> { return this.request(`/branches/${branchId}/primary`, { method: "POST" }); }
   async archiveBranch(branchId: string): Promise<TenantBranch> { return this.request(`/branches/${branchId}/archive`, { method: "POST" }); }
   async branchOperatingHours(branchId: string): Promise<BranchOperatingHours> { return this.request(`/branches/${branchId}/operating-hours`); }
@@ -265,6 +288,7 @@ export class ApiClient {
   async globalDevelopmentPrograms(search?: string): Promise<DevelopmentProgram[]> { const query = search?.trim(); return this.request(`/platform/development-programs${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
   async createGlobalDevelopmentProgram(input: UpsertDevelopmentProgramInput): Promise<DevelopmentProgram> { return this.request("/platform/development-programs", { method: "POST", body: JSON.stringify(input) }); }
   async updateGlobalDevelopmentProgram(programId: string, input: UpsertDevelopmentProgramInput): Promise<DevelopmentProgram> { return this.request(`/platform/development-programs/${programId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async reviseGlobalDevelopmentProgram(programId: string, input: UpsertDevelopmentProgramInput): Promise<DevelopmentProgram> { return this.request(`/platform/development-programs/${programId}/revisions`, { method: "POST", body: JSON.stringify(input) }); }
   async deleteGlobalDevelopmentProgram(programId: string): Promise<void> { await this.request<void>(`/platform/development-programs/${programId}`, { method: "DELETE" }); }
   async globalLearningLevels(): Promise<LearningLevel[]> { return this.request("/platform/learning-levels"); }
   async createGlobalLearningLevel(input: UpsertLearningLevelInput): Promise<LearningLevel> { return this.request("/platform/learning-levels", { method: "POST", body: JSON.stringify(input) }); }
@@ -273,6 +297,7 @@ export class ApiClient {
   async createGlobalCurriculumProgram(input: Omit<CreateCurriculumProgramInput, "academicYearId">): Promise<CurriculumProgram> { return this.request("/platform/curriculum-programs", { method: "POST", body: JSON.stringify(input) }); }
   async updateGlobalCurriculumProgram(programId: string, input: Omit<CreateCurriculumProgramInput, "academicYearId">): Promise<CurriculumProgram> { return this.request(`/platform/curriculum-programs/${programId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async setGlobalCurriculumProgramActive(programId: string, active: boolean): Promise<CurriculumProgram> { return this.request(`/platform/curriculum-programs/${programId}/active`, { method: "PATCH", body: JSON.stringify({ active }) }); }
+  async seedGlobalCurriculum(): Promise<GlobalCurriculumSeedResult> { return this.request("/platform/global-curriculum-seed", { method: "POST" }); }
   async markTenantPaymentPaid(organizationId: string, paymentId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/payments/${paymentId}/mark-paid`, { method: "POST" }); }
   async voidTenantPayment(organizationId: string, paymentId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/payments/${paymentId}/void`, { method: "POST" }); }
   async refreshTenantStaffAdminInvitation(organizationId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/staff-admin-invitation/refresh`, { method: "POST" }); }
@@ -374,6 +399,8 @@ export class ApiClient {
   async removeChildProgram(childId: string, programId: string): Promise<void> { await this.request<void>(`/children/${childId}/programs/${programId}`, { method: "DELETE" }); }
   async assignChildStaff(childId: string, input: { userId: string; assignmentRole: ChildAssignmentRole }): Promise<ChildStaffAssignment> { return this.request(`/children/${childId}/staff-assignments`, { method: "POST", body: JSON.stringify(input) }); }
   async unassignChildStaff(childId: string, assignmentId: string): Promise<void> { await this.request<void>(`/children/${childId}/staff-assignments/${assignmentId}`, { method: "DELETE" }); }
+  async bindChildGuardian(childId: string, identifier: string): Promise<ChildGuardian> { return this.request(`/children/${childId}/guardians`, { method: "POST", body: JSON.stringify({ identifier }) }); }
+  async unbindChildGuardian(childId: string, userId: string): Promise<void> { await this.request<void>(`/children/${childId}/guardians/${userId}`, { method: "DELETE" }); }
 
   async recordAttendance(childId: string, command: { action: AttendanceAction; method: AttendanceMethod; qrToken?: string; note?: string }): Promise<Attendance> {
     return this.request(`/children/${childId}/attendance`, { method: "POST", body: JSON.stringify(command) });

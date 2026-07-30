@@ -5,12 +5,12 @@ export type LocalAuthSession = { token: string; user: AuthUser };
 
 type LocalAuthResponse = { token: string; user: { uid: string; email: string | null; displayName: string } };
 
-async function request<T>(apiUrl: string, path: string, init: RequestInit, fallbackMessage: string): Promise<T> {
+async function request<T>(apiUrl: string, path: string, init: RequestInit, fallbackMessage: string, locale: string): Promise<T> {
   let response: Response;
   try {
     response = await fetchWithTimeout(`${apiUrl}${path}`, {
       ...init,
-      headers: { Accept: "application/json", "Content-Type": "application/json", ...init.headers },
+      headers: { Accept: "application/json", "Content-Type": "application/json", "Accept-Language": locale, ...init.headers },
     });
   } catch (error) {
     if (isApiTimeoutError(error)) throw error;
@@ -25,20 +25,20 @@ async function request<T>(apiUrl: string, path: string, init: RequestInit, fallb
 }
 
 export const localAuth = {
-  async signUp(apiUrl: string, email: string, password: string, displayName: string, fallbackMessage: string, verificationToken: string | null): Promise<LocalAuthSession> {
+  async signUp(apiUrl: string, email: string, password: string, displayName: string, fallbackMessage: string, verificationToken: string | null, locale: string): Promise<LocalAuthSession> {
     const headers = verificationToken ? { Authorization: `Bearer ${verificationToken}` } : undefined;
-    const response = await request<LocalAuthResponse>(apiUrl, "/auth/local/register", { method: "POST", body: JSON.stringify({ email, password, displayName }), headers }, fallbackMessage);
+    const response = await request<LocalAuthResponse>(apiUrl, "/auth/local/register", { method: "POST", body: JSON.stringify({ email, password, displayName }), headers }, fallbackMessage, locale);
     return { token: response.token, user: { uid: response.user.uid, email: response.user.email, phoneNumber: null, displayName: response.user.displayName } };
   },
-  async signIn(apiUrl: string, identifier: string, password: string, fallbackMessage: string): Promise<LocalAuthSession> {
-    const response = await request<LocalAuthResponse>(apiUrl, "/auth/local/login", { method: "POST", body: JSON.stringify({ identifier, password }) }, fallbackMessage);
+  async signIn(apiUrl: string, identifier: string, password: string, fallbackMessage: string, locale: string): Promise<LocalAuthSession> {
+    const response = await request<LocalAuthResponse>(apiUrl, "/auth/local/login", { method: "POST", body: JSON.stringify({ identifier, password }) }, fallbackMessage, locale);
     return { token: response.token, user: { uid: response.user.uid, email: response.user.email, phoneNumber: null, displayName: response.user.displayName } };
   },
-  changePassword(apiUrl: string, token: string, password: string, fallbackMessage: string): Promise<void> {
-    return request<void>(apiUrl, "/auth/local/password", { method: "POST", body: JSON.stringify({ password }), headers: { Authorization: `Bearer ${token}` } }, fallbackMessage);
+  changePassword(apiUrl: string, token: string, password: string, fallbackMessage: string, locale: string): Promise<void> {
+    return request<void>(apiUrl, "/auth/local/password", { method: "POST", body: JSON.stringify({ password }), headers: { Authorization: `Bearer ${token}` } }, fallbackMessage, locale);
   },
-  updateDisplayName(apiUrl: string, token: string, displayName: string, fallbackMessage: string): Promise<AuthUser> {
-    return request<{ uid: string; email: string | null; displayName: string }>(apiUrl, "/auth/local/profile", { method: "PATCH", body: JSON.stringify({ displayName }), headers: { Authorization: `Bearer ${token}` } }, fallbackMessage)
+  updateDisplayName(apiUrl: string, token: string, displayName: string, fallbackMessage: string, locale: string): Promise<AuthUser> {
+    return request<{ uid: string; email: string | null; displayName: string }>(apiUrl, "/auth/local/profile", { method: "PATCH", body: JSON.stringify({ displayName }), headers: { Authorization: `Bearer ${token}` } }, fallbackMessage, locale)
       .then((user) => ({ uid: user.uid, email: user.email, phoneNumber: null, displayName: user.displayName }));
   },
 };
