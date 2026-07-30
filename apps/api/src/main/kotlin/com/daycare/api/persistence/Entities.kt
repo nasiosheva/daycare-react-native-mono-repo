@@ -17,6 +17,9 @@ import com.daycare.api.domain.StaffLeaveRequestType
 import com.daycare.api.domain.ParentEnrollmentStatus
 import com.daycare.api.domain.ParentIncomeRange
 import com.daycare.api.domain.ParentOccupation
+import com.daycare.api.domain.PlatformKnowledgeCandidateStatus
+import com.daycare.api.domain.PrivateTutorType
+import com.daycare.api.domain.PrivateTutoringRequestStatus
 import com.daycare.api.domain.ServicePlanType
 import com.daycare.api.domain.UnusedCreditPolicy
 import com.daycare.api.domain.TenantPaymentStatus
@@ -177,6 +180,8 @@ class Branch(
     @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
     @Column(nullable = false) var name: String = "",
     @Column(nullable = false) var timezone: String = "Asia/Jakarta",
+    @Column(name = "full_address", length = 2_000) var fullAddress: String? = null,
+    @Column(name = "google_maps_url", length = 2_048) var googleMapsUrl: String? = null,
     @Column(nullable = false) var active: Boolean = true,
     @Column(name = "is_primary", nullable = false) var primary: Boolean = false,
 )
@@ -290,7 +295,34 @@ class DevelopmentProgram(
     @Enumerated(EnumType.STRING) @Column(nullable = false) var domain: GoalDomain = GoalDomain.KEMANDIRIAN,
     @Column(name = "is_template", nullable = false) var isTemplate: Boolean = false,
     @Column(nullable = false) var active: Boolean = true,
+    @Column(name = "revised_from_program_id") var revisedFromProgramId: UUID? = null,
+    @Column(name = "revision_number", nullable = false) var revisionNumber: Int = 1,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "platform_knowledge_candidates")
+class PlatformKnowledgeCandidate(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "normalized_key", nullable = false, unique = true, length = 512) var normalizedKey: String = "",
+    @Column(name = "topic_name", nullable = false, length = 120) var topicName: String = "",
+    @Column(name = "learning_level_name", nullable = false, length = 120) var learningLevelName: String = "",
+    @Column(name = "min_age_months") var minAgeMonths: Int? = null,
+    @Column(name = "max_age_months") var maxAgeMonths: Int? = null,
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var domain: GoalDomain = GoalDomain.KEMANDIRIAN,
+    @Column(name = "duration_days", nullable = false) var durationDays: Int = 1,
+    @Column(name = "indicator_names", nullable = false, columnDefinition = "TEXT") var indicatorNames: String = "[]",
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: PlatformKnowledgeCandidateStatus = PlatformKnowledgeCandidateStatus.CANDIDATE,
+    @Column(name = "supporting_tenant_count", nullable = false) var supportingTenantCount: Int = 0,
+    @Column(name = "relevant_tenant_count", nullable = false) var relevantTenantCount: Int = 0,
+    @Column(name = "support_percent", nullable = false) var supportPercent: Int = 0,
+    @Column(name = "minimum_tenant_threshold", nullable = false) var minimumTenantThreshold: Int = 50,
+    @Column(name = "minimum_support_percent", nullable = false) var minimumSupportPercent: Int = 51,
+    @Column(name = "algorithm_version", nullable = false, length = 40) var algorithmVersion: String = "v1",
+    @Column(name = "reviewed_at") var reviewedAt: Instant? = null,
+    @Column(name = "reviewed_by_user_id") var reviewedByUserId: UUID? = null,
+    @Column(name = "review_reason", length = 1000) var reviewReason: String? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
 )
 
 @Entity @Table(name = "development_program_items")
@@ -302,6 +334,70 @@ class DevelopmentProgramItem(
     @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
     @Column(nullable = false) var active: Boolean = true,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "private_tutoring_services")
+class PrivateTutoringService(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var name: String = "",
+    @Column(nullable = false) var description: String = "",
+    @Column(name = "min_age_months", nullable = false) var minAgeMonths: Int = 0,
+    @Column(name = "max_age_months", nullable = false) var maxAgeMonths: Int = 0,
+    @Column(name = "duration_minutes", nullable = false) var durationMinutes: Int = 30,
+    @Column(nullable = false, precision = 14, scale = 2) var price: java.math.BigDecimal = java.math.BigDecimal.ZERO,
+    @Column(nullable = false) var active: Boolean = true,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "private_tutoring_service_learning_levels")
+class PrivateTutoringServiceLearningLevel(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "private_tutoring_service_id", nullable = false) var privateTutoringServiceId: UUID = UUID.randomUUID(),
+    @Column(name = "learning_level_id", nullable = false) var learningLevelId: UUID = UUID.randomUUID(),
+)
+
+@Entity @Table(name = "private_tutors")
+class PrivateTutor(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var type: PrivateTutorType = PrivateTutorType.EXTERNAL,
+    @Column(name = "staff_user_id") var staffUserId: UUID? = null,
+    @Column(name = "display_name", nullable = false) var displayName: String = "",
+    @Column(nullable = false) var bio: String = "",
+    @Column(nullable = false) var active: Boolean = true,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "private_tutoring_service_tutors")
+class PrivateTutoringServiceTutor(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "private_tutoring_service_id", nullable = false) var privateTutoringServiceId: UUID = UUID.randomUUID(),
+    @Column(name = "private_tutor_id", nullable = false) var privateTutorId: UUID = UUID.randomUUID(),
+)
+
+@Entity @Table(name = "private_tutoring_requests")
+class PrivateTutoringRequest(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(),
+    @Column(name = "parent_user_id", nullable = false) var parentUserId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "private_tutoring_service_id", nullable = false) var privateTutoringServiceId: UUID = UUID.randomUUID(),
+    @Column(name = "private_tutor_id") var privateTutorId: UUID? = null,
+    @Column(name = "service_name", nullable = false) var serviceName: String = "",
+    @Column(name = "provider_name") var providerName: String? = null,
+    @Column(name = "duration_minutes", nullable = false) var durationMinutes: Int = 30,
+    @Column(nullable = false, precision = 14, scale = 2) var price: java.math.BigDecimal = java.math.BigDecimal.ZERO,
+    @Column(name = "preferred_at") var preferredAt: java.time.LocalDateTime? = null,
+    @Column(name = "scheduled_at") var scheduledAt: java.time.LocalDateTime? = null,
+    @Column(name = "parent_note", length = 500) var parentNote: String? = null,
+    @Column(name = "decision_reason", length = 500) var decisionReason: String? = null,
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: PrivateTutoringRequestStatus = PrivateTutoringRequestStatus.PENDING_APPROVAL,
+    @Column(name = "invoice_id") var invoiceId: UUID? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
 )
 
 @Entity @Table(name = "child_goals")

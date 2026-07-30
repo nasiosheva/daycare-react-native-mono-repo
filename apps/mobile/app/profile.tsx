@@ -11,6 +11,7 @@ import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useI18n } from "@/i18n/I18nProvider";
 import { roleKey } from "@/i18n/translations";
 import { AppScreen } from "@/navigation/AppScreen";
+import { capitalizeWords } from "@/text/capitalizeWords";
 
 type ProfileSheet = "profile" | "password" | "admin" | null;
 
@@ -154,7 +155,7 @@ export default function ProfileScreen() {
       negativeAction={{ label: t("common.cancel"), onPress: () => setProfileSheet(null) }}
       positiveAction={{ label: t("common.save"), loading: savingProfile, disabled: !displayName.trim() || !gender || !isIsoDate(dateOfBirth), onPress: () => void saveProfile() }}
     >
-      <TextInput style={styles.input} placeholder={t("profile.name")} value={displayName} onChangeText={setDisplayName} />
+      <TextInput style={styles.input} autoCapitalize="words" placeholder={t("profile.name")} value={displayName} onChangeText={(value) => setDisplayName(capitalizeWords(value))} />
       <TextInput style={styles.input} autoCapitalize="none" autoCorrect={false} placeholder={t("profile.usernameOptional")} value={username} onChangeText={setUsername} />
       <GenderPicker value={gender} onChange={setGender} />
       <DatePicker placeholder={t("profile.dateOfBirth")} value={dateOfBirth} onChange={setDateOfBirth} maximumDate={formatIsoDate(new Date())} />

@@ -296,7 +296,22 @@ require_local_api() {
     return
   fi
 
-  echo "Local API is not ready at http://localhost:8080/api." >&2
+  echo "Local API is not ready at http://localhost:8080/api yet." >&2
+  echo "Start it in another terminal with ./scripts/run-backend-local.sh if it is not already running." >&2
+  echo "Waiting for it to come up (retrying every 2s, up to ${LOCAL_API_WAIT_TIMEOUT_SECONDS:-300}s)..." >&2
+
+  local_api_waited_seconds=0
+  local_api_timeout_seconds=${LOCAL_API_WAIT_TIMEOUT_SECONDS:-300}
+  while [ "$local_api_waited_seconds" -lt "$local_api_timeout_seconds" ]; do
+    sleep 2
+    local_api_waited_seconds=$((local_api_waited_seconds + 2))
+    if local_api_ready; then
+      echo "Local API is ready at http://localhost:8080/api."
+      return
+    fi
+  done
+
+  echo "Local API did not become ready at http://localhost:8080/api within ${local_api_timeout_seconds}s." >&2
   echo "Start it in another terminal with ./scripts/run-backend-local.sh, then run this launcher again." >&2
   exit 1
 }

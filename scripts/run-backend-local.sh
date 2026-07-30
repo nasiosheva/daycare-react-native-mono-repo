@@ -44,19 +44,6 @@ ensure_environment_file() {
   exit 1
 }
 
-require_local_backend_values() {
-  if [ "${LOCAL_AUTH_ENABLED:-false}" = "true" ]; then
-    return
-  fi
-
-  case "${FIREBASE_ISSUER_URI:-}" in
-    ""|*your-project-id*)
-      echo "Missing or placeholder value: FIREBASE_ISSUER_URI in $environment_file" >&2
-      exit 1
-      ;;
-  esac
-}
-
 ensure_local_backend_tools() {
   for command in curl pg_isready; do
     if ! command -v "$command" >/dev/null 2>&1; then
@@ -164,7 +151,6 @@ set -a
 set +a
 
 ensure_local_backend_tools
-require_local_backend_values
 ensure_local_postgres
 stop_existing_local_api
 

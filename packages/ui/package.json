@@ -9,6 +9,6 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },
-  "peerDependencies": { "react": "*", "react-native": "*" },
-  "devDependencies": { "@types/react": "19.0.10", "react": "19.0.0", "react-native": "0.79.4", "typescript": "^5.8.3", "vitest": "^3.2.3" }
+  "peerDependencies": { "react": "*", "react-native": "*", "expo-linear-gradient": "*" },
+  "devDependencies": { "@types/react": "19.0.10", "react": "19.0.0", "react-native": "0.79.4", "expo-linear-gradient": "~14.1.5", "typescript": "^5.8.3", "vitest": "^3.2.3" }
 }

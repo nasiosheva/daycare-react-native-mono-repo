@@ -260,7 +260,7 @@ class BillingService(
 
     @Transactional
     fun markInvoicePaid(jwt: Jwt, organizationId: UUID, invoiceId: UUID): InvoiceResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         reconcileExpiredInvoices(organizationId)
         val invoice = requireInvoice(invoiceId, organizationId)
         require(invoice.status == InvoiceStatus.PENDING) { "Invoice is not awaiting payment" }
@@ -294,7 +294,7 @@ class BillingService(
 
     @Transactional
     fun reviewPaymentProof(jwt: Jwt, organizationId: UUID, invoiceId: UUID, request: ReviewPaymentProofRequest): InvoiceResponse {
-        val reviewer = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
+        val reviewer = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         reconcileExpiredInvoices(organizationId)
         val invoice = requireInvoice(invoiceId, organizationId)
         require(invoice.status == InvoiceStatus.PAYMENT_SUBMITTED) { "Invoice payment proof is not awaiting review" }
@@ -311,7 +311,7 @@ class BillingService(
             proof.status = PaymentProofStatus.REJECTED
             proof.rejectionReason = reason
             invoice.status = InvoiceStatus.PENDING
-            notifications.notify(organizationId, invoice.payerUserId, "Bukti pembayaran ditolak", reason, realtimeFlags = setOf(RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.PARENT_ENROLLMENTS))
+            notifications.notify(organizationId, invoice.payerUserId, "Bukti pembayaran ditolak", reason, realtimeFlags = setOf(RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.PRIVATE_TUTORING))
         }
         return invoiceResponse(invoice)
     }
@@ -320,7 +320,7 @@ class BillingService(
     fun invoice(jwt: Jwt, invoiceId: UUID): InvoiceResponse {
         val user = identity.sync(jwt)
         val invoice = invoices.findById(invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }
-        if (invoice.payerUserId != user.id) access.require(jwt, invoice.organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
+        if (invoice.payerUserId != user.id) access.require(jwt, invoice.organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
         return invoiceResponse(invoice)
     }
 
@@ -328,7 +328,7 @@ class BillingService(
     fun paymentProof(jwt: Jwt, invoiceId: UUID): PaymentProofImageResponse {
         val user = identity.sync(jwt)
         val invoice = invoices.findById(invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }
-        if (invoice.payerUserId != user.id) access.require(jwt, invoice.organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
+        if (invoice.payerUserId != user.id) access.require(jwt, invoice.organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
         val proof = paymentProofs.findByInvoiceId(invoice.id) ?: throw IllegalArgumentException("Payment proof was not found")
         return PaymentProofImageResponse(proof.fileName, proof.contentType, Base64.getEncoder().encodeToString(proof.imageData), proof.note)
     }
@@ -339,9 +339,9 @@ class BillingService(
         if (entitlement != null) {
             entitlement.status = if (entitlement.validUntil.isBefore(LocalDate.now())) EntitlementStatus.EXPIRED else EntitlementStatus.ACTIVE
             bookings.findAllByInvoiceId(invoice.id).forEach { booking -> if (booking.status == BookingStatus.PENDING_PAYMENT) booking.status = if (entitlement.bookingRequiresApproval) BookingStatus.PENDING_APPROVAL else BookingStatus.CONFIRMED }
-            events.publishEvent(InvoicePaidEvent(invoice.id))
         }
-        notifications.notify(invoice.organizationId, invoice.payerUserId, "Pembayaran diterima", "Tagihan ${invoice.invoiceNumber} telah dikonfirmasi.", realtimeFlags = setOf(RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.BOOKINGS, RealtimeFlag.PARENT_ENROLLMENTS))
+        events.publishEvent(InvoicePaidEvent(invoice.id))
+        notifications.notify(invoice.organizationId, invoice.payerUserId, "Pembayaran diterima", "Tagihan ${invoice.invoiceNumber} telah dikonfirmasi.", realtimeFlags = setOf(RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.BOOKINGS, RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.PRIVATE_TUTORING))
     }
 
     @Transactional
@@ -398,7 +398,7 @@ class BillingService(
 
     @Transactional
     fun invoices(jwt: Jwt, organizationId: UUID, filter: BranchListFilter = BranchListFilter(), search: String? = null): List<InvoiceResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT), readOnly = true)
         branchFilters.validate(organizationId, filter)
         reconcileExpiredInvoices(organizationId)
         val query = search?.trim().orEmpty()
@@ -468,7 +468,7 @@ class BillingService(
             invoice.status = InvoiceStatus.OVERDUE
             val invoiceEntitlements = entitlementsByInvoiceId[invoice.id] ?: emptyList()
             invoiceEntitlements.forEach { it.status = EntitlementStatus.EXPIRED }
-            if (invoiceEntitlements.isNotEmpty()) events.publishEvent(InvoiceExpiredEvent(invoice.id))
+            events.publishEvent(InvoiceExpiredEvent(invoice.id))
         }
         capacity.releaseForEntitlements(entitlementsByInvoiceId.values.flatten().map { it.id })
         discountRedemptions.deleteAllByInvoiceIdIn(expired.map { it.id })

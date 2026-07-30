@@ -20,7 +20,7 @@ type AuthContextValue = {
   api: ApiClient;
   getRealtimeToken: () => Promise<string | null>;
   signInWithEmail: (identifier: string, password: string) => Promise<void>;
-  signUpWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string, displayName: string, username?: string) => Promise<{ usernameWarning: string | null }>;
   signInWithGoogle: () => Promise<{ needsRegistration: boolean; email: string | null }>;
   sendPhoneCode: (phoneNumber: string) => Promise<PhoneChallenge>;
   verifyPhoneCode: (code: string) => Promise<{ needsRegistration: boolean }>;
@@ -128,16 +128,25 @@ export function AuthProvider({ children }: PropsWithChildren) {
   };
 
   const signInWithLocalCredentials = async (identifier: string, password: string) => {
-    const session = await localAuth.signIn(env.apiUrl, identifier, password, t("common.error"));
+    const session = await localAuth.signIn(env.apiUrl, identifier, password, t("common.error"), locale);
     await saveLocalSession(session);
     setLocalSession(session);
   };
-  const signUpWithLocalCredentials = async (email: string, password: string, displayName: string) => {
+  const signUpWithLocalCredentials = async (email: string, password: string, displayName: string, username?: string) => {
     const verificationToken = firebaseIdentityState === "registrationRequired" ? await firebaseAuth.getIdToken() : null;
-    const session = await localAuth.signUp(env.apiUrl, email, password, displayName, t("common.error"), verificationToken);
+    const session = await localAuth.signUp(env.apiUrl, email, password, displayName, t("common.error"), verificationToken, locale);
+    let usernameWarning: string | null = null;
+    if (username?.trim()) {
+      try {
+        await new ApiClient({ baseUrl: env.apiUrl, getToken: async () => session.token, getOrganizationId: () => null, getLanguage: () => locale }).updateMyUsername(username.trim());
+      } catch (error) {
+        usernameWarning = error instanceof Error ? error.message : t("auth.tryAgain");
+      }
+    }
     await saveLocalSession(session);
     setLocalSession(session);
     if (verificationToken) await firebaseAuth.signOut();
+    return { usernameWarning };
   };
 
   const sendPhoneCode = async (phoneNumber: string) => {
@@ -175,7 +184,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const normalizedName = displayName.trim();
     if (!normalizedName) throw new Error(t("profile.name"));
     if (localSession) {
-      const nextUser = await localAuth.updateDisplayName(env.apiUrl, localSession.token, normalizedName, t("common.error"));
+      const nextUser = await localAuth.updateDisplayName(env.apiUrl, localSession.token, normalizedName, t("common.error"), locale);
       const nextSession = { ...localSession, user: nextUser };
       await saveLocalSession(nextSession);
       setLocalSession(nextSession);
@@ -201,7 +210,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   };
   const changePassword = async (newPassword: string) => {
     if (!localSession) throw new Error(t("auth.passwordUnavailable"));
-    await localAuth.changePassword(env.apiUrl, localSession.token, newPassword, t("common.error"));
+    await localAuth.changePassword(env.apiUrl, localSession.token, newPassword, t("common.error"), locale);
   };
   const getRealtimeToken = useCallback(async () => localSession?.token ?? firebaseAuth.getIdToken(), [localSession]);
   const value: AuthContextValue = {

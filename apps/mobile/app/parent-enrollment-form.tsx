@@ -10,6 +10,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { GenderPicker } from "@/children/GenderPicker";
 import { DatePicker } from "@/date-picker/DatePicker";
+import { capitalizeWords } from "@/text/capitalizeWords";
 import { formatIsoDate, isIsoDate } from "@/date-picker/date";
 
 type ChildDraft = Omit<ParentEnrollmentCheckoutInput["children"][number], "gender"> & { gender?: ChildGender };
@@ -35,7 +36,16 @@ export default function ParentEnrollmentFormScreen() {
     <AppText tone="muted">{t("parentEnrollment.wizardDescription")}</AppText>
     <AppText variant="heading">{t("parentEnrollment.tenant")}</AppText>
     {catalog.isLoading && <ShimmerList variant="row" />}
-    {!catalog.isLoading && availableTenants.map((item) => <Button key={item.organizationId} variant={tenantId === item.organizationId ? "primary" : "secondary"} onPress={() => { setTenantId(item.organizationId); setBranchId(undefined); setPlanId(undefined); }}>{item.organizationName}</Button>)}
+    {!catalog.isLoading && availableTenants.map((item) => {
+      const missingBranch = item.branches.length === 0;
+      const missingPlan = item.plans.length === 0;
+      const available = !missingBranch && !missingPlan;
+      const unavailableReason = missingBranch ? t("parentEnrollment.unavailableBranch") : t("parentEnrollment.unavailablePlan");
+      return <View key={item.organizationId} style={styles.tenantOption}>
+        <Button disabled={!available} variant={tenantId === item.organizationId ? "primary" : "secondary"} onPress={() => { setTenantId(item.organizationId); setBranchId(undefined); setPlanId(undefined); }}>{item.organizationName}</Button>
+        {!available && <AppText variant="caption" tone="muted">{unavailableReason}</AppText>}
+      </View>;
+    })}
   </View>
 
     <BottomSheet
@@ -49,11 +59,11 @@ export default function ParentEnrollmentFormScreen() {
       {error && <AppText tone="danger">{error}</AppText>}
       {tenant && <>
         <AppText variant="heading">{t("parentEnrollment.branch")}</AppText>{tenant.branches.map((item) => <Button key={item.id} variant={branch?.id === item.id ? "primary" : "secondary"} onPress={() => setBranchId(item.id)}>{item.name}</Button>)}
-        <AppText variant="heading">{t("parentEnrollment.children")}</AppText>{children.map((child, index) => <View key={index} style={styles.childForm}><AppText variant="label">{t("parentEnrollment.childNumber", { number: index + 1 })}</AppText><TextInput style={styles.input} placeholder={t("children.firstName")} value={child.firstName} onChangeText={(firstName) => setChildren((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, firstName } : item))} /><TextInput style={styles.input} placeholder={t("children.lastName")} value={child.lastName ?? ""} onChangeText={(lastName) => setChildren((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, lastName } : item))} /><GenderPicker value={child.gender} onChange={(gender) => setChildren((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, gender } : item))} /><DatePicker placeholder={t("children.birthDate")} value={child.dateOfBirth} onChange={(dateOfBirth) => setChildren((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, dateOfBirth } : item))} maximumDate={formatIsoDate(new Date())} />{children.length > 1 && <Button variant="danger" onPress={() => setChildren((current) => current.filter((_, itemIndex) => itemIndex !== index))}>{t("parentEnrollment.removeChild")}</Button>}</View>)}<Button variant="secondary" onPress={() => setChildren((current) => [...current, emptyChild()])}>{t("parentEnrollment.addChild")}</Button>
+        <AppText variant="heading">{t("parentEnrollment.children")}</AppText>{children.map((child, index) => <View key={index} style={styles.childForm}><AppText variant="label">{t("parentEnrollment.childNumber", { number: index + 1 })}</AppText><TextInput style={styles.input} autoCapitalize="words" placeholder={t("children.firstName")} value={child.firstName} onChangeText={(value) => setChildren((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, firstName: capitalizeWords(value) } : item))} /><TextInput style={styles.input} autoCapitalize="words" placeholder={t("children.lastName")} value={child.lastName ?? ""} onChangeText={(value) => setChildren((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, lastName: capitalizeWords(value) } : item))} /><GenderPicker value={child.gender} onChange={(gender) => setChildren((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, gender } : item))} /><DatePicker placeholder={t("children.birthDate")} value={child.dateOfBirth} onChange={(dateOfBirth) => setChildren((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, dateOfBirth } : item))} maximumDate={formatIsoDate(new Date())} />{children.length > 1 && <Button variant="danger" onPress={() => setChildren((current) => current.filter((_, itemIndex) => itemIndex !== index))}>{t("parentEnrollment.removeChild")}</Button>}</View>)}<Button variant="secondary" onPress={() => setChildren((current) => [...current, emptyChild()])}>{t("parentEnrollment.addChild")}</Button>
         <AppText variant="heading">{t("parentEnrollment.plan")}</AppText>{tenant.plans.map((item) => <Button key={item.id} variant={plan?.id === item.id ? "primary" : "secondary"} onPress={() => setPlanId(item.id)}>{item.name} · {formatCurrency(item.price)}</Button>)}
       </>}
     </BottomSheet>
   </AppScreen>;
 }
 
-const styles = StyleSheet.create({ content: { gap: spacing.sm }, childForm: { gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.surface } });
+const styles = StyleSheet.create({ content: { gap: spacing.sm }, tenantOption: { gap: spacing.xs }, childForm: { gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.surface } });

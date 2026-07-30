@@ -154,6 +154,7 @@ interface DevelopmentProgramRepository : JpaRepository<DevelopmentProgram, UUID>
     fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<DevelopmentProgram>
     fun findAllByOrganizationIdIsNullOrderByCreatedAtDesc(): List<DevelopmentProgram>
     fun findByOrganizationIdAndLearningLevelIdAndDomain(organizationId: UUID?, learningLevelId: UUID, domain: com.daycare.api.domain.GoalDomain): DevelopmentProgram?
+    fun findByOrganizationIdIsNullAndLearningLevelIdAndDomainAndActiveTrue(learningLevelId: UUID, domain: com.daycare.api.domain.GoalDomain): DevelopmentProgram?
 
     @Query("""
         select program
@@ -184,5 +185,14 @@ interface DevelopmentProgramRepository : JpaRepository<DevelopmentProgram, UUID>
     fun searchVisibleToOrganization(@Param("organizationId") organizationId: UUID, @Param("search") search: String): List<DevelopmentProgram>
 }
 interface DevelopmentProgramItemRepository : JpaRepository<DevelopmentProgramItem, UUID> { fun findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(developmentProgramId: UUID): List<DevelopmentProgramItem>; fun findAllByDevelopmentProgramIdIn(developmentProgramIds: Collection<UUID>): List<DevelopmentProgramItem> }
+interface PrivateTutoringServiceRepository : JpaRepository<PrivateTutoringService, UUID> { fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<PrivateTutoringService>; fun findAllByOrganizationIdAndBranchIdAndActiveTrueOrderByNameAsc(organizationId: UUID, branchId: UUID): List<PrivateTutoringService> }
+interface PrivateTutoringServiceLearningLevelRepository : JpaRepository<PrivateTutoringServiceLearningLevel, UUID> { fun findAllByPrivateTutoringServiceIdIn(privateTutoringServiceIds: Collection<UUID>): List<PrivateTutoringServiceLearningLevel>; fun findAllByPrivateTutoringServiceId(privateTutoringServiceId: UUID): List<PrivateTutoringServiceLearningLevel>; fun deleteAllByPrivateTutoringServiceId(privateTutoringServiceId: UUID) }
+interface PrivateTutorRepository : JpaRepository<PrivateTutor, UUID> { fun findAllByOrganizationIdOrderByDisplayNameAsc(organizationId: UUID): List<PrivateTutor> }
+interface PrivateTutoringServiceTutorRepository : JpaRepository<PrivateTutoringServiceTutor, UUID> { fun findAllByPrivateTutoringServiceIdIn(privateTutoringServiceIds: Collection<UUID>): List<PrivateTutoringServiceTutor>; fun findAllByPrivateTutoringServiceId(privateTutoringServiceId: UUID): List<PrivateTutoringServiceTutor>; fun deleteAllByPrivateTutoringServiceId(privateTutoringServiceId: UUID); fun existsByPrivateTutoringServiceIdAndPrivateTutorId(privateTutoringServiceId: UUID, privateTutorId: UUID): Boolean }
+interface PrivateTutoringRequestRepository : JpaRepository<PrivateTutoringRequest, UUID> { fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<PrivateTutoringRequest>; fun findAllByOrganizationIdAndParentUserIdOrderByCreatedAtDesc(organizationId: UUID, parentUserId: UUID): List<PrivateTutoringRequest>; fun findByInvoiceId(invoiceId: UUID): PrivateTutoringRequest?; fun findAllByPrivateTutorIdAndStatusIn(privateTutorId: UUID, statuses: Collection<com.daycare.api.domain.PrivateTutoringRequestStatus>): List<PrivateTutoringRequest> }
+interface PlatformKnowledgeCandidateRepository : JpaRepository<PlatformKnowledgeCandidate, UUID> {
+    fun findAllByOrderByUpdatedAtDesc(): List<PlatformKnowledgeCandidate>
+    fun findByNormalizedKey(normalizedKey: String): PlatformKnowledgeCandidate?
+}
 interface ChildGoalRepository : JpaRepository<ChildGoal, UUID> { fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildGoal>; fun existsByChildIdAndProgramIdAndStatus(childId: UUID, programId: UUID, status: com.daycare.api.domain.ChildGoalStatus): Boolean; fun existsByProgramId(programId: UUID): Boolean; fun findAllByStatus(status: com.daycare.api.domain.ChildGoalStatus): List<ChildGoal> }
 interface ChildGoalCheckInRepository : JpaRepository<ChildGoalCheckIn, UUID> { fun findAllByChildGoalIdOrderByCheckInDateAsc(childGoalId: UUID): List<ChildGoalCheckIn>; fun findAllByChildGoalIdIn(childGoalIds: Collection<UUID>): List<ChildGoalCheckIn>; fun findAllByChildGoalIdInAndCheckInDate(childGoalIds: Collection<UUID>, checkInDate: LocalDate): List<ChildGoalCheckIn>; fun findByChildGoalIdAndIndicatorIdAndCheckInDate(childGoalId: UUID, indicatorId: UUID, checkInDate: LocalDate): ChildGoalCheckIn? }

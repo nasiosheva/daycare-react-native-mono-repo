@@ -1,19 +1,21 @@
 export const colors = {
-  primary: "#B93659",
-  primaryPressed: "#922440",
+  primary: "#996D14",
+  primaryPressed: "#7A5710",
   danger: "#A92C43",
-  background: "#FFF7F8",
+  background: "#FFFDF6",
   surface: "#FFFFFF",
-  surfaceTint: "#FFF0F3",
+  surfaceTint: "#FFFAF0",
   dangerSoft: "#FCE8ED",
   accent: "#87CDB5",
   accentSoft: "#E8F7F1",
-  text: "#3D2632",
-  muted: "#806674",
-  border: "#F0C9D4",
-  disabled: "#F5E3E8",
+  text: "#3D3526",
+  muted: "#807766",
+  border: "#F0E3C9",
+  disabled: "#F5EFE3",
   onPrimary: "#FFFFFF",
 } as const;
+
+export const backgroundGradient = { colors: ["#FEE895", "#FFFDF6", "#C1E8FD"], locations: [0, 0.5, 1] } as const;
 
 export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 } as const;
 export const radius = { sm: 10, md: 14, lg: 20, pill: 999 } as const;

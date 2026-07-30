@@ -118,6 +118,7 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             "You do not have permission to manage child programs" to "error.childProgramPermission", "Only active Staff users in this tenant can have child program permission changed" to "error.childProgramPermissionStaff",
             "Only active Staff Admin or Staff users can be assigned to a child" to "error.childAssignmentStaff", "Staff member is already assigned to this child" to "error.childAssignmentDuplicate",
             "Child staff assignment was not found" to "error.childAssignmentNotFound", "Child staff assignment belongs to a different child" to "error.childAssignmentScope",
+            "Parent account was not found" to "error.childGuardianNotFound", "This account is not linked to this child" to "error.childGuardianNotLinked",
             "Only active Staff Admin or Staff users in this tenant can have their password changed" to "error.staffPasswordAccess", "Tenant user was not found" to "error.tenantUserNotFound", "Platform administrator record was not found" to "error.platformAdminNotFound",
             "Tenant staff administrators can create only STAFF_ADMIN or STAFF users" to "error.staffAccountRole",
             "Branch is not available for this organization" to "error.branchUnavailable",

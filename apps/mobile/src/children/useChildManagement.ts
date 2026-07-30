@@ -48,3 +48,13 @@ export function useUnassignChildStaff(childId: string) {
   const { api } = useAuth();
   return useChildMutation<string, Awaited<ReturnType<typeof api.unassignChildStaff>>>((assignmentId) => api.unassignChildStaff(childId, assignmentId));
 }
+
+export function useBindChildGuardian(childId: string) {
+  const { api } = useAuth();
+  return useChildMutation<string, Awaited<ReturnType<typeof api.bindChildGuardian>>>((identifier) => api.bindChildGuardian(childId, identifier));
+}
+
+export function useUnbindChildGuardian(childId: string) {
+  const { api } = useAuth();
+  return useChildMutation<string, Awaited<ReturnType<typeof api.unbindChildGuardian>>>((userId) => api.unbindChildGuardian(childId, userId));
+}

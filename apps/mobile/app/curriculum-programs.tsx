@@ -7,7 +7,7 @@ import type { CurriculumProgram } from "@daycare/api-client";
 import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
-import { goalDomainKey } from "@/i18n/translations";
+import { goalPickerLabel } from "@/i18n/translations";
 import { AppScreen } from "@/navigation/AppScreen";
 
 type Translate = ReturnType<typeof useI18n>["t"];
@@ -54,7 +54,6 @@ export default function CurriculumProgramsScreen() {
   const archivedPrograms = programs.data?.filter((program) => !program.active) ?? [];
 
   return <AppScreen showBottomNavigation={false} title={t("academic.program")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton accessibilityLabel={t("academic.addProgram")} onPress={openAdd}>+ {t("academic.addProgram")}</FloatingActionButton> : undefined}>
-    <AppText variant="h5">{t("academic.program")}</AppText>
     <AppText variant="bodySmall" tone="muted">{t("academic.addProgramDescription")}</AppText>
     <TextInput style={styles.input} placeholder={t("academic.searchPrograms")} value={search} onChangeText={setSearch} />
     {programs.isFetching && <ShimmerList />}
@@ -70,7 +69,7 @@ export default function CurriculumProgramsScreen() {
       <AppText variant="label">{t("academic.programGoals", { count: selectedGoalCount })}</AppText>
       <TextInput style={styles.input} placeholder={t("academic.searchProgramGoals")} value={goalSearch} onChangeText={setGoalSearch} />
       {developmentProgramsQuery.isFetching && <ShimmerList />}
-      {developmentProgramsQuery.data?.filter((goal) => goal.active).map((goal) => <Button key={goal.id} variant={developmentProgramIds.includes(goal.id) ? "primary" : "secondary"} onPress={() => toggleGoal(goal.id)}>{t(goalDomainKey(goal.domain))} · {goal.name}</Button>)}
+      {developmentProgramsQuery.data?.filter((goal) => goal.active).map((goal) => <Button key={goal.id} variant={developmentProgramIds.includes(goal.id) ? "primary" : "secondary"} onPress={() => toggleGoal(goal.id)}>{goalPickerLabel(t, goal.domain, goal.name)}</Button>)}
       {!developmentProgramsQuery.isFetching && developmentProgramsQuery.data?.filter((goal) => goal.active).length === 0 && <AppText tone="muted">{t("academic.noProgramGoals")}</AppText>}
     </BottomSheet>
   </AppScreen>;

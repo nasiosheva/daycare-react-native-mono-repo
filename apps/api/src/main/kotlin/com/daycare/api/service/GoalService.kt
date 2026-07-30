@@ -54,7 +54,7 @@ data class UpsertDevelopmentProgramRequest(
     val domain: GoalDomain,
     val indicatorNames: List<String> = emptyList(),
 )
-data class DevelopmentProgramResponse(val id: UUID, val learningLevelId: UUID, val name: String, val description: String, val durationDays: Int, val minimumYesPercent: Int, val minimumYesStreak: Int, val domain: GoalDomain, val source: DevelopmentProgramSource, val isTemplate: Boolean, val active: Boolean, val indicators: List<GoalIndicatorResponse>, val minAgeMonths: Int?, val maxAgeMonths: Int?)
+data class DevelopmentProgramResponse(val id: UUID, val learningLevelId: UUID, val name: String, val description: String, val durationDays: Int, val minimumYesPercent: Int, val minimumYesStreak: Int, val domain: GoalDomain, val source: DevelopmentProgramSource, val isTemplate: Boolean, val active: Boolean, val revisedFromProgramId: UUID?, val revisionNumber: Int, val indicators: List<GoalIndicatorResponse>, val minAgeMonths: Int?, val maxAgeMonths: Int?)
 enum class DevelopmentProgramSource { GLOBAL, TENANT }
 data class AssignChildGoalRequest(val curriculumProgramId: UUID, val programId: UUID, val startsOn: LocalDate = LocalDate.now())
 data class UpsertGoalIndicatorRequest(@field:NotBlank @field:Size(max = 120) val name: String, val displayOrder: Int = 0)
@@ -106,7 +106,7 @@ class GoalService(
     fun createGlobalProgram(jwt: Jwt, request: UpsertDevelopmentProgramRequest): DevelopmentProgramResponse {
         platformAccess.requirePlatformAdmin(jwt)
         validateGlobalLearningLevel(request.learningLevelId)
-        require(programs.findByOrganizationIdAndLearningLevelIdAndDomain(null, request.learningLevelId, request.domain) == null) { "A program already exists for this learning level and domain" }
+        require(programs.findByOrganizationIdIsNullAndLearningLevelIdAndDomainAndActiveTrue(request.learningLevelId, request.domain) == null) { "An active program already exists for this learning level and domain" }
         val program = programs.save(DevelopmentProgram(organizationId = null, learningLevelId = request.learningLevelId, name = request.name.trim(), description = request.description.trim(), durationDays = request.durationDays, minimumYesPercent = request.minimumYesPercent, minimumYesStreak = request.minimumYesStreak, domain = request.domain, isTemplate = true))
         saveIndicators(null, program, request.indicatorNames)
         return programResponse(program)
@@ -118,10 +118,37 @@ class GoalService(
         validateGlobalLearningLevel(request.learningLevelId)
         val program = globalProgram(programId)
         if (program.learningLevelId != request.learningLevelId || program.domain != request.domain) {
-            require(programs.findByOrganizationIdAndLearningLevelIdAndDomain(null, request.learningLevelId, request.domain) == null) { "A program already exists for this learning level and domain" }
+            val existing = programs.findByOrganizationIdIsNullAndLearningLevelIdAndDomainAndActiveTrue(request.learningLevelId, request.domain)
+            require(existing == null || existing.id == program.id) { "An active program already exists for this learning level and domain" }
         }
         program.learningLevelId = request.learningLevelId; program.name = request.name.trim(); program.description = request.description.trim(); program.durationDays = request.durationDays; program.minimumYesPercent = request.minimumYesPercent; program.minimumYesStreak = request.minimumYesStreak; program.domain = request.domain
         return programResponse(program)
+    }
+
+    @Transactional
+    fun reviseGlobalProgram(jwt: Jwt, programId: UUID, request: UpsertDevelopmentProgramRequest): DevelopmentProgramResponse {
+        platformAccess.requirePlatformAdmin(jwt)
+        validateGlobalLearningLevel(request.learningLevelId)
+        val previous = globalProgram(programId)
+        require(previous.active) { "Only an active global program can be revised" }
+        val existing = programs.findByOrganizationIdIsNullAndLearningLevelIdAndDomainAndActiveTrue(request.learningLevelId, request.domain)
+        require(existing == null || existing.id == previous.id) { "An active program already exists for this learning level and domain" }
+        previous.active = false
+        val revision = programs.save(DevelopmentProgram(
+            organizationId = null,
+            learningLevelId = request.learningLevelId,
+            name = request.name.trim(),
+            description = request.description.trim(),
+            durationDays = request.durationDays,
+            minimumYesPercent = request.minimumYesPercent,
+            minimumYesStreak = request.minimumYesStreak,
+            domain = request.domain,
+            isTemplate = true,
+            revisedFromProgramId = previous.id,
+            revisionNumber = previous.revisionNumber + 1,
+        ))
+        saveIndicators(null, revision, request.indicatorNames)
+        return programResponse(revision)
     }
 
     @Transactional
@@ -346,7 +373,7 @@ class GoalService(
     }
     private fun programResponse(program: DevelopmentProgram): DevelopmentProgramResponse {
         val level = levels.findById(program.learningLevelId).orElse(null)
-        return DevelopmentProgramResponse(program.id, program.learningLevelId, program.name, program.description, program.durationDays, program.minimumYesPercent, program.minimumYesStreak, program.domain, if (program.organizationId == null) DevelopmentProgramSource.GLOBAL else DevelopmentProgramSource.TENANT, program.isTemplate, program.active, goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id).map(::indicatorResponse), level?.minAgeMonths, level?.maxAgeMonths)
+        return DevelopmentProgramResponse(program.id, program.learningLevelId, program.name, program.description, program.durationDays, program.minimumYesPercent, program.minimumYesStreak, program.domain, if (program.organizationId == null) DevelopmentProgramSource.GLOBAL else DevelopmentProgramSource.TENANT, program.isTemplate, program.active, program.revisedFromProgramId, program.revisionNumber, goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id).map(::indicatorResponse), level?.minAgeMonths, level?.maxAgeMonths)
     }
     private fun indicatorResponse(indicator: DevelopmentProgramItem) = GoalIndicatorResponse(indicator.id, indicator.name, indicator.displayOrder, indicator.active)
     private fun goalResponse(goal: ChildGoal): ChildGoalResponse {

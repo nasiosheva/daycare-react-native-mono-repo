@@ -8,6 +8,9 @@ import com.daycare.api.persistence.ChildProgramRepository
 import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.ChildStaffAssignment
 import com.daycare.api.persistence.ChildStaffAssignmentRepository
+import com.daycare.api.persistence.GuardianLink
+import com.daycare.api.persistence.GuardianLinkRepository
+import com.daycare.api.persistence.Membership
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.UserProfileRepository
 import jakarta.validation.constraints.NotBlank
@@ -22,9 +25,11 @@ import java.util.UUID
 data class UpdateChildRequest(@field:NotBlank @field:Size(max = 100) val firstName: String, @field:Size(max = 100) val lastName: String?, @field:Size(max = 20) val nisn: String?, val gender: Gender, val dateOfBirth: LocalDate)
 data class CreateChildProgramRequest(@field:NotBlank @field:Size(max = 120) val name: String, @field:Size(max = 2_000) val description: String?)
 data class AssignChildStaffRequest(val userId: UUID, val assignmentRole: ChildCareRole)
+data class BindChildGuardianRequest(@field:NotBlank @field:Size(max = 254) val identifier: String)
 data class ChildProgramResponse(val id: UUID, val name: String, val description: String)
 data class ChildStaffAssignmentResponse(val id: UUID, val userId: UUID, val displayName: String, val email: String?, val assignmentRole: String)
-data class ChildProfileResponse(val child: ChildResponse, val programs: List<ChildProgramResponse>, val staffAssignments: List<ChildStaffAssignmentResponse>)
+data class ChildGuardianResponse(val userId: UUID, val displayName: String, val email: String?, val username: String?)
+data class ChildProfileResponse(val child: ChildResponse, val programs: List<ChildProgramResponse>, val staffAssignments: List<ChildStaffAssignmentResponse>, val guardians: List<ChildGuardianResponse>)
 
 @Service
 class ChildManagementService(
@@ -34,13 +39,36 @@ class ChildManagementService(
     private val assignments: ChildStaffAssignmentRepository,
     private val memberships: MembershipRepository,
     private val users: UserProfileRepository,
+    private val guardianLinks: GuardianLinkRepository,
     private val childScopes: ChildScopeService,
 ) {
     @Transactional(readOnly = true)
     fun profile(jwt: Jwt, organizationId: UUID, childId: UUID): ChildProfileResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
         val child = if (scope.membership.role == Role.STAFF) childScopes.requireStaffManagedChild(scope, childId, organizationId) else child(childId, organizationId)
-        return ChildProfileResponse(childResponse(child), programResponses(organizationId, child.id), assignmentResponses(organizationId, child.id))
+        return ChildProfileResponse(childResponse(child), programResponses(organizationId, child.id), assignmentResponses(organizationId, child.id), guardianResponses(child.id))
+    }
+
+    @Transactional
+    fun bindGuardian(jwt: Jwt, organizationId: UUID, childId: UUID, request: BindChildGuardianRequest): ChildGuardianResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val child = child(childId, organizationId)
+        val identifier = request.identifier.trim()
+        val parent = (if (identifier.contains("@")) users.findByEmailIgnoreCase(identifier) else users.findByUsernameIgnoreCase(identifier))
+            ?: throw IllegalArgumentException("Parent account was not found")
+        val parentMembership = memberships.findAllByUserIdAndOrganizationId(parent.id, organizationId).firstOrNull { it.role == Role.PARENT }
+        if (parentMembership == null) memberships.save(Membership(userId = parent.id, organizationId = organizationId, role = Role.PARENT, branchId = child.branchId))
+        else parentMembership.active = true
+        if (!guardianLinks.existsByChildIdAndUserId(child.id, parent.id)) guardianLinks.save(GuardianLink(childId = child.id, userId = parent.id))
+        return ChildGuardianResponse(parent.id, parent.displayName, parent.email, parent.username)
+    }
+
+    @Transactional
+    fun unbindGuardian(jwt: Jwt, organizationId: UUID, childId: UUID, userId: UUID) {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val child = child(childId, organizationId)
+        val link = guardianLinks.findAllByChildId(child.id).firstOrNull { it.userId == userId } ?: throw IllegalArgumentException("This account is not linked to this child")
+        guardianLinks.delete(link)
     }
 
     @Transactional
@@ -113,4 +141,5 @@ class ChildManagementService(
     private fun childResponse(child: com.daycare.api.persistence.Child) = ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.nisn, child.gender, child.dateOfBirth)
     private fun programResponses(organizationId: UUID, childId: UUID) = programs.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId).map { ChildProgramResponse(it.id, it.name, it.description) }
     private fun assignmentResponses(organizationId: UUID, childId: UUID) = assignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId).mapNotNull { assignment -> users.findById(assignment.userId).map { user -> ChildStaffAssignmentResponse(assignment.id, user.id, user.displayName, user.email, assignment.assignmentRole) }.orElse(null) }
+    private fun guardianResponses(childId: UUID) = guardianLinks.findAllByChildId(childId).mapNotNull { link -> users.findById(link.userId).map { user -> ChildGuardianResponse(user.id, user.displayName, user.email, user.username) }.orElse(null) }
 }

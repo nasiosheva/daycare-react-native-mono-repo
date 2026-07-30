@@ -1,6 +1,7 @@
 import { useEffect, useState, type PropsWithChildren, type ReactNode } from "react";
 import { SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
-import { colors, spacing } from "./theme";
+import { LinearGradient } from "expo-linear-gradient";
+import { backgroundGradient, colors, spacing } from "./theme";
 import { AppText } from "./AppText";
 import { subscribeInlineFeedback, type InlineFeedback } from "./InlineFeedback";
 
@@ -17,26 +18,29 @@ export function Screen({ children, title, header, headerAction, footer, floating
     return () => clearTimeout(timeout);
   }, [feedback]);
 
-  return <SafeAreaView style={styles.safe}>
-    {shouldShowAppBar && <View style={styles.appBar}>
-      {header && <View style={styles.leading}>{header}</View>}
-      <AppText variant="heading" numberOfLines={1} style={styles.title}>{title ?? "Umur Emas"}</AppText>
-      {headerAction && <View style={styles.headerAction}>{headerAction}</View>}
-    </View>}
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-      {feedback && <View accessibilityRole="alert" style={styles.feedback}>
-        <AppText variant="label">{feedback.title}</AppText>
-        {feedback.message && <AppText variant="caption">{feedback.message}</AppText>}
+  return <LinearGradient colors={backgroundGradient.colors} locations={backgroundGradient.locations} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradient}>
+    <SafeAreaView style={styles.safe}>
+      {shouldShowAppBar && <View style={styles.appBar}>
+        {header && <View style={styles.leading}>{header}</View>}
+        <AppText variant="heading" numberOfLines={1} style={styles.title}>{title ?? "Umur Emas"}</AppText>
+        {headerAction && <View style={styles.headerAction}>{headerAction}</View>}
       </View>}
-      {children}
-    </ScrollView>
-    {floatingAction && <View pointerEvents="box-none" style={[styles.floatingAction, footer ? styles.floatingActionWithFooter : undefined]}>{floatingAction}</View>}
-    {footer && <View style={styles.footer}>{footer}</View>}
-  </SafeAreaView>;
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+        {feedback && <View accessibilityRole="alert" style={styles.feedback}>
+          <AppText variant="label">{feedback.title}</AppText>
+          {feedback.message && <AppText variant="caption">{feedback.message}</AppText>}
+        </View>}
+        {children}
+      </ScrollView>
+      {floatingAction && <View pointerEvents="box-none" style={[styles.floatingAction, footer ? styles.floatingActionWithFooter : undefined]}>{floatingAction}</View>}
+      {footer && <View style={styles.footer}>{footer}</View>}
+    </SafeAreaView>
+  </LinearGradient>;
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
+  gradient: { flex: 1 },
+  safe: { flex: 1 },
   appBar: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
   leading: { flexShrink: 0 },
   title: { flex: 1 },

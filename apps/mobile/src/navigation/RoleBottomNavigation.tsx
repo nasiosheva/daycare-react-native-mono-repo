@@ -27,7 +27,6 @@ const navigationByRole: Record<NavigationRole, NavigationItem[]> = {
   ],
   PARENT: [
     { href: "/home", labelKey: "nav.home" },
-    { href: "/development", labelKey: "nav.development" },
     { href: "/parent-qr", labelKey: "nav.qr" },
     { href: "/booking", labelKey: "nav.booking", requiredCapability: "DAYCARE_OPERATIONS" },
     { href: "/operational-hours", labelKey: "nav.operatingHours", requiredCapability: "DAYCARE_OPERATIONS" },

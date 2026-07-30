@@ -37,6 +37,7 @@ export default function StaffAdminScreen() {
     <MenuItem title={t("paymentInstruction.title")} description={t("paymentInstruction.managementDescription")} onPress={() => router.push("/payment-instructions")} />
     <MenuItem title={t("staffAdmin.subscriptions")} description={t("staffAdmin.subscriptionsDescription")} onPress={() => router.push("/parent-subscriptions")} />
     <MenuItem title={t("staffAdmin.plans")} description={t("staffAdmin.plansDescription")} onPress={() => router.push("/billing-admin")} />
+    <MenuItem title={t("privateTutoring.menu")} description={t("privateTutoring.adminDescription")} onPress={() => router.push("/private-tutoring-admin")} />
     <MenuItem title={t("staffAdmin.branches")} description={t("staffAdmin.branchesDescription")} onPress={() => router.push("/branches" as never)} />
     <MenuItem title={t("childAttendanceReport.menu")} description={t("childAttendanceReport.menuDescription")} onPress={() => router.push("/child-attendance-report" as never)} />
     <MenuItem title={t("overtime.chargesTitle")} description={t("overtime.chargesDescription")} onPress={() => router.push("/overtime-charges")} />

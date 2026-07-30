@@ -10,14 +10,18 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
-data class TenantBranchResponse(val id: UUID, val name: String, val timezone: String, val active: Boolean, val primary: Boolean)
+data class TenantBranchResponse(val id: UUID, val name: String, val timezone: String, val fullAddress: String?, val googleMapsUrl: String?, val active: Boolean, val primary: Boolean)
 data class CreateTenantBranchRequest(
     @field:NotBlank @field:Size(max = 200) val name: String,
     @field:NotBlank @field:Size(max = 64) val timezone: String = "Asia/Jakarta",
+    @field:NotBlank @field:Size(max = 2_000) val fullAddress: String,
+    @field:Size(max = 2_048) val googleMapsUrl: String? = null,
 )
 data class UpdateTenantBranchRequest(
     @field:NotBlank @field:Size(max = 200) val name: String,
     @field:NotBlank @field:Size(max = 64) val timezone: String,
+    @field:NotBlank @field:Size(max = 2_000) val fullAddress: String,
+    @field:Size(max = 2_048) val googleMapsUrl: String? = null,
 )
 
 @Service
@@ -38,7 +42,7 @@ class BranchManagementService(
     fun create(jwt: Jwt, organizationId: UUID, request: CreateTenantBranchRequest): TenantBranchResponse {
         requireStaffAdmin(jwt, organizationId)
         require(validTimezone(request.timezone)) { "Timezone is not valid" }
-        return response(branches.save(Branch(organizationId = organizationId, name = request.name.trim(), timezone = request.timezone.trim())))
+        return response(branches.save(Branch(organizationId = organizationId, name = request.name.trim(), timezone = request.timezone.trim(), fullAddress = requiredAddress(request.fullAddress), googleMapsUrl = mapsUrl(request.googleMapsUrl))))
     }
 
     @Transactional
@@ -48,6 +52,8 @@ class BranchManagementService(
         val branch = requireBranch(branchId, organizationId)
         branch.name = request.name.trim()
         branch.timezone = request.timezone.trim()
+        branch.fullAddress = requiredAddress(request.fullAddress)
+        branch.googleMapsUrl = mapsUrl(request.googleMapsUrl)
         return response(branch)
     }
 
@@ -73,6 +79,11 @@ class BranchManagementService(
     private fun requireStaffAdmin(jwt: Jwt, organizationId: UUID) = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
     private fun requireBranch(branchId: UUID, organizationId: UUID) = branches.findById(branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
         .also { require(it.organizationId == organizationId) { "Branch belongs to a different tenant" } }
-    private fun response(branch: Branch) = TenantBranchResponse(branch.id, branch.name, branch.timezone, branch.active, branch.primary)
+    private fun response(branch: Branch) = TenantBranchResponse(branch.id, branch.name, branch.timezone, branch.fullAddress, branch.googleMapsUrl, branch.active, branch.primary)
     private fun validTimezone(value: String) = runCatching { java.time.ZoneId.of(value.trim()) }.isSuccess
+    private fun requiredAddress(value: String): String = value.trim().also { require(it.isNotBlank()) { "Full address is required" } }
+    private fun mapsUrl(value: String?): String? = value?.trim()?.ifBlank { null }?.also { url ->
+        val host = runCatching { java.net.URI(url).host?.lowercase() }.getOrNull()
+        require(url.startsWith("https://") && host != null && (host == "maps.app.goo.gl" || host == "goo.gl" || host.endsWith(".goo.gl") || host.startsWith("maps.google.") || host.startsWith("www.google.") || host.startsWith("google."))) { "Google Maps URL is not valid" }
+    }
 }

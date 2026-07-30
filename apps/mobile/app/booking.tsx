@@ -47,6 +47,7 @@ export default function BookingScreen() {
   };
   return <AppScreen title={t("booking.title")}>
     <AppText tone="muted">{t("booking.subtitle")}</AppText>
+    <NavigationCard accessibilityLabel={t("privateTutoring.menu")} onPress={() => router.push("/private-tutoring")}><AppText variant="h5">{t("privateTutoring.menu")}</AppText><AppText tone="muted">{t("privateTutoring.description")}</AppText></NavigationCard>
     <AppText variant="heading">{t("booking.child")}</AppText>
     {children.isFetching && <ShimmerList variant="tile" />}
     {!children.isFetching && <View style={styles.row}>{children.data?.map((child) => <Button key={child.id} variant={child.id === childId ? "primary" : "secondary"} onPress={() => setChildId(child.id)}>{child.fullName}</Button>)}</View>}

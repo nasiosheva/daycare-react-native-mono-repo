@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { childAbsencePurposes, type ChildAbsencePurpose } from "@daycare/core";
@@ -46,14 +46,12 @@ export default function AbsenceRequestsScreen() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [cancelRequest, setCancelRequest] = useState<ChildAbsenceRequest | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
-  const [branchSheetOpen, setBranchSheetOpen] = useState(false);
-  const [appliedBranchId, setAppliedBranchId] = useState<string>();
-  const [draftBranchId, setDraftBranchId] = useState<string>();
+  const [filterBranchId, setFilterBranchId] = useState<string>();
 
   const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: isStaffAdmin && Boolean(organizationId) });
   const requests = useQuery({
-    queryKey: ["child-absence-requests", organizationId, isParent ? childId : undefined, isStaffAdmin ? appliedBranchId : undefined],
-    queryFn: () => api.childAbsenceRequests(isParent ? { childId } : isStaffAdmin ? { branchId: appliedBranchId } : {}),
+    queryKey: ["child-absence-requests", organizationId, isParent ? childId : undefined, isStaffAdmin ? filterBranchId : undefined],
+    queryFn: () => api.childAbsenceRequests(isParent ? { childId } : isStaffAdmin ? { branchId: filterBranchId } : {}),
     enabled: Boolean(organizationId) && ((isParent && Boolean(childId)) || isStaff || isStaffAdmin),
   });
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["child-absence-requests", organizationId] });
@@ -86,13 +84,14 @@ export default function AbsenceRequestsScreen() {
     try { await cancel.mutateAsync(cancelRequest); }
     catch (error) { setCancelError(error instanceof Error ? error.message : t("absence.cancelFailed")); }
   };
-  const selectedBranch = branches.data?.find((branch) => branch.id === appliedBranchId);
-
   return <AppScreen showBottomNavigation={false} title={t("absence.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("absence.description")}</AppText>
     {readOnly && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     {isParent && !readOnly && <Button onPress={openForm}>{t("absence.add")}</Button>}
-    {isStaffAdmin && <Button variant="secondary" onPress={() => { setDraftBranchId(appliedBranchId); setBranchSheetOpen(true); }}>{selectedBranch?.name ?? t("absence.filterBranch")}</Button>}
+    {isStaffAdmin && <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
+      <BranchTab label={t("absence.allBranches")} selected={!filterBranchId} onPress={() => setFilterBranchId(undefined)} />
+      {branches.data?.filter((branch) => branch.active).map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
+    </ScrollView>}
     {requests.isLoading && <ShimmerList />}
     {requests.isError && <Button variant="secondary" onPress={() => requests.refetch()}>{t("common.retry")}</Button>}
     {!requests.isLoading && !requests.isError && requests.data?.map((request) => <RequestCard key={request.id} request={request} formatDate={formatDate} purposeLabel={t(purposeKeys[request.purpose])} statusLabel={t(`status.${request.status}` as Parameters<typeof t>[0])} cancelLabel={t("absence.cancelRequest")} approveLabel={t("absence.approve")} rejectLabel={t("absence.reject")} isParent={isParent} canDecide={!readOnly && (isStaff || isStaffAdmin)} onCancel={() => { setCancelRequest(request); setCancelError(null); }} onApprove={() => openDecision(request, true)} onReject={() => openDecision(request, false)} />)}
@@ -116,11 +115,11 @@ export default function AbsenceRequestsScreen() {
       {cancelError && <AppText accessibilityRole="alert" tone="danger">{cancelError}</AppText>}
       <AppText tone="muted">{t("absence.cancelConfirm")}</AppText>
     </BottomSheet>
-
-    <BottomSheet visible={branchSheetOpen} onClose={() => setBranchSheetOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("absence.filterBranch")} negativeAction={{ label: t("common.cancel"), onPress: () => setBranchSheetOpen(false) }} positiveAction={{ label: t("absence.applyFilter"), onPress: () => { setAppliedBranchId(draftBranchId); setBranchSheetOpen(false); } }}>
-      <View style={styles.branchList}><Button variant={draftBranchId ? "secondary" : "primary"} onPress={() => setDraftBranchId(undefined)}>{t("absence.allBranches")}</Button>{branches.data?.filter((branch) => branch.active).map((branch) => <Button key={branch.id} variant={draftBranchId === branch.id ? "primary" : "secondary"} onPress={() => setDraftBranchId(branch.id)}>{branch.name}</Button>)}</View>
-    </BottomSheet>
   </AppScreen>;
+}
+
+function BranchTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}><AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText></Pressable>;
 }
 
 function RequestCard({ request, formatDate, purposeLabel, statusLabel, cancelLabel, approveLabel, rejectLabel, isParent, canDecide, onCancel, onApprove, onReject }: { request: ChildAbsenceRequest; formatDate: (value: string) => string; purposeLabel: string; statusLabel: string; cancelLabel: string; approveLabel: string; rejectLabel: string; isParent: boolean; canDecide: boolean; onCancel: () => void; onApprove: () => void; onReject: () => void }) {
@@ -145,5 +144,11 @@ const styles = StyleSheet.create({
   purposeList: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   actions: { flexDirection: "row", gap: spacing.sm },
   action: { flex: 1 },
-  branchList: { gap: spacing.sm },
+  tabsScroll: { flexGrow: 0, flexShrink: 0 },
+  tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" },
+  activeTab: { borderBottomColor: colors.primary },
+  tabText: { color: colors.muted },
+  activeTabText: { color: colors.primary },
+  pressedTab: { opacity: 0.72 },
 });

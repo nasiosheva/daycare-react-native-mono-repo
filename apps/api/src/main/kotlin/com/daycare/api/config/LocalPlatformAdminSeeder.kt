@@ -13,11 +13,11 @@ import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 
-// Requires profile "local" AND both flags below — none of these can be true by
-// accident in production, and this never touches Firebase (local-auth only).
+// This seed is constrained to the local Spring profile and is independent from
+// application-password authentication, which is available in every environment.
 @Component
 @Profile("local")
-@ConditionalOnProperty(prefix = "daycare", name = ["local-seed-enabled", "local-auth-enabled"], havingValue = "true")
+@ConditionalOnProperty(prefix = "daycare", name = ["local-seed-enabled"], havingValue = "true")
 class LocalPlatformAdminSeeder(
     private val users: UserProfileRepository,
     private val platformAdministrators: PlatformAdministratorRepository,

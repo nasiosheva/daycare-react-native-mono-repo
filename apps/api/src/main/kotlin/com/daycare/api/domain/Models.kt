@@ -19,6 +19,7 @@ enum class ChildAbsencePurpose { SICK, OUT_OF_TOWN, FAMILY_EVENT, EMERGENCY, OTH
 enum class ChildAbsenceRequestStatus { PENDING, APPROVED, REJECTED, CANCELLED }
 enum class DevelopmentCategory { ACTIVITY, MEAL, NAP, OBSERVATION }
 enum class GoalDomain { KEMANDIRIAN, BAHASA_KOMUNIKASI, KOGNITIF, MOTORIK_HALUS, MOTORIK_KASAR, SOSIAL_EMOSI }
+enum class PlatformKnowledgeCandidateStatus { CANDIDATE, APPROVED, REJECTED, ARCHIVED }
 enum class ServicePlanType { DAILY, WEEKLY, MONTHLY }
 enum class UnusedCreditPolicy { CARRY_FORWARD, EXPIRE }
 enum class ServicePlanDiscountKind { AUTOMATIC, PROMO_CODE }
@@ -27,7 +28,9 @@ enum class CapacityReservationStatus { HELD, RELEASED }
 enum class EntitlementStatus { PENDING_PAYMENT, ACTIVE, EXPIRED, EXHAUSTED }
 enum class BookingStatus { PENDING_PAYMENT, PENDING_APPROVAL, CONFIRMED, REJECTED, CANCELLED, COMPLETED }
 enum class InvoiceStatus { PENDING, PAYMENT_SUBMITTED, PAID, OVERDUE, VOID }
-enum class InvoiceSource { SERVICE, OVERTIME }
+enum class InvoiceSource { SERVICE, OVERTIME, PRIVATE_TUTORING }
+enum class PrivateTutorType { STAFF, EXTERNAL }
+enum class PrivateTutoringRequestStatus { PENDING_APPROVAL, PENDING_PAYMENT, CONFIRMED, REJECTED, CANCELLED }
 enum class PaymentProofStatus { SUBMITTED, VERIFIED, REJECTED }
 enum class InvitationStatus { PENDING, ACCEPTED, EXPIRED }
 enum class PushNotificationMuteDuration { ONE_HOUR, ONE_WEEK, ONE_MONTH }
