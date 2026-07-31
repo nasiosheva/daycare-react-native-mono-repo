@@ -230,6 +230,63 @@ native_config_fingerprint() {
     "$repository_root/apps/mobile/assets"
 }
 
+backup_android_release_signing() {
+  native_signing_backup=""
+  [ "$platform" = "android" ] || return
+
+  android_root="$repository_root/apps/mobile/android"
+  gradle_properties="$android_root/gradle.properties"
+  [ -f "$gradle_properties" ] || return
+
+  signing_properties=$(grep -E '^MYAPP_RELEASE_(STORE_FILE|STORE_PASSWORD|KEY_ALIAS|KEY_PASSWORD)=' "$gradle_properties" || true)
+  [ -n "$signing_properties" ] || return
+
+  native_signing_backup=$(umask 077; mktemp -d "${TMPDIR:-/tmp}/daycare-android-signing.XXXXXX")
+  trap 'discard_android_release_signing_backup' EXIT HUP INT TERM
+  printf '%s\n' "$signing_properties" >"$native_signing_backup/gradle.properties"
+
+  release_store_file=$(printf '%s\n' "$signing_properties" | sed -n 's/^MYAPP_RELEASE_STORE_FILE=//p' | head -n 1)
+  case "$release_store_file" in
+    ""|/*|..|../*|*/../*) return ;;
+  esac
+
+  release_store_path="$android_root/app/$release_store_file"
+  [ -f "$release_store_path" ] || return
+  mkdir -p "$native_signing_backup/keystore/$(dirname "$release_store_file")"
+  cp "$release_store_path" "$native_signing_backup/keystore/$release_store_file"
+}
+
+restore_android_release_signing() {
+  [ -n "$native_signing_backup" ] || return
+  [ -f "$native_signing_backup/gradle.properties" ] || return
+
+  android_root="$repository_root/apps/mobile/android"
+  mkdir -p "$android_root/app"
+  filtered_gradle_properties=$(umask 077; mktemp "$android_root/gradle.properties.XXXXXX")
+  if [ -f "$android_root/gradle.properties" ]; then
+    grep -v -E '^MYAPP_RELEASE_(STORE_FILE|STORE_PASSWORD|KEY_ALIAS|KEY_PASSWORD)=' "$android_root/gradle.properties" >"$filtered_gradle_properties" || true
+  fi
+  cat "$native_signing_backup/gradle.properties" >>"$filtered_gradle_properties"
+  mv "$filtered_gradle_properties" "$android_root/gradle.properties"
+
+  if [ -d "$native_signing_backup/keystore" ]; then
+    (
+      cd "$native_signing_backup/keystore"
+      find . -type f -print
+    ) | while IFS= read -r keystore_file; do
+      relative_keystore_path=${keystore_file#./}
+      mkdir -p "$android_root/app/$(dirname "$relative_keystore_path")"
+      cp "$native_signing_backup/keystore/$relative_keystore_path" "$android_root/app/$relative_keystore_path"
+    done
+  fi
+}
+
+discard_android_release_signing_backup() {
+  [ -n "$native_signing_backup" ] || return
+  rm -rf "$native_signing_backup"
+  native_signing_backup=""
+}
+
 ensure_native_project_sync() {
   case "$platform" in
     android|ios)
@@ -249,10 +306,17 @@ ensure_native_project_sync() {
   fi
 
   echo "Synchronizing the generated $platform project with the Expo native configuration..."
-  (
+  backup_android_release_signing
+  if ! (
     cd "$repository_root"
     corepack pnpm --filter @daycare/app exec expo prebuild --platform "$platform" --clean --no-install
-  )
+  ); then
+    restore_android_release_signing
+    discard_android_release_signing_backup
+    return 1
+  fi
+  restore_android_release_signing
+  discard_android_release_signing_backup
   native_project_was_synchronized=true
   mkdir -p "$native_config_directory"
   printf '%s\n' "$current_native_config_fingerprint" >"$native_config_stamp"

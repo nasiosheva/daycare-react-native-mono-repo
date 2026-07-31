@@ -58,6 +58,8 @@ keytool -genkeypair \
 
 Store the keystore and its passwords securely. Use the same keystore for every future update of the same Android application; losing it prevents publishing compatible updates. Do not commit, upload to GitHub, or paste a keystore or its passwords into chat, issue trackers, or environment files tracked by Git.
 
+Android launchers preserve these four local properties and the referenced app-relative keystore across an Expo clean prebuild. This protects material that existed before the prebuild; it cannot recover a keystore that was already deleted or was never backed up.
+
 ## Build
 
 From the repository root, run:
