@@ -134,6 +134,7 @@ class TenantAccountProvisioningTest {
         val platformAdministrators = mock(PlatformAdministratorRepository::class.java)
         val tenantAccounts = mock(TenantUserAccountService::class.java)
         val institutionTypes = mock(InstitutionTypeCatalogService::class.java)
+        val defaultCurriculumActivities = mock(TenantDefaultCurriculumActivitySeeder::class.java)
         val organization = Organization(name = "Tenant Baru")
         val staffAdmin = UserProfile(displayName = "Owner Tenant", email = "owner@tenant.test")
         val membership = Membership(userId = staffAdmin.id, organizationId = organization.id, role = Role.STAFF_ADMIN)
@@ -151,7 +152,7 @@ class TenantAccountProvisioningTest {
         `when`(branches.findFirstByOrganizationId(organization.id)).thenReturn(Branch(organizationId = organization.id, name = "Cabang Utama"))
         `when`(invitations.findAllByOrganizationIdAndStatus(organization.id, InvitationStatus.PENDING)).thenReturn(emptyList())
         `when`(payments.findAllByOrganizationIdOrderByCreatedAtDesc(organization.id)).thenReturn(emptyList())
-        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, tenantAccounts, institutionTypes)
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, tenantAccounts, institutionTypes, defaultCurriculumActivities)
 
         val response = service.createTenant(jwt, CreateTenantRequest("Tenant Baru", "Cabang Utama", setOf(InstitutionTypeCodes.DAYCARE), TenantSubscriptionPlan.STARTER, null, 1, "Owner Tenant", "owner@tenant.test", "123123"))
 
@@ -161,6 +162,7 @@ class TenantAccountProvisioningTest {
         verify(memberships).save(membershipCaptor.capture())
         assertEquals(Role.STAFF_ADMIN, membershipCaptor.value.role)
         assertTrue(membershipCaptor.value.primaryStaffAdmin)
+        verify(defaultCurriculumActivities).seed(organization.id)
     }
 
     @Test
@@ -178,13 +180,14 @@ class TenantAccountProvisioningTest {
         val platformAdministrators = mock(PlatformAdministratorRepository::class.java)
         val tenantAccounts = mock(TenantUserAccountService::class.java)
         val institutionTypes = mock(InstitutionTypeCatalogService::class.java)
+        val defaultCurriculumActivities = mock(TenantDefaultCurriculumActivitySeeder::class.java)
         val organization = Organization(name = "Tenant")
         val primaryMembership = Membership(organizationId = organization.id, role = Role.STAFF_ADMIN, primaryStaffAdmin = true)
         val jwt = mock(Jwt::class.java)
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
         `when`(organizations.findById(organization.id)).thenReturn(Optional.of(organization))
         `when`(memberships.findById(primaryMembership.id)).thenReturn(Optional.of(primaryMembership))
-        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, tenantAccounts, institutionTypes)
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, tenantAccounts, institutionTypes, defaultCurriculumActivities)
 
         assertThrows(IllegalArgumentException::class.java) { service.removeTenantStaffAdmin(jwt, organization.id, primaryMembership.id) }
         assertTrue(primaryMembership.active)
@@ -205,13 +208,14 @@ class TenantAccountProvisioningTest {
         val platformAdministrators = mock(PlatformAdministratorRepository::class.java)
         val tenantAccounts = mock(TenantUserAccountService::class.java)
         val institutionTypes = mock(InstitutionTypeCatalogService::class.java)
+        val defaultCurriculumActivities = mock(TenantDefaultCurriculumActivitySeeder::class.java)
         val organization = Organization(name = "Tenant Trial")
         val subscription = TenantSubscription(organizationId = organization.id, plan = TenantSubscriptionPlan.STARTER, status = TenantSubscriptionStatus.TRIAL, periodStart = LocalDate.now(), periodEnd = LocalDate.now().plusMonths(1))
         val jwt = mock(Jwt::class.java)
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
         `when`(organizations.findById(organization.id)).thenReturn(Optional.of(organization))
         `when`(subscriptions.findByOrganizationId(organization.id)).thenReturn(subscription)
-        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, tenantAccounts, institutionTypes)
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, tenantAccounts, institutionTypes, defaultCurriculumActivities)
 
         assertThrows(IllegalArgumentException::class.java) {
             service.updateTenant(jwt, organization.id, UpdateTenantRequest("Tenant Trial", setOf(InstitutionTypeCodes.DAYCARE), TenantSubscriptionPlan.STARTER, BigDecimal("100000")))

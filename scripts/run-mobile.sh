@@ -196,12 +196,27 @@ ensure_platform_tools() {
 native_config_fingerprint() {
   node -e '
     const { createHash } = require("node:crypto");
-    const { readFileSync } = require("node:fs");
+    const { readFileSync, readdirSync, statSync } = require("node:fs");
+    const { resolve } = require("node:path");
     const fingerprint = createHash("sha256");
+
+    const updateFile = (file) => {
+      fingerprint.update(file);
+      fingerprint.update(readFileSync(file));
+    };
+
+    const updateDirectory = (directory) => {
+      for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+        const path = resolve(directory, entry.name);
+        if (entry.isDirectory()) updateDirectory(path);
+        else if (entry.isFile()) updateFile(path);
+      }
+    };
 
     for (const configFile of process.argv.slice(1)) {
       try {
-        fingerprint.update(readFileSync(configFile));
+        if (statSync(configFile).isDirectory()) updateDirectory(configFile);
+        else updateFile(configFile);
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
@@ -211,7 +226,8 @@ native_config_fingerprint() {
   ' \
     "$repository_root/apps/mobile/app.json" \
     "$repository_root/apps/mobile/package.json" \
-    "$repository_root/pnpm-lock.yaml"
+    "$repository_root/pnpm-lock.yaml" \
+    "$repository_root/apps/mobile/assets"
 }
 
 ensure_native_project_sync() {

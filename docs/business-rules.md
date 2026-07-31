@@ -108,6 +108,12 @@ UI/UX belum memiliki satu entity bernama **Rencana Belajar** yang ditetapkan seb
 - Parent hanya dapat membaca Goal, hasil harian, progres terhitung, dan kesimpulan akhir anak yang terhubung sebagai walinya.
 - Goal yang telah selesai tetap dipertahankan sebagai riwayat.
 
+### 6.4 Aktivitas Kurikulum Harian
+
+- Saat Platform Admin membuat tenant baru, sistem membuat 14 `CurriculumActivity` aktif milik tenant untuk rutinitas harian, dari **Morning circle** sampai **Persiapan pulang**, beserta deskripsi operasionalnya.
+- Aktivitas default ini bukan kurikulum global dan bukan Program Perkembangan. Staff Admin dapat mengubah atau mengarsipkannya sesuai operasional tenant setelah provisioning selesai.
+- Provisioning hanya berlaku pada tenant baru; tenant yang telah ada tidak menerima backfill otomatis.
+
 ## 7. Platform Knowledge dan pembentukan template global
 
 Bagian ini adalah **aturan target**. Pipeline agregasi, schema provenance, job evaluasi, API review, dan UI Admin belum dianggap tersedia sampai dicatat sebagai selesai dan terverifikasi pada `docs/changes/`.

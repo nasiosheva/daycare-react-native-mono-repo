@@ -108,6 +108,7 @@ class PlatformAdministrationService(
     private val platformAdministrators: PlatformAdministratorRepository,
     private val tenantUserAccounts: TenantUserAccountService,
     private val institutionTypeCatalog: InstitutionTypeCatalogService,
+    private val defaultCurriculumActivities: TenantDefaultCurriculumActivitySeeder,
 ) {
     @Transactional
     fun tenants(jwt: Jwt, search: String?): List<TenantResponse> {
@@ -134,6 +135,7 @@ class PlatformAdministrationService(
         institutionTypeCatalog.requireActiveCodes(institutionTypes)
         organizationTypes.saveAll(institutionTypes.map { type -> OrganizationTypeAssignment(organizationId = organization.id, type = type) })
         branches.save(Branch(organizationId = organization.id, name = request.branchName.trim(), primary = true))
+        defaultCurriculumActivities.seed(organization.id)
         val today = LocalDate.now()
         val isTrial = request.trialMonths != null
         require(isTrial || request.monthlyFee != null) { "Monthly fee is required when tenant does not use a trial" }
