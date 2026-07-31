@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useQuery } from "@tanstack/react-query";
+import type { TenantReadinessIssue } from "@daycare/api-client";
 import { AppText, colors, NavigationCard, radius, spacing } from "@daycare/ui";
 import { StyleSheet, View } from "react-native";
 import { useAuth } from "@/auth/AuthProvider";
@@ -8,6 +9,20 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { useEntitlements, useInvoices } from "@/booking/useBooking";
 import { createStaffAdminSummary } from "@/home/staffAdminSummary";
 import { useI18n } from "@/i18n/I18nProvider";
+import { tenantReadinessIssueKey } from "@/i18n/translations";
+
+const menuReadinessIssues = {
+  staff: ["STAFF_ADMIN_REQUIRED"],
+  paymentInstructions: ["PAYMENT_INSTRUCTION_REQUIRED"],
+  plans: ["ACTIVE_SERVICE_PLAN_REQUIRED", "BRANCH_CAPACITY_REQUIRED"],
+  branches: ["ACTIVE_BRANCH_REQUIRED"],
+  classrooms: ["ACTIVE_CLASSROOM_REQUIRED"],
+} satisfies Record<string, TenantReadinessIssue[]>;
+
+function attentionIssues(issues: TenantReadinessIssue[] | undefined, menuIssues: TenantReadinessIssue[]) {
+  const activeIssues = new Set(issues);
+  return menuIssues.filter((issue) => activeIssues.has(issue));
+}
 
 export default function StaffAdminScreen() {
   const router = useRouter();
@@ -18,6 +33,7 @@ export default function StaffAdminScreen() {
   const users = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: membership?.role === "STAFF_ADMIN" });
   const invoices = useInvoices();
   const entitlements = useEntitlements();
+  const readiness = useQuery({ queryKey: ["organization-readiness", organizationId], queryFn: () => api.organizationReadiness(), enabled: membership?.role === "STAFF_ADMIN" });
   if (!profile) return null;
   if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
 
@@ -25,6 +41,7 @@ export default function StaffAdminScreen() {
 
   return <AppScreen><AppText variant="title">{t("staffAdmin.title")}</AppText>
     <AppText tone="muted">{t("staffAdmin.subtitle")}</AppText>{readOnly && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
+    {readiness.data?.issues.includes("SUBSCRIPTION_NOT_ACTIVE") && <View style={styles.subscriptionAttention}><AppText variant="label" tone="danger">{t("tenantReadiness.needsAttention")}</AppText><AppText variant="bodySmall" tone="danger">{t(tenantReadinessIssueKey("SUBSCRIPTION_NOT_ACTIVE"))}</AppText></View>}
     <View style={styles.metrics}>
       <Metric label={t("staffAdmin.activeStaff")} value={summary.activeStaff} />
       <Metric label={t("staffAdmin.pendingPayments")} value={summary.pendingInvoices} />
@@ -32,13 +49,14 @@ export default function StaffAdminScreen() {
       <Metric label={t("staffAdmin.remainingCredits")} value={summary.remainingCredits} />
     </View>
     <MenuItem title={t("nav.development")} description={t("staffOperations.developmentDescription")} onPress={() => router.push("/development")} />
-    <MenuItem title={t("staffAdmin.staff")} description={t("staffAdmin.staffDescription")} onPress={() => router.push("/tenant-users")} />
+    <MenuItem title={t("staffAdmin.staff")} description={t("staffAdmin.staffDescription")} attentionIssues={attentionIssues(readiness.data?.issues, menuReadinessIssues.staff)} onPress={() => router.push("/tenant-users")} />
     <MenuItem title={t("staffAdmin.payments")} description={t("staffAdmin.paymentsDescription")} onPress={() => router.push("/parent-payments")} />
-    <MenuItem title={t("paymentInstruction.title")} description={t("paymentInstruction.managementDescription")} onPress={() => router.push("/payment-instructions")} />
+    <MenuItem title={t("paymentInstruction.title")} description={t("paymentInstruction.managementDescription")} attentionIssues={attentionIssues(readiness.data?.issues, menuReadinessIssues.paymentInstructions)} onPress={() => router.push("/payment-instructions")} />
     <MenuItem title={t("staffAdmin.subscriptions")} description={t("staffAdmin.subscriptionsDescription")} onPress={() => router.push("/parent-subscriptions")} />
-    <MenuItem title={t("staffAdmin.plans")} description={t("staffAdmin.plansDescription")} onPress={() => router.push("/billing-admin")} />
+    <MenuItem title={t("staffAdmin.plans")} description={t("staffAdmin.plansDescription")} attentionIssues={attentionIssues(readiness.data?.issues, menuReadinessIssues.plans)} onPress={() => router.push("/billing-admin")} />
     <MenuItem title={t("privateTutoring.menu")} description={t("privateTutoring.adminDescription")} onPress={() => router.push("/private-tutoring-admin")} />
-    <MenuItem title={t("staffAdmin.branches")} description={t("staffAdmin.branchesDescription")} onPress={() => router.push("/branches" as never)} />
+    <MenuItem title={t("staffAdmin.branches")} description={t("staffAdmin.branchesDescription")} attentionIssues={attentionIssues(readiness.data?.issues, menuReadinessIssues.branches)} onPress={() => router.push("/branches" as never)} />
+    <MenuItem title={t("learning.classroom")} description={t("learning.addClassroomDescription")} attentionIssues={attentionIssues(readiness.data?.issues, menuReadinessIssues.classrooms)} onPress={() => router.push("/classrooms")} />
     <MenuItem title={t("childAttendanceReport.menu")} description={t("childAttendanceReport.menuDescription")} onPress={() => router.push("/child-attendance-report" as never)} />
     <MenuItem title={t("overtime.chargesTitle")} description={t("overtime.chargesDescription")} onPress={() => router.push("/overtime-charges")} />
     <MenuItem title={t("staffAdmin.approvals")} description={t("staffAdmin.approvalsDescription")} onPress={() => router.push("/booking-approvals")} />
@@ -52,11 +70,17 @@ function Metric({ label, value }: { label: string; value: number }) {
   return <View style={styles.metric}><AppText variant="h3">{value}</AppText><AppText variant="caption" tone="muted">{label}</AppText></View>;
 }
 
-function MenuItem({ title, description, onPress }: { title: string; description: string; onPress: () => void }) {
-  return <NavigationCard accessibilityLabel={title} onPress={onPress}><AppText variant="h5">{title}</AppText><AppText variant="bodySmall" tone="muted">{description}</AppText></NavigationCard>;
+function MenuItem({ title, description, attentionIssues: issues = [], onPress }: { title: string; description: string; attentionIssues?: TenantReadinessIssue[]; onPress: () => void }) {
+  const { t } = useI18n();
+  const needsAttention = issues.length > 0;
+  return <NavigationCard accessibilityLabel={title} onPress={onPress} style={needsAttention && styles.menuAttention}><View style={styles.menuHeader}><AppText variant="h5">{title}</AppText>{needsAttention && <View style={styles.attentionFlag}><AppText variant="overline" tone="danger">{t("tenantReadiness.needsAttention")}</AppText></View>}</View><AppText variant="bodySmall" tone="muted">{description}</AppText>{issues.map((issue) => <AppText key={issue} variant="caption" tone="danger">• {t(tenantReadinessIssueKey(issue))}</AppText>)}</NavigationCard>;
 }
 
 const styles = StyleSheet.create({
   metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   metric: { flexGrow: 1, minWidth: 140, gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint },
+  subscriptionAttention: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.dangerSoft },
+  menuAttention: { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
+  menuHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
+  attentionFlag: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.pill, backgroundColor: colors.surface },
 });

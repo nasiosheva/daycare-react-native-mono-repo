@@ -10,6 +10,7 @@ import { bottomNavigationPaths } from "@/navigation/RoleBottomNavigation";
 import { RealtimeConnection } from "@/realtime/RealtimeConnection";
 import { getDeviceInstallationId } from "@/device/installationId";
 import { publishInlineFeedback } from "@daycare/ui";
+import { BrandedSplash } from "@/splash/BrandedSplash";
 
 if (Platform.OS !== "web") {
   SplashScreen.setOptions({ duration: 250, fade: true });
@@ -81,14 +82,19 @@ function Providers({ children }: PropsWithChildren) {
 
 function NativeSplashGate({ children }: PropsWithChildren) {
   const { loading } = useAuth();
+  const [splashAssetReady, setSplashAssetReady] = useState(Platform.OS === "web");
+  const showBrandedSplash = Platform.OS !== "web" && (loading || !splashAssetReady);
 
   useEffect(() => {
-    if (Platform.OS === "web" || loading) return;
+    if (Platform.OS === "web" || !splashAssetReady) return;
     const frame = requestAnimationFrame(() => { void SplashScreen.hideAsync().catch(() => undefined); });
     return () => cancelAnimationFrame(frame);
-  }, [loading]);
+  }, [splashAssetReady]);
 
-  return children;
+  return <>
+    {children}
+    {showBrandedSplash && <BrandedSplash onLogoLoad={() => setSplashAssetReady(true)} />}
+  </>;
 }
 
 function BottomNavigationBackHandler({ children }: PropsWithChildren) {

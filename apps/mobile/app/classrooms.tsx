@@ -34,19 +34,25 @@ export default function ClassroomsScreen() {
   const [editingClassroomId, setEditingClassroomId] = useState<string>();
   const [name, setName] = useState(""); const [levelId, setLevelId] = useState<string>(); const [branchId, setBranchId] = useState<string>(); const [periodId, setPeriodId] = useState<string>(); const [capacity, setCapacity] = useState("");
   useEffect(() => { if (!branchId && branches.data?.[0]) setBranchId(branches.data[0].id); }, [branches.data, branchId]);
+  useEffect(() => { if (!levelId) { const activeLevel = levels.data?.find((level) => level.active); if (activeLevel) setLevelId(activeLevel.id); } }, [levels.data, levelId]);
 
   if (!profile) return null;
   if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
 
   const failure = (error: unknown) => Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"));
   const editClassroom = (classroom: Classroom) => { setEditingClassroomId(classroom.id); setName(classroom.name); setBranchId(classroom.branchId); setLevelId(classroom.learningLevelId ?? undefined); setPeriodId(classroom.learningPeriodId ?? undefined); setCapacity(classroom.capacity?.toString() ?? ""); };
-  const cancelEdit = () => { setEditingClassroomId(undefined); setName(""); setLevelId(undefined); setPeriodId(undefined); setCapacity(""); };
+  const cancelEdit = () => { setEditingClassroomId(undefined); setName(""); setBranchId(undefined); setLevelId(undefined); setPeriodId(undefined); setCapacity(""); };
   const openCreate = () => { cancelEdit(); setVisible(true); };
   const openEdit = (classroom: Classroom) => { editClassroom(classroom); setVisible(true); };
   const close = () => { cancelEdit(); setVisible(false); };
+  const openLearningLevels = () => { close(); router.push("/learning-levels"); };
   const save = async () => {
-    if (!name.trim() || !levelId || !branchId) return Alert.alert(t("learning.selectLevel"));
-    const input = { name: name.trim(), learningLevelId: levelId, branchId, learningPeriodId: periodId, capacity: capacity ? Number(capacity) : undefined };
+    const trimmedCapacity = capacity.trim();
+    if (!name.trim()) return Alert.alert(t("learning.classroomRequired"));
+    if (!branchId) return Alert.alert(t("learning.selectBranch"));
+    if (!levelId) return Alert.alert(t(levels.data?.some((level) => level.active) ? "learning.selectLevel" : "learning.noActiveLevelsForClassroom"));
+    if (trimmedCapacity && (!/^\d+$/.test(trimmedCapacity) || !Number.isSafeInteger(Number(trimmedCapacity)) || Number(trimmedCapacity) <= 0)) return Alert.alert(t("learning.invalidCapacity"));
+    const input = { name: name.trim(), learningLevelId: levelId, branchId, learningPeriodId: periodId, capacity: trimmedCapacity ? Number(trimmedCapacity) : undefined };
     try {
       if (editingClassroomId) await updateClassroom.mutateAsync({ id: editingClassroomId, input }); else await createClassroom.mutateAsync(input);
       close();
@@ -63,9 +69,9 @@ export default function ClassroomsScreen() {
     {!classrooms.isFetching && classrooms.data?.length === 0 && <AppText tone="muted">{t("learning.noClassrooms")}</AppText>}
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t(editingClassroomId ? "learning.editClassroom" : "learning.addClassroom")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t(editingClassroomId ? "common.save" : "learning.addClassroom"), loading: createClassroom.isPending || updateClassroom.isPending, onPress: () => void save() }}>
-      <View style={styles.options}>{branches.data?.map((branch) => <Button key={branch.id} variant={branchId === branch.id ? "primary" : "secondary"} onPress={() => setBranchId(branch.id)}>{branch.name}</Button>)}</View>
-      <View style={styles.options}>{levels.data?.filter((level) => level.active).map((level) => <Button key={level.id} variant={levelId === level.id ? "primary" : "secondary"} onPress={() => setLevelId(level.id)}>{level.name}</Button>)}</View>
-      <View style={styles.options}>{periods.data?.map((period) => <Button key={period.id} variant={periodId === period.id ? "primary" : "secondary"} onPress={() => setPeriodId(period.id)}>{period.name}</Button>)}</View>
+      <View style={styles.fieldGroup}><AppText variant="label">{t("learning.branch")}</AppText><View style={styles.options}>{branches.data?.map((branch) => <Button key={branch.id} variant={branchId === branch.id ? "primary" : "secondary"} onPress={() => setBranchId(branch.id)}>{branch.name}</Button>)}</View></View>
+      <View style={styles.fieldGroup}><AppText variant="label">{t("learning.level")}</AppText><View style={styles.options}>{levels.data?.filter((level) => level.active).map((level) => <Button key={level.id} variant={levelId === level.id ? "primary" : "secondary"} onPress={() => setLevelId(level.id)}>{level.name}</Button>)}</View>{levels.data?.every((level) => !level.active) && <View style={styles.options}><AppText tone="muted">{t("learning.noActiveLevelsForClassroom")}</AppText><Button variant="secondary" onPress={openLearningLevels}>{t("learning.addLevel")}</Button></View>}</View>
+      <View style={styles.fieldGroup}><AppText variant="label">{t("learning.selectPeriod")}</AppText><View style={styles.options}><Button variant="secondary" onPress={() => setPeriodId(undefined)}>{t("learning.clearPeriod")}</Button>{periods.data?.map((period) => <Button key={period.id} variant={periodId === period.id ? "primary" : "secondary"} onPress={() => setPeriodId(period.id)}>{period.name}</Button>)}</View></View>
       <TextInput style={styles.input} placeholder={t("learning.classroomName")} value={name} onChangeText={setName} />
       <TextInput style={styles.input} inputMode="numeric" placeholder={t("learning.capacity")} value={capacity} onChangeText={setCapacity} />
     </BottomSheet>
@@ -186,6 +192,7 @@ const styles = StyleSheet.create({
   activeTabText: { color: colors.primary },
   pressedTab: { opacity: 0.72 },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface },
+  fieldGroup: { gap: spacing.xs },
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, alignItems: "center" },
   iconButton: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   iconButtonDanger: { borderColor: colors.danger },

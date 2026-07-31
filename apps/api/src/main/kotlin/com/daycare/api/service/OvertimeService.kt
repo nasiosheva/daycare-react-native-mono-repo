@@ -34,7 +34,7 @@ import java.util.UUID
 data class OperatingHourInput(@field:NotNull val dayOfWeek: DayOfWeek, val active: Boolean, val opensAt: LocalTime? = null, val closesAt: LocalTime? = null)
 data class OvertimeRateTierInput(@field:Positive val durationMinutes: Int, @field:DecimalMin("0.01") val amount: BigDecimal)
 data class BranchOperatingHoursResponse(val branchId: UUID, val branchName: String, val timezone: String, val hours: List<OperatingHourInput>, val tiers: List<OvertimeRateTierInput>)
-data class UpdateBranchOperatingHoursRequest(@field:NotEmpty val hours: List<OperatingHourInput>, @field:NotEmpty val tiers: List<OvertimeRateTierInput>)
+data class UpdateBranchOperatingHoursRequest(@field:NotEmpty val hours: List<OperatingHourInput>, val tiers: List<OvertimeRateTierInput>)
 data class CreateOvertimeChargeRequest(@field:NotNull val childId: UUID, @field:NotNull val operationalDate: LocalDate, @field:NotNull val pickedUpAt: LocalTime, @field:NotNull val dueDate: LocalDate)
 data class OvertimeChargeResponse(val id: UUID, val invoiceId: UUID, val branchId: UUID, val childId: UUID, val childName: String, val operationalDate: LocalDate, val pickedUpAt: LocalTime, val closesAt: LocalTime, val overtimeMinutes: Int, val totalAmount: BigDecimal, val dueDate: LocalDate, val status: InvoiceStatus, val tiers: List<OvertimeRateTierInput>)
 
@@ -64,9 +64,13 @@ class OvertimeService(
         require(request.hours.size == DayOfWeek.entries.size && request.hours.map { it.dayOfWeek }.toSet().size == DayOfWeek.entries.size) { "Every day of week must be configured" }
         request.hours.forEach { hour -> require(!hour.active || (hour.opensAt != null && hour.closesAt != null && hour.closesAt.isAfter(hour.opensAt))) { "Operating hours are not valid" } }
         hours.deleteAllByBranchId(branchId)
+        hours.flush()
         hours.saveAll(request.hours.map { hour -> BranchOperatingHour(branchId = branchId, dayOfWeek = hour.dayOfWeek, active = hour.active, opensAt = hour.opensAt, closesAt = hour.closesAt) })
         tiers.deleteAllByBranchId(branchId)
-        tiers.saveAll(request.tiers.mapIndexed { index, tier -> BranchOvertimeRateTier(branchId = branchId, displayOrder = index, durationMinutes = tier.durationMinutes, amount = tier.amount) })
+        tiers.flush()
+        if (request.tiers.isNotEmpty()) {
+            tiers.saveAll(request.tiers.mapIndexed { index, tier -> BranchOvertimeRateTier(branchId = branchId, displayOrder = index, durationMinutes = tier.durationMinutes, amount = tier.amount) })
+        }
         return response(branch)
     }
 
