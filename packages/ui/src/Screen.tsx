@@ -1,7 +1,7 @@
 import { useEffect, useState, type PropsWithChildren, type ReactNode } from "react";
 import { SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { backgroundGradient, colors, spacing } from "./theme";
+import { backgroundGradient, colors, shadows, spacing } from "./theme";
 import { AppText } from "./AppText";
 import { subscribeInlineFeedback, type InlineFeedback } from "./InlineFeedback";
 
@@ -18,7 +18,7 @@ export function Screen({ children, title, header, headerAction, footer, floating
     return () => clearTimeout(timeout);
   }, [feedback]);
 
-  return <LinearGradient colors={backgroundGradient.colors} locations={backgroundGradient.locations} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradient}>
+  return <LinearGradient colors={backgroundGradient.colors} locations={backgroundGradient.locations} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.gradient}>
     <SafeAreaView style={styles.safe}>
       {shouldShowAppBar && <View style={styles.appBar}>
         {header && <View style={styles.leading}>{header}</View>}
@@ -41,7 +41,7 @@ export function Screen({ children, title, header, headerAction, footer, floating
 const styles = StyleSheet.create({
   gradient: { flex: 1 },
   safe: { flex: 1 },
-  appBar: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
+  appBar: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, backgroundColor: colors.surface, zIndex: 1, ...shadows.sm },
   leading: { flexShrink: 0 },
   title: { flex: 1 },
   headerAction: { flexShrink: 0 },
@@ -50,5 +50,5 @@ const styles = StyleSheet.create({
   feedback: { gap: spacing.xs, padding: spacing.md, borderWidth: 1, borderColor: colors.primary, borderRadius: 12, backgroundColor: colors.surfaceTint },
   floatingAction: { position: "absolute", right: spacing.md, bottom: spacing.md },
   floatingActionWithFooter: { bottom: 76 },
-  footer: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
+  footer: { backgroundColor: colors.surface, ...shadows.md, shadowOffset: { width: 0, height: -4 } },
 });

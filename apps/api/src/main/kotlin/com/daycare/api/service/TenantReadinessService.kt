@@ -46,6 +46,7 @@ data class TenantReadinessSummaryResponse(
 
 @Service
 class TenantReadinessService(
+    private val access: AccessService,
     private val platformAccess: PlatformAccessService,
     private val organizations: OrganizationRepository,
     private val organizationTypes: OrganizationTypeAssignmentRepository,
@@ -74,20 +75,17 @@ class TenantReadinessService(
             val organizationId = organization.id
             val institutionTypes = typesByOrganization[organizationId].orEmpty().toSet().ifEmpty { setOf(InstitutionTypeCodes.DAYCARE) }
             val capabilities = institutionCapabilities(institutionTypes)
-            val activeBranches = branchesByOrganization[organizationId].orEmpty().filter { it.active }
-            val issues = buildSet {
-                if (subscriptionsByOrganization[organizationId]?.status !in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL)) add(TenantReadinessIssue.SUBSCRIPTION_NOT_ACTIVE)
-                if (membershipsByOrganization[organizationId].orEmpty().none { it.role == Role.STAFF_ADMIN && it.active }) add(TenantReadinessIssue.STAFF_ADMIN_REQUIRED)
-                if (activeBranches.isEmpty()) add(TenantReadinessIssue.ACTIVE_BRANCH_REQUIRED)
-                if (classroomsByOrganization[organizationId].orEmpty().none { it.active }) add(TenantReadinessIssue.ACTIVE_CLASSROOM_REQUIRED)
-                if (InstitutionCapability.DAYCARE_OPERATIONS in capabilities) {
-                    if (plansByOrganization[organizationId].orEmpty().none { it.active }) add(TenantReadinessIssue.ACTIVE_SERVICE_PLAN_REQUIRED)
-                    val capacityBranchIds = capacitiesByOrganization[organizationId].orEmpty().map { it.branchId }.toSet()
-                    if (activeBranches.any { it.id !in capacityBranchIds }) add(TenantReadinessIssue.BRANCH_CAPACITY_REQUIRED)
-                    if (instructionsByOrganization[organizationId].orEmpty().none { it.active }) add(TenantReadinessIssue.PAYMENT_INSTRUCTION_REQUIRED)
-                }
-            }
-            TenantReadinessResponse(organizationId, organization.name, if (issues.isEmpty()) TenantReadinessStatus.READY else TenantReadinessStatus.NEEDS_ATTENTION, issues)
+            val issues = evaluateIssues(
+                capabilities = capabilities,
+                subscriptionActive = subscriptionsByOrganization[organizationId]?.status in ACTIVE_SUBSCRIPTION_STATUSES,
+                hasActiveStaffAdmin = membershipsByOrganization[organizationId].orEmpty().any { it.role == Role.STAFF_ADMIN && it.active },
+                activeBranchIds = branchesByOrganization[organizationId].orEmpty().filter { it.active }.map { it.id }.toSet(),
+                hasActiveClassroom = classroomsByOrganization[organizationId].orEmpty().any { it.active },
+                hasActiveServicePlan = plansByOrganization[organizationId].orEmpty().any { it.active },
+                capacityBranchIds = capacitiesByOrganization[organizationId].orEmpty().map { it.branchId }.toSet(),
+                hasActivePaymentInstruction = instructionsByOrganization[organizationId].orEmpty().any { it.active },
+            )
+            TenantReadinessResponse(organizationId, organization.name, statusFor(issues), issues)
         }.sortedWith(compareBy<TenantReadinessResponse> { it.status != TenantReadinessStatus.NEEDS_ATTENTION }.thenBy { it.tenantName.lowercase() })
 
         return TenantReadinessSummaryResponse(
@@ -95,5 +93,50 @@ class TenantReadinessService(
             needsAttentionCount = tenantReadiness.count { it.status == TenantReadinessStatus.NEEDS_ATTENTION },
             tenants = tenantReadiness,
         )
+    }
+
+    @Transactional(readOnly = true)
+    fun organizationReadiness(jwt: Jwt, organizationId: UUID): TenantReadinessResponse {
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
+        val organization = organizations.findById(organizationId).orElseThrow { IllegalArgumentException("Organization was not found") }
+        val issues = evaluateIssues(
+            capabilities = scope.capabilities,
+            subscriptionActive = subscriptions.findByOrganizationId(organizationId)?.status in ACTIVE_SUBSCRIPTION_STATUSES,
+            hasActiveStaffAdmin = memberships.findAllByOrganizationId(organizationId).any { it.role == Role.STAFF_ADMIN && it.active },
+            activeBranchIds = branches.findAllByOrganizationId(organizationId).filter { it.active }.map { it.id }.toSet(),
+            hasActiveClassroom = classrooms.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId).isNotEmpty(),
+            hasActiveServicePlan = plans.findAllByOrganizationIdAndActiveTrue(organizationId).isNotEmpty(),
+            capacityBranchIds = branchCapacities.findAllByOrganizationId(organizationId).map { it.branchId }.toSet(),
+            hasActivePaymentInstruction = paymentInstructions.findAllByOrganizationIdAndActiveTrueOrderByDisplayOrderAscCreatedAtAsc(organizationId).isNotEmpty(),
+        )
+        return TenantReadinessResponse(organizationId, organization.name, statusFor(issues), issues)
+    }
+
+    private fun evaluateIssues(
+        capabilities: Set<InstitutionCapability>,
+        subscriptionActive: Boolean,
+        hasActiveStaffAdmin: Boolean,
+        activeBranchIds: Set<UUID>,
+        hasActiveClassroom: Boolean,
+        hasActiveServicePlan: Boolean,
+        capacityBranchIds: Set<UUID>,
+        hasActivePaymentInstruction: Boolean,
+    ): Set<TenantReadinessIssue> = buildSet {
+        if (!subscriptionActive) add(TenantReadinessIssue.SUBSCRIPTION_NOT_ACTIVE)
+        if (!hasActiveStaffAdmin) add(TenantReadinessIssue.STAFF_ADMIN_REQUIRED)
+        if (activeBranchIds.isEmpty()) add(TenantReadinessIssue.ACTIVE_BRANCH_REQUIRED)
+        if (!hasActiveClassroom) add(TenantReadinessIssue.ACTIVE_CLASSROOM_REQUIRED)
+        if (InstitutionCapability.DAYCARE_OPERATIONS in capabilities) {
+            if (!hasActiveServicePlan) add(TenantReadinessIssue.ACTIVE_SERVICE_PLAN_REQUIRED)
+            if (activeBranchIds.any { it !in capacityBranchIds }) add(TenantReadinessIssue.BRANCH_CAPACITY_REQUIRED)
+            if (!hasActivePaymentInstruction) add(TenantReadinessIssue.PAYMENT_INSTRUCTION_REQUIRED)
+        }
+    }
+
+    private fun statusFor(issues: Set<TenantReadinessIssue>) =
+        if (issues.isEmpty()) TenantReadinessStatus.READY else TenantReadinessStatus.NEEDS_ATTENTION
+
+    private companion object {
+        val ACTIVE_SUBSCRIPTION_STATUSES = setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL)
     }
 }

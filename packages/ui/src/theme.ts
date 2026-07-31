@@ -18,7 +18,12 @@ export const colors = {
 export const backgroundGradient = { colors: ["#FEE895", "#FFFDF6", "#C1E8FD"], locations: [0, 0.5, 1] } as const;
 
 export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 } as const;
-export const radius = { sm: 10, md: 14, lg: 20, pill: 999 } as const;
+export const radius = { sm: 10, md: 16, lg: 24, pill: 999 } as const;
+
+export const shadows = {
+  sm: { shadowColor: colors.text, shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  md: { shadowColor: colors.text, shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
+} as const;
 
 export const typography = {
   h1: { fontSize: 32, lineHeight: 40, fontWeight: "700", letterSpacing: -0.4 },

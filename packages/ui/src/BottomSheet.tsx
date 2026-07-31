@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, type PropsWithChildren } from "react";
 import { Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { AppText } from "./AppText";
 import { Button } from "./Button";
 import { colors, radius, spacing } from "./theme";
@@ -50,7 +51,7 @@ export function BottomSheet({ visible, onClose, title, children, negativeAction,
         <View style={styles.header}>
           {title ? <AppText variant="heading" style={styles.title}>{title}</AppText> : <View style={styles.title} />}
           <Pressable accessibilityRole="button" accessibilityLabel={closeAccessibilityLabel} hitSlop={spacing.sm} onPress={dismiss} style={({ pressed }) => [styles.close, pressed && styles.pressed]}>
-            <AppText variant="heading" style={styles.closeLabel}>×</AppText>
+            <Ionicons name="close" size={22} color={colors.primary} />
           </Pressable>
         </View>
         <ScrollView style={styles.contentScroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
@@ -73,7 +74,6 @@ const styles = StyleSheet.create({
   header: { minHeight: 48, flexDirection: "row", alignItems: "center", paddingLeft: spacing.md, paddingRight: spacing.sm },
   title: { flex: 1 },
   close: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: colors.surfaceTint },
-  closeLabel: { color: colors.primary, lineHeight: 26 },
   contentScroll: { flexShrink: 1 },
   content: { gap: spacing.md, paddingHorizontal: spacing.md },
   actions: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.md },

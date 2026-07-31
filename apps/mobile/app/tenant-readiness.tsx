@@ -1,23 +1,13 @@
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import type { TenantReadiness, TenantReadinessIssue } from "@daycare/api-client";
+import type { TenantReadiness } from "@daycare/api-client";
 import { AppText, BackButton, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
-import type { TranslationKey } from "@/i18n/translations";
-
-const issueTranslationKeys: Record<TenantReadinessIssue, TranslationKey> = {
-  SUBSCRIPTION_NOT_ACTIVE: "tenantReadiness.issueSubscription",
-  STAFF_ADMIN_REQUIRED: "tenantReadiness.issueStaffAdmin",
-  ACTIVE_BRANCH_REQUIRED: "tenantReadiness.issueBranch",
-  ACTIVE_CLASSROOM_REQUIRED: "tenantReadiness.issueClassroom",
-  ACTIVE_SERVICE_PLAN_REQUIRED: "tenantReadiness.issueServicePlan",
-  BRANCH_CAPACITY_REQUIRED: "tenantReadiness.issueBranchCapacity",
-  PAYMENT_INSTRUCTION_REQUIRED: "tenantReadiness.issuePaymentInstruction",
-};
+import { tenantReadinessIssueKey } from "@/i18n/translations";
 
 export default function TenantReadinessScreen() {
   const router = useRouter();
@@ -49,7 +39,7 @@ function ReadinessSection({ title, emptyMessage, tenants, onOpen, t }: { title: 
     {tenants.length === 0 && <AppText tone="muted">{emptyMessage}</AppText>}
     {tenants.map((tenant) => <NavigationCard key={tenant.tenantId} accessibilityLabel={t("tenantReadiness.openTenant", { name: tenant.tenantName })} onPress={() => onOpen(tenant.tenantId)}>
       <AppText variant="h5">{tenant.tenantName}</AppText>
-      {tenant.issues.map((issue) => <AppText key={issue} variant="caption" tone="danger">• {t(issueTranslationKeys[issue])}</AppText>)}
+      {tenant.issues.map((issue) => <AppText key={issue} variant="caption" tone="danger">• {t(tenantReadinessIssueKey(issue))}</AppText>)}
       {tenant.status === "READY" && <AppText variant="caption" tone="muted">{t("tenantReadiness.readyDescription")}</AppText>}
     </NavigationCard>)}
   </View>;

@@ -34,7 +34,7 @@ const styles = StyleSheet.create({
   danger: { backgroundColor: colors.danger, borderColor: colors.danger },
   ghost: { backgroundColor: "transparent", borderColor: "transparent" },
   disabled: { backgroundColor: colors.disabled, borderColor: colors.disabled },
-  pressed: { opacity: 0.82 },
+  pressed: { opacity: 0.82, transform: [{ scale: 0.97 }] },
   onDark: { color: colors.onPrimary },
   onLight: { color: colors.text },
 });
