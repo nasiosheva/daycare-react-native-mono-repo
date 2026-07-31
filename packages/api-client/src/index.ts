@@ -257,6 +257,7 @@ export class ApiClient {
 
   async tenants(search?: string): Promise<Tenant[]> { const query = search?.trim(); return this.request(`/platform/tenants${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
   async tenantReadiness(): Promise<TenantReadinessSummary> { return this.request("/platform/tenant-readiness"); }
+  async organizationReadiness(): Promise<TenantReadiness> { return this.request("/tenant-readiness"); }
   async institutionTypes(): Promise<InstitutionTypeDefinition[]> { return this.request("/platform/institution-types"); }
   async createInstitutionType(input: { name: string; parentOccupationVisible?: boolean; parentIncomeRangeVisible?: boolean }): Promise<InstitutionTypeDefinition> { return this.request("/platform/institution-types", { method: "POST", body: JSON.stringify(input) }); }
   async updateInstitutionType(code: string, input: { name: string; parentOccupationVisible?: boolean; parentIncomeRangeVisible?: boolean }): Promise<InstitutionTypeDefinition> { return this.request(`/platform/institution-types/${code}`, { method: "PATCH", body: JSON.stringify(input) }); }

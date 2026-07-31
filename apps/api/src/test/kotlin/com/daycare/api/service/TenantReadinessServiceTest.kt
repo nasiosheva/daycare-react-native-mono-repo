@@ -20,16 +20,20 @@ import com.daycare.api.persistence.TenantPaymentInstruction
 import com.daycare.api.persistence.TenantPaymentInstructionRepository
 import com.daycare.api.persistence.TenantSubscription
 import com.daycare.api.persistence.TenantSubscriptionRepository
+import com.daycare.api.persistence.UserProfile
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.security.oauth2.jwt.Jwt
+import java.util.Optional
 import java.util.UUID
 
 class TenantReadinessServiceTest {
+    private val access = mock(AccessService::class.java)
     private val platformAccess = mock(PlatformAccessService::class.java)
     private val organizations = mock(OrganizationRepository::class.java)
     private val organizationTypes = mock(OrganizationTypeAssignmentRepository::class.java)
@@ -134,5 +138,44 @@ class TenantReadinessServiceTest {
         `when`(instructions.findAll()).thenReturn(emptyList())
     }
 
-    private fun service() = TenantReadinessService(platformAccess, organizations, organizationTypes, subscriptions, memberships, branches, classrooms, plans, capacities, instructions)
+    private fun service() = TenantReadinessService(access, platformAccess, organizations, organizationTypes, subscriptions, memberships, branches, classrooms, plans, capacities, instructions)
+
+    @Test
+    fun `Staff Admin sees needs-attention for a tenant missing core setup`() {
+        val organizationId = UUID.randomUUID()
+        stubStaffAdminAccess(organizationId)
+
+        val response = service().organizationReadiness(jwt, organizationId)
+
+        assertEquals(TenantReadinessStatus.NEEDS_ATTENTION, response.status)
+        assertTrue(response.issues.contains(TenantReadinessIssue.SUBSCRIPTION_NOT_ACTIVE))
+        assertTrue(response.issues.contains(TenantReadinessIssue.STAFF_ADMIN_REQUIRED))
+        assertTrue(response.issues.contains(TenantReadinessIssue.ACTIVE_BRANCH_REQUIRED))
+        assertTrue(response.issues.contains(TenantReadinessIssue.ACTIVE_CLASSROOM_REQUIRED))
+        // No DAYCARE_OPERATIONS capability, so daycare-only setup must not be demanded.
+        assertFalse(response.issues.contains(TenantReadinessIssue.ACTIVE_SERVICE_PLAN_REQUIRED))
+        assertFalse(response.issues.contains(TenantReadinessIssue.PAYMENT_INSTRUCTION_REQUIRED))
+    }
+
+    @Test
+    fun `Staff Admin sees ready once core setup is complete`() {
+        val organizationId = UUID.randomUUID()
+        stubStaffAdminAccess(organizationId)
+        val branch = Branch(organizationId = organizationId, name = "Utama")
+        `when`(subscriptions.findByOrganizationId(organizationId)).thenReturn(TenantSubscription(organizationId = organizationId, status = TenantSubscriptionStatus.ACTIVE))
+        `when`(memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(Membership(organizationId = organizationId, role = Role.STAFF_ADMIN, active = true)))
+        `when`(branches.findAllByOrganizationId(organizationId)).thenReturn(listOf(branch))
+        `when`(classrooms.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId)).thenReturn(listOf(Classroom(organizationId = organizationId, branchId = branch.id, name = "Matahari", active = true)))
+
+        val response = service().organizationReadiness(jwt, organizationId)
+
+        assertEquals(TenantReadinessStatus.READY, response.status)
+        assertTrue(response.issues.isEmpty())
+    }
+
+    private fun stubStaffAdminAccess(organizationId: UUID) {
+        val scope = AccessScope(mock(UserProfile::class.java), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN, active = true), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), null, true)).thenReturn(scope)
+        `when`(organizations.findById(organizationId)).thenReturn(Optional.of(Organization(id = organizationId, name = "Nasio Care")))
+    }
 }

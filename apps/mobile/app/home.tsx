@@ -12,7 +12,7 @@ import { createStaffAdminSummary } from "@/home/staffAdminSummary";
 import { AppScreen } from "@/navigation/AppScreen";
 import { hasInstitutionCapability } from "@daycare/core";
 import { useI18n } from "@/i18n/I18nProvider";
-import { invoiceSourceKey, tenantPaymentStatusKey, tenantSubscriptionPlanKey } from "@/i18n/translations";
+import { invoiceSourceKey, tenantPaymentStatusKey, tenantReadinessIssueKey, tenantSubscriptionPlanKey } from "@/i18n/translations";
 import { useStaffDailyTasks } from "@/home/useStaffDailyTasks";
 import { createParentHomeSummary } from "@/home/parentHomeSummary";
 import { authErrorMessage } from "@/auth/authErrorMessage";
@@ -171,6 +171,7 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
     pendingApprovals: (pendingBookings.data?.filter((booking) => booking.branchId === branch.id && booking.status === "PENDING_APPROVAL").length ?? 0) + (pendingEnrollments.data?.filter((enrollment) => enrollment.branchId === branch.id).length ?? 0),
     pendingInvoices: invoices.data?.filter((invoice) => invoice.branchId === branch.id && invoice.status === "PENDING").length ?? 0,
   }));
+  const readiness = useQuery({ queryKey: ["organization-readiness", organizationId], queryFn: () => api.organizationReadiness(), enabled: Boolean(organizationId) });
   const notifications = useQuery({ queryKey: ["notifications", organizationId], queryFn: () => api.notifications(), enabled: Boolean(organizationId) });
   const unreadNotifications = notifications.data ?? [];
   const unreadNotificationsCount = unreadNotificationCount(unreadNotifications);
@@ -195,6 +196,11 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
         <Ionicons name="person-circle-outline" size={32} color={colors.primary} />
       </Pressable>
     </View>
+    {readiness.data?.status === "NEEDS_ATTENTION" && <NavigationCard accessibilityLabel={t("home.setupAttentionOpen")} onPress={() => router.push("/staff-admin")}>
+      <AppText variant="h5" tone="danger">{t("home.setupAttentionTitle")}</AppText>
+      <AppText variant="bodySmall" tone="muted">{t("home.setupAttentionDescription")}</AppText>
+      {readiness.data.issues.map((issue) => <AppText key={issue} variant="caption" tone="danger">• {t(tenantReadinessIssueKey(issue))}</AppText>)}
+    </NavigationCard>}
     <SummarySection title={t("home.operationalSummary")}>
       <SummaryCard label={t("home.activeChildren")} value={operationalUnavailable ? undefined : summary.activeChildren} onPress={() => router.push("/children")} />
       <SummaryCard label={t("home.activeStaff")} value={operationalUnavailable ? undefined : summary.activeStaff} onPress={() => router.push("/tenant-users")} />

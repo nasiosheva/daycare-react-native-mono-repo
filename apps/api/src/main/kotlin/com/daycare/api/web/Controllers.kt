@@ -398,7 +398,10 @@ class PlatformController(
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val parentChildProfiles: ParentChildProfileService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService) {
+class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val parentChildProfiles: ParentChildProfileService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService, private val tenantReadiness: TenantReadinessService) {
+    @GetMapping("/tenant-readiness")
+    fun tenantReadiness(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = tenantReadiness.organizationReadiness(jwt, organizationId)
+
     @GetMapping("/children")
     fun children(
         @AuthenticationPrincipal jwt: Jwt,
