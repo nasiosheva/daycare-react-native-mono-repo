@@ -17,3 +17,7 @@ Follow DRY principles strictly. Do not duplicate business rules, validation logi
 Avoid hardcoding keys, field names, parameters, labels, wording, routes, constants, or repeated literal values directly inside business logic or UI logic. Prefer centralized constants, configuration, enums, translation/i18n files, schema definitions, shared utilities, typed abstractions, and reusable domain or UI modules that match the existing project baseline.
 
 Main priority: follow the existing baseline code. If the baseline pattern is clear, use it even when introducing SOLID-based improvements. If the baseline is unclear or missing, then apply SOLID principles, preserve separation of concerns, avoid duplication, and choose the simplest maintainable structure.
+
+Before creating a pull request, all frontend and backend tests must pass. Run `pnpm typecheck` and `pnpm test` from the repository root (covers `apps/mobile` and any other workspace with a `typecheck`/`test` script) and `./gradlew test` in `apps/api` (export `JAVA_HOME` to a JDK 21 install first). If any of these fail to run, fail to compile, or report a failing test, fix the failure before opening the PR; do not open a PR with a known-failing or non-compiling test suite on either side.
+
+Never commit directly on the `production` branch, even for small or low-risk changes. Before running `git commit`, check the current branch; if it is `production`, create and switch to a new branch first and commit there instead. All changes reach `production` only through a reviewed pull request.
