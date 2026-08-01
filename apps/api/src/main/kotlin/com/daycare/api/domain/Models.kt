@@ -7,6 +7,7 @@ enum class Gender { MALE, FEMALE, UNSPECIFIED }
 enum class GoalCheckInOutcome { YES, NO }
 enum class ChildGoalStatus { ACTIVE, COMPLETED }
 enum class ChildGoalOutcome { ACHIEVED, NOT_ACHIEVED }
+enum class ChildProgramStatus { ACTIVE, COMPLETED, DISCONTINUED }
 enum class StaffLeaveRequestType { LEAVE, SICK }
 enum class StaffLeaveRequestStatus { PENDING, APPROVED, REJECTED, CANCELLED }
 enum class ParentOccupation { PNS, PEGAWAI_SWASTA, PEGAWAI_BUMN, PENGUSAHA, WIRASWASTA, PROFESIONAL, FREELANCER, IBU_RUMAH_TANGGA, TIDAK_BEKERJA, LAINNYA }

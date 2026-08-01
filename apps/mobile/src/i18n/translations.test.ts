@@ -7,6 +7,11 @@ describe("translations", () => {
     expect(translate("en", "home.greeting", { name: "Ayu" })).toBe("Hello, Ayu");
   });
 
+  it("resolves the zh and fr locales with the same placeholder", () => {
+    expect(translate("zh", "home.greeting", { name: "Ayu" })).toContain("Ayu");
+    expect(translate("fr", "home.greeting", { name: "Ayu" })).toContain("Ayu");
+  });
+
   it("collapses the goal picker label when the name only repeats the domain", () => {
     const t = (key: TranslationKey) => translate("id", key);
     expect(goalPickerLabel(t, "KEMANDIRIAN", "Kemandirian")).toBe("Kemandirian");

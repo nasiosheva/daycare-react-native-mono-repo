@@ -2,7 +2,11 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.Child
+import com.daycare.api.persistence.ChildProgramParentFeedbackRepository
+import com.daycare.api.persistence.ChildProgram
 import com.daycare.api.persistence.ChildProgramRepository
+import com.daycare.api.persistence.ChildProgramStaffNoteRepository
+import com.daycare.api.persistence.ChildProgramStepRepository
 import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.ChildStaffAssignmentRepository
 import com.daycare.api.persistence.GuardianLink
@@ -27,6 +31,20 @@ import java.util.Optional
 import java.util.UUID
 
 class ChildManagementServiceTest {
+    private fun childManagementService(
+        access: AccessService,
+        children: ChildRepository,
+        programs: ChildProgramRepository,
+        assignments: ChildStaffAssignmentRepository,
+        memberships: MembershipRepository,
+        users: UserProfileRepository,
+        guardianLinks: GuardianLinkRepository,
+        childScopes: ChildScopeService,
+        programSteps: ChildProgramStepRepository = mock(ChildProgramStepRepository::class.java),
+        programStaffNotes: ChildProgramStaffNoteRepository = mock(ChildProgramStaffNoteRepository::class.java),
+        programParentFeedback: ChildProgramParentFeedbackRepository = mock(ChildProgramParentFeedbackRepository::class.java),
+    ) = ChildManagementService(access, children, programs, programSteps, programStaffNotes, programParentFeedback, assignments, memberships, users, guardianLinks, childScopes)
+
     @Test
     fun `Staff Admin deactivates a child without deleting its record`() {
         val access = mock(AccessService::class.java)
@@ -42,7 +60,7 @@ class ChildManagementServiceTest {
         val child = Child(organizationId = organizationId)
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(), emptySet(), emptySet()))
         `when`(children.findById(child.id)).thenReturn(Optional.of(child))
-        val service = ChildManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
 
         service.deactivate(jwt, organizationId, child.id)
 
@@ -65,7 +83,7 @@ class ChildManagementServiceTest {
         val childId = UUID.randomUUID()
         val scope = AccessScope(UserProfile(), Membership(role = Role.STAFF, canManageChildPrograms = false), emptySet(), emptySet())
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
-        val service = ChildManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
 
         assertThrows(AccessDeniedException::class.java) {
             service.addProgram(jwt, organizationId, childId, CreateChildProgramRequest("Membaca", null))
@@ -92,7 +110,7 @@ class ChildManagementServiceTest {
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
         `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
         `when`(programs.save(any(com.daycare.api.persistence.ChildProgram::class.java))).thenAnswer { it.arguments[0] }
-        val service = ChildManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
 
         val response = service.addProgram(jwt, organizationId, child.id, CreateChildProgramRequest("Membaca", "Cerita"))
 
@@ -118,12 +136,126 @@ class ChildManagementServiceTest {
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
         `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
         `when`(programs.findById(program.id)).thenReturn(Optional.of(program))
-        val service = ChildManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
 
         service.removeProgram(jwt, organizationId, child.id, program.id)
 
         verify(childScopes).requireStaffManagedChild(scope, child.id, organizationId)
         verify(programs).delete(program)
+    }
+
+    @Test
+    fun `a step cannot be shared before its program is shared with the Parent`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val programSteps = mock(ChildProgramStepRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId)
+        val program = ChildProgram(organizationId = organizationId, childId = child.id, parentVisible = false)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet()))
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(programs.findById(program.id)).thenReturn(Optional.of(program))
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes, programSteps = programSteps)
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            service.addProgramStep(jwt, organizationId, child.id, program.id, CreateChildProgramStepRequest("Ke toilet sebelum tidur", null, parentVisible = true))
+        }
+
+        assertEquals("Child program must be shared with Parent first", error.message)
+        verify(programSteps, never()).save(any(com.daycare.api.persistence.ChildProgramStep::class.java))
+    }
+
+    @Test
+    fun `Parent cannot leave feedback on a program that is not shared`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val parentFeedback = mock(ChildProgramParentFeedbackRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId)
+        val program = ChildProgram(organizationId = organizationId, childId = child.id, parentVisible = false)
+        val parentScope = AccessScope(UserProfile(), Membership(role = Role.PARENT), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT))).thenReturn(parentScope)
+        `when`(childScopes.requireParentLinkedChild(parentScope, child.id, organizationId)).thenReturn(child)
+        `when`(programs.findById(program.id)).thenReturn(Optional.of(program))
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes, programParentFeedback = parentFeedback)
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            service.addParentFeedback(jwt, organizationId, child.id, program.id, CreateChildProgramParentFeedbackRequest("Sudah dicoba di rumah"))
+        }
+
+        assertEquals("Child program is not shared with Parent", error.message)
+        verify(parentFeedback, never()).save(any(com.daycare.api.persistence.ChildProgramParentFeedback::class.java))
+    }
+
+    @Test
+    fun `program with recorded history must be closed instead of deleted`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val programSteps = mock(ChildProgramStepRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId)
+        val program = ChildProgram(organizationId = organizationId, childId = child.id)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet()))
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(programSteps.countByChildProgramId(program.id)).thenReturn(1)
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes, programSteps = programSteps)
+
+        val error = assertThrows(IllegalArgumentException::class.java) { service.removeProgram(jwt, organizationId, child.id, program.id) }
+
+        assertEquals("Child program has history and cannot be deleted", error.message)
+        verify(programs, never()).delete(program)
+    }
+
+    @Test
+    fun `Parent projection contains only explicitly shared program content`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val programSteps = mock(ChildProgramStepRepository::class.java)
+        val programStaffNotes = mock(ChildProgramStaffNoteRepository::class.java)
+        val programParentFeedback = mock(ChildProgramParentFeedbackRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val organizationId = UUID.randomUUID()
+        val childId = UUID.randomUUID()
+        val parentUserId = UUID.randomUUID()
+        val shared = ChildProgram(organizationId = organizationId, childId = childId, name = "Toilet training", description = "Catatan internal Staff", parentVisible = true, parentSummary = "Latihan toilet secara bertahap.")
+        val private = ChildProgram(organizationId = organizationId, childId = childId, name = "Catatan internal", parentVisible = false)
+        `when`(programs.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId)).thenReturn(listOf(shared, private))
+        `when`(programSteps.findAllByOrganizationIdAndChildProgramIdOrderByDisplayOrderAscCreatedAtAsc(organizationId, shared.id)).thenReturn(emptyList())
+        `when`(programParentFeedback.findAllByOrganizationIdAndChildProgramIdAndParentUserIdOrderByCreatedAtDesc(organizationId, shared.id, parentUserId)).thenReturn(emptyList())
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes, programSteps, programStaffNotes, programParentFeedback)
+
+        val response = service.parentProgramResponses(organizationId, childId, parentUserId)
+
+        assertEquals(1, response.size)
+        assertEquals("Toilet training", response.single().name)
+        assertEquals("Latihan toilet secara bertahap.", response.single().parentSummary)
     }
 
     @Test
@@ -145,7 +277,7 @@ class ChildManagementServiceTest {
         `when`(users.findByEmailIgnoreCase("budi@gmail.com")).thenReturn(parent)
         `when`(memberships.findAllByUserIdAndOrganizationId(parent.id, organizationId)).thenReturn(emptyList())
         `when`(guardianLinks.existsByChildIdAndUserId(child.id, parent.id)).thenReturn(false)
-        val service = ChildManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
 
         val response = service.bindGuardian(jwt, organizationId, child.id, BindChildGuardianRequest("budi@gmail.com"))
 
@@ -178,7 +310,7 @@ class ChildManagementServiceTest {
         `when`(users.findByUsernameIgnoreCase("sinta")).thenReturn(parent)
         `when`(memberships.findAllByUserIdAndOrganizationId(parent.id, organizationId)).thenReturn(listOf(existingMembership))
         `when`(guardianLinks.existsByChildIdAndUserId(child.id, parent.id)).thenReturn(true)
-        val service = ChildManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
 
         service.bindGuardian(jwt, organizationId, child.id, BindChildGuardianRequest("sinta"))
 
@@ -203,7 +335,7 @@ class ChildManagementServiceTest {
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(), emptySet(), emptySet()))
         `when`(children.findById(child.id)).thenReturn(Optional.of(child))
         `when`(users.findByUsernameIgnoreCase("unknown")).thenReturn(null)
-        val service = ChildManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
 
         val error = assertThrows(IllegalArgumentException::class.java) {
             service.bindGuardian(jwt, organizationId, child.id, BindChildGuardianRequest("unknown"))
@@ -231,7 +363,7 @@ class ChildManagementServiceTest {
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(), emptySet(), emptySet()))
         `when`(children.findById(child.id)).thenReturn(Optional.of(child))
         `when`(guardianLinks.findAllByChildId(child.id)).thenReturn(listOf(link))
-        val service = ChildManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
 
         service.unbindGuardian(jwt, organizationId, child.id, parentUserId)
 
