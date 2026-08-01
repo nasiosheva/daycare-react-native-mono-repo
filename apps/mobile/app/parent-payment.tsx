@@ -8,18 +8,26 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { invoiceSourceKey } from "@/i18n/translations";
 
 export default function ParentPaymentScreen() {
-  const router = useRouter(); const { invoiceId } = useLocalSearchParams<{ invoiceId: string }>(); const { api } = useAuth(); const { t, formatCurrency, formatDate } = useI18n();
-  const invoice = useQuery({ queryKey: ["invoice", invoiceId], queryFn: () => api.invoice(invoiceId!), enabled: Boolean(invoiceId) });
-  const instructions = useQuery({ queryKey: ["payment-instructions"], queryFn: () => api.paymentInstructions(), enabled: Boolean(invoiceId) });
+  const router = useRouter();
+  const { invoiceId: rawInvoiceId, organizationId: rawOrganizationId } = useLocalSearchParams<{ invoiceId?: string; organizationId?: string }>();
+  const invoiceId = typeof rawInvoiceId === "string" ? rawInvoiceId : "";
+  const routeOrganizationId = typeof rawOrganizationId === "string" ? rawOrganizationId : null;
+  const { api, user } = useAuth();
+  const paymentOrganizationId = routeOrganizationId;
+  const invoiceScope = paymentOrganizationId ?? user?.uid ?? "payer-self";
+  const { t, formatCurrency, formatDate } = useI18n();
+  const invoice = useQuery({ queryKey: ["invoice", invoiceScope, invoiceId], queryFn: () => api.invoice(invoiceId), enabled: Boolean(invoiceId) });
+  const instructions = useQuery({ queryKey: ["payment-instructions", paymentOrganizationId, "payer"], queryFn: () => api.paymentInstructions(paymentOrganizationId!), enabled: Boolean(paymentOrganizationId && invoiceId) });
   return <AppScreen showBottomNavigation={false} title={t("parentEnrollment.pay")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.content}>
     <AppText variant="title">{t("parentEnrollment.pay")}</AppText>
     {invoice.isLoading && <AppText tone="muted">{t("common.loading")}</AppText>}
     {invoice.data && <View style={styles.card}><AppText variant="heading">{invoice.data.invoiceNumber}</AppText><AppText>{invoice.data.description ?? t(invoiceSourceKey(invoice.data.source))} · {formatCurrency(invoice.data.totalAmount)}</AppText><AppText tone="muted">{invoice.data.childName}</AppText><AppText tone="muted">{t("tenant.dueDate", { date: formatDate(invoice.data.dueDate) })}</AppText></View>}
     <AppText variant="heading">{t("paymentInstruction.title")}</AppText>
+    {!paymentOrganizationId && <AppText tone="danger">{t("paymentInstruction.unavailable")}</AppText>}
     {instructions.isFetching && <ShimmerList />}
     {!instructions.isFetching && instructions.data?.length === 0 && <AppText tone="danger">{t("paymentInstruction.unavailable")}</AppText>}
     {!instructions.isFetching && instructions.data?.map((instruction) => <View key={instruction.id} style={styles.card}><AppText variant="heading">{instruction.name}</AppText><AppText>{instruction.accountHolder}</AppText><AppText selectable>{instruction.accountNumber}</AppText>{instruction.note && <AppText tone="muted">{instruction.note}</AppText>}</View>)}
-    <Button disabled={!invoice.data || invoice.data.status !== "PENDING" || !instructions.data?.length} onPress={() => router.replace({ pathname: "/payment-proof", params: { invoiceId } })}>{t("parentEnrollment.uploadAfterPayment")}</Button>
+    <Button disabled={!invoice.data || invoice.data.status !== "PENDING" || !instructions.data?.length} onPress={() => router.replace({ pathname: "/payment-proof", params: { invoiceId, ...(paymentOrganizationId ? { organizationId: paymentOrganizationId } : {}) } })}>{t("parentEnrollment.uploadAfterPayment")}</Button>
   </View></AppScreen>;
 }
 

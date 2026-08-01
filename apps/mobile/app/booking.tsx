@@ -3,6 +3,8 @@ import { Alert, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { AppText, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
+import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
+import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAccess";
 import type { ServicePlan } from "@daycare/api-client";
 import { useChildren } from "@/attendance/useAttendance";
 import { useBookEntitlement, useBookings, useEntitlements, useInvoices, usePurchaseService, useServicePlans } from "@/booking/useBooking";
@@ -10,11 +12,17 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { bookingStatusKey, invoiceSourceKey, invoiceStatusKey, servicePlanTypeKey } from "@/i18n/translations";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate, isIsoDate } from "@/date-picker/date";
+import { useAuth } from "@/auth/AuthProvider";
 
 type ListSheet = "plan" | "remaining" | "invoices" | "history" | null;
 
 export default function BookingScreen() {
+  return <LegacyDaycareRouteGuard policy={legacyDaycareRoutePolicies.parentBooking}><BookingScreenContent /></LegacyDaycareRouteGuard>;
+}
+
+function BookingScreenContent() {
   const router = useRouter();
+  const { organizationId } = useAuth();
   const children = useChildren(); const plans = useServicePlans(); const entitlements = useEntitlements(); const bookings = useBookings(); const invoices = useInvoices(); const purchase = usePurchaseService(); const bookEntitlement = useBookEntitlement();
   const { t, formatCurrency, formatDate } = useI18n();
   const [childId, setChildId] = useState<string | null>(null); const [planId, setPlanId] = useState<string | null>(null); const [creditEntitlementId, setCreditEntitlementId] = useState<string | null>(null); const [dateInput, setDateInput] = useState(""); const [bookingDates, setBookingDates] = useState<string[]>([]);
@@ -87,7 +95,7 @@ export default function BookingScreen() {
     <BottomSheet visible={listSheet === "invoices"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.invoices")}>
       <AppText tone="muted">{t("booking.invoicesDescription")}</AppText>
       {invoices.isFetching && <ShimmerList />}
-      {!invoices.isFetching && invoices.data?.map((item) => <View key={item.id} style={styles.card}><AppText variant="label">{item.invoiceNumber} · {formatCurrency(item.totalAmount)}</AppText><AppText tone="muted">{item.description ?? t(invoiceSourceKey(item.source))}</AppText><AppText>{t("booking.dueDate", { status: t(invoiceStatusKey(item.status)), date: formatDate(item.dueDate) })}</AppText>{item.status === "PENDING" && <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: item.id } })}>{t("parentEnrollment.pay")}</Button>}{item.status === "PAYMENT_SUBMITTED" && <AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>}</View>)}
+      {!invoices.isFetching && invoices.data?.map((item) => <View key={item.id} style={styles.card}><AppText variant="label">{item.invoiceNumber} · {formatCurrency(item.totalAmount)}</AppText><AppText tone="muted">{item.description ?? t(invoiceSourceKey(item.source))}</AppText><AppText>{t("booking.dueDate", { status: t(invoiceStatusKey(item.status)), date: formatDate(item.dueDate) })}</AppText>{item.status === "PENDING" && <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: item.id, ...(organizationId ? { organizationId } : {}) } })}>{t("parentEnrollment.pay")}</Button>}{item.status === "PAYMENT_SUBMITTED" && <AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>}</View>)}
       {!invoices.isFetching && invoices.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
     </BottomSheet>
 

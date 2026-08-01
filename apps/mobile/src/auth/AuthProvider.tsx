@@ -1,18 +1,22 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
 import { ApiClient, ApiError, type ApiRequestLogEntry } from "@daycare/api-client";
 import type { ChildGender, CurrentUser, ParentFamilyProfileInput } from "@daycare/core";
+import { useQueryClient } from "@tanstack/react-query";
 import { Platform } from "react-native";
 import { env } from "@/config/env";
 import { useI18n } from "@/i18n/I18nProvider";
 import { firebaseAuth } from "./firebase";
 import { localAuth, type LocalAuthSession } from "./localAuth";
 import { clearLocalSession, loadLocalSession, saveLocalSession } from "./localSessionStorage";
+import { hasOrganizationMembership, requiresOrganizationSelection, selectedOrganizationId } from "./organizationContext";
+import { profileForCurrentIdentity, profileIdentityChanged } from "./profileIdentity";
 import type { AuthUser, PhoneChallenge } from "./types";
 
 type AuthContextValue = {
   user: AuthUser | null;
   profile: CurrentUser | null;
   organizationId: string | null;
+  requiresOrganizationSelection: boolean;
   loading: boolean;
   profileError: Error | null;
   usesPassword: boolean;
@@ -29,8 +33,8 @@ type AuthContextValue = {
   updatePersonalDetails: (gender: ChildGender, dateOfBirth: string) => Promise<void>;
   updateParentFamilyProfile: (input: ParentFamilyProfileInput) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
-  refreshProfile: () => Promise<void>;
-  selectOrganization: (organizationId: string) => void;
+  refreshProfile: () => Promise<CurrentUser>;
+  selectOrganization: (organizationId: string) => boolean;
   signOut: () => Promise<void>;
 };
 
@@ -46,37 +50,97 @@ function logLocalAndroidApi(entry: ApiRequestLogEntry) {
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const { locale, t } = useI18n();
+  const queryClient = useQueryClient();
   const [firebaseUser, setFirebaseUser] = useState<AuthUser | null>(null);
   const [firebaseProfile, setFirebaseProfile] = useState<CurrentUser | null>(null);
   const [localSession, setLocalSession] = useState<LocalAuthSession | null>(null);
   const [localSessionLoaded, setLocalSessionLoaded] = useState(false);
   const [firebaseObserved, setFirebaseObserved] = useState(false);
   const [firebaseIdentityState, setFirebaseIdentityState] = useState<FirebaseIdentityState>("idle");
+  const [firebaseIdentityVersion, setFirebaseIdentityVersion] = useState(0);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [phoneChallenge, setPhoneChallenge] = useState<PhoneChallenge | null>(null);
   const [profileError, setProfileError] = useState<Error | null>(null);
+  const [profileIdentityKey, setProfileIdentityKey] = useState<string | null>(null);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const organizationIdRef = useRef<string | null>(null);
+  organizationIdRef.current = organizationId;
   const loading = !localSessionLoaded || !firebaseObserved;
   const api = useMemo(() => new ApiClient({
     baseUrl: env.apiUrl,
     getToken: async () => localSession?.token ?? firebaseAuth.getIdToken(),
-    getOrganizationId: () => organizationId,
+    getOrganizationId: () => organizationIdRef.current,
     getLanguage: () => locale,
     onRequestLog: Platform.OS === "android" && env.apiUrl.startsWith(localAndroidApiUrlPrefix) ? logLocalAndroidApi : undefined,
   }), [localSession, organizationId, locale]);
   const user = localSession?.user ?? firebaseUser;
+  const profileLoadKey = isSigningOut ? null : localSession?.token ?? (firebaseUser && firebaseIdentityState === "existing" ? `firebase:${firebaseUser.uid}:${firebaseIdentityVersion}` : null);
+  const profile = profileForCurrentIdentity(firebaseProfile, profileIdentityKey, profileLoadKey);
+  const localSessionRef = useRef<LocalAuthSession | null>(null);
+  localSessionRef.current = localSession;
+  const rememberedOrganizationIdRef = useRef<string | null>(null);
+  const observedProfileIdentityKeyRef = useRef<string | null | undefined>(undefined);
+  const profileContextVersionRef = useRef(0);
+  const profileRefreshPromiseRef = useRef<Promise<CurrentUser> | null>(null);
+  const refreshProfileRef = useRef<(() => Promise<CurrentUser>) | null>(null);
+  const clearScopedCache = useCallback(() => {
+    queryClient.clear();
+  }, [queryClient]);
+  const clearProfileContext = useCallback((forgetOrganization = false) => {
+    profileContextVersionRef.current += 1;
+    profileRefreshPromiseRef.current = null;
+    clearScopedCache();
+    setFirebaseProfile(null);
+    setProfileIdentityKey(null);
+    organizationIdRef.current = null;
+    setOrganizationId(null);
+    if (forgetOrganization) rememberedOrganizationIdRef.current = null;
+  }, [clearScopedCache]);
 
-  const refreshProfile = useCallback(async () => {
-    setProfileError(null);
-    try {
-      const nextProfile = await api.me();
-      setFirebaseProfile(nextProfile);
-      setOrganizationId((current) => current ?? nextProfile.memberships[0]?.organizationId ?? null);
-    } catch (error) {
-      const failure = error instanceof Error ? error : new Error(t("auth.tryAgain"));
-      setProfileError(failure);
-      throw failure;
+  useEffect(() => {
+    if (profileIdentityChanged(observedProfileIdentityKeyRef.current, profileLoadKey)) {
+      setProfileError(null);
+      clearProfileContext(true);
     }
-  }, [api, t]);
+    observedProfileIdentityKeyRef.current = profileLoadKey;
+  }, [clearProfileContext, profileLoadKey]);
+
+  const refreshProfile = useCallback(() => {
+    const pendingRefresh = profileRefreshPromiseRef.current;
+    if (pendingRefresh) return pendingRefresh;
+    setProfileError(null);
+    const contextVersion = profileContextVersionRef.current;
+    const identityKey = profileLoadKey;
+    const profileRefresh = api.me()
+      .then((nextProfile) => {
+        if (contextVersion !== profileContextVersionRef.current) return nextProfile;
+        const nextOrganizationId = selectedOrganizationId(nextProfile, organizationIdRef.current ?? rememberedOrganizationIdRef.current);
+        clearScopedCache();
+        setFirebaseProfile(nextProfile);
+        setProfileIdentityKey(identityKey);
+        organizationIdRef.current = nextOrganizationId;
+        setOrganizationId(nextOrganizationId);
+        rememberedOrganizationIdRef.current = nextOrganizationId;
+        return nextProfile;
+      })
+      .catch((error: unknown) => {
+        const failure = error instanceof Error ? error : new Error(t("auth.tryAgain"));
+        if (contextVersion === profileContextVersionRef.current) {
+          clearProfileContext();
+          setProfileError(failure);
+        }
+        throw failure;
+      })
+      .finally(() => {
+        if (profileRefreshPromiseRef.current === profileRefresh) profileRefreshPromiseRef.current = null;
+      });
+    profileRefreshPromiseRef.current = profileRefresh;
+    return profileRefresh;
+  }, [api, clearProfileContext, clearScopedCache, profileLoadKey, t]);
+
+  useEffect(() => {
+    refreshProfileRef.current = refreshProfile;
+  }, [refreshProfile]);
 
   useEffect(() => {
     let active = true;
@@ -88,10 +152,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   useEffect(() => firebaseAuth.observe((nextUser) => {
+    if (!localSessionRef.current) {
+      setProfileError(null);
+      clearProfileContext(true);
+    }
     setFirebaseUser(nextUser);
     setFirebaseIdentityState(nextUser ? "idle" : "existing");
+    setFirebaseIdentityVersion((current) => current + 1);
     setFirebaseObserved(true);
-  }), []);
+  }), [clearProfileContext]);
 
   useEffect(() => {
     if (!firebaseUser || localSession || firebaseIdentityState !== "idle") return;
@@ -106,8 +175,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [api, firebaseIdentityState, firebaseUser, localSession, t]);
 
   useEffect(() => {
-    if (!(localSession || (firebaseUser && firebaseIdentityState === "existing"))) return;
-    void refreshProfile().catch((error: unknown) => {
+    if (!profileLoadKey) return;
+    let active = true;
+    void refreshProfileRef.current?.().catch((error: unknown) => {
+      if (!active) return;
       if (!(error instanceof ApiError) || error.status !== 401) return;
       if (localSession) {
         void clearLocalSession().catch(() => undefined);
@@ -115,10 +186,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
       } else {
         void firebaseAuth.signOut();
       }
-      setFirebaseProfile(null);
-      setOrganizationId(null);
+      clearProfileContext(true);
     });
-  }, [firebaseIdentityState, firebaseUser, localSession, refreshProfile]);
+    return () => { active = false; };
+  }, [clearProfileContext, localSession, profileLoadKey]);
 
   const resolveFirebaseIdentity = async () => {
     setFirebaseIdentityState("checking");
@@ -130,6 +201,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const signInWithLocalCredentials = async (identifier: string, password: string) => {
     const session = await localAuth.signIn(env.apiUrl, identifier, password, t("common.error"), locale);
     await saveLocalSession(session);
+    setIsSigningOut(false);
     setLocalSession(session);
   };
   const signUpWithLocalCredentials = async (email: string, password: string, displayName: string, username?: string) => {
@@ -144,6 +216,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
     }
     await saveLocalSession(session);
+    setIsSigningOut(false);
     setLocalSession(session);
     if (verificationToken) await firebaseAuth.signOut();
     return { usernameWarning };
@@ -167,6 +240,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return { needsRegistration: !status.exists, email: status.email };
   };
   const signOut = async () => {
+    setIsSigningOut(true);
+    clearProfileContext(true);
     const localAccessToken = localSession?.token ?? null;
     const firebaseAccessToken = localAccessToken ? null : await firebaseAuth.getIdToken().catch(() => null);
     const accessToken = localAccessToken ?? firebaseAccessToken;
@@ -175,11 +250,24 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setLocalSession(null);
       void clearLocalSession().catch(() => undefined);
     }
-    setFirebaseProfile(null);
-    setOrganizationId(null);
     setProfileError(null);
     await firebaseAuth.signOut().catch(() => undefined);
+    setFirebaseUser(null);
+    setFirebaseIdentityState("existing");
+    setFirebaseIdentityVersion((current) => current + 1);
+    setIsSigningOut(false);
   };
+  const selectOrganization = useCallback((nextOrganizationId: string) => {
+    if (!hasOrganizationMembership(profile, nextOrganizationId)) return false;
+    if (nextOrganizationId === organizationId) return true;
+    profileContextVersionRef.current += 1;
+    profileRefreshPromiseRef.current = null;
+    clearScopedCache();
+    rememberedOrganizationIdRef.current = nextOrganizationId;
+    organizationIdRef.current = nextOrganizationId;
+    setOrganizationId(nextOrganizationId);
+    return true;
+  }, [clearScopedCache, organizationId, profile]);
   const updateDisplayName = async (displayName: string) => {
     const normalizedName = displayName.trim();
     if (!normalizedName) throw new Error(t("profile.name"));
@@ -213,10 +301,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     await localAuth.changePassword(env.apiUrl, localSession.token, newPassword, t("common.error"), locale);
   };
   const getRealtimeToken = useCallback(async () => localSession?.token ?? firebaseAuth.getIdToken(), [localSession]);
+  const needsOrganizationSelection = requiresOrganizationSelection(profile, organizationId);
   const value: AuthContextValue = {
     user,
-    profile: firebaseProfile,
+    profile,
     organizationId,
+    requiresOrganizationSelection: needsOrganizationSelection,
     loading,
     profileError,
     usesPassword: Boolean(localSession),
@@ -234,7 +324,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     updateParentFamilyProfile,
     changePassword,
     refreshProfile,
-    selectOrganization: setOrganizationId,
+    selectOrganization,
     signOut,
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

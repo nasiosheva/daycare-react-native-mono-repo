@@ -159,6 +159,32 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/parent-family-profile", expect.objectContaining({ method: "PUT", body: JSON.stringify(input), headers: expect.not.objectContaining({ "X-Organization-Id": expect.anything() }) }));
   });
 
+  it("uses the approved enrollment organization for payer payment instructions without a membership context", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
+
+    await client.paymentInstructions("approved-enrollment-organization");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/payment-instructions", expect.objectContaining({
+      headers: expect.objectContaining({ "X-Organization-Id": "approved-enrollment-organization" }),
+    }));
+  });
+
+  it("keeps payer invoice and proof requests independent from membership context", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
+
+    await client.invoice("invoice-id");
+    await client.paymentProof("invoice-id");
+    await client.submitPaymentProof("invoice-id", { fileName: "proof.jpg", contentType: "image/jpeg", imageBase64: "abc" });
+
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.headers).not.toHaveProperty("X-Organization-Id");
+    }
+  });
+
   it("lists and creates Platform-managed institution types", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
     vi.stubGlobal("fetch", fetchMock);
@@ -288,6 +314,16 @@ describe("ApiClient", () => {
     await client.updateCurriculumProgram("program-id", { name: "Bahasa awal", description: "", developmentProgramIds: ["goal-id"] });
 
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/curriculum-programs/program-id", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ name: "Bahasa awal", description: "", developmentProgramIds: ["goal-id"] }) }));
+  });
+
+  it("updates a global curriculum program with its reference learning level", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await client.updateGlobalCurriculumProgram("program-id", { learningLevelId: "level-id", name: "Kurikulum Toddler", description: "", developmentProgramIds: ["goal-id"] });
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/curriculum-programs/program-id", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ learningLevelId: "level-id", name: "Kurikulum Toddler", description: "", developmentProgramIds: ["goal-id"] }) }));
   });
 
   it("records a daily child-goal outcome through the tenant-scoped endpoint", async () => {

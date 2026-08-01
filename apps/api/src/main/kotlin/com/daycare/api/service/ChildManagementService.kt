@@ -44,7 +44,7 @@ class ChildManagementService(
 ) {
     @Transactional(readOnly = true)
     fun profile(jwt: Jwt, organizationId: UUID, childId: UUID): ChildProfileResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
         val child = if (scope.membership.role == Role.STAFF) childScopes.requireStaffManagedChild(scope, childId, organizationId) else child(childId, organizationId)
         return ChildProfileResponse(childResponse(child), programResponses(organizationId, child.id), assignmentResponses(organizationId, child.id), guardianResponses(child.id))
     }

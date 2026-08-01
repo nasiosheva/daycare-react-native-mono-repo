@@ -1,5 +1,6 @@
 package com.daycare.api.service
 
+import com.daycare.api.domain.Role
 import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.pdmodel.PDPage
 import org.apache.pdfbox.pdmodel.PDPageContentStream
@@ -20,8 +21,12 @@ enum class ReportExportFormat { PDF, XLSX }
 data class ReportExport(val fileName: String, val contentType: String, val bytes: ByteArray)
 
 @Service
-class ChildReportExportService(private val attendance: AttendanceService) {
+class ChildReportExportService(
+    private val attendance: AttendanceService,
+    private val access: AccessService,
+) {
     fun children(jwt: Jwt, organizationId: UUID, format: ReportExportFormat, filter: ChildListFilter = ChildListFilter()): ReportExport {
+        requireActiveExportAccess(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
         val labels = ChildReportLabels.forLocale(LocaleContextHolder.getLocale().language)
         val rows = attendance.listChildren(jwt, organizationId, filter)
         val timestamp = DateTimeFormatter.ISO_INSTANT.format(Instant.now()).replace(":", "-")
@@ -33,6 +38,7 @@ class ChildReportExportService(private val attendance: AttendanceService) {
     }
 
     fun childAttendance(jwt: Jwt, organizationId: UUID, format: ReportExportFormat, branchId: UUID, startsOn: LocalDate, endsOn: LocalDate): ReportExport {
+        requireActiveExportAccess(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         val labels = ChildAttendanceReportLabels.forLocale(LocaleContextHolder.getLocale().language)
         val report = attendance.childAttendanceReport(jwt, organizationId, branchId, startsOn, endsOn)
         val timestamp = DateTimeFormatter.ISO_INSTANT.format(Instant.now()).replace(":", "-")
@@ -41,6 +47,10 @@ class ChildReportExportService(private val attendance: AttendanceService) {
             ReportExportFormat.PDF -> ReportExport("$fileName.pdf", "application/pdf", createAttendancePdf(labels, report))
             ReportExportFormat.XLSX -> ReportExport("$fileName.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", createAttendanceExcel(labels, report))
         }
+    }
+
+    private fun requireActiveExportAccess(jwt: Jwt, organizationId: UUID, allowedRoles: Set<Role>) {
+        access.require(jwt, organizationId, allowedRoles, readOnly = false)
     }
 
     private fun createExcel(labels: ChildReportLabels, rows: List<ChildResponse>): ByteArray = ByteArrayOutputStream().use { output ->

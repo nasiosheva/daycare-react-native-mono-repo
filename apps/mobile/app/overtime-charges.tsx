@@ -11,11 +11,17 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { useChildren } from "@/attendance/useAttendance";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate } from "@/date-picker/date";
+import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
+import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAccess";
 
 type ChargeForm = { charge?: OvertimeCharge; childId: string; operationalDate: string; pickedUpAt: string; dueDate: string };
 const emptyForm = (): ChargeForm => ({ childId: "", operationalDate: formatIsoDate(new Date()), pickedUpAt: "17:15", dueDate: formatIsoDate(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)) });
 
 export default function OvertimeChargesScreen() {
+  return <LegacyDaycareRouteGuard policy={legacyDaycareRoutePolicies.staffAdminDaycareOperations}><OvertimeChargesScreenContent /></LegacyDaycareRouteGuard>;
+}
+
+function OvertimeChargesScreenContent() {
   const router = useRouter(); const { api, profile, organizationId } = useAuth(); const { t, formatCurrency, formatDate } = useI18n(); const client = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const charges = useQuery({ queryKey: ["overtime-charges", organizationId], queryFn: () => api.overtimeCharges(), enabled: membership?.role === "STAFF_ADMIN" });

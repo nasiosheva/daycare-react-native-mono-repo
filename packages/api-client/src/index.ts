@@ -106,7 +106,7 @@ export type ChildHealthRecord = { childId: string; bloodType?: string | null; al
 export type UpsertChildHealthRecordInput = { bloodType?: string; allergies?: string; medicalConditions?: string; medications?: string; emergencyInstructions?: string };
 export type IncidentSeverity = "MINOR" | "MODERATE" | "SERIOUS";
 export type IncidentCategory = "INJURY" | "ILLNESS" | "BEHAVIOR" | "OTHER";
-export type ChildIncidentReport = { id: string; childId: string; severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string | null; occurredAt: string; hasPhoto: boolean; acknowledgedAt?: string | null; createdAt: string };
+export type ChildIncidentReport = { id: string; childId: string; severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string | null; occurredAt: string; hasPhoto: boolean; acknowledgedByMe: boolean; createdAt: string };
 export type IncidentPhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
 export type CreateChildIncidentInput = { severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string; occurredAt: string; photo?: IncidentPhotoInput };
 export type ChildIncidentPhoto = { contentType: string; dataBase64: string };
@@ -153,6 +153,8 @@ export type AcademicYear = { id: string; name: string; startsOn: string; endsOn:
 export type CreateAcademicYearInput = { name: string; startsOn: string; endsOn: string };
 export type CurriculumProgram = { id: string; academicYearId?: string | null; name: string; description: string; source: "GLOBAL" | "TENANT"; isTemplate: boolean; active: boolean; developmentProgramIds: string[] };
 export type CreateCurriculumProgramInput = { academicYearId?: string; name: string; description: string; developmentProgramIds?: string[] };
+export type GlobalCurriculumProgram = Omit<CurriculumProgram, "academicYearId"> & { learningLevelId: string | null };
+export type CreateGlobalCurriculumProgramInput = { learningLevelId: string; name: string; description: string; developmentProgramIds?: string[] };
 export type CurriculumActivity = { id: string; name: string; description: string; active: boolean };
 export type UpsertCurriculumActivityInput = { name: string; description?: string };
 export type CurriculumActivityAssessment = { id: string; activityId: string; name: string; description: string };
@@ -253,7 +255,7 @@ export class ApiClient {
   async approveParentEnrollment(enrollmentId: string, approved: boolean, rejectionReason?: string): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/approval`, { method: "POST", body: JSON.stringify({ approved, rejectionReason }) }); }
   async retryParentEnrollment(enrollmentId: string, bookingDates: string[]): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/retry`, { method: "POST", body: JSON.stringify({ bookingDates }) }); }
   async cancelParentEnrollment(enrollmentId: string): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/cancel`, { method: "POST" }); }
-  async paymentInstructions(): Promise<PaymentInstruction[]> { return this.request("/payment-instructions"); }
+  async paymentInstructions(organizationId: string): Promise<PaymentInstruction[]> { return this.request("/payment-instructions", { headers: { "X-Organization-Id": organizationId } }); }
   async managedPaymentInstructions(): Promise<PaymentInstruction[]> { return this.request("/payment-instructions/manage"); }
   async createPaymentInstruction(input: UpsertPaymentInstructionInput): Promise<PaymentInstruction> { return this.request("/payment-instructions", { method: "POST", body: JSON.stringify(input) }); }
   async updatePaymentInstruction(instructionId: string, input: UpsertPaymentInstructionInput): Promise<PaymentInstruction> { return this.request(`/payment-instructions/${instructionId}`, { method: "PATCH", body: JSON.stringify(input) }); }
@@ -302,7 +304,7 @@ export class ApiClient {
   async setTenantSubscriptionStatus(organizationId: string, status: Extract<TenantSubscriptionStatus, "ACTIVE" | "SUSPENDED">): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/subscription/${status}`, { method: "POST" }); }
   async createPlatformAdmin(input: CreatePlatformAdminInput): Promise<{ id: string }> { return this.request("/platform/admins", { method: "POST", body: JSON.stringify(input) }); }
   async changePlatformAdminPin(pin: string): Promise<void> { await this.request<void>("/platform/pin", { method: "POST", body: JSON.stringify({ pin }) }); }
-  async globalCurriculumPrograms(includeArchived = false): Promise<CurriculumProgram[]> { return this.request(`/platform/curriculum-programs${includeArchived ? "?includeArchived=true" : ""}`); }
+  async globalCurriculumPrograms(includeArchived = false): Promise<GlobalCurriculumProgram[]> { return this.request(`/platform/curriculum-programs${includeArchived ? "?includeArchived=true" : ""}`); }
   async globalDevelopmentPrograms(search?: string): Promise<DevelopmentProgram[]> { const query = search?.trim(); return this.request(`/platform/development-programs${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
   async createGlobalDevelopmentProgram(input: UpsertDevelopmentProgramInput): Promise<DevelopmentProgram> { return this.request("/platform/development-programs", { method: "POST", body: JSON.stringify(input) }); }
   async updateGlobalDevelopmentProgram(programId: string, input: UpsertDevelopmentProgramInput): Promise<DevelopmentProgram> { return this.request(`/platform/development-programs/${programId}`, { method: "PATCH", body: JSON.stringify(input) }); }
@@ -312,9 +314,9 @@ export class ApiClient {
   async createGlobalLearningLevel(input: UpsertLearningLevelInput): Promise<LearningLevel> { return this.request("/platform/learning-levels", { method: "POST", body: JSON.stringify(input) }); }
   async updateGlobalLearningLevel(levelId: string, input: UpsertLearningLevelInput): Promise<LearningLevel> { return this.request(`/platform/learning-levels/${levelId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async deleteGlobalLearningLevel(levelId: string): Promise<void> { await this.request<void>(`/platform/learning-levels/${levelId}`, { method: "DELETE" }); }
-  async createGlobalCurriculumProgram(input: Omit<CreateCurriculumProgramInput, "academicYearId">): Promise<CurriculumProgram> { return this.request("/platform/curriculum-programs", { method: "POST", body: JSON.stringify(input) }); }
-  async updateGlobalCurriculumProgram(programId: string, input: Omit<CreateCurriculumProgramInput, "academicYearId">): Promise<CurriculumProgram> { return this.request(`/platform/curriculum-programs/${programId}`, { method: "PATCH", body: JSON.stringify(input) }); }
-  async setGlobalCurriculumProgramActive(programId: string, active: boolean): Promise<CurriculumProgram> { return this.request(`/platform/curriculum-programs/${programId}/active`, { method: "PATCH", body: JSON.stringify({ active }) }); }
+  async createGlobalCurriculumProgram(input: CreateGlobalCurriculumProgramInput): Promise<GlobalCurriculumProgram> { return this.request("/platform/curriculum-programs", { method: "POST", body: JSON.stringify(input) }); }
+  async updateGlobalCurriculumProgram(programId: string, input: CreateGlobalCurriculumProgramInput): Promise<GlobalCurriculumProgram> { return this.request(`/platform/curriculum-programs/${programId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async setGlobalCurriculumProgramActive(programId: string, active: boolean): Promise<GlobalCurriculumProgram> { return this.request(`/platform/curriculum-programs/${programId}/active`, { method: "PATCH", body: JSON.stringify({ active }) }); }
   async seedGlobalCurriculum(): Promise<GlobalCurriculumSeedResult> { return this.request("/platform/global-curriculum-seed", { method: "POST" }); }
   async markTenantPaymentPaid(organizationId: string, paymentId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/payments/${paymentId}/mark-paid`, { method: "POST" }); }
   async voidTenantPayment(organizationId: string, paymentId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}/payments/${paymentId}/void`, { method: "POST" }); }

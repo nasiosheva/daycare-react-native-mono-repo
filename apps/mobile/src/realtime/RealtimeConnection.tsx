@@ -12,14 +12,41 @@ const MAX_RECONNECT_DELAY_MILLIS = 30_000;
 
 export function RealtimeConnection() {
   const queryClient = useQueryClient();
-  const { api, getRealtimeToken, organizationId, profile, refreshProfile } = useAuth();
+  const { api, getRealtimeToken, organizationId, profile, refreshProfile, user } = useAuth();
+  const hasProfile = Boolean(profile);
+  const userId = user?.uid ?? null;
 
   useEffect(() => {
-    if (!profile) return;
+    if (!hasProfile) return;
     let closed = false;
     let socket: WebSocket | null = null;
     let reconnectDelay = INITIAL_RECONNECT_DELAY_MILLIS;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let connectionVerified = false;
+    let profileRefreshInFlight = false;
+    const pendingEvents: RealtimeEvent[] = [];
+
+    const processEvent = (event: RealtimeEvent) => {
+      invalidateRealtimeFlags(queryClient, event.flags, event.organizationId ?? organizationId, userId);
+      if (Platform.OS === "web" && event.flags.includes("NOTIFICATIONS")) void showBrowserNotification(() => api.notifications(), notificationId(event));
+    };
+
+    const revalidateConnectedProfile = () => {
+      if (closed || profileRefreshInFlight) return;
+      connectionVerified = false;
+      profileRefreshInFlight = true;
+      void refreshProfile()
+        .then(() => {
+          if (closed) return;
+          connectionVerified = true;
+          invalidateRealtimeFlags(queryClient, allRealtimeFlags, organizationId, userId);
+          pendingEvents.splice(0).forEach(processEvent);
+        })
+        .catch(() => {
+          // AuthProvider removes stale profile, tenant context, and cached data before exposing the failure state.
+        })
+        .finally(() => { profileRefreshInFlight = false; });
+    };
 
     const connect = async () => {
       const token = await getRealtimeToken();
@@ -32,14 +59,17 @@ export function RealtimeConnection() {
       };
       socket.onmessage = (message) => {
         if (isConnectedMessage(message.data)) {
-          invalidateRealtimeFlags(queryClient, allRealtimeFlags);
+          revalidateConnectedProfile();
           return;
         }
         const event = parseRealtimeEvent(message.data);
         if (!event) return;
-        invalidateRealtimeFlags(queryClient, event.flags);
-        if (Platform.OS === "web" && event.flags.includes("NOTIFICATIONS")) void showBrowserNotification(() => api.notifications(), notificationId(event));
-        if (event.flags.includes("PROFILE")) void refreshProfile();
+        if (!connectionVerified || event.flags.includes("PROFILE")) {
+          pendingEvents.push(event);
+          revalidateConnectedProfile();
+          return;
+        }
+        processEvent(event);
       };
       socket.onclose = () => {
         if (closed) return;
@@ -56,7 +86,7 @@ export function RealtimeConnection() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, [api, getRealtimeToken, organizationId, profile, queryClient, refreshProfile]);
+  }, [api, getRealtimeToken, hasProfile, organizationId, queryClient, refreshProfile, userId]);
 
   return null;
 }

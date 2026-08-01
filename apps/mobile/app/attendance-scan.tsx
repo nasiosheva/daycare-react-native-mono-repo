@@ -4,12 +4,18 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
 import { AppText, BackButton, Button } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
+import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
+import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAccess";
 import { useRecordAttendance } from "@/attendance/useAttendance";
 import { useI18n } from "@/i18n/I18nProvider";
 
 type QrPayload = { child: { id: string; name: string }; token: string };
 
 export default function AttendanceScanScreen() {
+  return <LegacyDaycareRouteGuard policy={legacyDaycareRoutePolicies.attendanceScan}><AttendanceScanScreenContent /></LegacyDaycareRouteGuard>;
+}
+
+function AttendanceScanScreenContent() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);

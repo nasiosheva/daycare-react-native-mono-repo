@@ -4,6 +4,8 @@ import com.daycare.api.domain.IncidentCategory
 import com.daycare.api.domain.IncidentSeverity
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.Child
+import com.daycare.api.persistence.ChildIncidentAcknowledgement
+import com.daycare.api.persistence.ChildIncidentAcknowledgementRepository
 import com.daycare.api.persistence.ChildIncidentReport
 import com.daycare.api.persistence.ChildIncidentReportRepository
 import com.daycare.api.persistence.GuardianLinkRepository
@@ -50,7 +52,7 @@ data class ChildIncidentResponse(
     val actionTaken: String?,
     val occurredAt: Instant,
     val hasPhoto: Boolean,
-    val acknowledgedAt: Instant?,
+    val acknowledgedByMe: Boolean,
     val createdAt: Instant,
 )
 data class ChildIncidentPhotoResponse(val contentType: String, val dataBase64: String)
@@ -60,15 +62,19 @@ class ChildIncidentService(
     private val access: AccessService,
     private val childScopes: ChildScopeService,
     private val reports: ChildIncidentReportRepository,
+    private val acknowledgements: ChildIncidentAcknowledgementRepository,
     private val guardians: GuardianLinkRepository,
     private val memberships: MembershipRepository,
     private val notifications: NotificationService,
 ) {
     @Transactional(readOnly = true)
     fun list(jwt: Jwt, organizationId: UUID, childId: UUID): List<ChildIncidentResponse> {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
+        val scope = access.require(jwt, organizationId, Role.entries.toSet())
         if (scope.membership.role == Role.PARENT) childScopes.requireParentLinkedChild(scope, childId, organizationId) else childScopes.requireStaffManagedChild(scope, childId, organizationId)
-        return reports.findAllByOrganizationIdAndChildIdOrderByOccurredAtDesc(organizationId, childId).map(::response)
+        val reportsForChild = reports.findAllByOrganizationIdAndChildIdOrderByOccurredAtDesc(organizationId, childId)
+        val acknowledgedIncidentIds = acknowledgements.findAllByIncidentIdIn(reportsForChild.map { it.id })
+            .filter { it.userId == scope.user.id }.map { it.incidentId }.toSet()
+        return reportsForChild.map { response(it, it.id in acknowledgedIncidentIds) }
     }
 
     @Transactional
@@ -89,7 +95,7 @@ class ChildIncidentService(
         val childName = child.fullName()
         notifyGuardians(child, "Laporan insiden $childName", describeIncident(report))
         if (request.severity == IncidentSeverity.SERIOUS) notifyStaffAdmins(child, "Insiden serius: $childName", describeIncident(report))
-        return response(report)
+        return response(report, acknowledgedByMe = false)
     }
 
     @Transactional
@@ -98,16 +104,15 @@ class ChildIncidentService(
         access.requireWritable(scope)
         childScopes.requireParentLinkedChild(scope, childId, organizationId)
         val report = requireReport(incidentId, organizationId, childId)
-        if (report.acknowledgedAt == null) {
-            report.acknowledgedByUserId = scope.user.id
-            report.acknowledgedAt = Instant.now()
+        if (!acknowledgements.existsByIncidentIdAndUserId(report.id, scope.user.id)) {
+            acknowledgements.save(ChildIncidentAcknowledgement(incidentId = report.id, userId = scope.user.id, acknowledgedAt = Instant.now()))
         }
-        return response(report)
+        return response(report, acknowledgedByMe = true)
     }
 
     @Transactional(readOnly = true)
     fun photo(jwt: Jwt, organizationId: UUID, childId: UUID, incidentId: UUID): ChildIncidentPhotoResponse {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
+        val scope = access.require(jwt, organizationId, Role.entries.toSet())
         if (scope.membership.role == Role.PARENT) childScopes.requireParentLinkedChild(scope, childId, organizationId) else childScopes.requireStaffManagedChild(scope, childId, organizationId)
         val report = requireReport(incidentId, organizationId, childId)
         val data = report.photoData ?: throw IllegalArgumentException(ChildIncidentError.PHOTO_MISSING)
@@ -129,7 +134,7 @@ class ChildIncidentService(
     }
 
     private fun describeIncident(report: ChildIncidentReport) = report.description.take(200)
-    private fun response(report: ChildIncidentReport) = ChildIncidentResponse(report.id, report.childId, report.severity, report.category, report.description, report.actionTaken, report.occurredAt, report.photoData != null, report.acknowledgedAt, report.createdAt)
+    private fun response(report: ChildIncidentReport, acknowledgedByMe: Boolean) = ChildIncidentResponse(report.id, report.childId, report.severity, report.category, report.description, report.actionTaken, report.occurredAt, report.photoData != null, acknowledgedByMe, report.createdAt)
     private fun Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")
 
     private fun notifyGuardians(child: Child, title: String, body: String) {

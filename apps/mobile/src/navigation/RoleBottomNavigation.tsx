@@ -29,7 +29,7 @@ const navigationByRole: Record<NavigationRole, NavigationItem[]> = {
   ],
   PARENT: [
     { href: "/home", labelKey: "nav.home", icon: "home" },
-    { href: "/parent-qr", labelKey: "nav.qr", icon: "qr-code" },
+    { href: "/parent-qr", labelKey: "nav.qr", icon: "qr-code", requiredCapability: "DAYCARE_OPERATIONS" },
     { href: "/booking", labelKey: "nav.booking", icon: "calendar", requiredCapability: "DAYCARE_OPERATIONS" },
     { href: "/operational-hours", labelKey: "nav.operatingHours", icon: "time", requiredCapability: "DAYCARE_OPERATIONS" },
   ],

@@ -39,7 +39,7 @@ class ChildHealthService(
 ) {
     @Transactional(readOnly = true)
     fun get(jwt: Jwt, organizationId: UUID, childId: UUID): ChildHealthRecordResponse? {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
+        val scope = access.require(jwt, organizationId, Role.entries.toSet())
         if (scope.membership.role == Role.PARENT) childScopes.requireParentLinkedChild(scope, childId, organizationId) else childScopes.requireStaffManagedChild(scope, childId, organizationId)
         return records.findByOrganizationIdAndChildId(organizationId, childId)?.let(::response)
     }

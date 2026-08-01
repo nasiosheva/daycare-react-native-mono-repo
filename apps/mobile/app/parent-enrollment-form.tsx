@@ -12,13 +12,14 @@ import { GenderPicker } from "@/children/GenderPicker";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { capitalizeWords } from "@/text/capitalizeWords";
 import { formatIsoDate, isIsoDate } from "@/date-picker/date";
+import { parentEnrollmentCatalogQueryKey, parentEnrollmentQueryKey } from "@/parent-enrollment/queryKeys";
 
 type ChildDraft = Omit<ParentEnrollmentCheckoutInput["children"][number], "gender"> & { gender?: ChildGender };
 const emptyChild = (): ChildDraft => ({ firstName: "", lastName: "", dateOfBirth: "" });
 
 export default function ParentEnrollmentFormScreen() {
-  const router = useRouter(); const { api, profile } = useAuth(); const { t, formatCurrency } = useI18n(); const client = useQueryClient();
-  const catalog = useQuery({ queryKey: ["parent-enrollment-catalog"], queryFn: () => api.parentEnrollmentCatalog() });
+  const router = useRouter(); const { api, profile, user } = useAuth(); const { t, formatCurrency } = useI18n(); const client = useQueryClient();
+  const catalog = useQuery({ queryKey: parentEnrollmentCatalogQueryKey(user?.uid), queryFn: () => api.parentEnrollmentCatalog(), enabled: Boolean(user) });
   const parentMemberships = profile?.memberships.filter((membership) => membership.role === "PARENT" && membership.active) ?? [];
   const availableTenants = useMemo(() => catalog.data?.filter((item) => !parentMemberships.some((membership) => membership.organizationId === item.organizationId)) ?? [], [catalog.data, parentMemberships]);
   const [tenantId, setTenantId] = useState<string>(); const tenant = useMemo(() => availableTenants.find((item) => item.organizationId === tenantId), [availableTenants, tenantId]);
@@ -29,7 +30,7 @@ export default function ParentEnrollmentFormScreen() {
   const checkout = useMutation({ mutationFn: () => {
     if (!tenant || !branch || !plan || children.some((child) => !child.firstName.trim() || !child.gender || !isIsoDate(child.dateOfBirth))) throw new Error(t("children.required"));
     return api.checkoutParentEnrollment({ organizationId: tenant.organizationId, branchId: branch.id, planId: plan.id, bookingDates: [], children: children.map((child) => ({ firstName: child.firstName.trim(), lastName: child.lastName?.trim() || undefined, gender: child.gender!, dateOfBirth: child.dateOfBirth })) });
-  }, onSuccess: async () => { await client.invalidateQueries({ queryKey: ["parent-enrollments"] }); router.replace("/parent-enrollment"); }, onError: (value) => setError(value instanceof Error ? value.message : t("parentEnrollment.failed")) });
+  }, onSuccess: async () => { await client.invalidateQueries({ queryKey: parentEnrollmentQueryKey(user?.uid) }); router.replace("/parent-enrollment"); }, onError: (value) => setError(value instanceof Error ? value.message : t("parentEnrollment.failed")) });
   const closeTenantSheet = () => { setTenantId(undefined); setBranchId(undefined); setPlanId(undefined); setChildren([emptyChild()]); setError(null); };
   return <AppScreen showBottomNavigation={false} title={t("parentEnrollment.newTenant")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.content}>
     <AppText variant="title">{t("parentEnrollment.newTenant")}</AppText>

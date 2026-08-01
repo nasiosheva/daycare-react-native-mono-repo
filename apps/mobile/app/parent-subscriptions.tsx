@@ -9,8 +9,18 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { useEntitlements } from "@/booking/useBooking";
 import { useI18n } from "@/i18n/I18nProvider";
 import { servicePlanTypeKey } from "@/i18n/translations";
+import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
+import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAccess";
 
 export default function ParentSubscriptionsScreen() {
+  return (
+    <LegacyDaycareRouteGuard policy={legacyDaycareRoutePolicies.staffAdminDaycareOperations}>
+      <ParentSubscriptionsScreenContent />
+    </LegacyDaycareRouteGuard>
+  );
+}
+
+function ParentSubscriptionsScreenContent() {
   const router = useRouter();
   const { profile, organizationId, api } = useAuth();
   const { t, formatDate } = useI18n();

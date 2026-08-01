@@ -12,25 +12,34 @@ import { createStaffAdminSummary } from "@/home/staffAdminSummary";
 import { AppScreen } from "@/navigation/AppScreen";
 import { hasInstitutionCapability } from "@daycare/core";
 import { useI18n } from "@/i18n/I18nProvider";
-import { invoiceSourceKey, tenantPaymentStatusKey, tenantReadinessIssueKey, tenantSubscriptionPlanKey } from "@/i18n/translations";
+import { invoiceSourceKey, roleKey, tenantPaymentStatusKey, tenantReadinessIssueKey, tenantSubscriptionPlanKey } from "@/i18n/translations";
 import { useStaffDailyTasks } from "@/home/useStaffDailyTasks";
 import { createParentHomeSummary } from "@/home/parentHomeSummary";
 import { authErrorMessage } from "@/auth/authErrorMessage";
 import { unreadNotificationBadge, unreadNotificationCount } from "@/notifications/unreadBadge";
+import { parentEnrollmentQueryKey } from "@/parent-enrollment/queryKeys";
+import { isInactiveStaffMembership } from "@/navigation/inactiveStaffRouteAccess";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { user, profile, organizationId, loading, profileError } = useAuth();
+  const { user, profile, organizationId, loading, profileError, requiresOrganizationSelection } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const staffChildren = useChildren(membership?.role === "STAFF");
-  const staffDailyTasks = useStaffDailyTasks(staffChildren.data ?? [], membership?.role === "STAFF");
+  const activeStaffMembership = membership?.role === "STAFF" && membership.active;
+  const staffChildren = useChildren(activeStaffMembership);
+  const staffDailyTasks = useStaffDailyTasks(staffChildren.data ?? [], activeStaffMembership);
   if (loading) return <HomeLoadingState />;
   if (!user) return <Redirect href="/sign-in" />;
   if (!profile) return profileError ? <ProfileLoadFailure error={profileError} /> : <HomeLoadingState />;
   if (profile.isPlatformAdmin) return <PlatformAdminHome />;
+  if (requiresOrganizationSelection) return <Redirect href="/context-selection" />;
+  if (!organizationId && profile.memberships.length === 1) return <HomeLoadingState />;
   if (!membership && profile.registrationRole === "PARENT") return <ParentOnboardingHome displayName={profile.displayName} />;
   if (!membership) return <Redirect href={"/profile" as never} />;
+  if (membership.role === "PARENT" && !membership.active) return <ParentOnboardingHome displayName={profile.displayName} />;
+  if (isInactiveStaffMembership(membership)) {
+    return <InactiveStaffHome displayName={profile.displayName} organizationName={membership.organizationName} role={membership.role} />;
+  }
   const hasDaycareOperations = hasInstitutionCapability(membership.capabilities, "DAYCARE_OPERATIONS");
   const isStaffAdmin = membership.role === "STAFF_ADMIN";
   const isStaff = membership.role === "STAFF";
@@ -48,6 +57,23 @@ function ProfileLoadFailure({ error }: { error: Error }) {
     <View style={styles.profileErrorActions}>
       <Button onPress={() => void refreshProfile().catch(() => undefined)}>{t("common.retry")}</Button>
       <Button variant="secondary" onPress={() => void signOut().catch(() => undefined)}>{t("auth.signOut")}</Button>
+    </View>
+  </View></AppScreen>;
+}
+
+function InactiveStaffHome({ displayName, organizationName, role }: { displayName: string; organizationName: string; role: "STAFF" | "STAFF_ADMIN" }) {
+  const router = useRouter();
+  const { t } = useI18n();
+  return <AppScreen showBottomNavigation={false}><View style={styles.content}>
+    <View style={styles.parentToolbar}>
+      <View style={styles.staffHeading}>
+        <AppText variant="title">{t("home.greeting", { name: displayName })}</AppText>
+        <AppText tone="muted">{organizationName} · {t(roleKey(role))}</AppText>
+      </View>
+      <ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} />
+    </View>
+    <View style={styles.parentCard}>
+      <AppText variant="heading">{t("staffOperations.readOnly")}</AppText>
     </View>
   </View></AppScreen>;
 }
@@ -77,6 +103,7 @@ function StaffHome({ displayName, organizationName, managedChildren, tasksByChil
 
 function ParentHome({ displayName, organizationName, hasDaycareOperations }: { displayName: string; organizationName: string; hasDaycareOperations: boolean }) {
   const router = useRouter();
+  const { organizationId } = useAuth();
   const { t, formatCurrency, formatDate } = useI18n();
   const children = useChildren(true);
   const entitlements = useEntitlements(hasDaycareOperations);
@@ -101,7 +128,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
         <View style={styles.parentActions}>
           <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-child-profile", params: { childId: child.id } })}>{t("children.parentProfile")}</Button>
           <Button variant="secondary" onPress={() => router.push({ pathname: "/development", params: { childId: child.id } })}>{t("development.title")}</Button>
-          <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-qr", params: { childId: child.id } })}>{t("qr.title")}</Button>
+          {hasDaycareOperations && <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-qr", params: { childId: child.id } })}>{t("qr.title")}</Button>}
           <Button variant="secondary" onPress={() => router.push({ pathname: "/absence-requests", params: { childId: child.id } })}>{t("absence.menu")}</Button>
         </View>
       </View>)}
@@ -118,7 +145,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
         <AppText variant="heading">{invoice.invoiceNumber}</AppText>
         <AppText>{invoice.description ?? t(invoiceSourceKey(invoice.source))} · {formatCurrency(invoice.totalAmount)}</AppText><AppText tone="muted">{invoice.childName}</AppText>
         <AppText tone="muted">{t(`status.${invoice.status}` as Parameters<typeof t>[0])} · {t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>
-        {invoice.status === "PENDING" ? <Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: invoice.id } })}>{t("parentEnrollment.pay")}</Button> : <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
+        {invoice.status === "PENDING" ? <Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: invoice.id, ...(organizationId ? { organizationId } : {}) } })}>{t("parentEnrollment.pay")}</Button> : <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
       </View>)}
       {!paymentsUnavailable && summary.actionableInvoices.length === 0 && <AppText tone="muted">{t("home.noActionablePayments")}</AppText>}
     </SummarySection>
@@ -127,14 +154,14 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
 
 function ParentOnboardingHome({ displayName }: { displayName: string }) {
   const router = useRouter();
-  const { api } = useAuth();
+  const { api, user } = useAuth();
   const { t, formatCurrency } = useI18n();
-  const enrollments = useQuery({ queryKey: ["parent-enrollments"], queryFn: () => api.parentEnrollments() });
+  const enrollments = useQuery({ queryKey: parentEnrollmentQueryKey(user?.uid), queryFn: () => api.parentEnrollments(), enabled: Boolean(user) });
   const next = enrollments.data?.find((item) => item.status === "APPROVED" && item.invoiceStatus === "PENDING") ?? enrollments.data?.find((item) => item.status === "PENDING_APPROVAL");
   return <AppScreen><View style={styles.content}>
     <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{t("parentEnrollment.onboardingSubtitle")}</AppText></View><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
     {next?.status === "PENDING_APPROVAL" && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText tone="muted">{t("parentEnrollment.pendingApproval")}</AppText><Button variant="secondary" onPress={() => router.push("/parent-enrollment")}>{t("parentEnrollment.viewApplication")}</Button></View>}
-    {next?.invoiceStatus === "PENDING" && next.invoiceId && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText>{next.planName} · {formatCurrency(next.totalAmount)}</AppText><AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText><Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: next.invoiceId! } })}>{t("parentEnrollment.pay")}</Button></View>}
+    {next?.invoiceStatus === "PENDING" && next.invoiceId && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText>{next.planName} · {formatCurrency(next.totalAmount)}</AppText><AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText><Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: next.invoiceId!, organizationId: next.organizationId } })}>{t("parentEnrollment.pay")}</Button></View>}
     {!next && <NavigationCard accessibilityLabel={t("parentEnrollment.newTenant")} onPress={() => router.push("/parent-enrollment-form")}><AppText variant="h5">{t("parentEnrollment.newTenant")}</AppText><AppText tone="muted">{t("parentEnrollment.startDescription")}</AppText></NavigationCard>}
   </View></AppScreen>;
 }
@@ -151,7 +178,7 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
   const children = useChildren(true);
   const users = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: Boolean(organizationId) });
   const pendingBookings = useBookings(true, hasDaycareOperations);
-  const pendingEnrollments = useQuery({ queryKey: ["parent-enrollments", organizationId, "pending"], queryFn: () => api.pendingParentEnrollments(), enabled: Boolean(organizationId) });
+  const pendingEnrollments = useQuery({ queryKey: ["parent-enrollments", organizationId, "pending"], queryFn: () => api.pendingParentEnrollments(), enabled: Boolean(organizationId) && hasDaycareOperations });
   const invoices = useInvoices(hasDaycareOperations);
   const entitlements = useEntitlements(hasDaycareOperations);
   const [branchSearch, setBranchSearch] = useState("");
@@ -168,7 +195,7 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
     capacity: capacities.data?.find((item) => item.branchId === branch.id)?.dailyCapacity,
     childrenCount: children.data?.filter((child) => child.branchId === branch.id).length ?? 0,
     staffCount: users.data?.filter((user) => user.status === "ACTIVE" && (user.role === "STAFF_ADMIN" || (user.role === "STAFF" && user.branchId === branch.id))).length ?? 0,
-    pendingApprovals: (pendingBookings.data?.filter((booking) => booking.branchId === branch.id && booking.status === "PENDING_APPROVAL").length ?? 0) + (pendingEnrollments.data?.filter((enrollment) => enrollment.branchId === branch.id).length ?? 0),
+    pendingApprovals: hasDaycareOperations ? (pendingBookings.data?.filter((booking) => booking.branchId === branch.id && booking.status === "PENDING_APPROVAL").length ?? 0) + (pendingEnrollments.data?.filter((enrollment) => enrollment.branchId === branch.id).length ?? 0) : 0,
     pendingInvoices: invoices.data?.filter((invoice) => invoice.branchId === branch.id && invoice.status === "PENDING").length ?? 0,
   }));
   const readiness = useQuery({ queryKey: ["organization-readiness", organizationId], queryFn: () => api.organizationReadiness(), enabled: Boolean(organizationId) });
@@ -180,7 +207,7 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
   const summary = createStaffAdminSummary({ children: children.data ?? [], users: users.data ?? [], pendingBookings: pendingBookings.data ?? [], pendingEnrollments: pendingEnrollments.data ?? [], invoices: invoices.data ?? [], entitlements: entitlements.data ?? [] });
   const operationalUnavailable = children.isFetching || users.isFetching || children.isError || users.isError;
   const financialUnavailable = pendingBookings.isFetching || invoices.isFetching || entitlements.isFetching || pendingBookings.isError || invoices.isError || entitlements.isError;
-  const approvalsUnavailable = pendingBookings.isFetching || pendingEnrollments.isFetching || pendingBookings.isError || pendingEnrollments.isError;
+  const approvalsUnavailable = hasDaycareOperations && (pendingBookings.isFetching || pendingEnrollments.isFetching || pendingBookings.isError || pendingEnrollments.isError);
 
   return <AppScreen><View style={styles.content}>
     <View style={styles.staffAdminToolbar}>
@@ -204,7 +231,7 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
     <SummarySection title={t("home.operationalSummary")}>
       <SummaryCard label={t("home.activeChildren")} value={operationalUnavailable ? undefined : summary.activeChildren} onPress={() => router.push("/children")} />
       <SummaryCard label={t("home.activeStaff")} value={operationalUnavailable ? undefined : summary.activeStaff} onPress={() => router.push("/tenant-users")} />
-      <SummaryCard label={t("home.pendingApprovals")} value={approvalsUnavailable ? undefined : summary.pendingApprovals} onPress={() => router.push("/booking-approvals")} />
+      {hasDaycareOperations && <SummaryCard label={t("home.pendingApprovals")} value={approvalsUnavailable ? undefined : summary.pendingApprovals} onPress={() => router.push("/booking-approvals")} />}
     </SummarySection>
     {hasDaycareOperations && <SummarySection title={t("home.financialSummary")}>
       <SummaryCard label={t("home.pendingInvoices")} value={financialUnavailable ? undefined : summary.pendingInvoices} onPress={() => router.push("/parent-payments")} />
@@ -219,8 +246,7 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
       <AppText variant="heading">{item.branch.name}</AppText>
       <AppText tone="muted">{item.capacity != null ? t("home.branchChildrenWithCapacity", { count: item.childrenCount, capacity: item.capacity }) : t("home.branchChildrenNoCapacity", { count: item.childrenCount })}</AppText>
       <AppText tone="muted">{t("home.branchStaffSummary", { count: item.staffCount })}</AppText>
-      <AppText tone={item.pendingApprovals > 0 ? "danger" : "muted"}>{t("home.branchApprovalsSummary", { count: item.pendingApprovals })}</AppText>
-      <AppText tone={item.pendingInvoices > 0 ? "danger" : "muted"}>{t("home.branchInvoicesSummary", { count: item.pendingInvoices })}</AppText>
+      {hasDaycareOperations && <><AppText tone={item.pendingApprovals > 0 ? "danger" : "muted"}>{t("home.branchApprovalsSummary", { count: item.pendingApprovals })}</AppText><AppText tone={item.pendingInvoices > 0 ? "danger" : "muted"}>{t("home.branchInvoicesSummary", { count: item.pendingInvoices })}</AppText></>}
     </View>)}
     {!branches.isFetching && activeBranches.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
   </View></AppScreen>;

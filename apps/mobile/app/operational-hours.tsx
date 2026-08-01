@@ -7,9 +7,9 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 
 export default function OperationalHoursScreen() {
-  const { api, profile } = useAuth(); const { t, formatCurrency } = useI18n();
+  const { api, profile, user } = useAuth(); const { t, formatCurrency } = useI18n();
   const isParent = profile?.memberships.some((item) => item.role === "PARENT") ?? false;
-  const hours = useQuery({ queryKey: ["parent-operating-hours-all-tenants"], queryFn: () => api.parentOperatingHoursAllTenants(), enabled: isParent });
+  const hours = useQuery({ queryKey: ["parent-operating-hours-all-tenants", user?.uid], queryFn: () => api.parentOperatingHoursAllTenants(), enabled: Boolean(user) && isParent });
   if (!profile) return null;
   if (!isParent) return <Redirect href="/home" />;
   return <AppScreen title={t("overtime.parentTitle")}><AppText tone="muted">{t("overtime.parentDescription")}</AppText>

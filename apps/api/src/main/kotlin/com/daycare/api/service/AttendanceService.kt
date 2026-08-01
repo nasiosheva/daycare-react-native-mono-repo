@@ -49,7 +49,7 @@ class AttendanceService(
 ) {
     @Transactional
     fun listChildren(jwt: Jwt, organizationId: UUID, filter: ChildListFilter = ChildListFilter()): List<ChildResponse> {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
+        val scope = access.require(jwt, organizationId, Role.entries.toSet())
         validateFilter(organizationId, filter)
         val visibleChildren = childScopes.visibleChildren(scope, organizationId).filter { child -> matchesFilter(child, filter) }
         val timezoneByBranch = branches.findAllById(visibleChildren.map { it.branchId }.distinct()).associate { it.id to it.timezone }
@@ -61,7 +61,7 @@ class AttendanceService(
 
     @Transactional(readOnly = true)
     fun childAttendanceReport(jwt: Jwt, organizationId: UUID, branchId: UUID, startsOn: LocalDate, endsOn: LocalDate): ChildAttendanceReport {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         require(!endsOn.isBefore(startsOn)) { ChildAttendanceReportError.DATE_RANGE.name }
         val branch = branches.findById(branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
         require(branch.organizationId == organizationId) { "Branch belongs to a different organization" }

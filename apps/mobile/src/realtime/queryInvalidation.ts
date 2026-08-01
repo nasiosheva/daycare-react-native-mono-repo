@@ -27,8 +27,26 @@ const queryKeysByFlag: Record<RealtimeFlag, readonly string[]> = {
   PRIVATE_TUTORING: ["private-tutoring-services", "private-tutoring-requests", "private-tutoring-admin-services", "private-tutoring-tutors", "private-tutoring-admin-requests"],
 };
 
-export function invalidateRealtimeFlags(queryClient: QueryClient, flags: readonly RealtimeFlag[]): void {
-  new Set(flags.flatMap((flag) => queryKeysByFlag[flag])).forEach((key) => void queryClient.invalidateQueries({ queryKey: [key] }));
+export function invalidateRealtimeFlags(queryClient: QueryClient, flags: readonly RealtimeFlag[], organizationId?: string | null, userId?: string | null): void {
+  new Set(flags.flatMap((flag) => queryKeysByFlag[flag])).forEach((key) => {
+    if (key === "parent-enrollments") {
+      if (organizationId) void queryClient.invalidateQueries({ queryKey: [key, organizationId] });
+      if (userId) void queryClient.invalidateQueries({ queryKey: [key, "self", userId] });
+      if (!organizationId && !userId) void queryClient.invalidateQueries({ queryKey: [key] });
+      return;
+    }
+    if (key === "parent-enrollment-catalog") {
+      void queryClient.invalidateQueries({ queryKey: userId ? [key, userId] : [key] });
+      return;
+    }
+    if (key === "invoice") {
+      if (organizationId) void queryClient.invalidateQueries({ queryKey: [key, organizationId] });
+      if (userId) void queryClient.invalidateQueries({ queryKey: [key, userId] });
+      if (!organizationId && !userId) void queryClient.invalidateQueries({ queryKey: [key] });
+      return;
+    }
+    void queryClient.invalidateQueries({ queryKey: organizationId ? [key, organizationId] : [key] });
+  });
 }
 
 export const allRealtimeFlags = Object.keys(queryKeysByFlag) as RealtimeFlag[];

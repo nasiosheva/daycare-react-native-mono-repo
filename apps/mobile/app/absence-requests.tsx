@@ -94,7 +94,7 @@ export default function AbsenceRequestsScreen() {
     </ScrollView>}
     {requests.isLoading && <ShimmerList />}
     {requests.isError && <Button variant="secondary" onPress={() => requests.refetch()}>{t("common.retry")}</Button>}
-    {!requests.isLoading && !requests.isError && requests.data?.map((request) => <RequestCard key={request.id} request={request} formatDate={formatDate} purposeLabel={t(purposeKeys[request.purpose])} statusLabel={t(`status.${request.status}` as Parameters<typeof t>[0])} cancelLabel={t("absence.cancelRequest")} approveLabel={t("absence.approve")} rejectLabel={t("absence.reject")} isParent={isParent} canDecide={!readOnly && (isStaff || isStaffAdmin)} onCancel={() => { setCancelRequest(request); setCancelError(null); }} onApprove={() => openDecision(request, true)} onReject={() => openDecision(request, false)} />)}
+    {!requests.isLoading && !requests.isError && requests.data?.map((request) => <RequestCard key={request.id} request={request} formatDate={formatDate} purposeLabel={t(purposeKeys[request.purpose])} statusLabel={t(`status.${request.status}` as Parameters<typeof t>[0])} cancelLabel={t("absence.cancelRequest")} approveLabel={t("absence.approve")} rejectLabel={t("absence.reject")} isParent={isParent} canCancel={isParent && !readOnly} canDecide={!readOnly && (isStaff || isStaffAdmin)} onCancel={() => { setCancelRequest(request); setCancelError(null); }} onApprove={() => openDecision(request, true)} onReject={() => openDecision(request, false)} />)}
     {!requests.isLoading && !requests.isError && requests.data?.length === 0 && <AppText tone="muted">{isParent ? t("absence.empty") : t("absence.noPending")}</AppText>}
 
     <BottomSheet visible={form !== null} onClose={() => setForm(null)} closeAccessibilityLabel={t("common.close")} title={t("absence.add")} negativeAction={{ label: t("common.cancel"), onPress: () => setForm(null) }} positiveAction={{ label: t("absence.submit"), loading: create.isPending, onPress: () => void submit() }}>
@@ -122,12 +122,12 @@ function BranchTab({ label, selected, onPress }: { label: string; selected: bool
   return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}><AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText></Pressable>;
 }
 
-function RequestCard({ request, formatDate, purposeLabel, statusLabel, cancelLabel, approveLabel, rejectLabel, isParent, canDecide, onCancel, onApprove, onReject }: { request: ChildAbsenceRequest; formatDate: (value: string) => string; purposeLabel: string; statusLabel: string; cancelLabel: string; approveLabel: string; rejectLabel: string; isParent: boolean; canDecide: boolean; onCancel: () => void; onApprove: () => void; onReject: () => void }) {
+function RequestCard({ request, formatDate, purposeLabel, statusLabel, cancelLabel, approveLabel, rejectLabel, isParent, canCancel, canDecide, onCancel, onApprove, onReject }: { request: ChildAbsenceRequest; formatDate: (value: string) => string; purposeLabel: string; statusLabel: string; cancelLabel: string; approveLabel: string; rejectLabel: string; isParent: boolean; canCancel: boolean; canDecide: boolean; onCancel: () => void; onApprove: () => void; onReject: () => void }) {
   return <View style={styles.card}>
     <RequestSummary request={request} formatDate={formatDate} purposeLabel={purposeLabel} />
     <AppText variant="caption" tone="muted">{statusLabel}</AppText>
     {request.rejectionReason && <AppText tone="danger">{request.rejectionReason}</AppText>}
-    {isParent && request.status === "PENDING" && <Button variant="danger" onPress={onCancel}>{cancelLabel}</Button>}
+    {canCancel && request.status === "PENDING" && <Button variant="danger" onPress={onCancel}>{cancelLabel}</Button>}
     {!isParent && canDecide && request.status === "PENDING" && <View style={styles.actions}><Button style={styles.action} onPress={onApprove}>{approveLabel}</Button><Button style={styles.action} variant="danger" onPress={onReject}>{rejectLabel}</Button></View>}
   </View>;
 }

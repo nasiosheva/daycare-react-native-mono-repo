@@ -36,7 +36,7 @@ export default function ChildAttendanceReportScreen() {
   if (!profile) return null;
   if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
 
-  const canExport = Boolean(branchId) && startsOn <= endsOn;
+  const canExport = membership?.active === true && Boolean(branchId) && startsOn <= endsOn;
   return <AppScreen showBottomNavigation={false} title={t("childAttendanceReport.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("childAttendanceReport.description")}</AppText>
     {!membership.active && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
@@ -49,7 +49,7 @@ export default function ChildAttendanceReportScreen() {
     <View style={styles.field}><AppText variant="label">{t("childAttendanceReport.startDate")}</AppText><DatePicker placeholder={t("childAttendanceReport.startDate")} value={startsOn} maximumDate={endsOn} onChange={(value) => { setStartsOn(value); if (value > endsOn) setEndsOn(value); }} /></View>
     <View style={styles.field}><AppText variant="label">{t("childAttendanceReport.endDate")}</AppText><DatePicker placeholder={t("childAttendanceReport.endDate")} value={endsOn} minimumDate={startsOn} maximumDate={today} onChange={setEndsOn} /></View>
     {startsOn > endsOn && <AppText accessibilityRole="alert" tone="danger">{t("childAttendanceReport.invalidPeriod")}</AppText>}
-    <DownloadReportActions disabled={!canExport} download={(format) => api.downloadChildAttendanceReport(format, { branchId: branchId!, startsOn, endsOn })} />
+    {membership.active && <DownloadReportActions disabled={!canExport} download={(format) => api.downloadChildAttendanceReport(format, { branchId: branchId!, startsOn, endsOn })} />}
     <AppText variant="caption" tone="muted">{t("childAttendanceReport.note")}</AppText>
   </AppScreen>;
 }

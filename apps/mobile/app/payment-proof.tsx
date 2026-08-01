@@ -7,21 +7,25 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useImagePicker, type PickedImage } from "@/image-picker";
+import { parentEnrollmentQueryKey } from "@/parent-enrollment/queryKeys";
 import { encodePaymentProofImage } from "@/payment-proof/encodeImage";
 
 const acceptedTypes = new Set(["image/jpeg", "image/png"]);
 
 export default function PaymentProofScreen() {
   const router = useRouter();
-  const { invoiceId: rawInvoiceId } = useLocalSearchParams<{ invoiceId?: string }>();
+  const { invoiceId: rawInvoiceId, organizationId: rawOrganizationId } = useLocalSearchParams<{ invoiceId?: string; organizationId?: string }>();
   const invoiceId = typeof rawInvoiceId === "string" ? rawInvoiceId : "";
-  const { api, profile, organizationId } = useAuth();
+  const routeOrganizationId = typeof rawOrganizationId === "string" ? rawOrganizationId : null;
+  const { api, user } = useAuth();
+  const paymentOrganizationId = routeOrganizationId;
+  const invoiceScope = paymentOrganizationId ?? user?.uid ?? "payer-self";
   const { t, formatCurrency, formatDate } = useI18n();
   const client = useQueryClient();
   const imagePicker = useImagePicker();
   const [image, setImage] = useState<PickedImage | null>(null);
   const [note, setNote] = useState("");
-  const invoice = useQuery({ queryKey: ["invoice", invoiceId], queryFn: () => api.invoice(invoiceId), enabled: Boolean(invoiceId) });
+  const invoice = useQuery({ queryKey: ["invoice", invoiceScope, invoiceId], queryFn: () => api.invoice(invoiceId), enabled: Boolean(invoiceId) });
   const submit = useMutation({
     mutationFn: async () => {
       if (!image) throw new Error(t("paymentProof.imageRequired"));
@@ -29,8 +33,9 @@ export default function PaymentProofScreen() {
       return api.submitPaymentProof(invoiceId, { fileName: image.fileName ?? "payment-proof.jpg", contentType, imageBase64: await encodePaymentProofImage(image), note: note.trim() || undefined });
     },
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["invoices", organizationId] });
-      void client.invalidateQueries({ queryKey: ["parent-enrollments"] });
+      if (paymentOrganizationId) void client.invalidateQueries({ queryKey: ["invoices", paymentOrganizationId] });
+      void client.invalidateQueries({ queryKey: ["invoice", invoiceScope, invoiceId] });
+      void client.invalidateQueries({ queryKey: parentEnrollmentQueryKey(user?.uid) });
       Alert.alert(t("paymentProof.submitted"));
       router.back();
     },
@@ -39,7 +44,6 @@ export default function PaymentProofScreen() {
   const takePhoto = async () => setImage(await imagePicker.takePhoto());
   const canSubmit = invoice.data?.status === "PENDING";
 
-  if (!profile) return null;
   if (!invoiceId) return null;
   return <AppScreen showBottomNavigation={false} title={t("paymentProof.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {invoice.isLoading ? <AppText>{t("common.loading")}</AppText> : invoice.data && <View style={styles.card}>
