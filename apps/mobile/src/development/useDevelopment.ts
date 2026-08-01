@@ -12,6 +12,11 @@ export function useDevelopmentEntryPhoto(childId: string | null, entryId: string
   return useQuery({ queryKey: ["development-entry-photo", organizationId, childId, entryId], queryFn: () => api.developmentEntryPhoto(childId as string, entryId as string), enabled: Boolean(childId && entryId && organizationId) });
 }
 
+export function useDevelopmentEntryMedia(childId: string | null, entryId: string | null, mediaId: string | null) {
+  const { api, organizationId } = useAuth();
+  return useQuery({ queryKey: ["development-entry-media", organizationId, childId, entryId, mediaId], queryFn: () => api.developmentEntryMedia(childId as string, entryId as string, mediaId as string), enabled: Boolean(childId && entryId && mediaId && organizationId) });
+}
+
 export function useDevelopmentCategories() {
   const { api, organizationId } = useAuth();
   return useQuery({ queryKey: ["development-categories", organizationId], queryFn: () => api.developmentCategories(), enabled: Boolean(organizationId) });

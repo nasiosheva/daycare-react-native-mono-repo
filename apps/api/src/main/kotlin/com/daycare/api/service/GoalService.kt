@@ -57,8 +57,8 @@ data class UpsertDevelopmentProgramRequest(
 data class DevelopmentProgramResponse(val id: UUID, val learningLevelId: UUID, val name: String, val description: String, val durationDays: Int, val minimumYesPercent: Int, val minimumYesStreak: Int, val domain: GoalDomain, val source: DevelopmentProgramSource, val isTemplate: Boolean, val active: Boolean, val revisedFromProgramId: UUID?, val revisionNumber: Int, val indicators: List<GoalIndicatorResponse>, val minAgeMonths: Int?, val maxAgeMonths: Int?)
 enum class DevelopmentProgramSource { GLOBAL, TENANT }
 data class AssignChildGoalRequest(val curriculumProgramId: UUID, val programId: UUID, val startsOn: LocalDate = LocalDate.now())
-data class UpsertGoalIndicatorRequest(@field:NotBlank @field:Size(max = 120) val name: String, val displayOrder: Int = 0)
-data class GoalIndicatorResponse(val id: UUID, val name: String, val displayOrder: Int, val active: Boolean)
+data class UpsertGoalIndicatorRequest(@field:NotBlank @field:Size(max = 120) val name: String, val displayOrder: Int = 0, val priority: Boolean = false)
+data class GoalIndicatorResponse(val id: UUID, val name: String, val displayOrder: Int, val active: Boolean, val priority: Boolean)
 data class GoalPhotoInput(@field:NotBlank val contentType: String, @field:NotBlank val dataBase64: String)
 data class GoalAudioInput(@field:NotBlank val contentType: String, @field:NotBlank val dataBase64: String, val durationMs: Int? = null)
 data class GoalCheckInRequest(val indicatorId: UUID, val outcome: GoalCheckInOutcome, @field:Size(max = 500) val note: String? = null, val photo: GoalPhotoInput? = null, val audio: GoalAudioInput? = null)
@@ -209,7 +209,7 @@ class GoalService(
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         val program = program(programId, organizationId); requireTenantOwned(program)
         val displayOrder = goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id).size
-        goalIndicators.save(DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = program.id, name = request.name.trim(), displayOrder = displayOrder))
+        goalIndicators.save(DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = program.id, name = request.name.trim(), displayOrder = displayOrder, priority = request.priority))
         realtime.publishToTenantRoles(organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), setOf(RealtimeFlag.GOALS))
         return programResponse(program)
     }
@@ -219,7 +219,7 @@ class GoalService(
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         val program = program(programId, organizationId); requireTenantOwned(program)
         val indicator = indicator(indicatorId, program.id)
-        indicator.name = request.name.trim(); indicator.displayOrder = request.displayOrder
+        indicator.name = request.name.trim(); indicator.displayOrder = request.displayOrder; indicator.priority = request.priority
         realtime.publishToTenantRoles(organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), setOf(RealtimeFlag.GOALS))
         return programResponse(program)
     }
@@ -375,7 +375,7 @@ class GoalService(
         val level = levels.findById(program.learningLevelId).orElse(null)
         return DevelopmentProgramResponse(program.id, program.learningLevelId, program.name, program.description, program.durationDays, program.minimumYesPercent, program.minimumYesStreak, program.domain, if (program.organizationId == null) DevelopmentProgramSource.GLOBAL else DevelopmentProgramSource.TENANT, program.isTemplate, program.active, program.revisedFromProgramId, program.revisionNumber, goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id).map(::indicatorResponse), level?.minAgeMonths, level?.maxAgeMonths)
     }
-    private fun indicatorResponse(indicator: DevelopmentProgramItem) = GoalIndicatorResponse(indicator.id, indicator.name, indicator.displayOrder, indicator.active)
+    private fun indicatorResponse(indicator: DevelopmentProgramItem) = GoalIndicatorResponse(indicator.id, indicator.name, indicator.displayOrder, indicator.active, indicator.priority)
     private fun goalResponse(goal: ChildGoal): ChildGoalResponse {
         val program = program(goal.programId, goal.organizationId)
         val curriculumProgramName = goal.curriculumProgramId?.let { curriculumPrograms.findById(it).orElse(null)?.name }

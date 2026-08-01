@@ -1,11 +1,14 @@
 package com.daycare.api.service
 
+import com.daycare.api.domain.DevelopmentMediaKind
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AuditLog
 import com.daycare.api.persistence.AuditLogRepository
 import com.daycare.api.persistence.DevelopmentCategoryConfig
 import com.daycare.api.persistence.DevelopmentCategoryConfigRepository
 import com.daycare.api.persistence.DevelopmentEntry
+import com.daycare.api.persistence.DevelopmentEntryMedia
+import com.daycare.api.persistence.DevelopmentEntryMediaRepository
 import com.daycare.api.persistence.DevelopmentEntryRepository
 import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.UserProfileRepository
@@ -13,6 +16,7 @@ import com.daycare.api.realtime.RealtimeFlag
 import com.daycare.api.realtime.RealtimePublisher
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
@@ -31,20 +35,28 @@ object DevelopmentEntryMediaError {
     const val PHOTO_TYPE = "development_entry.photo_type"
     const val PHOTO_INVALID = "development_entry.photo_invalid"
     const val PHOTO_TOO_LARGE = "development_entry.photo_too_large"
+    const val MEDIA_NOT_FOUND = "development_entry.media_not_found"
+    const val AUDIO_TYPE = "development_entry.audio_type"
+    const val AUDIO_INVALID = "development_entry.audio_invalid"
+    const val AUDIO_TOO_LARGE = "development_entry.audio_too_large"
 }
 
 data class DevelopmentPhotoInput(@field:NotBlank val contentType: String, @field:NotBlank val dataBase64: String)
+data class DevelopmentMediaInput(@field:NotNull val kind: DevelopmentMediaKind, @field:NotBlank val contentType: String, @field:NotBlank val dataBase64: String, val durationMs: Int? = null)
 data class CreateDevelopmentEntryRequest(
     @field:NotBlank @field:Size(max = 64) val category: String,
     @field:NotBlank @field:Size(max = 120) val title: String,
     @field:NotBlank @field:Size(max = 2_000) val content: String,
     @field:Valid val photo: DevelopmentPhotoInput? = null,
+    @field:Valid val media: List<DevelopmentMediaInput> = emptyList(),
 )
 data class CreateDevelopmentCategoryRequest(@field:NotBlank @field:Size(max = 120) val name: String)
 data class UpdateDevelopmentCategoryRequest(@field:Size(max = 120) val name: String? = null, val active: Boolean? = null)
 data class DevelopmentCategoryResponse(val id: String, val name: String, val active: Boolean, val system: Boolean)
-data class DevelopmentEntryResponse(val id: UUID, val childId: UUID, val category: String, val categoryName: String, val title: String, val content: String, val hasPhoto: Boolean, val recordedAt: Instant, val recordedBy: String)
+data class DevelopmentEntryMediaResponse(val id: UUID, val kind: DevelopmentMediaKind, val contentType: String, val durationMs: Int?)
+data class DevelopmentEntryResponse(val id: UUID, val childId: UUID, val category: String, val categoryName: String, val title: String, val content: String, val hasPhoto: Boolean, val media: List<DevelopmentEntryMediaResponse>, val recordedAt: Instant, val recordedBy: String)
 data class DevelopmentEntryPhotoResponse(val contentType: String, val dataBase64: String)
+data class DevelopmentEntryMediaContentResponse(val contentType: String, val dataBase64: String, val durationMs: Int?)
 
 @Service
 class DevelopmentService(
@@ -52,6 +64,7 @@ class DevelopmentService(
     private val platformAccess: PlatformAccessService,
     private val childScopes: ChildScopeService,
     private val entries: DevelopmentEntryRepository,
+    private val media: DevelopmentEntryMediaRepository,
     private val categories: DevelopmentCategoryConfigRepository,
     private val guardians: GuardianLinkRepository,
     private val users: UserProfileRepository,
@@ -167,6 +180,10 @@ class DevelopmentService(
             entry.photoData = decodePhoto(photo)
         }
         entries.save(entry)
+        request.media.forEachIndexed { index, item ->
+            val bytes = if (item.kind == DevelopmentMediaKind.PHOTO) decodePhoto(DevelopmentPhotoInput(item.contentType, item.dataBase64)) else decodeAudio(item)
+            media.save(DevelopmentEntryMedia(organizationId = organizationId, developmentEntryId = entry.id, kind = item.kind, contentType = item.contentType.lowercase(), data = bytes, durationMs = item.durationMs, displayOrder = index))
+        }
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "DEVELOPMENT_ENTRY", entityId = entry.id, action = "CREATED", source = "STAFF_NOTE"))
         guardians.findAllByChildId(child.id).forEach { guardian -> notifications.notify(organizationId, guardian.userId, "Perkembangan ${child.firstName}", "$categoryName: ${entry.title}", realtimeFlags = setOf(RealtimeFlag.DEVELOPMENT)) }
         return toResponse(entry, organizationId, categoryName)
@@ -182,6 +199,16 @@ class DevelopmentService(
         return DevelopmentEntryPhotoResponse(entry.photoContentType ?: "image/jpeg", Base64.getEncoder().encodeToString(data))
     }
 
+    @Transactional(readOnly = true)
+    fun mediaContent(jwt: Jwt, organizationId: UUID, childId: UUID, entryId: UUID, mediaId: UUID): DevelopmentEntryMediaContentResponse {
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
+        if (scope.membership.role == Role.PARENT) childScopes.requireParentLinkedChild(scope, childId, organizationId) else childScopes.requireStaffManagedChild(scope, childId, organizationId)
+        val entry = entries.findById(entryId).orElseThrow { IllegalArgumentException(DevelopmentEntryMediaError.NOT_FOUND) }
+        require(entry.organizationId == organizationId && entry.childId == childId) { DevelopmentEntryMediaError.UNAVAILABLE }
+        val item = media.findAllByDevelopmentEntryIdOrderByDisplayOrderAsc(entry.id).find { it.id == mediaId } ?: throw IllegalArgumentException(DevelopmentEntryMediaError.MEDIA_NOT_FOUND)
+        return DevelopmentEntryMediaContentResponse(item.contentType, Base64.getEncoder().encodeToString(item.data), item.durationMs)
+    }
+
     private fun requireCategoryCreator(jwt: Jwt, organizationId: UUID): AccessScope {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
         access.requireWritable(scope)
@@ -191,7 +218,8 @@ class DevelopmentService(
 
     private fun toResponse(entry: DevelopmentEntry, organizationId: UUID, name: String = categoryName(organizationId, entry.category, requireActive = false)): DevelopmentEntryResponse {
         val author = users.findById(entry.authorUserId).map { it.displayName }.orElse("Staf daycare")
-        return DevelopmentEntryResponse(entry.id, entry.childId, entry.category, name, entry.title, entry.content, entry.photoData != null, entry.recordedAt, author)
+        val entryMedia = media.findAllByDevelopmentEntryIdOrderByDisplayOrderAsc(entry.id).map { DevelopmentEntryMediaResponse(it.id, it.kind, it.contentType, it.durationMs) }
+        return DevelopmentEntryResponse(entry.id, entry.childId, entry.category, name, entry.title, entry.content, entry.photoData != null, entryMedia, entry.recordedAt, author)
     }
 
     private fun decodePhoto(input: DevelopmentPhotoInput): ByteArray {
@@ -202,6 +230,14 @@ class DevelopmentService(
         val isJpeg = bytes.size >= 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte()
         val isPng = bytes.size >= 8 && bytes.copyOfRange(0, 8).contentEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
         require(isJpeg || isPng) { DevelopmentEntryMediaError.PHOTO_INVALID }
+        return bytes
+    }
+
+    private fun decodeAudio(input: DevelopmentMediaInput): ByteArray {
+        require(input.contentType.lowercase() in setOf("audio/mp4", "audio/m4a", "audio/x-m4a")) { DevelopmentEntryMediaError.AUDIO_TYPE }
+        val bytes = try { Base64.getDecoder().decode(input.dataBase64) } catch (_: IllegalArgumentException) { throw IllegalArgumentException(DevelopmentEntryMediaError.AUDIO_INVALID) }
+        require(bytes.isNotEmpty()) { DevelopmentEntryMediaError.AUDIO_INVALID }
+        require(bytes.size <= 10 * 1024 * 1024) { DevelopmentEntryMediaError.AUDIO_TOO_LARGE }
         return bytes
     }
 

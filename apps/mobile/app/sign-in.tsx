@@ -5,7 +5,6 @@ import { AppText, Button, colors, PasswordInput, radius, Screen, spacing } from 
 import { useAuth } from "@/auth/AuthProvider";
 import { authErrorMessage } from "@/auth/authErrorMessage";
 import { clearRememberedCredentials, loadRememberedCredentials, saveRememberedCredentials } from "@/auth/rememberedCredentialsStorage";
-import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useI18n } from "@/i18n/I18nProvider";
 
 export default function SignInScreen() {
@@ -48,9 +47,6 @@ export default function SignInScreen() {
     finally { setLoading(false); }
   };
   return <Screen><View style={styles.container}>
-    <View style={styles.topBar}>
-      <LanguageSwitcher compact />
-    </View>
     <Image source={require("../assets/images/login-icon.png")} style={styles.logo} resizeMode="contain" />
     <AppText variant="title">Umur Emas</AppText>
     <AppText variant="label">{t("auth.identifier")}</AppText>
@@ -69,8 +65,7 @@ export default function SignInScreen() {
   </View></Screen>;
 }
 const styles = StyleSheet.create({
-  container: { width: "100%", maxWidth: 420, alignSelf: "center", gap: spacing.sm, paddingTop: 40 },
-  topBar: { alignItems: "flex-end", marginBottom: spacing.sm },
+  container: { width: "100%", maxWidth: 420, alignSelf: "center", flex: 1, justifyContent: "center", gap: spacing.sm, paddingVertical: spacing.lg },
   logo: { width: 96, height: 96, alignSelf: "center", marginBottom: spacing.sm },
   input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 12, backgroundColor: colors.surface },
   errorMessage: { padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.dangerSoft },

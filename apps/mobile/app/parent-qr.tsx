@@ -23,16 +23,18 @@ export default function ParentQrScreen() {
   const visibleChildren = typeof childId === "string" ? children.data?.filter((child) => child.id === childId) : children.data;
   const [selectedChildId, setSelectedChildId] = useState<string | null>(typeof childId === "string" ? childId : null);
   const selectedChild = visibleChildren?.find((child) => child.id === selectedChildId) ?? null;
+  const onlyChild = visibleChildren?.length === 1 ? visibleChildren[0] : null;
   return <AppScreen>
     <AppText variant="title">{t("qr.title")}</AppText>
     {children.isFetching && <ShimmerList variant="tile" />}
-    {!children.isFetching && visibleChildren?.map((child) => <NavigationCard key={child.id} accessibilityLabel={t("qr.showQr", { name: child.fullName })} onPress={() => setSelectedChildId(child.id)}>
+    {!children.isFetching && onlyChild && <View style={styles.single}><AppText variant="h5">{onlyChild.fullName}</AppText><ChildQr childId={onlyChild.id} name={onlyChild.fullName} /></View>}
+    {!children.isFetching && !onlyChild && visibleChildren?.map((child) => <NavigationCard key={child.id} accessibilityLabel={t("qr.showQr", { name: child.fullName })} onPress={() => setSelectedChildId(child.id)}>
       <AppText variant="h5">{child.fullName}</AppText>
     </NavigationCard>)}
     {!children.isFetching && visibleChildren?.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
-    <BottomSheet visible={Boolean(selectedChild)} onClose={() => setSelectedChildId(null)} closeAccessibilityLabel={t("common.close")} title={selectedChild?.fullName ?? t("qr.title")}>
+    {!onlyChild && <BottomSheet visible={Boolean(selectedChild)} onClose={() => setSelectedChildId(null)} closeAccessibilityLabel={t("common.close")} title={selectedChild?.fullName ?? t("qr.title")}>
       {selectedChild && <ChildQr childId={selectedChild.id} name={selectedChild.fullName} />}
-    </BottomSheet>
+    </BottomSheet>}
   </AppScreen>;
 }
-const styles = StyleSheet.create({ card: { alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface } });
+const styles = StyleSheet.create({ card: { alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, single: { gap: spacing.sm } });

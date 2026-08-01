@@ -17,6 +17,9 @@ enum class AttendanceMethod { MANUAL, QR }
 enum class AttendanceAction { CHECK_IN, CHECK_OUT }
 enum class ChildAbsencePurpose { SICK, OUT_OF_TOWN, FAMILY_EVENT, EMERGENCY, OTHER }
 enum class ChildAbsenceRequestStatus { PENDING, APPROVED, REJECTED, CANCELLED }
+enum class IncidentSeverity { MINOR, MODERATE, SERIOUS }
+enum class IncidentCategory { INJURY, ILLNESS, BEHAVIOR, OTHER }
+enum class DevelopmentMediaKind { PHOTO, AUDIO }
 enum class DevelopmentCategory { ACTIVITY, MEAL, NAP, OBSERVATION }
 enum class GoalDomain { KEMANDIRIAN, BAHASA_KOMUNIKASI, KOGNITIF, MOTORIK_HALUS, MOTORIK_KASAR, SOSIAL_EMOSI }
 enum class PlatformKnowledgeCandidateStatus { CANDIDATE, APPROVED, REJECTED, ARCHIVED }

@@ -86,6 +86,7 @@ export type Attendance = {
 };
 export type ChildAbsenceRequest = { id: string; childId: string; childName: string; branchId: string; purpose: ChildAbsencePurpose; note?: string | null; startDate: string; endDate: string; status: ChildAbsenceRequestStatus; rejectionReason?: string | null; createdAt: string; decidedAt?: string | null };
 export type CreateChildAbsenceRequestInput = { childId: string; purpose: ChildAbsencePurpose; startDate: string; endDate: string; note?: string };
+export type DevelopmentEntryMedia = { id: string; kind: "PHOTO" | "AUDIO"; contentType: string; durationMs?: number | null };
 export type DevelopmentEntry = {
   id: string;
   childId: string;
@@ -94,11 +95,25 @@ export type DevelopmentEntry = {
   title: string;
   content: string;
   hasPhoto: boolean;
+  media: DevelopmentEntryMedia[];
   recordedAt: string;
   recordedBy: string;
 };
 export type DevelopmentEntryPhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
+export type DevelopmentEntryMediaContent = { contentType: string; dataBase64: string; durationMs?: number | null };
 export type DevelopmentEntryPhoto = { contentType: string; dataBase64: string };
+export type ChildHealthRecord = { childId: string; bloodType?: string | null; allergies?: string | null; medicalConditions?: string | null; medications?: string | null; emergencyInstructions?: string | null; updatedByUserId: string; updatedAt: string };
+export type UpsertChildHealthRecordInput = { bloodType?: string; allergies?: string; medicalConditions?: string; medications?: string; emergencyInstructions?: string };
+export type IncidentSeverity = "MINOR" | "MODERATE" | "SERIOUS";
+export type IncidentCategory = "INJURY" | "ILLNESS" | "BEHAVIOR" | "OTHER";
+export type ChildIncidentReport = { id: string; childId: string; severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string | null; occurredAt: string; hasPhoto: boolean; acknowledgedAt?: string | null; createdAt: string };
+export type IncidentPhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
+export type CreateChildIncidentInput = { severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string; occurredAt: string; photo?: IncidentPhotoInput };
+export type ChildIncidentPhoto = { contentType: string; dataBase64: string };
+export type BranchOccupancy = { branchId: string; branchName: string; activeChildrenCount: number; dailyCapacity?: number | null };
+export type MonthlyParentAttrition = { month: string; deactivatedCount: number };
+export type ParentRetention = { currentActiveParents: number; monthly: MonthlyParentAttrition[] };
+export type MonthlyDevelopmentTrend = { month: string; goalCount: number; averageYesPercent?: number | null };
 export type ServicePlan = { id: string; name: string; type: ServicePlanType; price: number; creditCount?: number; unusedCreditPolicy?: UnusedCreditPolicy; carryForwardDays?: number; bookingRequiresApproval: boolean; dailyCapacity?: number | null };
 export type BranchCapacity = { branchId: string; dailyCapacity?: number | null };
 export type ServicePlanDiscount = { id: string; planId: string; kind: ServicePlanDiscountKind; name: string; promoCode?: string | null; type: ServicePlanDiscountType; value: number; startsOn?: string | null; endsOn?: string | null; usageLimit?: number | null; active: boolean };
@@ -117,6 +132,7 @@ export type BranchOperatingHour = { dayOfWeek: OperatingDay; active: boolean; op
 export type OvertimeRateTier = { durationMinutes: number; amount: number };
 export type BranchOperatingHours = { branchId: string; branchName: string; timezone: string; hours: BranchOperatingHour[]; tiers: OvertimeRateTier[] };
 export type UpdateBranchOperatingHoursInput = { hours: BranchOperatingHour[]; tiers: OvertimeRateTier[] };
+export type ParentChildOperatingHours = { childId: string; childName: string; organizationId: string; organizationName: string; branchId: string; branchName: string; timezone: string; hours: BranchOperatingHour[]; tiers: OvertimeRateTier[] };
 export type CreateOvertimeChargeInput = { childId: string; operationalDate: string; pickedUpAt: string; dueDate: string };
 export type OvertimeCharge = { id: string; invoiceId: string; branchId: string; childId: string; childName: string; operationalDate: string; pickedUpAt: string; closesAt: string; overtimeMinutes: number; totalAmount: number; dueDate: string; status: InvoiceStatus; tiers: OvertimeRateTier[] };
 export type TenantPayment = { id: string; amount: number; status: TenantPaymentStatus; dueDate: string; paidAt: string | null };
@@ -149,8 +165,8 @@ export type Classroom = { id: string; branchId: string; learningLevelId?: string
 export type UpsertClassroomInput = { branchId: string; learningLevelId: string; learningPeriodId?: string; name: string; capacity?: number };
 export type ClassroomStaffAssignment = { id: string; userId: string; displayName: string; email?: string | null; assignmentRole: ChildAssignmentRole };
 export type ClassroomProgram = { id: string; name: string; description: string };
-export type GoalIndicator = { id: string; name: string; displayOrder: number; active: boolean };
-export type UpsertGoalIndicatorInput = { name: string; displayOrder?: number };
+export type GoalIndicator = { id: string; name: string; displayOrder: number; active: boolean; priority: boolean };
+export type UpsertGoalIndicatorInput = { name: string; displayOrder?: number; priority?: boolean };
 export type DevelopmentProgram = { id: string; learningLevelId: string; name: string; description: string; durationDays: number; minimumYesPercent: number; minimumYesStreak: number; domain: GoalDomain; source: "GLOBAL" | "TENANT"; isTemplate: boolean; active: boolean; revisedFromProgramId?: string | null; revisionNumber: number; indicators: GoalIndicator[]; minAgeMonths?: number | null; maxAgeMonths?: number | null };
 export type UpsertDevelopmentProgramInput = Omit<DevelopmentProgram, "id" | "active" | "indicators" | "source" | "isTemplate" | "revisedFromProgramId" | "revisionNumber" | "minAgeMonths" | "maxAgeMonths"> & { indicatorNames?: string[] };
 export type GoalIndicatorCheckIn = { indicatorId: string; date: string; outcome: GoalCheckInOutcome; note?: string | null; hasPhoto: boolean; hasAudio: boolean; audioDurationMs?: number | null; recordedAt: string };
@@ -190,8 +206,8 @@ export type StaffLeaveEvidenceInput = { contentType: "image/jpeg" | "image/png";
 export type CreateStaffLeaveRequestInput = { type: StaffLeaveRequestType; startsOn: string; endsOn: string; reason: string; evidence?: StaffLeaveEvidenceInput };
 export type StaffLeaveRequest = { id: string; requesterUserId: string; requesterName: string; type: StaffLeaveRequestType; startsOn: string; endsOn: string; reason: string; status: StaffLeaveRequestStatus; hasEvidence: boolean; rejectionReason?: string | null; reviewedAt?: string | null; createdAt: string };
 export type StaffLeaveEvidence = { contentType: string; dataBase64: string };
-export type GlobalCurriculumSeedResult = { alreadySeeded: boolean; learningLevelCount: number; developmentProgramCount: number; developmentProgramItemCount: number };
-export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS" | "PRIVATE_TUTORING";
+export type GlobalCurriculumSeedResult = { alreadySeeded: boolean; learningLevelCount: number; developmentProgramCount: number; developmentProgramItemCount: number; curriculumProgramCount: number };
+export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "INCIDENT_REPORTS" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS" | "PRIVATE_TUTORING";
 export type RealtimeEvent<TPayload = unknown> = { type: "EVENT"; id: string; organizationId?: string | null; flags: RealtimeFlag[]; payload?: TPayload | null; occurredAt: string };
 export type RealtimeConnectRequest = { type: "CONNECT"; token: string; organizationId?: string | null };
 
@@ -277,6 +293,7 @@ export class ApiClient {
   async branchOperatingHours(branchId: string): Promise<BranchOperatingHours> { return this.request(`/branches/${branchId}/operating-hours`); }
   async updateBranchOperatingHours(branchId: string, input: UpdateBranchOperatingHoursInput): Promise<BranchOperatingHours> { return this.request(`/branches/${branchId}/operating-hours`, { method: "PUT", body: JSON.stringify(input) }); }
   async parentOperatingHours(): Promise<BranchOperatingHours[]> { return this.request("/parent/operating-hours"); }
+  async parentOperatingHoursAllTenants(): Promise<ParentChildOperatingHours[]> { return this.request("/parent/operating-hours/all-tenants"); }
   async overtimeCharges(): Promise<OvertimeCharge[]> { return this.request("/overtime-charges"); }
   async createOvertimeCharge(input: CreateOvertimeChargeInput): Promise<OvertimeCharge> { return this.request("/overtime-charges", { method: "POST", body: JSON.stringify(input) }); }
   async updateOvertimeCharge(chargeId: string, input: CreateOvertimeChargeInput): Promise<OvertimeCharge> { return this.request(`/overtime-charges/${chargeId}`, { method: "PATCH", body: JSON.stringify(input) }); }
@@ -418,6 +435,38 @@ export class ApiClient {
   async developmentEntryPhoto(childId: string, entryId: string): Promise<DevelopmentEntryPhoto> {
     return this.request(`/children/${childId}/development-entries/${entryId}/photo`);
   }
+
+  async developmentEntryMedia(childId: string, entryId: string, mediaId: string): Promise<DevelopmentEntryMediaContent> {
+    return this.request(`/children/${childId}/development-entries/${entryId}/media/${mediaId}`);
+  }
+
+  async childHealthRecord(childId: string): Promise<ChildHealthRecord | null> {
+    return this.request(`/children/${childId}/health-record`);
+  }
+
+  async upsertChildHealthRecord(childId: string, input: UpsertChildHealthRecordInput): Promise<ChildHealthRecord> {
+    return this.request(`/children/${childId}/health-record`, { method: "PUT", body: JSON.stringify(input) });
+  }
+
+  async childIncidentReports(childId: string): Promise<ChildIncidentReport[]> {
+    return this.request(`/children/${childId}/incident-reports`);
+  }
+
+  async createChildIncidentReport(childId: string, input: CreateChildIncidentInput): Promise<ChildIncidentReport> {
+    return this.request(`/children/${childId}/incident-reports`, { method: "POST", body: JSON.stringify(input) });
+  }
+
+  async acknowledgeChildIncidentReport(childId: string, incidentId: string): Promise<ChildIncidentReport> {
+    return this.request(`/children/${childId}/incident-reports/${incidentId}/acknowledge`, { method: "POST" });
+  }
+
+  async childIncidentReportPhoto(childId: string, incidentId: string): Promise<ChildIncidentPhoto> {
+    return this.request(`/children/${childId}/incident-reports/${incidentId}/photo`);
+  }
+
+  async analyticsOccupancy(): Promise<BranchOccupancy[]> { return this.request("/analytics/occupancy"); }
+  async analyticsParentRetention(monthsBack?: number): Promise<ParentRetention> { return this.request(`/analytics/parent-retention${monthsBack ? `?monthsBack=${monthsBack}` : ""}`); }
+  async analyticsDevelopmentTrend(monthsBack?: number): Promise<MonthlyDevelopmentTrend[]> { return this.request(`/analytics/development-trend${monthsBack ? `?monthsBack=${monthsBack}` : ""}`); }
 
   async developmentCategories(): Promise<DevelopmentCategoryOption[]> { return this.request("/development-categories"); }
   async createDevelopmentCategory(input: { name: string }): Promise<DevelopmentCategoryOption> { return this.request("/development-categories", { method: "POST", body: JSON.stringify(input) }); }
