@@ -44,7 +44,9 @@ import com.daycare.api.service.UpsertDevelopmentProgramRequest
 import com.daycare.api.service.UpsertGoalIndicatorRequest
 import com.daycare.api.service.AssignChildGoalRequest
 import com.daycare.api.service.GoalCheckInRequest
+import com.daycare.api.service.GoalCheckInBatchRequest
 import com.daycare.api.service.FinalizeChildGoalRequest
+import com.daycare.api.service.CorrectChildGoalConclusionRequest
 import com.daycare.api.service.CreateAcademicYearRequest
 import com.daycare.api.service.CreateCurriculumProgramRequest
 import com.daycare.api.service.SetCurriculumProgramActiveRequest
@@ -65,6 +67,11 @@ import com.daycare.api.service.RenewTenantSubscriptionRequest
 import com.daycare.api.service.ChildManagementService
 import com.daycare.api.service.UpdateChildRequest
 import com.daycare.api.service.CreateChildProgramRequest
+import com.daycare.api.service.UpdateChildProgramRequest
+import com.daycare.api.service.CreateChildProgramStepRequest
+import com.daycare.api.service.UpdateChildProgramStepRequest
+import com.daycare.api.service.CreateChildProgramStaffNoteRequest
+import com.daycare.api.service.CreateChildProgramParentFeedbackRequest
 import com.daycare.api.service.AssignChildStaffRequest
 import com.daycare.api.service.BindChildGuardianRequest
 import com.daycare.api.service.SetBranchCapacityRequest
@@ -473,6 +480,9 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @GetMapping("/parent/children/{childId}/profile")
     fun parentChildProfile(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = parentChildProfiles.profile(jwt, organizationId, childId)
 
+    @PostMapping("/parent/children/{childId}/programs/{programId}/feedback") @ResponseStatus(HttpStatus.CREATED)
+    fun addParentChildProgramFeedback(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable programId: UUID, @Valid @RequestBody request: CreateChildProgramParentFeedbackRequest) = childManagement.addParentFeedback(jwt, organizationId, childId, programId, request)
+
     @PatchMapping("/children/{childId}")
     fun updateChild(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: UpdateChildRequest) = childManagement.update(jwt, organizationId, childId, request)
 
@@ -482,8 +492,23 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @PostMapping("/children/{childId}/programs") @ResponseStatus(HttpStatus.CREATED)
     fun addChildProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateChildProgramRequest) = childManagement.addProgram(jwt, organizationId, childId, request)
 
+    @PatchMapping("/children/{childId}/programs/{programId}")
+    fun updateChildProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable programId: UUID, @Valid @RequestBody request: UpdateChildProgramRequest) = childManagement.updateProgram(jwt, organizationId, childId, programId, request)
+
     @DeleteMapping("/children/{childId}/programs/{programId}") @ResponseStatus(HttpStatus.NO_CONTENT)
     fun removeChildProgram(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable programId: UUID) = childManagement.removeProgram(jwt, organizationId, childId, programId)
+
+    @PostMapping("/children/{childId}/programs/{programId}/steps") @ResponseStatus(HttpStatus.CREATED)
+    fun addChildProgramStep(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable programId: UUID, @Valid @RequestBody request: CreateChildProgramStepRequest) = childManagement.addProgramStep(jwt, organizationId, childId, programId, request)
+
+    @PatchMapping("/children/{childId}/programs/{programId}/steps/{stepId}")
+    fun updateChildProgramStep(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable programId: UUID, @PathVariable stepId: UUID, @Valid @RequestBody request: UpdateChildProgramStepRequest) = childManagement.updateProgramStep(jwt, organizationId, childId, programId, stepId, request)
+
+    @DeleteMapping("/children/{childId}/programs/{programId}/steps/{stepId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun removeChildProgramStep(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable programId: UUID, @PathVariable stepId: UUID) = childManagement.removeProgramStep(jwt, organizationId, childId, programId, stepId)
+
+    @PostMapping("/children/{childId}/programs/{programId}/staff-notes") @ResponseStatus(HttpStatus.CREATED)
+    fun addChildProgramStaffNote(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable programId: UUID, @Valid @RequestBody request: CreateChildProgramStaffNoteRequest) = childManagement.addProgramStaffNote(jwt, organizationId, childId, programId, request)
 
     @PostMapping("/children/{childId}/staff-assignments") @ResponseStatus(HttpStatus.CREATED)
     fun assignChildStaff(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: AssignChildStaffRequest) = childManagement.assignStaff(jwt, organizationId, childId, request)
@@ -554,6 +579,9 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @PutMapping("/child-goals/{goalId}/check-ins/{date}")
     fun recordGoalCheckIn(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable goalId: UUID, @PathVariable date: java.time.LocalDate, @Valid @RequestBody request: GoalCheckInRequest) = goalService.recordCheckIn(jwt, organizationId, goalId, date, request)
 
+    @PutMapping("/child-goals/{goalId}/check-ins/{date}/batch")
+    fun recordGoalCheckInBatch(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable goalId: UUID, @PathVariable date: java.time.LocalDate, @Valid @RequestBody request: GoalCheckInBatchRequest) = goalService.recordCheckInBatch(jwt, organizationId, goalId, date, request)
+
     @GetMapping("/child-goals/{goalId}/check-ins/{date}/{indicatorId}/photo")
     fun goalCheckInPhoto(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable goalId: UUID, @PathVariable date: java.time.LocalDate, @PathVariable indicatorId: UUID) = goalService.checkInPhoto(jwt, organizationId, goalId, date, indicatorId)
 
@@ -562,6 +590,9 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PostMapping("/child-goals/{goalId}/finalize")
     fun finalizeGoal(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable goalId: UUID, @Valid @RequestBody request: FinalizeChildGoalRequest) = goalService.finalize(jwt, organizationId, goalId, request)
+
+    @PostMapping("/child-goals/{goalId}/conclusion-corrections") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun correctGoalConclusion(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable goalId: UUID, @Valid @RequestBody request: CorrectChildGoalConclusionRequest) = goalService.correctConclusion(jwt, organizationId, goalId, request)
 
     @PostMapping("/invitations") @ResponseStatus(HttpStatus.CREATED)
     fun invite(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateInvitationRequest) = mapOf("id" to administration.invite(jwt, organizationId, request))

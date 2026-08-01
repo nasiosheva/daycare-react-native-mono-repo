@@ -177,7 +177,7 @@ export default function ChildDetailScreen() {
     <BottomSheet visible={programsOpen} onClose={() => setProgramsOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("children.programs")}>
       <Button variant="secondary" onPress={() => { setProgramsOpen(false); setSheet("program"); }}>{t("children.addProgram")}</Button>
       {childProfile.isFetching && <ShimmerList variant="row" />}
-      {!childProfile.isFetching && childProfile.data?.programs.map((program) => <View key={program.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{program.name}</AppText>{program.description && <AppText variant="bodySmall" tone="muted">{program.description}</AppText>}</View><Button variant="danger" loading={removeProgram.isPending} onPress={() => void removeChildProgram(program.id)}>{t("children.remove")}</Button></View>)}
+      {!childProfile.isFetching && childProfile.data?.programs.map((program) => <View key={program.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{program.name}</AppText><AppText variant="bodySmall" tone="muted">{t(`children.programStatus.${program.status}`)} · {program.steps.length} {t("children.steps")}</AppText>{program.description && <AppText variant="bodySmall" tone="muted">{program.description}</AppText>}</View><View style={styles.actions}><Button variant="secondary" onPress={() => { setProgramsOpen(false); router.push({ pathname: "/child-program-detail", params: { childId: childId!, programId: program.id } }); }}>{t("children.programManage")}</Button>{program.steps.length === 0 && program.staffNotes.length === 0 && program.parentFeedback.length === 0 && <Button variant="danger" loading={removeProgram.isPending} onPress={() => void removeChildProgram(program.id)}>{t("children.remove")}</Button>}</View></View>)}
       {!childProfile.isFetching && childProfile.data?.programs.length === 0 && <AppText tone="muted">{t("children.noPrograms")}</AppText>}
     </BottomSheet>
 
@@ -236,6 +236,7 @@ const styles = StyleSheet.create({
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   item: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
   itemContent: { flex: 1, gap: spacing.xs },
+  actions: { gap: spacing.xs, alignItems: "flex-end" },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   errorState: { gap: spacing.sm, alignItems: "flex-start" },
   activeBadge: { color: colors.primary, fontWeight: "700" },

@@ -11,6 +11,8 @@ import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildGoal
 import com.daycare.api.persistence.ChildGoalCheckIn
 import com.daycare.api.persistence.ChildGoalCheckInRepository
+import com.daycare.api.persistence.ChildGoalConclusionCorrection
+import com.daycare.api.persistence.ChildGoalConclusionCorrectionRepository
 import com.daycare.api.persistence.ChildGoalRepository
 import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.ChildStaffAssignmentRepository
@@ -27,6 +29,7 @@ import com.daycare.api.persistence.LearningLevelRepository
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.realtime.RealtimeFlag
 import com.daycare.api.realtime.RealtimePublisher
+import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
@@ -62,15 +65,19 @@ data class GoalIndicatorResponse(val id: UUID, val name: String, val displayOrde
 data class GoalPhotoInput(@field:NotBlank val contentType: String, @field:NotBlank val dataBase64: String)
 data class GoalAudioInput(@field:NotBlank val contentType: String, @field:NotBlank val dataBase64: String, val durationMs: Int? = null)
 data class GoalCheckInRequest(val indicatorId: UUID, val outcome: GoalCheckInOutcome, @field:Size(max = 500) val note: String? = null, val photo: GoalPhotoInput? = null, val audio: GoalAudioInput? = null)
+data class GoalCheckInBatchItemRequest(val indicatorId: UUID, val outcome: GoalCheckInOutcome)
+data class GoalCheckInBatchRequest(@field:Size(min = 1) @field:Valid val checkIns: List<GoalCheckInBatchItemRequest>)
 data class FinalizeChildGoalRequest(val outcome: ChildGoalOutcome, @field:NotBlank @field:Size(max = 2_000) val summary: String)
+data class CorrectChildGoalConclusionRequest(val outcome: ChildGoalOutcome, @field:NotBlank @field:Size(max = 2_000) val summary: String, @field:NotBlank @field:Size(max = 500) val reason: String)
 data class GoalIndicatorCheckInResponse(val indicatorId: UUID, val date: LocalDate, val outcome: GoalCheckInOutcome, val note: String?, val hasPhoto: Boolean, val hasAudio: Boolean, val audioDurationMs: Int?, val recordedAt: Instant)
 data class GoalPhotoResponse(val contentType: String, val dataBase64: String)
 data class GoalAudioResponse(val contentType: String, val dataBase64: String, val durationMs: Int?)
+data class ChildGoalConclusionCorrectionResponse(val id: UUID, val previousOutcome: ChildGoalOutcome, val previousSummary: String, val correctedOutcome: ChildGoalOutcome, val correctedSummary: String, val reason: String, val correctedAt: Instant)
 data class ChildGoalResponse(
     val id: UUID, val childId: UUID, val curriculumProgramId: UUID?, val curriculumProgramName: String?, val programId: UUID, val name: String, val description: String, val startsOn: LocalDate, val targetEndsOn: LocalDate,
     val durationDays: Int, val minimumYesPercent: Int, val minimumYesStreak: Int, val status: ChildGoalStatus, val finalOutcome: ChildGoalOutcome?, val finalSummary: String?, val finalizedAt: Instant?,
     val recordedDays: Int, val yesDays: Int, val noDays: Int, val yesPercent: Int?, val currentYesStreak: Int, val longestYesStreak: Int, val meetsYesPercent: Boolean, val meetsYesStreak: Boolean, val missedDays: Int,
-    val indicators: List<GoalIndicatorResponse>, val checkIns: List<GoalIndicatorCheckInResponse>,
+    val indicators: List<GoalIndicatorResponse>, val checkIns: List<GoalIndicatorCheckInResponse>, val conclusionCorrections: List<ChildGoalConclusionCorrectionResponse>,
 )
 
 @Service
@@ -84,6 +91,7 @@ class GoalService(
     private val goalIndicators: DevelopmentProgramItemRepository,
     private val goals: ChildGoalRepository,
     private val checkIns: ChildGoalCheckInRepository,
+    private val conclusionCorrections: ChildGoalConclusionCorrectionRepository,
     private val levels: LearningLevelRepository,
     private val classrooms: ClassroomRepository,
     private val guardians: GuardianLinkRepository,
@@ -246,11 +254,14 @@ class GoalService(
         val curriculumProgramNamesById = if (curriculumProgramIds.isEmpty()) emptyMap() else curriculumPrograms.findAllById(curriculumProgramIds).associateBy({ it.id }, { it.name })
         val indicatorsByProgramId = goalIndicators.findAllByDevelopmentProgramIdIn(programsById.keys).groupBy { it.developmentProgramId }
         val checkInsByGoalId = checkIns.findAllByChildGoalIdIn(childGoalsList.map { it.id }.toSet()).groupBy { it.childGoalId }
+        val correctionsByGoalId = if (scope.membership.role == Role.STAFF_ADMIN && scope.membership.active) {
+            conclusionCorrections.findAllByOrganizationIdAndChildGoalIdInOrderByCorrectedAtAsc(organizationId, childGoalsList.map { it.id }.toSet()).groupBy { it.childGoalId }
+        } else emptyMap()
         return childGoalsList.map { goal ->
             val program = programsById[goal.programId] ?: throw IllegalArgumentException("Program was not found")
             val indicators = (indicatorsByProgramId[goal.programId] ?: emptyList()).sortedBy { it.displayOrder }
             val items = (checkInsByGoalId[goal.id] ?: emptyList()).sortedBy { it.checkInDate }
-            buildGoalResponse(goal, program, goal.curriculumProgramId?.let { curriculumProgramNamesById[it] }, indicators, items)
+            buildGoalResponse(goal, program, goal.curriculumProgramId?.let { curriculumProgramNamesById[it] }, indicators, items, correctionsByGoalId[goal.id] ?: emptyList())
         }
     }
 
@@ -274,14 +285,49 @@ class GoalService(
 
     @Transactional
     fun recordCheckIn(jwt: Jwt, organizationId: UUID, goalId: UUID, date: LocalDate, request: GoalCheckInRequest): ChildGoalResponse {
+        val context = writableCheckInContext(jwt, organizationId, goalId)
+        val indicator = indicator(request.indicatorId, context.program.id)
+        require(indicator.active) { "Program indicator is archived" }
+        validateCheckInDate(context.goal, context.program, date)
+        persistCheckIn(organizationId, goalId, date, indicator, request, context.scope)
+        publishGoal(organizationId, context.goal.childId)
+        return goalResponse(context.goal)
+    }
+
+    @Transactional
+    fun recordCheckInBatch(jwt: Jwt, organizationId: UUID, goalId: UUID, date: LocalDate, request: GoalCheckInBatchRequest): ChildGoalResponse {
+        val context = writableCheckInContext(jwt, organizationId, goalId)
+        validateCheckInDate(context.goal, context.program, date)
+        val activeIndicators = goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(context.program.id).filter { it.active }
+        require(activeIndicators.isNotEmpty()) { "Program needs at least one active indicator" }
+        val submittedIndicatorIds = request.checkIns.map { it.indicatorId }
+        require(submittedIndicatorIds.size == submittedIndicatorIds.toSet().size && submittedIndicatorIds.toSet() == activeIndicators.map { it.id }.toSet()) {
+            "Batch check-ins must include every active indicator exactly once"
+        }
+        val activeIndicatorsById = activeIndicators.associateBy { it.id }
+        request.checkIns.forEach { item ->
+            val indicator = activeIndicatorsById.getValue(item.indicatorId)
+            persistCheckIn(organizationId, goalId, date, indicator, GoalCheckInRequest(item.indicatorId, item.outcome), context.scope)
+        }
+        publishGoal(organizationId, context.goal.childId)
+        return goalResponse(context.goal)
+    }
+
+    private data class WritableCheckInContext(val scope: AccessScope, val goal: ChildGoal, val program: DevelopmentProgram)
+
+    private fun writableCheckInContext(jwt: Jwt, organizationId: UUID, goalId: UUID): WritableCheckInContext {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF)); access.requireWritable(scope)
         val goal = goal(goalId, organizationId); require(goal.status == ChildGoalStatus.ACTIVE) { "Goal is already completed" }
         authorizeChild(scope, organizationId, goal.childId)
-        val program = program(goal.programId, organizationId)
-        val indicator = indicator(request.indicatorId, program.id)
-        require(indicator.active) { "Program indicator is archived" }
+        return WritableCheckInContext(scope, goal, program(goal.programId, organizationId))
+    }
+
+    private fun validateCheckInDate(goal: ChildGoal, program: DevelopmentProgram, date: LocalDate) {
         val targetEndsOn = goal.startsOn.plusDays(program.durationDays.toLong() - 1)
         require(!date.isBefore(goal.startsOn) && !date.isAfter(targetEndsOn)) { "Check-in date must be within the program period" }
+    }
+
+    private fun persistCheckIn(organizationId: UUID, goalId: UUID, date: LocalDate, indicator: DevelopmentProgramItem, request: GoalCheckInRequest, scope: AccessScope) {
         val checkIn = checkIns.findByChildGoalIdAndIndicatorIdAndCheckInDate(goalId, indicator.id, date) ?: ChildGoalCheckIn(organizationId = organizationId, childGoalId = goalId, indicatorId = indicator.id, checkInDate = date, recordedByUserId = scope.user.id)
         checkIn.outcome = request.outcome
         request.note?.let { checkIn.note = it.trim().ifBlank { null } }
@@ -289,8 +335,6 @@ class GoalService(
         request.audio?.let { val bytes = decodeAudio(it); checkIn.audioContentType = it.contentType.lowercase(); checkIn.audioData = bytes; checkIn.audioDurationMs = it.durationMs }
         checkIn.recordedByUserId = scope.user.id; checkIn.recordedAt = Instant.now(); checkIns.save(checkIn)
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "CHILD_GOAL_CHECK_IN", entityId = checkIn.id, action = request.outcome.name, source = "GOAL"))
-        publishGoal(organizationId, goal.childId)
-        return goalResponse(goal)
     }
 
     @Transactional(readOnly = true)
@@ -322,6 +366,35 @@ class GoalService(
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "CHILD_GOAL", entityId = goal.id, action = "FINALIZED_${request.outcome.name}", source = "GOAL"))
         publishGoal(organizationId, goal.childId)
         return goalResponse(goal)
+    }
+
+    @Transactional
+    fun correctConclusion(jwt: Jwt, organizationId: UUID, goalId: UUID, request: CorrectChildGoalConclusionRequest) {
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN)); access.requireWritable(scope)
+        val goal = goal(goalId, organizationId)
+        require(goal.status == ChildGoalStatus.COMPLETED) { "Only a completed Goal conclusion can be corrected" }
+        val previousOutcome = requireNotNull(goal.finalOutcome) { "Completed Goal is missing a final outcome" }
+        val previousSummary = goal.finalSummary.orEmpty()
+        val correctedSummary = request.summary.trim()
+        val reason = request.reason.trim()
+        require(correctedSummary.isNotBlank()) { "Goal conclusion summary is required" }
+        require(reason.isNotBlank()) { "Goal conclusion correction reason is required" }
+        require(previousOutcome != request.outcome || previousSummary != correctedSummary) { "Goal conclusion is unchanged" }
+        val correction = ChildGoalConclusionCorrection(
+            organizationId = organizationId,
+            childGoalId = goal.id,
+            previousOutcome = previousOutcome,
+            previousSummary = previousSummary,
+            correctedOutcome = request.outcome,
+            correctedSummary = correctedSummary,
+            reason = reason,
+            correctedByUserId = scope.user.id,
+        )
+        conclusionCorrections.save(correction)
+        goal.finalOutcome = request.outcome
+        goal.finalSummary = correctedSummary
+        audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "CHILD_GOAL_CONCLUSION_CORRECTION", entityId = correction.id, action = "CREATED", source = "GOAL"))
+        publishGoal(organizationId, goal.childId)
     }
 
     private fun authorizeChild(scope: AccessScope, organizationId: UUID, childId: UUID) = when (scope.membership.role) {
@@ -381,9 +454,9 @@ class GoalService(
         val curriculumProgramName = goal.curriculumProgramId?.let { curriculumPrograms.findById(it).orElse(null)?.name }
         val indicators = goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id)
         val items = checkIns.findAllByChildGoalIdOrderByCheckInDateAsc(goal.id)
-        return buildGoalResponse(goal, program, curriculumProgramName, indicators, items)
+        return buildGoalResponse(goal, program, curriculumProgramName, indicators, items, emptyList())
     }
-    private fun buildGoalResponse(goal: ChildGoal, program: DevelopmentProgram, curriculumProgramName: String?, indicators: List<DevelopmentProgramItem>, items: List<ChildGoalCheckIn>): ChildGoalResponse {
+    private fun buildGoalResponse(goal: ChildGoal, program: DevelopmentProgram, curriculumProgramName: String?, indicators: List<DevelopmentProgramItem>, items: List<ChildGoalCheckIn>, corrections: List<ChildGoalConclusionCorrection>): ChildGoalResponse {
         val activeIndicators = indicators.filter { it.active }
         val combinedValues = items.groupBy { it.checkInDate }.mapNotNull { (date, dayCheckIns) ->
             if (activeIndicators.isEmpty()) return@mapNotNull null
@@ -403,8 +476,10 @@ class GoalService(
             progress.yesPercent != null && progress.yesPercent >= program.minimumYesPercent, progress.longestYesStreak >= program.minimumYesStreak, missedDays,
             indicators.map(::indicatorResponse),
             items.map { GoalIndicatorCheckInResponse(it.indicatorId, it.checkInDate, it.outcome, it.note, it.photoData != null, it.audioData != null, it.audioDurationMs, it.recordedAt) },
+            corrections.map(::correctionResponse),
         )
     }
+    private fun correctionResponse(correction: ChildGoalConclusionCorrection) = ChildGoalConclusionCorrectionResponse(correction.id, correction.previousOutcome, correction.previousSummary, correction.correctedOutcome, correction.correctedSummary, correction.reason, correction.correctedAt)
     private fun Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")
 
     @Scheduled(cron = "0 0 20 * * *", zone = "Asia/Jakarta")

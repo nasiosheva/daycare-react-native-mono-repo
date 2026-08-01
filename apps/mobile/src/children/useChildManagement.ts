@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ChildInput } from "@daycare/core";
-import type { ChildAssignmentRole, UpdateChildInput } from "@daycare/api-client";
+import type { ChildAssignmentRole, CreateChildProgramInput, CreateChildProgramStepInput, UpdateChildInput, UpdateChildProgramInput, UpdateChildProgramStepInput } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
 
 export function useChildProfile(childId: string | null) {
@@ -11,7 +11,7 @@ export function useChildProfile(childId: string | null) {
 function useChildMutation<TVariables, TResult>(mutationFn: (variables: TVariables) => Promise<TResult>) {
   const { organizationId } = useAuth();
   const queryClient = useQueryClient();
-  return useMutation({ mutationFn, onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["children", organizationId] }); void queryClient.invalidateQueries({ queryKey: ["child-profile", organizationId] }); } });
+  return useMutation({ mutationFn, onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["children", organizationId] }); void queryClient.invalidateQueries({ queryKey: ["child-profile", organizationId] }); void queryClient.invalidateQueries({ queryKey: ["parent-child-profile", organizationId] }); } });
 }
 
 export function useCreateChild() {
@@ -31,12 +31,37 @@ export function useDeactivateChild(childId: string) {
 
 export function useAddChildProgram(childId: string) {
   const { api } = useAuth();
-  return useChildMutation<{ name: string; description?: string }, Awaited<ReturnType<typeof api.addChildProgram>>>((input) => api.addChildProgram(childId, input));
+  return useChildMutation<CreateChildProgramInput, Awaited<ReturnType<typeof api.addChildProgram>>>((input) => api.addChildProgram(childId, input));
+}
+
+export function useUpdateChildProgram(childId: string, programId: string) {
+  const { api } = useAuth();
+  return useChildMutation<UpdateChildProgramInput, Awaited<ReturnType<typeof api.updateChildProgram>>>((input) => api.updateChildProgram(childId, programId, input));
 }
 
 export function useRemoveChildProgram(childId: string) {
   const { api } = useAuth();
   return useChildMutation<string, Awaited<ReturnType<typeof api.removeChildProgram>>>((programId) => api.removeChildProgram(childId, programId));
+}
+
+export function useAddChildProgramStep(childId: string, programId: string) {
+  const { api } = useAuth();
+  return useChildMutation<CreateChildProgramStepInput, Awaited<ReturnType<typeof api.addChildProgramStep>>>((input) => api.addChildProgramStep(childId, programId, input));
+}
+
+export function useUpdateChildProgramStep(childId: string, programId: string) {
+  const { api } = useAuth();
+  return useChildMutation<{ stepId: string; input: UpdateChildProgramStepInput }, Awaited<ReturnType<typeof api.updateChildProgramStep>>>(({ stepId, input }) => api.updateChildProgramStep(childId, programId, stepId, input));
+}
+
+export function useRemoveChildProgramStep(childId: string, programId: string) {
+  const { api } = useAuth();
+  return useChildMutation<string, Awaited<ReturnType<typeof api.removeChildProgramStep>>>((stepId) => api.removeChildProgramStep(childId, programId, stepId));
+}
+
+export function useAddChildProgramStaffNote(childId: string, programId: string) {
+  const { api } = useAuth();
+  return useChildMutation<{ note: string; stepId?: string }, Awaited<ReturnType<typeof api.addChildProgramStaffNote>>>((input) => api.addChildProgramStaffNote(childId, programId, input));
 }
 
 export function useAssignChildStaff(childId: string) {

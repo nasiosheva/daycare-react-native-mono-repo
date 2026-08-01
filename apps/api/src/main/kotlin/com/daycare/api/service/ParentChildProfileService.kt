@@ -3,7 +3,6 @@ package com.daycare.api.service
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.BranchRepository
 import com.daycare.api.persistence.ChildPlacementRepository
-import com.daycare.api.persistence.ChildProgramRepository
 import com.daycare.api.persistence.ChildStaffAssignmentRepository
 import com.daycare.api.persistence.ClassroomRepository
 import com.daycare.api.persistence.LearningLevelRepository
@@ -16,7 +15,7 @@ import java.util.UUID
 data class ParentChildBranchResponse(val id: UUID, val name: String, val fullAddress: String?, val googleMapsUrl: String?)
 data class ParentChildPlacementResponse(val classroomName: String, val learningLevelName: String?)
 data class ParentChildStaffResponse(val displayName: String, val assignmentRole: String)
-data class ParentChildProfileResponse(val child: ChildResponse, val branch: ParentChildBranchResponse, val placement: ParentChildPlacementResponse?, val programs: List<ChildProgramResponse>, val staffAssignments: List<ParentChildStaffResponse>)
+data class ParentChildProfileResponse(val child: ChildResponse, val branch: ParentChildBranchResponse, val placement: ParentChildPlacementResponse?, val programs: List<ParentChildProgramResponse>, val staffAssignments: List<ParentChildStaffResponse>)
 
 @Service
 class ParentChildProfileService(
@@ -26,7 +25,7 @@ class ParentChildProfileService(
     private val placements: ChildPlacementRepository,
     private val classrooms: ClassroomRepository,
     private val learningLevels: LearningLevelRepository,
-    private val programs: ChildProgramRepository,
+    private val childPrograms: ChildManagementService,
     private val assignments: ChildStaffAssignmentRepository,
     private val users: UserProfileRepository,
 ) {
@@ -43,7 +42,7 @@ class ParentChildProfileService(
             ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.nisn, child.gender, child.dateOfBirth),
             ParentChildBranchResponse(branch.id, branch.name, branch.fullAddress, branch.googleMapsUrl),
             classroom?.let { ParentChildPlacementResponse(it.name, level?.name) },
-            programs.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id).map { ChildProgramResponse(it.id, it.name, it.description) },
+            childPrograms.parentProgramResponses(organizationId, child.id, scope.user.id),
             assignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id).mapNotNull { assignment -> users.findById(assignment.userId).map { user -> ParentChildStaffResponse(user.displayName, assignment.assignmentRole) }.orElse(null) },
         )
     }

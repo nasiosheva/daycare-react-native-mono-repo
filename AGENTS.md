@@ -4,6 +4,16 @@ Use repository-local context only for this project. Do not read, use, or update 
 
 Before taking any action in this repository, including exploration, planning, review, implementation, or running commands, read `README.md` and `docs/business-rules.md` first. Treat both documents as required repository context. If the requested behavior, current code, project memory, another document, or either required document contains business logic that differs from or conflicts with `README.md` or `docs/business-rules.md`, do not choose an interpretation or proceed silently. Clearly describe the difference and ask the user for clarification before acting.
 
+`docs/business-rules.md` is the required source of truth for every business-facing UI/UX flow and its supporting backend, API, authorization, state, and data contract. Before designing, reviewing, or changing any such flow, compare the proposed and current behavior with the documented rule and distinguish an explicitly documented current implementation from an explicitly documented target/future rule that has not been built yet.
+
+When the current or proposed UI/UX or supporting contract does not match `docs/business-rules.md`, stop before implementing the affected change. Explain the documented rule, the conflicting UI/UX or contract behavior, and the practical impact on users, roles, data, authorization, and operations. Ask the user to choose one of these paths:
+
+1. Update `docs/business-rules.md` so it intentionally defines the desired behavior.
+2. Change the UI/UX and every supporting backend/API/data contract needed to comply with `docs/business-rules.md`.
+3. If both the documented rule and the current/proposed behavior are unsafe, impractical, or contrary to common-sense real-world operations, propose a third safer alternative. State why the first two paths are unsuitable, its required documentation and contract changes, and its tradeoffs.
+
+Never silently choose among these paths or implement the third alternative without the user's explicit decision.
+
 Read `.codex/project-memory.md` before non-trivial implementation, review, or architecture work. Keep durable project decisions there; do not store secrets, personal data, access tokens, or environment values.
 
 Every change requires a documentation review in the same change set. Create or update a daily context note at `docs/changes/YYYY-MM-DD/<context>.md` that records the change, affected behavior, verification, and any follow-up. Update `README.md` for any change to user flow, business rules, API contracts, configuration, local/prod operation, or verification. Update the relevant module documentation for implementation-level changes when it exists. If no documentation changes are materially needed, state that explicitly in the final handoff with the reason; do not silently omit the review.

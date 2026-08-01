@@ -341,6 +341,31 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/child-goals/goal-id/check-ins/2026-07-23", expect.objectContaining({ method: "PUT", body: JSON.stringify({ indicatorId: "indicator-id", outcome: "YES" }) }));
   });
 
+  it("records all active daily child-goal outcomes through the atomic batch endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({
+      baseUrl: "https://api.example.test/v1",
+      getToken: async () => "token",
+      getOrganizationId: () => "tenant-id",
+      getLanguage: () => "id",
+    });
+
+    await client.recordGoalCheckInBatch("goal-id", "2026-07-23", [{ indicatorId: "indicator-a", outcome: "YES" }, { indicatorId: "indicator-b", outcome: "NO" }]);
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/child-goals/goal-id/check-ins/2026-07-23/batch", expect.objectContaining({ method: "PUT", body: JSON.stringify({ checkIns: [{ indicatorId: "indicator-a", outcome: "YES" }, { indicatorId: "indicator-b", outcome: "NO" }] }) }));
+  });
+
+  it("sends an audited correction for a completed child Goal conclusion", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await client.correctChildGoalConclusion("goal-id", { outcome: "ACHIEVED", summary: "Kesimpulan yang benar.", reason: "Pilihan hasil awal salah." });
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/child-goals/goal-id/conclusion-corrections", expect.objectContaining({ method: "POST", body: JSON.stringify({ outcome: "ACHIEVED", summary: "Kesimpulan yang benar.", reason: "Pilihan hasil awal salah." }) }));
+  });
+
   it("filters Development Programs by the selected curriculum program", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
     vi.stubGlobal("fetch", fetchMock);
@@ -408,6 +433,16 @@ describe("ApiClient", () => {
     await client.downloadChildAttendanceReport("PDF", { branchId: "branch-id", startsOn: "2026-07-01", endsOn: "2026-07-29" });
 
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/reports/children/attendance/export?format=PDF&branchId=branch-id&startsOn=2026-07-01&endsOn=2026-07-29", expect.anything());
+  });
+
+  it("sends Parent feedback only to the child program feedback endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await client.addParentChildProgramFeedback("child-id", "program-id", "Sudah dicoba di rumah.");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/parent/children/child-id/programs/program-id/feedback", expect.objectContaining({ method: "POST", body: JSON.stringify({ note: "Sudah dicoba di rumah." }) }));
   });
 
   it("triggers the global curriculum seed for a Platform Admin", async () => {

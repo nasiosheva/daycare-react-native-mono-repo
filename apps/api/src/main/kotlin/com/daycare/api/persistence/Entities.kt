@@ -439,6 +439,20 @@ class ChildGoalCheckIn(
     @Column(name = "recorded_at", nullable = false) var recordedAt: Instant = Instant.now(),
 )
 
+@Entity @Table(name = "child_goal_conclusion_corrections")
+class ChildGoalConclusionCorrection(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "child_goal_id", nullable = false) var childGoalId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(name = "previous_outcome", nullable = false) var previousOutcome: ChildGoalOutcome = ChildGoalOutcome.NOT_ACHIEVED,
+    @Column(name = "previous_summary", nullable = false, length = 2_000) var previousSummary: String = "",
+    @Enumerated(EnumType.STRING) @Column(name = "corrected_outcome", nullable = false) var correctedOutcome: ChildGoalOutcome = ChildGoalOutcome.NOT_ACHIEVED,
+    @Column(name = "corrected_summary", nullable = false, length = 2_000) var correctedSummary: String = "",
+    @Column(nullable = false, length = 500) var reason: String = "",
+    @Column(name = "corrected_by_user_id", nullable = false) var correctedByUserId: UUID = UUID.randomUUID(),
+    @Column(name = "corrected_at", nullable = false) var correctedAt: Instant = Instant.now(),
+)
+
 @Entity @Table(name = "parent_enrollments")
 class ParentEnrollment(
     @Id var id: UUID = UUID.randomUUID(),
@@ -487,6 +501,50 @@ class ChildProgram(
     @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
     @Column(nullable = false) var name: String = "",
     @Column(nullable = false) var description: String = "",
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: com.daycare.api.domain.ChildProgramStatus = com.daycare.api.domain.ChildProgramStatus.ACTIVE,
+    @Column(name = "parent_visible", nullable = false) var parentVisible: Boolean = false,
+    @Column(name = "parent_summary", length = 2_000) var parentSummary: String? = null,
+    @Column(name = "home_guidance", length = 2_000) var homeGuidance: String? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity
+@Table(name = "child_program_steps")
+class ChildProgramStep(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "child_program_id", nullable = false) var childProgramId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var title: String = "",
+    @Column(nullable = false) var description: String = "",
+    @Column(name = "home_guidance", length = 2_000) var homeGuidance: String? = null,
+    @Column(name = "parent_visible", nullable = false) var parentVisible: Boolean = false,
+    @Column(nullable = false) var completed: Boolean = false,
+    @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity
+@Table(name = "child_program_staff_notes")
+class ChildProgramStaffNote(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "child_program_id", nullable = false) var childProgramId: UUID = UUID.randomUUID(),
+    @Column(name = "child_program_step_id") var childProgramStepId: UUID? = null,
+    @Column(name = "author_user_id", nullable = false) var authorUserId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var note: String = "",
+    @Column(name = "recorded_at", nullable = false) var recordedAt: Instant = Instant.now(),
+)
+
+@Entity
+@Table(name = "child_program_parent_feedback")
+class ChildProgramParentFeedback(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "child_program_id", nullable = false) var childProgramId: UUID = UUID.randomUUID(),
+    @Column(name = "parent_user_id", nullable = false) var parentUserId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var note: String = "",
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 

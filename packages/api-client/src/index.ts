@@ -71,7 +71,16 @@ export type BranchListFilter = { branchId?: string };
 export type ChildListFilter = { branchId?: string; learningLevelId?: string; classroomId?: string };
 export type ChildAttendanceReportFilter = { branchId: string; startsOn: string; endsOn: string };
 export type UpdateChildInput = Omit<ChildInput, "classroomId">;
-export type ChildProgram = { id: string; name: string; description: string };
+export type ChildProgramStatus = "ACTIVE" | "COMPLETED" | "DISCONTINUED";
+export type ChildProgramStep = { id: string; title: string; description: string; homeGuidance?: string | null; parentVisible: boolean; completed: boolean; displayOrder: number };
+export type ChildProgramStaffNote = { id: string; stepId?: string | null; note: string; authorName: string; recordedAt: string };
+export type ChildProgramParentFeedback = { id: string; note: string; parentName?: string | null; createdAt: string };
+export type ChildProgram = { id: string; name: string; description: string; status: ChildProgramStatus; parentVisible: boolean; parentSummary?: string | null; homeGuidance?: string | null; steps: ChildProgramStep[]; staffNotes: ChildProgramStaffNote[]; parentFeedback: ChildProgramParentFeedback[] };
+export type ParentChildProgram = { id: string; name: string; parentSummary?: string | null; status: ChildProgramStatus; homeGuidance?: string | null; steps: ChildProgramStep[]; feedback: ChildProgramParentFeedback[] };
+export type CreateChildProgramInput = { name: string; description?: string; parentVisible?: boolean; parentSummary?: string; homeGuidance?: string };
+export type UpdateChildProgramInput = { name: string; description?: string; status: ChildProgramStatus; parentVisible: boolean; parentSummary?: string; homeGuidance?: string };
+export type CreateChildProgramStepInput = { title: string; description?: string; homeGuidance?: string; parentVisible?: boolean; displayOrder?: number };
+export type UpdateChildProgramStepInput = { title: string; description?: string; homeGuidance?: string; parentVisible: boolean; completed: boolean; displayOrder: number };
 export type ChildAssignmentRole = "STAFF" | "NURSE" | "MISS";
 export type ChildStaffAssignment = { id: string; userId: string; displayName: string; email?: string | null; assignmentRole: ChildAssignmentRole };
 export type ChildGuardian = { userId: string; displayName: string; email?: string | null; username?: string | null };
@@ -174,9 +183,11 @@ export type UpsertDevelopmentProgramInput = Omit<DevelopmentProgram, "id" | "act
 export type GoalIndicatorCheckIn = { indicatorId: string; date: string; outcome: GoalCheckInOutcome; note?: string | null; hasPhoto: boolean; hasAudio: boolean; audioDurationMs?: number | null; recordedAt: string };
 export type GoalCheckInPhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
 export type GoalCheckInAudioInput = { contentType: string; dataBase64: string; durationMs?: number };
+export type GoalCheckInBatchInput = { indicatorId: string; outcome: GoalCheckInOutcome };
 export type GoalCheckInPhoto = { contentType: string; dataBase64: string };
 export type GoalCheckInAudio = { contentType: string; dataBase64: string; durationMs?: number | null };
-export type ChildGoal = { id: string; childId: string; curriculumProgramId?: string | null; curriculumProgramName?: string | null; programId: string; name: string; description: string; startsOn: string; targetEndsOn: string; durationDays: number; minimumYesPercent: number; minimumYesStreak: number; status: "ACTIVE" | "COMPLETED"; finalOutcome?: ChildGoalOutcome | null; finalSummary?: string | null; finalizedAt?: string | null; recordedDays: number; yesDays: number; noDays: number; yesPercent?: number | null; currentYesStreak: number; longestYesStreak: number; meetsYesPercent: boolean; meetsYesStreak: boolean; missedDays: number; indicators: GoalIndicator[]; checkIns: GoalIndicatorCheckIn[] };
+export type ChildGoalConclusionCorrection = { id: string; previousOutcome: ChildGoalOutcome; previousSummary: string; correctedOutcome: ChildGoalOutcome; correctedSummary: string; reason: string; correctedAt: string };
+export type ChildGoal = { id: string; childId: string; curriculumProgramId?: string | null; curriculumProgramName?: string | null; programId: string; name: string; description: string; startsOn: string; targetEndsOn: string; durationDays: number; minimumYesPercent: number; minimumYesStreak: number; status: "ACTIVE" | "COMPLETED"; finalOutcome?: ChildGoalOutcome | null; finalSummary?: string | null; finalizedAt?: string | null; recordedDays: number; yesDays: number; noDays: number; yesPercent?: number | null; currentYesStreak: number; longestYesStreak: number; meetsYesPercent: boolean; meetsYesStreak: boolean; missedDays: number; indicators: GoalIndicator[]; checkIns: GoalIndicatorCheckIn[]; conclusionCorrections: ChildGoalConclusionCorrection[] };
 export type ChildPlacement = { id: string; classroomId: string; classroomName: string; learningLevelId?: string | null; learningLevelName?: string | null; learningPeriodId?: string | null; startsOn: string; endedOn?: string | null; ageGuidanceWarning: boolean };
 export type TenantInvitationInput = { email?: string; phoneNumber?: string; role: Extract<Role, "STAFF" | "PARENT">; branchId?: string; classroomId?: string };
 export type CreateTenantUserInput = { displayName: string; email: string; password: string; role: Extract<Role, "STAFF_ADMIN" | "STAFF">; username?: string; branchId?: string; canManageChildPrograms?: boolean; canManageDevelopmentCategories?: boolean };
@@ -187,7 +198,7 @@ export type ParentTenantPlan = { id: string; name: string; type: ServicePlanType
 export type ParentTenantCatalog = { organizationId: string; organizationName: string; branches: Array<{ id: string; name: string; dailyCapacity?: number | null }>; plans: ParentTenantPlan[] };
 export type ParentEnrollmentStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "EXPIRED" | "CANCELLED";
 export type ParentEnrollment = { id: string; organizationId: string; branchId: string; childId: string; childName: string; invoiceId?: string | null; entitlementId?: string | null; status: ParentEnrollmentStatus; invoiceStatus?: InvoiceStatus | null; planName: string; totalAmount: number; rejectionReason?: string | null; createdAt: string; parentFamilyProfile?: ParentFamilyProfileForTenant | null };
-export type ParentChildProfile = { child: Child; branch: { id: string; name: string; fullAddress?: string | null; googleMapsUrl?: string | null }; placement?: { classroomName: string; learningLevelName?: string | null } | null; programs: ChildProgram[]; staffAssignments: Array<{ displayName: string; assignmentRole: ChildAssignmentRole }> };
+export type ParentChildProfile = { child: Child; branch: { id: string; name: string; fullAddress?: string | null; googleMapsUrl?: string | null }; placement?: { classroomName: string; learningLevelName?: string | null } | null; programs: ParentChildProgram[]; staffAssignments: Array<{ displayName: string; assignmentRole: ChildAssignmentRole }> };
 export type ParentEnrollmentCheckoutInput = { organizationId: string; branchId: string; planId: string; bookingDates: string[]; promoCode?: string; children: Array<{ firstName: string; lastName?: string; gender: ChildGender; dateOfBirth: string }> };
 export type PrivateTutorType = "STAFF" | "EXTERNAL";
 export type PrivateTutoringRequestStatus = "PENDING_APPROVAL" | "PENDING_PAYMENT" | "CONFIRMED" | "REJECTED" | "CANCELLED";
@@ -290,6 +301,7 @@ export class ApiClient {
   async createBranch(input: { name: string; timezone?: string; fullAddress: string; googleMapsUrl?: string }): Promise<TenantBranch> { return this.request("/branches", { method: "POST", body: JSON.stringify(input) }); }
   async updateBranch(branchId: string, input: { name: string; timezone: string; fullAddress: string; googleMapsUrl?: string }): Promise<TenantBranch> { return this.request(`/branches/${branchId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async parentChildProfile(childId: string): Promise<ParentChildProfile> { return this.request(`/parent/children/${childId}/profile`); }
+  async addParentChildProgramFeedback(childId: string, programId: string, note: string): Promise<ChildProgramParentFeedback> { return this.request(`/parent/children/${childId}/programs/${programId}/feedback`, { method: "POST", body: JSON.stringify({ note }) }); }
   async setPrimaryBranch(branchId: string): Promise<TenantBranch> { return this.request(`/branches/${branchId}/primary`, { method: "POST" }); }
   async archiveBranch(branchId: string): Promise<TenantBranch> { return this.request(`/branches/${branchId}/archive`, { method: "POST" }); }
   async branchOperatingHours(branchId: string): Promise<BranchOperatingHours> { return this.request(`/branches/${branchId}/operating-hours`); }
@@ -392,9 +404,11 @@ export class ApiClient {
   async childGoals(childId: string): Promise<ChildGoal[]> { return this.request(`/children/${childId}/goals`); }
   async assignChildGoal(childId: string, input: { curriculumProgramId: string; programId: string; startsOn?: string }): Promise<ChildGoal> { return this.request(`/children/${childId}/goals`, { method: "POST", body: JSON.stringify(input) }); }
   async recordGoalCheckIn(goalId: string, date: string, indicatorId: string, outcome: GoalCheckInOutcome, detail?: { note?: string; photo?: GoalCheckInPhotoInput; audio?: GoalCheckInAudioInput }): Promise<ChildGoal> { return this.request(`/child-goals/${goalId}/check-ins/${date}`, { method: "PUT", body: JSON.stringify({ indicatorId, outcome, ...detail }) }); }
+  async recordGoalCheckInBatch(goalId: string, date: string, checkIns: GoalCheckInBatchInput[]): Promise<ChildGoal> { return this.request(`/child-goals/${goalId}/check-ins/${date}/batch`, { method: "PUT", body: JSON.stringify({ checkIns }) }); }
   async goalCheckInPhoto(goalId: string, date: string, indicatorId: string): Promise<GoalCheckInPhoto> { return this.request(`/child-goals/${goalId}/check-ins/${date}/${indicatorId}/photo`); }
   async goalCheckInAudio(goalId: string, date: string, indicatorId: string): Promise<GoalCheckInAudio> { return this.request(`/child-goals/${goalId}/check-ins/${date}/${indicatorId}/audio`); }
   async finalizeChildGoal(goalId: string, input: { outcome: ChildGoalOutcome; summary: string }): Promise<ChildGoal> { return this.request(`/child-goals/${goalId}/finalize`, { method: "POST", body: JSON.stringify(input) }); }
+  async correctChildGoalConclusion(goalId: string, input: { outcome: ChildGoalOutcome; summary: string; reason: string }): Promise<void> { await this.request<void>(`/child-goals/${goalId}/conclusion-corrections`, { method: "POST", body: JSON.stringify(input) }); }
   async childPlacements(childId: string): Promise<ChildPlacement[]> { return this.request(`/children/${childId}/placements`); }
   async childPlacementOptions(childId: string): Promise<Classroom[]> { return this.request(`/children/${childId}/placement-options`); }
   async placeChild(childId: string, input: { classroomId: string; startsOn?: string }): Promise<ChildPlacement> { return this.request(`/children/${childId}/placements`, { method: "POST", body: JSON.stringify(input) }); }
@@ -415,8 +429,13 @@ export class ApiClient {
   async childProfile(childId: string): Promise<ChildProfile> { return this.request(`/children/${childId}`); }
   async updateChild(childId: string, input: UpdateChildInput): Promise<Child> { return this.request(`/children/${childId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async deactivateChild(childId: string): Promise<Child> { return this.request(`/children/${childId}/deactivate`, { method: "POST" }); }
-  async addChildProgram(childId: string, input: { name: string; description?: string }): Promise<ChildProgram> { return this.request(`/children/${childId}/programs`, { method: "POST", body: JSON.stringify(input) }); }
+  async addChildProgram(childId: string, input: CreateChildProgramInput): Promise<ChildProgram> { return this.request(`/children/${childId}/programs`, { method: "POST", body: JSON.stringify(input) }); }
+  async updateChildProgram(childId: string, programId: string, input: UpdateChildProgramInput): Promise<ChildProgram> { return this.request(`/children/${childId}/programs/${programId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async removeChildProgram(childId: string, programId: string): Promise<void> { await this.request<void>(`/children/${childId}/programs/${programId}`, { method: "DELETE" }); }
+  async addChildProgramStep(childId: string, programId: string, input: CreateChildProgramStepInput): Promise<ChildProgramStep> { return this.request(`/children/${childId}/programs/${programId}/steps`, { method: "POST", body: JSON.stringify(input) }); }
+  async updateChildProgramStep(childId: string, programId: string, stepId: string, input: UpdateChildProgramStepInput): Promise<ChildProgramStep> { return this.request(`/children/${childId}/programs/${programId}/steps/${stepId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async removeChildProgramStep(childId: string, programId: string, stepId: string): Promise<void> { await this.request<void>(`/children/${childId}/programs/${programId}/steps/${stepId}`, { method: "DELETE" }); }
+  async addChildProgramStaffNote(childId: string, programId: string, input: { note: string; stepId?: string }): Promise<ChildProgramStaffNote> { return this.request(`/children/${childId}/programs/${programId}/staff-notes`, { method: "POST", body: JSON.stringify(input) }); }
   async assignChildStaff(childId: string, input: { userId: string; assignmentRole: ChildAssignmentRole }): Promise<ChildStaffAssignment> { return this.request(`/children/${childId}/staff-assignments`, { method: "POST", body: JSON.stringify(input) }); }
   async unassignChildStaff(childId: string, assignmentId: string): Promise<void> { await this.request<void>(`/children/${childId}/staff-assignments/${assignmentId}`, { method: "DELETE" }); }
   async bindChildGuardian(childId: string, identifier: string): Promise<ChildGuardian> { return this.request(`/children/${childId}/guardians`, { method: "POST", body: JSON.stringify({ identifier }) }); }
