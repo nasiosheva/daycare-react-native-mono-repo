@@ -70,7 +70,7 @@ interface LearningLevelRepository : JpaRepository<LearningLevel, UUID> {
     fun findAllByOrganizationIdOrderByDisplayOrderAscNameAsc(organizationId: UUID): List<LearningLevel>
     fun findAllByOrganizationIdIsNullOrderByDisplayOrderAscNameAsc(): List<LearningLevel>
 }
-interface LearningLevelCurriculumProgramRepository : JpaRepository<LearningLevelCurriculumProgram, UUID> { fun findAllByLearningLevelId(learningLevelId: UUID): List<LearningLevelCurriculumProgram>; fun existsByLearningLevelIdAndCurriculumProgramId(learningLevelId: UUID, curriculumProgramId: UUID): Boolean; fun deleteAllByLearningLevelId(learningLevelId: UUID) }
+interface LearningLevelCurriculumProgramRepository : JpaRepository<LearningLevelCurriculumProgram, UUID> { fun findAllByLearningLevelId(learningLevelId: UUID): List<LearningLevelCurriculumProgram>; fun findAllByCurriculumProgramId(curriculumProgramId: UUID): List<LearningLevelCurriculumProgram>; fun existsByLearningLevelIdAndCurriculumProgramId(learningLevelId: UUID, curriculumProgramId: UUID): Boolean; fun deleteAllByLearningLevelId(learningLevelId: UUID) }
 interface PlatformAdministratorRepository : JpaRepository<PlatformAdministrator, UUID>
 interface TenantSubscriptionRepository : JpaRepository<TenantSubscription, UUID> { fun findByOrganizationId(organizationId: UUID): TenantSubscription? }
 interface TenantPaymentRepository : JpaRepository<TenantPayment, UUID> { fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<TenantPayment> }
@@ -125,6 +125,10 @@ interface ChildAbsenceRequestRepository : JpaRepository<ChildAbsenceRequest, UUI
 }
 interface ChildIncidentReportRepository : JpaRepository<ChildIncidentReport, UUID> {
     fun findAllByOrganizationIdAndChildIdOrderByOccurredAtDesc(organizationId: UUID, childId: UUID): List<ChildIncidentReport>
+}
+interface ChildIncidentAcknowledgementRepository : JpaRepository<ChildIncidentAcknowledgement, UUID> {
+    fun findAllByIncidentIdIn(incidentIds: Collection<UUID>): List<ChildIncidentAcknowledgement>
+    fun existsByIncidentIdAndUserId(incidentId: UUID, userId: UUID): Boolean
 }
 interface InvitationRepository : JpaRepository<Invitation, UUID> { fun findAllByStatus(status: InvitationStatus): List<Invitation>; fun findAllByOrganizationIdAndStatus(organizationId: UUID, status: InvitationStatus): List<Invitation> }
 interface NotificationRepository : JpaRepository<Notification, UUID> {

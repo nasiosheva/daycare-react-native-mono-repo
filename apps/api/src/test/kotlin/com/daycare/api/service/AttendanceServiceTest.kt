@@ -31,7 +31,7 @@ class AttendanceServiceTest {
         val fixtures = Fixtures()
         val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, classroomId = fixtures.classroom.id, firstName = "Alya")
         val otherChild = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, classroomId = UUID.randomUUID(), firstName = "Bima")
-        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, Role.entries.toSet(), readOnly = true)).thenReturn(fixtures.scope)
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, Role.entries.toSet())).thenReturn(fixtures.scope)
         `when`(fixtures.branches.findById(fixtures.branch.id)).thenReturn(Optional.of(fixtures.branch))
         `when`(fixtures.levels.findById(fixtures.level.id)).thenReturn(Optional.of(fixtures.level))
         `when`(fixtures.classrooms.findById(fixtures.classroom.id)).thenReturn(Optional.of(fixtures.classroom))
@@ -47,7 +47,7 @@ class AttendanceServiceTest {
         val fixtures = Fixtures()
         val otherBranch = Branch(organizationId = fixtures.organizationId)
         val classroom = Classroom(organizationId = fixtures.organizationId, branchId = otherBranch.id, learningLevelId = fixtures.level.id)
-        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, Role.entries.toSet(), readOnly = true)).thenReturn(fixtures.scope)
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, Role.entries.toSet())).thenReturn(fixtures.scope)
         `when`(fixtures.branches.findById(fixtures.branch.id)).thenReturn(Optional.of(fixtures.branch))
         `when`(fixtures.classrooms.findById(classroom.id)).thenReturn(Optional.of(classroom))
 
@@ -65,7 +65,7 @@ class AttendanceServiceTest {
         val endsOn = LocalDate.of(2026, 7, 31)
         val checkedOut = AttendanceRecord(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, childId = presentChild.id, operationalDate = startsOn, checkedInAt = Instant.now(), checkedOutAt = Instant.now())
         val pendingCheckOut = AttendanceRecord(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, childId = presentChild.id, operationalDate = endsOn, checkedInAt = Instant.now())
-        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)).thenReturn(fixtures.scope)
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(fixtures.scope)
         `when`(fixtures.branches.findById(fixtures.branch.id)).thenReturn(Optional.of(fixtures.branch))
         `when`(fixtures.childScopes.visibleChildren(fixtures.scope, fixtures.organizationId)).thenReturn(listOf(presentChild, childWithoutRecords))
         `when`(fixtures.attendance.findAllByChildIdInAndOperationalDateBetween(listOf(presentChild.id, childWithoutRecords.id), startsOn, endsOn)).thenReturn(listOf(checkedOut, pendingCheckOut))
@@ -81,7 +81,7 @@ class AttendanceServiceTest {
     @Test
     fun `child attendance recap rejects an inverted date range`() {
         val fixtures = Fixtures()
-        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)).thenReturn(fixtures.scope)
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(fixtures.scope)
 
         assertThrows(IllegalArgumentException::class.java) {
             fixtures.service.childAttendanceReport(fixtures.jwt, fixtures.organizationId, fixtures.branch.id, LocalDate.of(2026, 7, 2), LocalDate.of(2026, 7, 1))

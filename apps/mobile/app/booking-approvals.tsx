@@ -9,11 +9,17 @@ import { useBookingApproval } from "@/booking/useBooking";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { TranslationKey } from "@/i18n/translations";
 import { useAuth } from "@/auth/AuthProvider";
+import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
+import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAccess";
 import { downloadPaymentProofImage } from "@/payment-proof/downloadImage";
 
 type PendingConfirm = { kind: "booking" | "enrollment"; id: string; approved: boolean; name: string };
 
 export default function BookingApprovalsScreen() {
+  return <LegacyDaycareRouteGuard policy={legacyDaycareRoutePolicies.bookingApprovals}><BookingApprovalsScreenContent /></LegacyDaycareRouteGuard>;
+}
+
+function BookingApprovalsScreenContent() {
   const router = useRouter();
   const approval = useBookingApproval(); const { api, organizationId, profile } = useAuth(); const client = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
@@ -50,7 +56,7 @@ export default function BookingApprovalsScreen() {
   const [viewProofInvoiceId, setViewProofInvoiceId] = useState<string | null>(null);
   const closeProof = () => { setViewProofInvoiceId(null); setProofError(null); };
   const openProof = (invoiceId: string) => { setProofError(null); setViewProofInvoiceId(invoiceId); };
-  const proof = useQuery({ queryKey: ["payment-proof", viewProofInvoiceId], queryFn: () => api.paymentProof(viewProofInvoiceId!), enabled: Boolean(viewProofInvoiceId) });
+  const proof = useQuery({ queryKey: ["payment-proof", organizationId, viewProofInvoiceId], queryFn: () => api.paymentProof(viewProofInvoiceId!), enabled: Boolean(organizationId && viewProofInvoiceId) });
   const [downloading, setDownloading] = useState(false);
   const downloadProof = async () => {
     if (!proof.data) return;

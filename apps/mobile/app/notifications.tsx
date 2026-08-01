@@ -11,10 +11,11 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { getDeviceInstallationId } from "@/device/installationId";
 import { notificationMuteDurationKeys, notificationMuteDurations, notificationPreferenceQueryKey } from "@/notifications/mutePreferences";
 import { browserNotificationMutedUntil, muteBrowserNotifications, requestBrowserNotificationPermission, unmuteBrowserNotifications } from "../src/notifications/browserNotifications";
+import { canOpenNotificationRoute, notificationRouteWithOrganizationId } from "@/navigation/notificationRouteAccess";
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const { api, organizationId } = useAuth();
+  const { api, organizationId, profile } = useAuth();
   const { t, formatDateTime } = useI18n();
   const client = useQueryClient();
   const [settingsVisible, setSettingsVisible] = useState(false);
@@ -32,9 +33,13 @@ export default function NotificationsScreen() {
   const markRead = useMutation({ mutationFn: api.markNotificationRead.bind(api), onSuccess: () => void client.invalidateQueries({ queryKey: ["notifications", organizationId] }) });
   const updatePreference = useMutation({ mutationFn: async (muteDuration: PushNotificationMuteDuration | null) => api.updateDeviceNotificationPreference({ installationId: await getDeviceInstallationId(), muteDuration }), onSuccess: () => { void client.invalidateQueries({ queryKey: notificationPreferenceQueryKey(organizationId) }); setSettingsVisible(false); } });
 
+  const openAction = (actionPath?: string | null) => {
+    if (!actionPath || !canOpenNotificationRoute(profile, organizationId, actionPath)) return;
+    router.push(notificationRouteWithOrganizationId(actionPath, organizationId) as never);
+  };
   const open = async (id: string, actionPath?: string | null) => {
     try { await markRead.mutateAsync(id); }
-    finally { if (actionPath?.startsWith("/")) router.push(actionPath as never); }
+    finally { openAction(actionPath); }
   };
   const updateMutePreference = async (muteDuration: PushNotificationMuteDuration | null) => {
     if (!isNative) {
@@ -80,7 +85,7 @@ export default function NotificationsScreen() {
       <AppText>{item.body}</AppText>
       <AppText variant="caption" tone="muted">{formatDateTime(item.createdAt)}</AppText>
       {!item.readAt && <Button variant="secondary" loading={markRead.isPending} onPress={() => void open(item.id, item.actionPath)}>{t(item.actionPath ? "notifications.open" : "notifications.markRead")}</Button>}
-      {item.readAt && item.actionPath && <Button variant="secondary" onPress={() => router.push(item.actionPath as never)}>{t("notifications.open")}</Button>}
+      {item.readAt && item.actionPath && <Button variant="secondary" onPress={() => openAction(item.actionPath)}>{t("notifications.open")}</Button>}
     </View>)}
     {!notifications.isFetching && notifications.data?.length === 0 && <AppText tone="muted">{t("notifications.empty")}</AppText>}
     <BottomSheet visible={settingsVisible} onClose={closeSettings} closeAccessibilityLabel={t("common.close")} title={t("notifications.settings")} negativeAction={{ label: t("common.close"), onPress: closeSettings }} positiveAction={{ label: t("notifications.apply"), loading: updatePreference.isPending, disabled: selectedMuteDuration === undefined, onPress: applyMutePreference }}>

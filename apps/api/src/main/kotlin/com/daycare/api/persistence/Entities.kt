@@ -569,6 +569,14 @@ class ChildIncidentReport(
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
+@Entity @Table(name = "child_incident_acknowledgements")
+class ChildIncidentAcknowledgement(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "incident_id", nullable = false) var incidentId: UUID = UUID.randomUUID(),
+    @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(),
+    @Column(name = "acknowledged_at", nullable = false) var acknowledgedAt: Instant = Instant.now(),
+)
+
 @Entity @Table(name = "invitations")
 class Invitation(
     @Id var id: UUID = UUID.randomUUID(),

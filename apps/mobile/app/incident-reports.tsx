@@ -28,6 +28,7 @@ export default function IncidentReportsScreen() {
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
   const isStaff = membership?.role === "STAFF";
   const canCreate = membership?.active === true && (isStaffAdmin || isStaff);
+  const canAcknowledge = isParent && membership?.active === true;
   const imagePicker = useImagePicker();
   const [form, setForm] = useState<FormState | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -70,7 +71,7 @@ export default function IncidentReportsScreen() {
       <AppText>{report.description}</AppText>
       {report.actionTaken && <AppText tone="muted">{t("incident.actionTakenLabel", { action: report.actionTaken })}</AppText>}
       {report.hasPhoto && <Button variant="secondary" onPress={() => setPhotoEntry(report)}>{t("incident.viewPhoto")}</Button>}
-      {isParent && (report.acknowledgedAt ? <AppText variant="caption" tone="muted">{t("incident.acknowledged")}</AppText> : <Button variant="secondary" loading={acknowledge.isPending} onPress={() => void acknowledge.mutateAsync(report.id)}>{t("incident.acknowledge")}</Button>)}
+      {canAcknowledge && (report.acknowledgedByMe ? <AppText variant="caption" tone="muted">{t("incident.acknowledged")}</AppText> : <Button variant="secondary" loading={acknowledge.isPending} onPress={() => void acknowledge.mutateAsync(report.id)}>{t("incident.acknowledge")}</Button>)}
     </View>)}
     {!reports.isLoading && !reports.isError && reports.data?.length === 0 && <AppText tone="muted">{t("incident.empty")}</AppText>}
 

@@ -4,6 +4,8 @@ import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { AppText, BottomSheet, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
+import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
+import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAccess";
 import { useChildren, useAttendanceQr } from "@/attendance/useAttendance";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -17,6 +19,10 @@ function ChildQr({ childId, name }: { childId: string; name: string }) {
 }
 
 export default function ParentQrScreen() {
+  return <LegacyDaycareRouteGuard policy={legacyDaycareRoutePolicies.parentQr}><ParentQrScreenContent /></LegacyDaycareRouteGuard>;
+}
+
+function ParentQrScreenContent() {
   const { childId } = useLocalSearchParams<{ childId?: string }>();
   const children = useChildren();
   const { t } = useI18n();

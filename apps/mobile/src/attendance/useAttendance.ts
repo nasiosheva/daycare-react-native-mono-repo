@@ -20,6 +20,6 @@ export function useRecordAttendance() {
 }
 
 export function useAttendanceQr(childId: string) {
-  const { api } = useAuth();
-  return useQuery({ queryKey: ["attendance-qr", childId], queryFn: () => api.issueAttendanceQr(childId), enabled: Boolean(childId), staleTime: 30_000 });
+  const { api, organizationId } = useAuth();
+  return useQuery({ queryKey: ["attendance-qr", organizationId, childId], queryFn: () => api.issueAttendanceQr(childId), enabled: Boolean(organizationId && childId), staleTime: 30_000 });
 }

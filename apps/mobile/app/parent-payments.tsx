@@ -29,7 +29,7 @@ export default function ParentPaymentsScreen() {
   const client = useQueryClient();
   const [reviewInvoiceId, setReviewInvoiceId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
-  const proof = useQuery({ queryKey: ["payment-proof", reviewInvoiceId], queryFn: () => api.paymentProof(reviewInvoiceId!), enabled: Boolean(reviewInvoiceId) });
+  const proof = useQuery({ queryKey: ["payment-proof", organizationId, reviewInvoiceId], queryFn: () => api.paymentProof(reviewInvoiceId!), enabled: Boolean(organizationId && reviewInvoiceId) });
   const review = useMutation({ mutationFn: ({ invoiceId, approved, reason }: { invoiceId: string; approved: boolean; reason?: string }) => api.reviewPaymentProof(invoiceId, approved, reason), onSuccess: () => { void client.invalidateQueries({ queryKey: ["invoices", organizationId] }); setReviewInvoiceId(null); setRejectionReason(""); } });
   const pendingInvoices = useMemo(() => invoices.data?.filter((invoice) => invoice.status === "PENDING" || invoice.status === "PAYMENT_SUBMITTED") ?? [], [invoices.data]);
   const pendingTotal = useMemo(() => pendingInvoices.reduce((sum, invoice) => sum + invoice.totalAmount, 0), [pendingInvoices]);

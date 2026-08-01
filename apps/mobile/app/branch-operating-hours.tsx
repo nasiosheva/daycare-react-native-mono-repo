@@ -9,6 +9,8 @@ import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { DatePicker } from "@/date-picker/DatePicker";
+import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
+import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAccess";
 
 const operatingDays: OperatingDay[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 const defaultHours = (): BranchOperatingHour[] => operatingDays.map((dayOfWeek) => ({ dayOfWeek, active: dayOfWeek !== "SUNDAY", opensAt: "07:00", closesAt: "17:00" }));
@@ -17,6 +19,10 @@ const operatingHoursTemplates: OperatingHoursTemplate[] = [{ opensAt: "06:00", c
 const operatingHoursTemplate = (template: OperatingHoursTemplate): BranchOperatingHour[] => operatingDays.map((dayOfWeek) => ({ dayOfWeek, active: dayOfWeek !== "SUNDAY", opensAt: dayOfWeek === "SUNDAY" ? null : template.opensAt, closesAt: dayOfWeek === "SUNDAY" ? null : template.closesAt }));
 
 export default function BranchOperatingHoursScreen() {
+  return <LegacyDaycareRouteGuard policy={legacyDaycareRoutePolicies.staffAdminDaycareOperations}><BranchOperatingHoursScreenContent /></LegacyDaycareRouteGuard>;
+}
+
+function BranchOperatingHoursScreenContent() {
   const router = useRouter();
   const { branchId } = useLocalSearchParams<{ branchId: string }>();
   const { api, profile, organizationId } = useAuth();

@@ -6,21 +6,32 @@ import { AppText, Button, NavigationCard, ShimmerList, colors, radius, spacing }
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
+import { parentEnrollmentQueryKey } from "@/parent-enrollment/queryKeys";
 import type { ParentEnrollment } from "@daycare/api-client";
 
 export default function ParentEnrollmentScreen() {
   const router = useRouter();
-  const { api, profile, organizationId, refreshProfile, selectOrganization } = useAuth();
+  const { api, profile, organizationId, refreshProfile, selectOrganization, user } = useAuth();
   const { t, formatCurrency } = useI18n();
-  const enrollments = useQuery({ queryKey: ["parent-enrollments"], queryFn: () => api.parentEnrollments(), refetchInterval: 15_000 });
+  const enrollments = useQuery({ queryKey: parentEnrollmentQueryKey(user?.uid), queryFn: () => api.parentEnrollments(), enabled: Boolean(user), refetchInterval: 15_000 });
   const activatedEnrollmentId = useRef<string | null>(null);
   const approvedUnboundEnrollment = enrollments.data?.find((item) => item.status === "APPROVED" && !profile?.memberships.some((membership) => membership.organizationId === item.organizationId));
 
   useEffect(() => {
     if (!approvedUnboundEnrollment || activatedEnrollmentId.current === approvedUnboundEnrollment.id) return;
     activatedEnrollmentId.current = approvedUnboundEnrollment.id;
-    void refreshProfile().then(() => selectOrganization(approvedUnboundEnrollment.organizationId)).catch(() => { activatedEnrollmentId.current = null; });
-  }, [approvedUnboundEnrollment, refreshProfile, selectOrganization]);
+    void refreshProfile().then((nextProfile) => {
+      const memberships = nextProfile.memberships;
+      if (memberships.length > 1) {
+        router.replace("/context-selection");
+        return;
+      }
+      if (memberships.length === 1 && memberships[0].organizationId === approvedUnboundEnrollment.organizationId && selectOrganization(approvedUnboundEnrollment.organizationId)) {
+        router.replace("/home");
+        return;
+      }
+    }).catch(() => { activatedEnrollmentId.current = null; });
+  }, [approvedUnboundEnrollment, refreshProfile, router, selectOrganization]);
 
   return <AppScreen><View style={styles.content}>
     <AppText variant="title">{t("parentEnrollment.title")}</AppText>
@@ -35,7 +46,7 @@ export default function ParentEnrollmentScreen() {
       {!enrollments.isFetching && enrollments.data?.map((item) => <View key={item.id} style={styles.card}>
         <AppText variant="heading">{item.childName}</AppText>
         <AppText>{item.planName} · {formatCurrency(item.totalAmount)}</AppText>
-        <EnrollmentAction enrollment={item} onApply={() => router.push("/parent-enrollment-form")} onPay={() => item.invoiceId && router.push({ pathname: "/parent-payment", params: { invoiceId: item.invoiceId } })} t={t} />
+        <EnrollmentAction enrollment={item} onApply={() => router.push("/parent-enrollment-form")} onPay={() => item.invoiceId && router.push({ pathname: "/parent-payment", params: { invoiceId: item.invoiceId, organizationId: item.organizationId } })} t={t} />
       </View>)}
       {!enrollments.isFetching && enrollments.data?.length === 0 && <AppText tone="muted">{t("parentEnrollment.noApplication")}</AppText>}
     </View>

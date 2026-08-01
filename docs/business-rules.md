@@ -31,7 +31,7 @@ Aturan yang ditandai sebagai **target** menyatakan arah produk yang telah disetu
 
 ## 2. Tenant, cabang, dan akun Staff
 
-- Membuat tenant selalu membuat satu akun `STAFF_ADMIN` aktif pertama. Akun ini dilindungi: tidak dapat dihapus sebagai Staff Admin terakhir.
+- Membuat tenant selalu membuat satu akun `STAFF_ADMIN` aktif pertama, ditandai `primaryStaffAdmin`. Perlindungannya dua lapis dan berbeda mekanisme: akun `primaryStaffAdmin` tidak dapat dihapus, dinonaktifkan, atau diubah sama sekali selama masih menjadi tenant tersebut — bukan karena hitungan Staff Admin aktif, tetapi karena flag ini bersifat permanen; secara terpisah, menonaktifkan Staff Admin mana pun (termasuk yang bukan primary) tetap ditolak bila itu akan membuat jumlah Staff Admin aktif tenant menjadi nol.
 - Staff Admin dapat menambahkan Staff Admin tambahan dan Staff dari **Akun tenant** melalui tombol floating. Platform Admin menambahkan Staff Admin tambahan dari detail tenant. Kedua alur meminta nama tampilan, email wajib, password, serta username unik global yang opsional; username disimpan pada identitas global. Saat membuat `STAFF`, izin kelola program anak dan kategori perkembangan bersifat opsional serta secara default tidak aktif. Staff Admin dapat mengubah akun `STAFF` aktif dalam tenantnya: nama tampilan, email, username, cabang aktif, serta dua izin tersebut. Peran dan password tidak dapat diubah dari form edit; perubahan password tetap memakai alur khusus. Karena Firebase Email/Password sudah dinonaktifkan (lihat §1), akun dan password-nya mengikuti aturan target di §1: disimpan dan diverifikasi langsung di basis data aplikasi, bukan dibuat atau diverifikasi lewat Firebase. Pada layar masuk, pengguna dapat memakai email atau—bila disetel—username. Menonaktifkan akun berarti mencabut akses tenant, bukan menghapus identitas global atau riwayatnya.
 - Nama tampilan, email, dan username adalah bagian dari identitas global; cabang, status aktif, role tenant, dan permission adalah bagian dari membership tenant. Karena itu, edit kredensial yang diizinkan dari tenant memperbarui identitas yang sama secara global, sedangkan edit cabang/permission hanya memengaruhi tenant aktif. Rincian kontrak tersedia pada [Tenant staff accounts](tenant-staff-accounts.md).
 - Setiap cabang yang dibuat atau diubah Staff Admin wajib memiliki alamat lengkap free text. Tautan Google Maps bersifat opsional tetapi, bila diisi, harus memakai URL HTTPS Google Maps yang valid. Lokasi adalah data cabang, bukan data tenant global. Parent dapat melihat lokasi cabang anaknya dari Profil Anak dan membuka tautan Maps; Parent tidak dapat mengubahnya.
@@ -54,7 +54,7 @@ Parent dapat membatalkan aplikasi yang masih `PENDING_APPROVAL`. Ketika invoice 
 - Les privat adalah layanan tambahan tenant yang dapat dipakai Daycare, PAUD, maupun TK; layanan ini tidak bergantung pada capability `DAYCARE_OPERATIONS` dan tidak membuat entitlement atau booking Daycare.
 - Staff Admin membuat layanan per cabang dengan rentang usia dalam bulan, satu atau lebih Tingkatan, durasi, harga satu sesi, serta satu atau lebih tutor aktif. Tutor dapat berupa akun `STAFF` tenant aktif atau tutor eksternal; kontak tutor tidak ditampilkan ke Parent.
 - Parent hanya melihat layanan yang cocok dengan anak wali pada tenant dan cabang yang sama, memiliki penempatan Tingkatan aktif yang cocok, serta memenuhi rentang usia pada tanggal pengajuan. Parent mengajukan satu sesi dengan waktu pilihan opsional dan catatan.
-- Pengajuan dimulai sebagai `PENDING_APPROVAL`. Staff Admin memilih tutor dari layanan dan jadwal dalam zona waktu cabang, atau menolak dengan alasan wajib. Server menolak benturan jadwal untuk tutor yang sama pada pengajuan `PENDING_PAYMENT` dan `CONFIRMED`.
+- Pengajuan dimulai sebagai `PENDING_APPROVAL`. Staff Admin memilih tutor dari layanan dan jadwal, atau menolak dengan alasan wajib. Waktu jadwal saat ini disimpan tanpa zona waktu eksplisit (bukan dalam zona waktu cabang); ini adalah gap implementasi yang belum diperbaiki, bukan perilaku yang disengaja. Server menolak benturan jadwal untuk tutor yang sama pada pengajuan `PENDING_PAYMENT` dan `CONFIRMED`.
 - Persetujuan membuat invoice `PRIVATE_TUTORING` satu sesi dengan jatuh tempo dua hari dan memindahkan pengajuan ke `PENDING_PAYMENT`. Bukti pembayaran diverifikasi melalui alur invoice biasa; pembayaran terverifikasi mengonfirmasi sesi (`CONFIRMED`), sedangkan invoice lewat jatuh tempo membatalkan pengajuan. Parent dapat membatalkan pengajuan sebelum bukti pembayaran dikirim; pembatalan membatalkan invoice yang masih `PENDING`.
 - Pengajuan, keputusan, pembayaran, pembatalan, dan kedaluwarsa mengirim inbox, invalidasi realtime `PRIVATE_TUTORING`, dan push Expo native bila perangkat penerima terdaftar. Staff internal yang dipilih sebagai tutor menerima notifikasi jadwal setelah pembayaran diverifikasi.
 
@@ -62,7 +62,7 @@ Parent dapat membatalkan aplikasi yang masih `PENDING_APPROVAL`. Ketika invoice 
 
 - Paket layanan dan entitlement berada dalam scope tenant dan, bila relevan, cabang.
 - Kapasitas harian (baik pada Paket Layanan maupun pengaturan kapasitas cabang) wajib berupa bilangan bulat antara 1 dan 999. Backend memvalidasi ulang batas ini terlepas dari pemformatan input di client.
-- Booking kapasitas hanya dibuat setelah entitlement aktif. Aplikasi enrollment tidak mengunci kapasitas booking. Daftar persetujuan booking menampilkan nomor serta total invoice yang menjadi snapshot pembayaran booking; total tersebut tidak dihitung ulang di client agar diskon dan harga yang sudah terkunci tetap akurat.
+- Booking kapasitas dari alur credit-drawdown (pemakaian entitlement yang sudah ada) hanya dibuat setelah entitlement aktif. Alur pembelian langsung dengan tanggal (`purchaseForChild`, non-deferred) berbeda: kapasitas direservasi dan booking dibuat pada saat invoice diterbitkan, selagi entitlement baru masih `PENDING_PAYMENT`; kapasitas baru dilepas kembali bila invoice kedaluwarsa belum dibayar. Aplikasi enrollment tidak mengunci kapasitas booking. Daftar persetujuan booking menampilkan nomor serta total invoice yang menjadi snapshot pembayaran booking; total tersebut tidak dihitung ulang di client agar diskon dan harga yang sudah terkunci tetap akurat.
 - Riwayat booking Parent selalu dibatasi pada anak yang sedang dipilih di layar Booking. Jumlah pada kartu, daftar, dan keadaan kosong memakai scope anak yang sama; membuka riwayat meminta data terbaru, sedangkan realtime dan mutasi booking tetap menginvalidasi data yang sama.
 - Staff dalam scope anaknya dapat menyetujui atau menolak booking biasa. Persetujuan enrollment tetap khusus Staff Admin. Kegagalan keputusan harus ditampilkan inline pada konteks persetujuan yang sedang terbuka; error tidak boleh hanya bergantung pada dialog sistem, terutama di web.
 - Pada tenant dengan capability `DAYCARE_OPERATIONS`, kehadiran memerlukan booking yang telah dikonfirmasi. PAUD dan TK tetap dapat memakai kehadiran sebagai shared core tanpa prasyarat booking Daycare.
@@ -91,6 +91,8 @@ UI/UX belum memiliki satu entity bernama **Rencana Belajar** yang ditetapkan seb
 - Platform Admin membuat, mengubah, mengaktifkan kembali, dan mengarsipkan Program Kurikulum global dari menu **Master data global > Kurikulum global**.
 - Staff Admin membuat, mengubah, mengaktifkan kembali, dan mengarsipkan Program Kurikulum tenant. Staff hanya dapat membaca daftar Program Kurikulum.
 - Program global tampil bersama program tenant dengan label Global dan dapat ditautkan langsung ke tingkatan tenant tanpa disalin. Tenant tidak memiliki snapshot atau versi lokal dari program global pada flow saat ini.
+- Program global yang dibuat atau diubah wajib memiliki tepat satu **tingkatan referensi global**. Pemilih Program Perkembangan global hanya menampilkan record pada tingkatan referensi tersebut, dan API menolak relasi Program Perkembangan lintas tingkatan. Tingkatan referensi global ini tidak menggantikan relasi Program Kurikulum ke tingkatan tenant: Staff Admin tetap dapat menautkan program global yang sama ke tingkatan tenant tanpa membuat salinan.
+- Program global lama yang belum memiliki tingkatan referensi tetap dapat dibaca untuk menjaga data historis, tetapi Platform Admin wajib memilih tingkatan referensi sebelum dapat menyimpannya kembali. Sistem tidak menebak atau memigrasikan tingkatan referensi dari nama program maupun Goal yang lama.
 - Tenant tidak berwenang mengubah atau mengarsipkan Program global. Jika UI tenant menampilkan aksi tersebut pada item Global, aksi itu adalah gap UI dan bukan pemberian hak bisnis.
 - Program global hanya dapat menautkan Program Perkembangan global yang
   tersedia (belum dihapus). Program tenant dapat menautkan Program
@@ -654,7 +656,7 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
 | Capability | Status | Entry point yang boleh tampil | Larangan eksplisit |
 | --- | --- | --- | --- |
 | `DAYCARE_OPERATIONS` | Berlaku saat ini | Paket layanan, entitlement, booking, check-in/out, jam operasional, overtime | Tidak membuka penerimaan sekolah, rapor, atau absensi mata pelajaran. |
-| `ACADEMIC_CURRICULUM` | Berlaku saat ini untuk PAUD/TK | Tingkatan, rombel, Program Kurikulum, Program Perkembangan, Goal, dan aktivitas kurikulum | Tidak dianggap sebagai izin nilai mapel, rapor, atau jadwal SD/SMP. |
+| `ACADEMIC_CURRICULUM` | Ada di domain model (derivasi capability per jenis lembaga) tetapi **belum ditegakkan** sebagai gate akses; endpoint dan UI Tingkatan, rombel, Program Kurikulum, Program Perkembangan, Goal, dan aktivitas kurikulum saat ini hanya memfilter berdasarkan Role, tidak berdasarkan capability tenant. Gap implementasi, bukan perilaku yang disengaja. | Tingkatan, rombel, Program Kurikulum, Program Perkembangan, Goal, dan aktivitas kurikulum | Tidak dianggap sebagai izin nilai mapel, rapor, atau jadwal SD/SMP. |
 | `EDUCATION_ADMISSIONS` | Target | Siklus penerimaan, requirement dokumen, review, waitlist, dan offer sekolah | Tidak membuka paket/entitlement/booking Daycare. |
 | `EARLY_CHILDHOOD_EDUCATION` | Target | Portofolio PAUD/TK, ringkasan periode, dan penawaran penerimaan pendidikan usia dini | Tidak mengaktifkan booking Daycare kecuali offering juga memiliki `DAYCARE_OPERATIONS`. |
 | `SCHOOL_ACADEMICS` | Target | Tahun ajaran, mata pelajaran, jadwal, tugas, asesmen, rapor | Tidak mengizinkan pembayaran, penerimaan, atau disiplin tanpa capability masing-masing. |
@@ -744,9 +746,9 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
 | Invoice `PAID`, entitlement `ACTIVE` | Anak operasional untuk layanan yang sesuai | Booking, QR, riwayat, dan aksi Parent lain yang diizinkan | Operasi Daycare sesuai scope | Tidak ada akses ke anak lain atau tenant lain. |
 | Application `REJECTED` | Tidak ada layanan aktif dari aplikasi itu | Baca alasan; buat pengajuan baru bila tenant masih tersedia | Baca histori keputusan | Tidak ada retry otomatis atau reuse snapshot harga lama. |
 | Application `CANCELLED` | Tidak ada layanan aktif dari aplikasi itu | Baca histori saja | Baca histori saja | Tidak ada edit atau restore dari UI. |
-| Invoice enrollment `OVERDUE` dan tidak ada entitlement aktif lain | Mengikuti restriction Daycare legacy §3 | Baca reason dan jalur reapply; bayar/upload proof hanya bila invoice mengembalikan action payable eksplisit | Kelola pembayaran sesuai scope | Tidak ada booking baru, QR, mutasi operasional, atau asumsi bahwa invoice overdue selalu masih dapat dibayar. |
+| Invoice enrollment `OVERDUE` dan tidak ada entitlement aktif lain | Mengikuti restriction Daycare legacy §3 | Baca reason; UI saat ini menyimpulkan sendiri dari `status`/`invoiceStatus` mentah kapan menampilkan retry/pengajuan baru (lihat catatan di bawah tabel ini) — bukan dari action code server eksplisit | Kelola pembayaran sesuai scope | Tidak ada booking baru, QR, mutasi operasional, atau asumsi bahwa invoice overdue selalu masih dapat dibayar. |
 
-- `BILLING_LIMITED` pada invoice enrollment Daycare legacy tidak berarti tombol
+- Status distinct `BILLING_LIMITED` beserta action code eksplisit `REAPPLY`/`UPLOAD_PAYMENT_PROOF` dari server **belum diimplementasikan**; ini adalah kontrak target, bukan perilaku saat ini. Implementasi saat ini (`apps/mobile/app/parent-enrollment.tsx`) menyimpulkan sendiri di client kapan menampilkan retry/pengajuan baru dari kombinasi field mentah `status` (`CANCELLED`/`EXPIRED`) dan `invoiceStatus` (`OVERDUE`), bukan dari action code eksplisit yang dikirim server. Kontrak target berikut ini yang seharusnya berlaku: `BILLING_LIMITED` pada invoice enrollment Daycare legacy tidak berarti tombol
   bayar/upload bukti selalu tersedia. Bila policy §3 mengharuskan Parent
   mengajukan ulang, server mengirim status read-only dan action `REAPPLY`,
   bukan `UPLOAD_PAYMENT_PROOF`. Ini berbeda dari restriction finance pendidikan
@@ -1047,6 +1049,8 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
 
 ### 13.9 Kehadiran lintas layanan tanpa collision
 
+**Target** (belum diimplementasikan — tidak ada `AttendanceContext`/`attendancePolicy` di backend maupun mobile saat ini; layar kehadiran Daycare yang berjalan (`apps/mobile/app/attendance.tsx`) menyimpulkan state tombol langsung di client dari `child.todayCheckedInAt`/`todayCheckedOutAt`, bukan dari objek policy server seperti dideskripsikan di bawah ini):
+
 - Kebijakan kehadiran efektif harus dikembalikan server pada roster dan detail
   peserta didik sebagai `AttendanceContext`. UI tidak boleh menyimpulkan
   kebijakan dari capability tenant gabungan, karena satu tenant dapat memiliki
@@ -1089,7 +1093,10 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
 - State tombol Daycare minimum adalah belum check-in, check-in sedang dikirim,
   check-in tercatat/belum check-out, check-out sedang dikirim, selesai, dan
   konflik/double scan. Semua state berasal dari response server; UI tidak
-  menandai check-in/out berhasil sebelum record kanonis diterima.
+  menandai check-in/out berhasil sebelum record kanonis diterima. Implementasi
+  saat ini (`apps/mobile/app/attendance-scan.tsx`) menampilkan konflik/double
+  scan sebagai `Alert.alert` sekali-tampil, bukan state tombol persisten
+  seperti tersirat di atas — gap kecil terhadap target ini.
 
 ### 13.10 Portofolio PAUD/TK, akademik SD/SMP, tugas, dan laporan
 
@@ -1602,6 +1609,8 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
 
 #### 13.13.1 Relasi keselamatan dan check-out
 
+**Target** (belum diimplementasikan — tidak ada `EmergencyContact`/`PickupAuthorization`/`PICKUP_VERIFY` di codebase saat ini; check-out Daycare yang berjalan hanya mencatat `checkedOutAt`/`checkOutMethod` tanpa konsep otorisasi/verifikasi penjemput):
+
 - `GuardianLink`, `EmergencyContact`, dan `PickupAuthorization` adalah entity
   berbeda. Satu orang dapat direferensikan oleh lebih dari satu entity, tetapi
   hak tidak diwariskan antar-entity.
@@ -1633,6 +1642,8 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
 
 #### 13.13.2 Consent yang direvisi dan dibekukan
 
+**Target** (belum diimplementasikan — tidak ada `ConsentDefinition`/`ConsentRecord`/`GuardianAuthority`/`HEALTH_EMERGENCY_OVERRIDE` di codebase saat ini; tidak ada mekanisme consent tenant-scoped sama sekali pada implementasi berjalan):
+
 - `ConsentDefinition` bersifat tenant-scoped dan membawa revision serta scope
   eksplisit `TENANT`, `BRANCH`, atau `OFFERING`; scope cabang/offering wajib
   diisi bila mode tersebut dipilih. `ConsentRecord` menyimpan child, purpose,
@@ -1658,6 +1669,8 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
   obat atau consent berkelanjutan.
 
 #### 13.13.3 Kesehatan dan pemberian obat
+
+**Implementasi saat ini berbeda dari target di bawah ini**: `ChildHealthRecord` (§10) adalah satu record flat per anak (`bloodType`/`allergies`/`medicalConditions`/`medications`/`emergencyInstructions` — semuanya teks bebas, bukan entity terpisah `EmergencyHealthSummary`/`RestrictedHealthDetail`/`MedicationOrder`/`MedicationAdministrationLog`), dan **tidak ada model grant** (`GuardianAuthority`, `VIEW_HEALTH`) sama sekali. Saat ini: Parent yang terhubung sebagai guardian anak (lewat `GuardianLink` biasa) selalu dapat membaca seluruh record kesehatan anaknya; Staff Admin serta **semua** Staff yang di-scope ke anak itu (bukan hanya Staff dengan grant kesehatan khusus) dapat membaca dan menulis — ini keputusan desain yang disengaja, menyamakan pola izin Program Anak (lihat §10), bukan bug. Target di bawah ini (pemisahan entity, grant kesehatan khusus per Staff, `VIEW_HEALTH` sebagai syarat baca Parent) belum dibangun:
 
 - Target data kesehatan dipisah menjadi `EmergencyHealthSummary`,
   `RestrictedHealthDetail`, `MedicationOrder`, dan `MedicationAdministrationLog`.

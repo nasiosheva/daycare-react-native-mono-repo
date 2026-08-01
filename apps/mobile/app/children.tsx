@@ -24,6 +24,7 @@ export default function ChildrenScreen() {
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
   const canManage = isStaffAdmin && membership.active;
   const canOpenDetail = membership?.role === "STAFF_ADMIN" || membership?.role === "STAFF";
+  const canExport = Boolean(membership?.active && canOpenDetail);
   const [childFilter, setChildFilter] = useState<ChildListFilter>({});
   const children = useChildren(isStaffAdmin ? childFilter : {});
   const createChild = useCreateChild();
@@ -57,7 +58,7 @@ export default function ChildrenScreen() {
   const openChild = (childId: string) => router.push({ pathname: "/child-detail", params: { childId} });
   return <AppScreen showBottomNavigation={false} title={t("children.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton accessibilityLabel={t("children.add")} onPress={() => setAddVisible(true)}>+ {t("children.add")}</FloatingActionButton> : undefined}>
     {isStaffAdmin && <ChildFilterTabs filter={childFilter} onChange={setChildFilter} />}
-    {canOpenDetail && <ChildrenReportActions filter={childFilter} />}
+    {canOpenDetail && <ChildrenReportActions canExport={canExport} filter={childFilter} />}
     <AppText variant="bodySmall" tone="muted">{t("children.menuDescription")}</AppText>
     <AppText tone={children.data?.length ? "default" : "muted"}>{children.isFetching ? t("common.loading") : children.data?.length ? t("children.countSummary", { count: children.data.length }) : t("children.empty")}</AppText>
     {children.isError && <Button variant="secondary" onPress={() => void children.refetch()}>{t("common.retry")}</Button>}

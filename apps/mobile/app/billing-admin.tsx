@@ -7,6 +7,8 @@ import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, 
 import { AppScreen } from "@/navigation/AppScreen";
 import { useInvoices, useMarkInvoicePaid, useServicePlans } from "@/booking/useBooking";
 import { useAuth } from "@/auth/AuthProvider";
+import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
+import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAccess";
 import { useI18n } from "@/i18n/I18nProvider";
 import { servicePlanTypeKey } from "@/i18n/translations";
 import { notify } from "@/notify/notify";
@@ -62,6 +64,10 @@ function planFieldError(fields: PlanFields, isTemplateEditor: boolean): "billing
 }
 
 export default function BillingAdminScreen() {
+  return <LegacyDaycareRouteGuard policy={legacyDaycareRoutePolicies.staffAdminDaycareOperations}><BillingAdminScreenContent /></LegacyDaycareRouteGuard>;
+}
+
+function BillingAdminScreenContent() {
   const router = useRouter();
   const { api, profile, organizationId } = useAuth();
   const { t, formatCurrency, formatDate } = useI18n();
