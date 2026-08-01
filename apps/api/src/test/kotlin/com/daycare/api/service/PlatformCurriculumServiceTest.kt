@@ -21,7 +21,7 @@ class PlatformCurriculumServiceTest {
         val seeding = mock(GlobalCurriculumSeedingService::class.java)
         val service = PlatformCurriculumService(platformAccess, mock(CurriculumProgramRepository::class.java), mock(CurriculumProgramDevelopmentProgramRepository::class.java), mock(DevelopmentProgramRepository::class.java), seeding)
         val jwt = mock(Jwt::class.java)
-        val result = GlobalCurriculumSeedResult(alreadySeeded = false, learningLevelCount = 4, developmentProgramCount = 24, developmentProgramItemCount = 138, curriculumProgramCount = 4)
+        val result = GlobalCurriculumSeedResult(alreadySeeded = false, learningLevelCount = 4, developmentProgramCount = 24, developmentProgramItemCount = 138)
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
         `when`(seeding.seed()).thenReturn(result)
 
