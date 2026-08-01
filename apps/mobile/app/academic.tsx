@@ -21,6 +21,7 @@ export default function AcademicScreen() {
     {membership.active === false && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     <View style={styles.actionsGrid}>
       {membership.role === "STAFF_ADMIN" && <ActionCard title={t("goals.title")} description={t("goals.menuDescription")} onPress={() => router.push("/goals")} />}
+      {membership.role === "STAFF_ADMIN" && <ActionCard title={t("analytics.title")} description={t("analytics.menuDescription")} onPress={() => router.push("/analytics")} />}
       <ActionCard title={t("children.title")} description={t("children.menuDescription")} onPress={() => router.push("/children")} />
       <ActionCard title={t("academic.year")} description={t("academic.addYearDescription")} onPress={() => router.push("/academic-years")} />
       <ActionCard title={t("academic.program")} description={t("academic.addProgramDescription")} onPress={() => router.push("/curriculum-programs")} />

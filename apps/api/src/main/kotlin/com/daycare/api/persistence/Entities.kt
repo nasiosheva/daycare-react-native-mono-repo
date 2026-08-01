@@ -7,6 +7,9 @@ import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.ChildEnrollmentStatus
 import com.daycare.api.domain.ChildAbsencePurpose
 import com.daycare.api.domain.ChildAbsenceRequestStatus
+import com.daycare.api.domain.IncidentSeverity
+import com.daycare.api.domain.IncidentCategory
+import com.daycare.api.domain.DevelopmentMediaKind
 import com.daycare.api.domain.Gender
 import com.daycare.api.domain.GoalCheckInOutcome
 import com.daycare.api.domain.GoalDomain
@@ -265,6 +268,7 @@ class Membership(
     @Column(name = "primary_staff_admin", nullable = false) var primaryStaffAdmin: Boolean = false,
     @Column(name = "can_manage_child_programs", nullable = false) var canManageChildPrograms: Boolean = false,
     @Column(name = "can_manage_development_categories", nullable = false) var canManageDevelopmentCategories: Boolean = false,
+    @Column(name = "deactivated_at") var deactivatedAt: Instant? = null,
 )
 
 @Entity @Table(name = "children")
@@ -333,6 +337,7 @@ class DevelopmentProgramItem(
     @Column(nullable = false) var name: String = "",
     @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
     @Column(nullable = false) var active: Boolean = true,
+    @Column(nullable = false) var priority: Boolean = false,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
@@ -486,6 +491,21 @@ class ChildProgram(
 )
 
 @Entity
+@Table(name = "child_health_records")
+class ChildHealthRecord(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false, unique = true) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "blood_type", length = 10) var bloodType: String? = null,
+    @Column(length = 2_000) var allergies: String? = null,
+    @Column(name = "medical_conditions", length = 2_000) var medicalConditions: String? = null,
+    @Column(length = 2_000) var medications: String? = null,
+    @Column(name = "emergency_instructions", length = 2_000) var emergencyInstructions: String? = null,
+    @Column(name = "updated_by_user_id", nullable = false) var updatedByUserId: UUID = UUID.randomUUID(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity
 @Table(name = "child_staff_assignments", uniqueConstraints = [UniqueConstraint(columnNames = ["child_id", "user_id"])])
 class ChildStaffAssignment(
     @Id var id: UUID = UUID.randomUUID(),
@@ -527,6 +547,25 @@ class ChildAbsenceRequest(
     @Column(name = "decided_by_user_id") var decidedByUserId: UUID? = null,
     @Column(name = "decided_at") var decidedAt: Instant? = null,
     @Column(name = "rejection_reason", length = 500) var rejectionReason: String? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "child_incident_reports")
+class ChildIncidentReport(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "reported_by_user_id", nullable = false) var reportedByUserId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var severity: IncidentSeverity = IncidentSeverity.MINOR,
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var category: IncidentCategory = IncidentCategory.OTHER,
+    @Column(nullable = false, length = 2_000) var description: String = "",
+    @Column(name = "action_taken", length = 2_000) var actionTaken: String? = null,
+    @Column(name = "occurred_at", nullable = false) var occurredAt: Instant = Instant.now(),
+    @Column(name = "photo_content_type", length = 50) var photoContentType: String? = null,
+    @Column(name = "photo_data") var photoData: ByteArray? = null,
+    @Column(name = "acknowledged_by_user_id") var acknowledgedByUserId: UUID? = null,
+    @Column(name = "acknowledged_at") var acknowledgedAt: Instant? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
@@ -607,6 +646,19 @@ class DevelopmentEntry(
     @Column(name = "photo_content_type", length = 50) var photoContentType: String? = null,
     @Column(name = "photo_data") var photoData: ByteArray? = null,
     @Column(name = "recorded_at", nullable = false) var recordedAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "development_entry_media")
+class DevelopmentEntryMedia(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "development_entry_id", nullable = false) var developmentEntryId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var kind: DevelopmentMediaKind = DevelopmentMediaKind.PHOTO,
+    @Column(name = "content_type", nullable = false, length = 50) var contentType: String = "",
+    @Column(nullable = false) var data: ByteArray = ByteArray(0),
+    @Column(name = "duration_ms") var durationMs: Int? = null,
+    @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
 @Entity @Table(name = "development_categories")

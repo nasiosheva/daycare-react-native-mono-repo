@@ -25,7 +25,8 @@ export default function GlobalCurriculumScreen() {
     mutationFn: () => api.seedGlobalCurriculum(),
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ["global-development-programs"] });
-      const params = { levels: result.learningLevelCount, programs: result.developmentProgramCount, items: result.developmentProgramItemCount };
+      void queryClient.invalidateQueries({ queryKey: ["global-curriculum-programs"] });
+      const params = { levels: result.learningLevelCount, programs: result.developmentProgramCount, curriculumPrograms: result.curriculumProgramCount, items: result.developmentProgramItemCount };
       notify(t(result.alreadySeeded ? "globalCurriculum.seedAlreadyDone" : "globalCurriculum.seedSuccess", params));
     },
     onError: (error) => notify(t("globalCurriculum.seedFailed"), error instanceof Error ? error.message : t("auth.tryAgain")),
@@ -53,6 +54,7 @@ export default function GlobalCurriculumScreen() {
   return <AppScreen showBottomNavigation={false} title={t("globalCurriculum.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton accessibilityLabel={t("globalCurriculum.add")} onPress={openAdd}>+ {t("globalCurriculum.add")}</FloatingActionButton>}>
     <AppText tone="muted">{t("globalCurriculum.subtitle")}</AppText>
     <Button variant="secondary" loading={seedReferenceData.isPending} onPress={() => void seedReferenceData.mutateAsync()}>{t("globalCurriculum.seed")}</Button>
+    <AppText variant="caption" tone="muted">{t("globalCurriculum.seedDescription")}</AppText>
     {programs.isFetching ? <ShimmerList /> : programs.data?.filter((program) => program.active).map((program) => <ProgramCard key={program.id} program={program} t={t} onEdit={() => openEdit(program)} onActiveChange={(active) => void setActive.mutateAsync({ id: program.id, active })} />)}
     {!programs.isFetching && programs.data?.filter((program) => program.active).length === 0 && <AppText tone="muted">{t("globalCurriculum.empty")}</AppText>}
     {programs.data?.some((program) => !program.active) && <View style={styles.archivedSection}><AppText variant="label">{t("learning.archived")}</AppText>{programs.data.filter((program) => !program.active).map((program) => <ProgramCard key={program.id} program={program} t={t} onEdit={() => openEdit(program)} onActiveChange={(active) => void setActive.mutateAsync({ id: program.id, active })} />)}</View>}

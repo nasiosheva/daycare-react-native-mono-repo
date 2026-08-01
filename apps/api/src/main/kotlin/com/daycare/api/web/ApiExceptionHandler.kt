@@ -7,6 +7,7 @@ import com.daycare.api.service.LocalAuthenticationError
 import com.daycare.api.service.FirebaseIdentityError
 import com.daycare.api.service.TenantUserAccountError
 import com.daycare.api.service.DevelopmentEntryMediaError
+import com.daycare.api.service.ChildIncidentError
 import com.daycare.api.service.ParentEnrollmentError
 import com.daycare.api.service.TenantPaymentInstructionError
 import com.daycare.api.service.StaffLeaveRequestError
@@ -73,6 +74,16 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             DevelopmentEntryMediaError.PHOTO_TYPE to "error.developmentPhotoType",
             DevelopmentEntryMediaError.PHOTO_INVALID to "error.developmentPhotoInvalid",
             DevelopmentEntryMediaError.PHOTO_TOO_LARGE to "error.developmentPhotoTooLarge",
+            DevelopmentEntryMediaError.MEDIA_NOT_FOUND to "error.developmentMediaNotFound",
+            DevelopmentEntryMediaError.AUDIO_TYPE to "error.developmentAudioType",
+            DevelopmentEntryMediaError.AUDIO_INVALID to "error.developmentAudioInvalid",
+            DevelopmentEntryMediaError.AUDIO_TOO_LARGE to "error.developmentAudioTooLarge",
+            ChildIncidentError.NOT_FOUND to "error.childIncidentNotFound",
+            ChildIncidentError.UNAVAILABLE to "error.childIncidentUnavailable",
+            ChildIncidentError.PHOTO_MISSING to "error.childIncidentPhotoMissing",
+            ChildIncidentError.PHOTO_TYPE to "error.childIncidentPhotoType",
+            ChildIncidentError.PHOTO_INVALID to "error.childIncidentPhotoInvalid",
+            ChildIncidentError.PHOTO_TOO_LARGE to "error.childIncidentPhotoTooLarge",
             ParentEnrollmentError.ALREADY_ACTIVE to "error.parentEnrollmentAlreadyActive",
             ParentEnrollmentError.BOOKINGS_NOT_ALLOWED to "error.parentEnrollmentBookingsNotAllowed",
             ParentEnrollmentError.NOT_FOUND to "error.parentEnrollmentNotFound",

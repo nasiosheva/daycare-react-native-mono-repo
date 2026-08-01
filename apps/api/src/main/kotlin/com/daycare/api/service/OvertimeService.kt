@@ -13,6 +13,8 @@ import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.Invoice
 import com.daycare.api.persistence.InvoiceRepository
+import com.daycare.api.persistence.MembershipRepository
+import com.daycare.api.persistence.OrganizationRepository
 import com.daycare.api.persistence.OvertimeCharge
 import com.daycare.api.persistence.OvertimeChargeRepository
 import com.daycare.api.persistence.OvertimeChargeTierSnapshot
@@ -34,6 +36,7 @@ import java.util.UUID
 data class OperatingHourInput(@field:NotNull val dayOfWeek: DayOfWeek, val active: Boolean, val opensAt: LocalTime? = null, val closesAt: LocalTime? = null)
 data class OvertimeRateTierInput(@field:Positive val durationMinutes: Int, @field:DecimalMin("0.01") val amount: BigDecimal)
 data class BranchOperatingHoursResponse(val branchId: UUID, val branchName: String, val timezone: String, val hours: List<OperatingHourInput>, val tiers: List<OvertimeRateTierInput>)
+data class ParentChildOperatingHoursResponse(val childId: UUID, val childName: String, val organizationId: UUID, val organizationName: String, val branchId: UUID, val branchName: String, val timezone: String, val hours: List<OperatingHourInput>, val tiers: List<OvertimeRateTierInput>)
 data class UpdateBranchOperatingHoursRequest(@field:NotEmpty val hours: List<OperatingHourInput>, val tiers: List<OvertimeRateTierInput>)
 data class CreateOvertimeChargeRequest(@field:NotNull val childId: UUID, @field:NotNull val operationalDate: LocalDate, @field:NotNull val pickedUpAt: LocalTime, @field:NotNull val dueDate: LocalDate)
 data class OvertimeChargeResponse(val id: UUID, val invoiceId: UUID, val branchId: UUID, val childId: UUID, val childName: String, val operationalDate: LocalDate, val pickedUpAt: LocalTime, val closesAt: LocalTime, val overtimeMinutes: Int, val totalAmount: BigDecimal, val dueDate: LocalDate, val status: InvoiceStatus, val tiers: List<OvertimeRateTierInput>)
@@ -50,6 +53,10 @@ class OvertimeService(
     private val charges: OvertimeChargeRepository,
     private val snapshots: OvertimeChargeTierSnapshotRepository,
     private val notifications: NotificationService,
+    private val identityService: IdentityService,
+    private val memberships: MembershipRepository,
+    private val organizations: OrganizationRepository,
+    private val organizationCapabilities: OrganizationCapabilitiesService,
 ) {
     @Transactional(readOnly = true)
     fun branchHours(jwt: Jwt, organizationId: UUID, branchId: UUID): BranchOperatingHoursResponse {
@@ -79,6 +86,28 @@ class OvertimeService(
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
         val branchIds = guardians.findAllByUserId(scope.user.id).mapNotNull { link -> children.findById(link.childId).orElse(null)?.takeIf { it.organizationId == organizationId }?.branchId }.toSet()
         return branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId).filter { it.id in branchIds }.map(::response)
+    }
+
+    @Transactional(readOnly = true)
+    fun parentHoursAllTenants(jwt: Jwt): List<ParentChildOperatingHoursResponse> {
+        val user = identityService.sync(jwt)
+        val parentOrganizationIds = memberships.findAllByUserId(user.id).filter { it.active && it.role == Role.PARENT }.map { it.organizationId }.toSet()
+        return guardians.findAllByUserId(user.id)
+            .mapNotNull { link -> children.findById(link.childId).orElse(null) }
+            .filter { it.organizationId in parentOrganizationIds }
+            .mapNotNull { child ->
+                if (InstitutionCapability.DAYCARE_OPERATIONS !in organizationCapabilities.forOrganization(child.organizationId).capabilities) return@mapNotNull null
+                val branch = branches.findById(child.branchId).orElse(null) ?: return@mapNotNull null
+                val organization = organizations.findById(child.organizationId).orElse(null) ?: return@mapNotNull null
+                ParentChildOperatingHoursResponse(
+                    child.id, listOfNotNull(child.firstName, child.lastName).joinToString(" "),
+                    organization.id, organization.name,
+                    branch.id, branch.name, branch.timezone,
+                    hours.findAllByBranchIdOrderByDayOfWeekAsc(branch.id).map { OperatingHourInput(it.dayOfWeek, it.active, it.opensAt, it.closesAt) },
+                    tiers.findAllByBranchIdOrderByDisplayOrderAsc(branch.id).map { OvertimeRateTierInput(it.durationMinutes, it.amount) },
+                )
+            }
+            .sortedWith(compareBy({ it.organizationName }, { it.childName }))
     }
 
     @Transactional(readOnly = true)

@@ -88,6 +88,7 @@ export default function GoalsScreen() {
   const [indicatorSheetOpen, setIndicatorSheetOpen] = useState(false);
   const [editingIndicator, setEditingIndicator] = useState<GoalIndicator | null>(null);
   const [indicatorName, setIndicatorName] = useState("");
+  const [indicatorPriority, setIndicatorPriority] = useState(false);
 
   useEffect(() => {
     if (!editingProgram) return;
@@ -104,8 +105,8 @@ export default function GoalsScreen() {
     mutationFn: (input: UpsertDevelopmentProgramInput) => editingProgramId ? api.updateDevelopmentProgram(editingProgramId, input) : api.createDevelopmentProgram(input),
     onSuccess: (saved) => { refreshGoals(); if (!editingProgramId) setEditingProgramId(saved.id); },
   });
-  const createIndicator = useMutation({ mutationFn: (indicatorInput: { name: string }) => api.createGoalIndicator(editingProgramId!, indicatorInput), onSuccess: refreshGoals });
-  const updateIndicatorMutation = useMutation({ mutationFn: ({ indicatorId, indicatorInput }: { indicatorId: string; indicatorInput: { name: string; displayOrder: number } }) => api.updateGoalIndicator(editingProgramId!, indicatorId, indicatorInput), onSuccess: refreshGoals });
+  const createIndicator = useMutation({ mutationFn: (indicatorInput: { name: string; priority: boolean }) => api.createGoalIndicator(editingProgramId!, indicatorInput), onSuccess: refreshGoals });
+  const updateIndicatorMutation = useMutation({ mutationFn: ({ indicatorId, indicatorInput }: { indicatorId: string; indicatorInput: { name: string; displayOrder: number; priority: boolean } }) => api.updateGoalIndicator(editingProgramId!, indicatorId, indicatorInput), onSuccess: refreshGoals });
   const archiveIndicatorMutation = useMutation({ mutationFn: (indicatorId: string) => api.archiveGoalIndicator(editingProgramId!, indicatorId), onSuccess: refreshGoals });
 
   if (!profile || !membership) return null;
@@ -128,14 +129,14 @@ export default function GoalsScreen() {
     if (!editingProgramId) input.indicatorNames = newIndicatorNames.map((name) => name.trim()).filter(Boolean);
     void saveProgram.mutateAsync(input).catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")));
   };
-  const openAddIndicator = () => { setEditingIndicator(null); setIndicatorName(""); setIndicatorSheetOpen(true); };
-  const openEditIndicatorForm = (indicator: GoalIndicator) => { setEditingIndicator(indicator); setIndicatorName(indicator.name); setIndicatorSheetOpen(true); };
-  const closeIndicatorSheet = () => { setIndicatorSheetOpen(false); setEditingIndicator(null); setIndicatorName(""); };
+  const openAddIndicator = () => { setEditingIndicator(null); setIndicatorName(""); setIndicatorPriority(false); setIndicatorSheetOpen(true); };
+  const openEditIndicatorForm = (indicator: GoalIndicator) => { setEditingIndicator(indicator); setIndicatorName(indicator.name); setIndicatorPriority(indicator.priority); setIndicatorSheetOpen(true); };
+  const closeIndicatorSheet = () => { setIndicatorSheetOpen(false); setEditingIndicator(null); setIndicatorName(""); setIndicatorPriority(false); };
   const saveIndicator = async () => {
     if (!indicatorName.trim()) return;
     try {
-      if (editingIndicator) await updateIndicatorMutation.mutateAsync({ indicatorId: editingIndicator.id, indicatorInput: { name: indicatorName.trim(), displayOrder: editingIndicator.displayOrder } });
-      else await createIndicator.mutateAsync({ name: indicatorName.trim() });
+      if (editingIndicator) await updateIndicatorMutation.mutateAsync({ indicatorId: editingIndicator.id, indicatorInput: { name: indicatorName.trim(), displayOrder: editingIndicator.displayOrder, priority: indicatorPriority } });
+      else await createIndicator.mutateAsync({ name: indicatorName.trim(), priority: indicatorPriority });
       closeIndicatorSheet();
     } catch (error) { Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
@@ -163,7 +164,7 @@ export default function GoalsScreen() {
         const detailKey = `${goal.id}:${indicator.id}`;
         const detailExpanded = expandedDetailKey === detailKey;
         return <View key={indicator.id} style={styles.indicator}>
-          <AppText variant="label">{indicator.name}</AppText>
+          <AppText variant="label">{indicator.priority ? `★ ${indicator.name}` : indicator.name}</AppText>
           <View style={styles.options}>{goalCheckInOutcomes.map((outcome) => <Button key={outcome} variant="secondary" loading={checkIn.isPending} onPress={() => void checkIn.mutateAsync({ goalId: goal.id, indicatorId: indicator.id, outcome }).catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")))}>{t(outcome === "YES" ? "goals.yes" : "goals.no")}</Button>)}</View>
           {todayCheckIn && <Pressable accessibilityRole="button" accessibilityLabel={t(detailExpanded ? "goals.hideDetail" : "goals.addDetail")} accessibilityState={{ expanded: detailExpanded }} onPress={() => setExpandedDetailKey((current) => current === detailKey ? null : detailKey)} style={({ pressed }) => [styles.infoToggle, pressed && styles.pressed]}>
             <AppText variant="caption" tone="muted">ⓘ {t(detailExpanded ? "goals.hideDetail" : "goals.addDetail")}</AppText>
@@ -247,7 +248,7 @@ export default function GoalsScreen() {
         <View style={styles.fieldHeader}><AppText variant="label">{t("goals.indicators")}</AppText><Button variant="secondary" onPress={openAddIndicator}>{t("goals.addIndicator")}</Button></View>
         <AppText variant="caption" tone="muted">{t("goals.indicatorsInfo")}</AppText>
         {editingProgram.indicators.map((indicator) => <View key={indicator.id} style={[styles.indicatorRow, !indicator.active && styles.indicatorRowArchived]}>
-          <AppText style={styles.indicatorName}>{indicator.name}</AppText>
+          <AppText style={styles.indicatorName}>{indicator.priority ? `★ ${indicator.name}` : indicator.name}</AppText>
           {!indicator.active && <AppText variant="caption" tone="muted">{t("learning.archived")}</AppText>}
           <View style={styles.indicatorActions}>
             <IconButton icon="pencil-outline" tone="secondary" accessibilityLabel={t("common.edit")} onPress={() => openEditIndicatorForm(indicator)} />
@@ -266,6 +267,7 @@ export default function GoalsScreen() {
       positiveAction={{ label: t("common.save"), loading: createIndicator.isPending || updateIndicatorMutation.isPending, disabled: !indicatorName.trim(), onPress: () => void saveIndicator() }}
     >
       <TextInput style={styles.input} placeholder={t("goals.indicatorName")} value={indicatorName} onChangeText={setIndicatorName} />
+      <Button variant={indicatorPriority ? "primary" : "secondary"} onPress={() => setIndicatorPriority((current) => !current)}>★ {t("goals.priority")}</Button>
     </BottomSheet>
 
     {isStaffAdmin && <ChildFilterSheet visible={filterVisible} filter={childFilter} onClose={() => setFilterVisible(false)} onApply={(filter) => { setChildFilter(filter); setFilterVisible(false); }} />}

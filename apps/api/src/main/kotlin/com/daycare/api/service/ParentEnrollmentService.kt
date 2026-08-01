@@ -165,7 +165,7 @@ class ParentEnrollmentService(
             enrollment.entitlementId = purchase.entitlement.id
             child.enrollmentStatus = ChildEnrollmentStatus.ACTIVE
             val parentMembership = memberships.findAllByUserIdAndOrganizationId(enrollment.userId, organizationId).firstOrNull { it.role == Role.PARENT }
-            if (parentMembership == null) memberships.save(Membership(userId = enrollment.userId, organizationId = organizationId, role = Role.PARENT, branchId = enrollment.branchId)) else parentMembership.active = true
+            if (parentMembership == null) memberships.save(Membership(userId = enrollment.userId, organizationId = organizationId, role = Role.PARENT, branchId = enrollment.branchId)) else { parentMembership.active = true; parentMembership.deactivatedAt = null }
             if (!guardians.existsByChildIdAndUserId(child.id, enrollment.userId)) guardians.save(GuardianLink(childId = child.id, userId = enrollment.userId))
             enrollment.status = ParentEnrollmentStatus.APPROVED
             enrollment.approvedAt = Instant.now()
@@ -215,7 +215,7 @@ class ParentEnrollmentService(
         if (enrollment.status != ParentEnrollmentStatus.APPROVED) return
         val hasActiveService = entitlements.findAllByOrganizationIdAndOwnerUserId(enrollment.organizationId, enrollment.userId).any { it.status == EntitlementStatus.ACTIVE }
         if (!hasActiveService) {
-            memberships.findAllByUserIdAndOrganizationId(enrollment.userId, enrollment.organizationId).filter { it.role == Role.PARENT }.forEach { it.active = false }
+            memberships.findAllByUserIdAndOrganizationId(enrollment.userId, enrollment.organizationId).filter { it.role == Role.PARENT }.forEach { it.active = false; it.deactivatedAt = Instant.now() }
             notifications.notify(enrollment.organizationId, enrollment.userId, "Tagihan kedaluwarsa", "Akses tenant dibatasi sampai Anda mengajukan pendaftaran baru.", "/parent-enrollment", setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.PROFILE, RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS))
         }
     }

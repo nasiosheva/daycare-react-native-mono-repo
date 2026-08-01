@@ -58,7 +58,7 @@ class ChildManagementService(
             ?: throw IllegalArgumentException("Parent account was not found")
         val parentMembership = memberships.findAllByUserIdAndOrganizationId(parent.id, organizationId).firstOrNull { it.role == Role.PARENT }
         if (parentMembership == null) memberships.save(Membership(userId = parent.id, organizationId = organizationId, role = Role.PARENT, branchId = child.branchId))
-        else parentMembership.active = true
+        else { parentMembership.active = true; parentMembership.deactivatedAt = null }
         if (!guardianLinks.existsByChildIdAndUserId(child.id, parent.id)) guardianLinks.save(GuardianLink(childId = child.id, userId = parent.id))
         return ChildGuardianResponse(parent.id, parent.displayName, parent.email, parent.username)
     }

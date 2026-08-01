@@ -1,19 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import type { ChildListFilter, DevelopmentEntryPhotoInput } from "@daycare/api-client";
+import type { ChildListFilter, DevelopmentEntryMedia } from "@daycare/api-client";
 import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { can } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren } from "@/attendance/useAttendance";
-import { useCreateDevelopmentEntry, useDevelopmentCategories, useDevelopmentEntries, useDevelopmentEntryPhoto } from "@/development/useDevelopment";
+import { useCreateDevelopmentEntry, useDevelopmentCategories, useDevelopmentEntries, useDevelopmentEntryMedia, useDevelopmentEntryPhoto } from "@/development/useDevelopment";
 import { groupDevelopmentEntries } from "@/development/history";
 import { resolveSelectedChildId } from "@/development/selectedChild";
 import { useI18n } from "@/i18n/I18nProvider";
 import { ChildFilterSheet } from "@/children/ChildFilterSheet";
 import { useImagePicker, type PickedImage } from "@/image-picker";
+import { useAudioRecording, useAudioPlayback } from "@/audio";
 import { encodeLocalFileBase64 } from "@/development/encodeLocalFile";
+import { checkInAudioPlaybackUri } from "@/development/checkInAudioUri";
 
 export default function DevelopmentScreen() {
   const router = useRouter();
@@ -30,10 +32,11 @@ export default function DevelopmentScreen() {
   const [category, setCategory] = useState("OBSERVATION");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [photo, setPhoto] = useState<PickedImage | null>(null);
+  const [photos, setPhotos] = useState<PickedImage[]>([]);
   const [entryError, setEntryError] = useState<string | null>(null);
   const [entryVisible, setEntryVisible] = useState(false);
   const imagePicker = useImagePicker();
+  const audioRecording = useAudioRecording();
   const selectedChild = useMemo(() => children.data?.find((child) => child.id === childId) ?? null, [children.data, childId]);
   const entries = useDevelopmentEntries(childId);
   const developmentCategories = useDevelopmentCategories();
@@ -58,15 +61,23 @@ export default function DevelopmentScreen() {
   const submit = async () => {
     setEntryError(null);
     try {
-      const photoInput: DevelopmentEntryPhotoInput | undefined = photo ? {
-        contentType: photo.mimeType === "image/png" ? "image/png" : "image/jpeg",
-        dataBase64: await encodeLocalFileBase64(photo.uri),
-      } : undefined;
-      await createEntry.mutateAsync({ category, title, content, photo: photoInput });
+      const photoMedia = await Promise.all(photos.map(async (item) => ({
+        kind: "PHOTO" as const,
+        contentType: item.mimeType === "image/png" ? "image/png" : "image/jpeg",
+        dataBase64: await encodeLocalFileBase64(item.uri),
+      })));
+      const audioMedia = audioRecording.recording ? [{
+        kind: "AUDIO" as const,
+        contentType: audioRecording.recording.mimeType,
+        dataBase64: await encodeLocalFileBase64(audioRecording.recording.uri),
+        durationMs: audioRecording.recording.durationMs,
+      }] : [];
+      await createEntry.mutateAsync({ category, title, content, media: [...photoMedia, ...audioMedia] });
       setTitle("");
       setContent("");
-      setPhoto(null);
+      setPhotos([]);
       imagePicker.clear();
+      await audioRecording.clear();
       setEntryVisible(false);
       Alert.alert(t("development.saved"), t("development.savedDescription"));
     } catch (error) {
@@ -79,8 +90,12 @@ export default function DevelopmentScreen() {
     setEntryVisible(true);
   };
 
-  const selectPhoto = async () => setPhoto((await imagePicker.pickFromLibrary())[0] ?? null);
-  const takePhoto = async () => setPhoto(await imagePicker.takePhoto());
+  const selectPhoto = async () => { const picked = await imagePicker.pickFromLibrary(); setPhotos((current) => [...current, ...picked]); };
+  const takePhoto = async () => {
+    const picked = await imagePicker.takePhoto();
+    if (picked) setPhotos((current) => [...current, picked]);
+  };
+  const removePhoto = (index: number) => setPhotos((current) => current.filter((_, itemIndex) => itemIndex !== index));
 
   return <AppScreen showBottomNavigation={false} title={t("development.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("development.subtitle")}</AppText>
@@ -94,6 +109,8 @@ export default function DevelopmentScreen() {
     </View>}
     {hasFixedChild && !children.isLoading && !selectedChild && <AppText tone="muted">{t("children.empty")}</AppText>}
     {selectedChild && <Button variant="secondary" onPress={() => router.push({ pathname: "/goals", params: { childId: selectedChild.id } })}>{t("goals.title")}</Button>}
+    {selectedChild && <Button variant="secondary" onPress={() => router.push({ pathname: "/child-health", params: { childId: selectedChild.id } })}>{t("health.title")}</Button>}
+    {selectedChild && <Button variant="secondary" onPress={() => router.push({ pathname: "/incident-reports", params: { childId: selectedChild.id } })}>{t("incident.title")}</Button>}
     {canManageCategories && <Button variant="secondary" onPress={() => router.push("/development-categories")}>{t("development.categories")}</Button>}
     {selectedChild && canRecord && <Button onPress={openEntry}>{t("development.record", { name: selectedChild.fullName })}</Button>}
     <BottomSheet visible={entryVisible} onClose={() => setEntryVisible(false)} closeAccessibilityLabel={t("common.close")} title={selectedChild ? t("development.record", { name: selectedChild.fullName }) : t("development.title")} negativeAction={{ label: t("common.cancel"), onPress: () => setEntryVisible(false) }} positiveAction={{ label: t("development.share"), loading: createEntry.isPending, disabled: !title.trim() || !content.trim(), onPress: () => void submit() }}>
@@ -105,8 +122,18 @@ export default function DevelopmentScreen() {
         <Button variant="secondary" onPress={() => void selectPhoto()}>{t("development.uploadPhoto")}</Button>
         <Button variant="secondary" onPress={() => void takePhoto()}>{t("development.takePhoto")}</Button>
       </View>
-      {photo && <Image source={{ uri: photo.uri }} style={styles.photoPreview} resizeMode="contain" />}
+      {photos.length > 0 && <View style={styles.selector}>{photos.map((item, index) => <Pressable key={item.uri} accessibilityRole="button" accessibilityLabel={t("common.delete")} onPress={() => removePhoto(index)}>
+        <Image source={{ uri: item.uri }} style={styles.thumbnail} resizeMode="cover" />
+      </Pressable>)}</View>}
       {imagePicker.error && <AppText accessibilityRole="alert" tone="danger">{imagePicker.error.message}</AppText>}
+      <AppText variant="label">{t("development.addAudio")}</AppText>
+      {audioRecording.status !== "unsupported" && <View style={styles.selector}>
+        {audioRecording.status === "recording"
+          ? <Button variant="secondary" onPress={() => void audioRecording.stop()}>{t("goals.stopRecording")}</Button>
+          : <Button variant="secondary" onPress={() => void audioRecording.start()}>{t("goals.recordAudio")}</Button>}
+      </View>}
+      {audioRecording.recording && <AppText tone="muted" variant="caption">{t("goals.audioReady", { seconds: Math.round(audioRecording.recording.durationMs / 1000) })}</AppText>}
+      {audioRecording.error && <AppText tone="muted" variant="caption">{audioRecording.error.message}</AppText>}
       {entryError && <AppText accessibilityRole="alert" tone="danger">{entryError}</AppText>}
     </BottomSheet>
     {selectedChild && <DevelopmentHistory entries={entries} />}
@@ -129,6 +156,7 @@ function DevelopmentHistory({ entries }: { entries: ReturnType<typeof useDevelop
         <AppText variant="label">{entry.title}</AppText>
         <AppText>{entry.content}</AppText>
         {entry.hasPhoto && <DevelopmentPhotoThumbnail childId={entry.childId} entryId={entry.id} title={entry.title} onPress={() => setPhotoEntry({ id: entry.id, childId: entry.childId, title: entry.title })} />}
+        {entry.media.length > 0 && <View style={styles.selector}>{entry.media.map((item) => <DevelopmentMediaItem key={item.id} childId={entry.childId} entryId={entry.id} media={item} title={entry.title} />)}</View>}
         <AppText variant="caption" tone="muted">{formatDateTime(entry.recordedAt)} · {entry.recordedBy}</AppText>
       </View>)}
     </View>)}
@@ -139,6 +167,32 @@ function DevelopmentHistory({ entries }: { entries: ReturnType<typeof useDevelop
       {photo.data && <Image source={{ uri: `data:${photo.data.contentType};base64,${photo.data.dataBase64}` }} style={styles.historyPhotoPreview} resizeMode="contain" />}
     </BottomSheet>
   </View>;
+}
+
+function DevelopmentMediaItem({ childId, entryId, media, title }: { childId: string; entryId: string; media: DevelopmentEntryMedia; title: string }) {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const content = useDevelopmentEntryMedia(childId, entryId, expanded ? media.id : null);
+  const [audioUri, setAudioUri] = useState<string | null>(null);
+  const playback = useAudioPlayback(audioUri);
+
+  useEffect(() => {
+    if (media.kind !== "AUDIO" || !content.data) return;
+    void checkInAudioPlaybackUri(content.data.dataBase64).then(setAudioUri);
+  }, [content.data, media.kind]);
+
+  if (media.kind === "AUDIO") {
+    if (!expanded) return <Button variant="secondary" onPress={() => setExpanded(true)}>{t("goals.playAudio")}</Button>;
+    if (content.isFetching || !audioUri) return <View accessibilityLabel={t("development.photoLoading")} style={styles.thumbnailPlaceholder} />;
+    return <Button variant="secondary" onPress={() => playback.status === "playing" ? playback.pause() : playback.play()}>{t(playback.status === "playing" ? "goals.pauseAudio" : "goals.playAudio")}</Button>;
+  }
+
+  if (!expanded) return <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={() => setExpanded(true)} style={({ pressed }) => [styles.thumbnailPressable, pressed && styles.thumbnailPressed]}>
+    <View style={styles.thumbnailPlaceholder} />
+  </Pressable>;
+  if (content.isFetching) return <View accessibilityLabel={t("development.photoLoading")} style={styles.thumbnailPlaceholder} />;
+  if (!content.data) return null;
+  return <Image accessibilityLabel={title} source={{ uri: `data:${content.data.contentType};base64,${content.data.dataBase64}` }} style={styles.thumbnail} resizeMode="cover" />;
 }
 
 function DevelopmentPhotoThumbnail({ childId, entryId, title, onPress }: { childId: string; entryId: string; title: string; onPress: () => void }) {

@@ -146,6 +146,7 @@ class AdministrationService(
             require(membershipsFor(organizationId).count { it.active && it.role == Role.STAFF_ADMIN } > 1) { "At least one active Staff Admin is required" }
         }
         membership.active = false
+        membership.deactivatedAt = Instant.now()
     }
 
     @Transactional

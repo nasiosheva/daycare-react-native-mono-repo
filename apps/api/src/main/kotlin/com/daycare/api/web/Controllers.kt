@@ -98,6 +98,11 @@ import com.daycare.api.service.UpsertPrivateTutorRequest
 import com.daycare.api.service.CreatePrivateTutoringRequest
 import com.daycare.api.service.DecidePrivateTutoringRequest
 import com.daycare.api.service.ParentChildProfileService
+import com.daycare.api.service.ChildHealthService
+import com.daycare.api.service.UpsertChildHealthRecordRequest
+import com.daycare.api.service.ChildIncidentService
+import com.daycare.api.service.CreateChildIncidentRequest
+import com.daycare.api.service.AnalyticsService
 import com.daycare.api.domain.Gender
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import jakarta.validation.Valid
@@ -398,7 +403,7 @@ class PlatformController(
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val parentChildProfiles: ParentChildProfileService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService, private val tenantReadiness: TenantReadinessService) {
+class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val parentChildProfiles: ParentChildProfileService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService, private val tenantReadiness: TenantReadinessService, private val childHealth: ChildHealthService, private val childIncidents: ChildIncidentService) {
     @GetMapping("/tenant-readiness")
     fun tenantReadiness(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = tenantReadiness.organizationReadiness(jwt, organizationId)
 
@@ -506,6 +511,27 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @GetMapping("/children/{childId}/development-entries/{entryId}/photo")
     fun developmentEntryPhoto(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable entryId: UUID) = development.photo(jwt, organizationId, childId, entryId)
+
+    @GetMapping("/children/{childId}/development-entries/{entryId}/media/{mediaId}")
+    fun developmentEntryMedia(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable entryId: UUID, @PathVariable mediaId: UUID) = development.mediaContent(jwt, organizationId, childId, entryId, mediaId)
+
+    @GetMapping("/children/{childId}/health-record")
+    fun childHealthRecord(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childHealth.get(jwt, organizationId, childId)
+
+    @PutMapping("/children/{childId}/health-record")
+    fun upsertChildHealthRecord(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: UpsertChildHealthRecordRequest) = childHealth.upsert(jwt, organizationId, childId, request)
+
+    @GetMapping("/children/{childId}/incident-reports")
+    fun childIncidentReports(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childIncidents.list(jwt, organizationId, childId)
+
+    @PostMapping("/children/{childId}/incident-reports") @ResponseStatus(HttpStatus.CREATED)
+    fun createChildIncidentReport(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateChildIncidentRequest) = childIncidents.create(jwt, organizationId, childId, request)
+
+    @PostMapping("/children/{childId}/incident-reports/{incidentId}/acknowledge")
+    fun acknowledgeChildIncidentReport(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable incidentId: UUID) = childIncidents.acknowledge(jwt, organizationId, childId, incidentId)
+
+    @GetMapping("/children/{childId}/incident-reports/{incidentId}/photo")
+    fun childIncidentReportPhoto(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable incidentId: UUID) = childIncidents.photo(jwt, organizationId, childId, incidentId)
 
     @GetMapping("/development-categories")
     fun developmentCategories(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = development.categories(jwt, organizationId)
@@ -752,6 +778,9 @@ class BillingController(private val billing: BillingService, private val overtim
     @GetMapping("/parent/operating-hours")
     fun parentOperatingHours(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = overtime.parentHours(jwt, organizationId)
 
+    @GetMapping("/parent/operating-hours/all-tenants")
+    fun parentOperatingHoursAllTenants(@AuthenticationPrincipal jwt: Jwt) = overtime.parentHoursAllTenants(jwt)
+
     @GetMapping("/overtime-charges")
     fun overtimeCharges(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = overtime.charges(jwt, organizationId)
 
@@ -820,4 +849,17 @@ class BillingController(private val billing: BillingService, private val overtim
 
     @PostMapping("/invoices/{invoiceId}/mark-paid")
     fun markInvoicePaid(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID) = billing.markInvoicePaid(jwt, organizationId, invoiceId)
+}
+
+@RestController
+@RequestMapping("/v1/analytics")
+class AnalyticsController(private val analytics: AnalyticsService) {
+    @GetMapping("/occupancy")
+    fun occupancy(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = analytics.occupancy(jwt, organizationId)
+
+    @GetMapping("/parent-retention")
+    fun parentRetention(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) monthsBack: Int?) = analytics.parentRetention(jwt, organizationId, monthsBack ?: 6)
+
+    @GetMapping("/development-trend")
+    fun developmentTrend(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) monthsBack: Int?) = analytics.developmentTrend(jwt, organizationId, monthsBack ?: 6)
 }

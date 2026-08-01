@@ -141,6 +141,12 @@ export const developmentEntrySchema = z.object({
     contentType: z.enum(["image/jpeg", "image/png"]),
     dataBase64: z.string().min(1),
   }).optional(),
+  media: z.array(z.object({
+    kind: z.enum(["PHOTO", "AUDIO"]),
+    contentType: z.string().min(1),
+    dataBase64: z.string().min(1),
+    durationMs: z.number().int().positive().optional(),
+  })).optional(),
 });
 
 export const purchaseServiceSchema = z.object({

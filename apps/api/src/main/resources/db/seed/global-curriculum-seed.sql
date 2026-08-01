@@ -1,23 +1,31 @@
 -- Optional, idempotent seed for the reference "Program Daycare Berdasarkan Usia 1-5 Tahun"
 -- curriculum: 4 global LearningLevel age bands, 24 DevelopmentProgram rows (one per age band x
--- domain), and 138 DevelopmentProgramItem milestones. This file is NOT a Flyway migration and is
--- never run automatically as part of a schema build - it is executed on demand by
--- GlobalCurriculumSeeder.kt only when explicitly enabled (see
+-- domain), 139 DevelopmentProgramItem milestones (32 of them flagged priority=true as the
+-- highest-impact reference goals), and 4 global CurriculumProgram rows (one per age band, each
+-- linking that age band's 6 DevelopmentProgram rows and the age band's LearningLevel) so the
+-- reference data is immediately assignable to a child without any extra manual curation. This
+-- file is NOT a Flyway migration and is never run automatically as part of a schema build - it
+-- is executed on demand by GlobalCurriculumSeeder.kt only when explicitly enabled (see
 -- daycare.seed-global-curriculum-enabled). A schema reset followed by a plain Flyway migrate
--- therefore leaves development_programs/development_program_items/the global learning_levels
--- empty until this is deliberately run.
+-- therefore leaves all of the above empty until this is deliberately run.
+--
+-- Every INSERT below is individually guarded with NOT EXISTS (there is no single top-level
+-- short-circuit) so this file is always safe to re-run: a fresh database gets everything, and a
+-- database that was seeded by an older version of this script only gets whatever rows/sections
+-- were added since (for example the curriculum_programs section, or a milestone item added to
+-- an existing DevelopmentProgram) without duplicating anything already present.
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM learning_levels WHERE organization_id IS NULL AND name = 'Toddler (1-2 Tahun)') THEN
-    RETURN;
-  END IF;
-
-  INSERT INTO learning_levels (id, organization_id, name, min_age_months, max_age_months, display_order, is_template, active) VALUES
-  (gen_random_uuid(), NULL, 'Toddler (1-2 Tahun)', 12, 24, 0, true, true),
-  (gen_random_uuid(), NULL, 'Kelompok Bermain (2-3 Tahun)', 24, 36, 1, true, true),
-  (gen_random_uuid(), NULL, 'Kelompok A (3-4 Tahun)', 36, 48, 2, true, true),
-  (gen_random_uuid(), NULL, 'Kelompok B (4-5 Tahun)', 48, 60, 3, true, true);
+  INSERT INTO learning_levels (id, organization_id, name, min_age_months, max_age_months, display_order, is_template, active)
+  SELECT gen_random_uuid(), NULL, v.name, v.min_age_months, v.max_age_months, v.display_order, true, true
+  FROM (VALUES
+    ('Toddler (1-2 Tahun)', 12, 24, 0),
+    ('Kelompok Bermain (2-3 Tahun)', 24, 36, 1),
+    ('Kelompok A (3-4 Tahun)', 36, 48, 2),
+    ('Kelompok B (4-5 Tahun)', 48, 60, 3)
+  ) AS v(name, min_age_months, max_age_months, display_order)
+  WHERE NOT EXISTS (SELECT 1 FROM learning_levels ll WHERE ll.organization_id IS NULL AND ll.name = v.name);
 
   INSERT INTO development_programs (id, organization_id, learning_level_id, name, description, duration_days, minimum_yes_percent, minimum_yes_streak, domain, is_template, active, created_at)
   SELECT gen_random_uuid(), NULL, level.id, cat.name, '', cat.duration_days, cat.minimum_yes_percent, cat.minimum_yes_streak, cat.domain, true, true, now()
@@ -31,7 +39,11 @@ BEGIN
     ('SOSIAL_EMOSI', 'Sosial & Emosi', 21, 70, 5)
   ) AS cat(domain, name, duration_days, minimum_yes_percent, minimum_yes_streak)
   WHERE level.organization_id IS NULL AND level.is_template = true
-    AND level.name IN ('Toddler (1-2 Tahun)', 'Kelompok Bermain (2-3 Tahun)', 'Kelompok A (3-4 Tahun)', 'Kelompok B (4-5 Tahun)');
+    AND level.name IN ('Toddler (1-2 Tahun)', 'Kelompok Bermain (2-3 Tahun)', 'Kelompok A (3-4 Tahun)', 'Kelompok B (4-5 Tahun)')
+    AND NOT EXISTS (
+      SELECT 1 FROM development_programs dp
+      WHERE dp.organization_id IS NULL AND dp.learning_level_id = level.id AND dp.domain = cat.domain
+    );
 
   INSERT INTO development_program_items (id, organization_id, development_program_id, name, display_order, active, created_at)
   SELECT gen_random_uuid(), NULL, gc.id, item.name, item.display_order, true, now()
@@ -148,6 +160,7 @@ BEGIN
   ('Kelompok B (4-5 Tahun)', 'BAHASA_KOMUNIKASI', 'Mengenali huruf dan bunyi huruf', 3),
   ('Kelompok B (4-5 Tahun)', 'BAHASA_KOMUNIKASI', 'Mengenali kata sederhana', 4),
   ('Kelompok B (4-5 Tahun)', 'BAHASA_KOMUNIKASI', 'Menyukai kegiatan membaca buku bersama', 5),
+  ('Kelompok B (4-5 Tahun)', 'BAHASA_KOMUNIKASI', 'Menyebutkan nama lengkap', 6),
   ('Kelompok B (4-5 Tahun)', 'KEMANDIRIAN', 'Memakai baju dan sepatu sendiri', 0),
   ('Kelompok B (4-5 Tahun)', 'KEMANDIRIAN', 'Mengancingkan baju dan membuka resleting', 1),
   ('Kelompok B (4-5 Tahun)', 'KEMANDIRIAN', 'Menyiapkan tas sendiri', 2),
@@ -177,5 +190,61 @@ BEGIN
   ('Kelompok B (4-5 Tahun)', 'SOSIAL_EMOSI', 'Mengendalikan emosi dengan arahan', 3),
   ('Kelompok B (4-5 Tahun)', 'SOSIAL_EMOSI', 'Menghargai pendapat teman', 4)
   ) AS item(level_name, domain, name, display_order) ON item.level_name = level.name AND item.domain = gc.domain
-  WHERE gc.organization_id IS NULL AND gc.is_template = true;
+  WHERE gc.organization_id IS NULL AND gc.is_template = true
+    AND NOT EXISTS (
+      SELECT 1 FROM development_program_items dpi
+      WHERE dpi.development_program_id = gc.id AND dpi.name = item.name
+    );
+
+  -- One global CurriculumProgram per age band, bundling that age band's 6 DevelopmentProgram
+  -- rows, so "Tetapkan Goal" has something to offer immediately: the mandatory chain
+  -- (Program Kurikulum -> Program Perkembangan -> Goal Anak) requires a CurriculumProgram to
+  -- exist before any DevelopmentProgram under it can be assigned to a child.
+  INSERT INTO curriculum_programs (id, organization_id, academic_year_id, name, description, is_template, active)
+  SELECT gen_random_uuid(), NULL, NULL, 'Kurikulum ' || level.name, 'Kurikulum referensi bawaan untuk ' || level.name || '.', true, true
+  FROM learning_levels level
+  WHERE level.organization_id IS NULL AND level.is_template = true
+    AND level.name IN ('Toddler (1-2 Tahun)', 'Kelompok Bermain (2-3 Tahun)', 'Kelompok A (3-4 Tahun)', 'Kelompok B (4-5 Tahun)')
+    AND NOT EXISTS (
+      SELECT 1 FROM curriculum_programs cp WHERE cp.organization_id IS NULL AND cp.name = 'Kurikulum ' || level.name
+    );
+
+  INSERT INTO learning_level_curriculum_programs (id, learning_level_id, curriculum_program_id)
+  SELECT gen_random_uuid(), level.id, cp.id
+  FROM learning_levels level
+  JOIN curriculum_programs cp ON cp.organization_id IS NULL AND cp.name = 'Kurikulum ' || level.name
+  WHERE level.organization_id IS NULL AND level.is_template = true
+    AND NOT EXISTS (
+      SELECT 1 FROM learning_level_curriculum_programs llcp
+      WHERE llcp.learning_level_id = level.id AND llcp.curriculum_program_id = cp.id
+    );
+
+  INSERT INTO curriculum_program_development_programs (id, curriculum_program_id, development_program_id)
+  SELECT gen_random_uuid(), cp.id, dp.id
+  FROM curriculum_programs cp
+  JOIN learning_levels level ON level.organization_id IS NULL AND cp.name = 'Kurikulum ' || level.name
+  JOIN development_programs dp ON dp.learning_level_id = level.id AND dp.organization_id IS NULL
+  WHERE cp.organization_id IS NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM curriculum_program_development_programs cpdp
+      WHERE cpdp.curriculum_program_id = cp.id AND cpdp.development_program_id = dp.id
+    );
+
+  -- Mark the 10 highest-impact reference milestones (per age band where each applies) as
+  -- priority so they stand out with a star in the mobile UI. Plain UPDATE, safe to re-run.
+  UPDATE development_program_items SET priority = true
+  WHERE organization_id IS NULL AND name IN (
+    'Mulai mengenal toilet (toilet readiness)', 'Toilet training', 'Toilet mandiri', 'Mandiri ke toilet',
+    'Makan sendiri menggunakan sendok', 'Minum dari gelas', 'Makan dengan rapi', 'Minum tanpa tumpah',
+    'Mencuci tangan dengan bantuan', 'Cuci tangan mandiri', 'Menggosok gigi dengan pengawasan',
+    'Merapikan mainan setelah bermain', 'Merapikan mainan (2-3 tahun)',
+    'Mengenali warna dasar', 'Mengenali warna (2-3 tahun)',
+    'Mengenali bentuk dasar', 'Mengenali bentuk (2-3 tahun)',
+    'Menghitung 1-10', 'Mengenali angka 1-20', 'Mengenali angka 1-50',
+    'Mengenali huruf A-Z (2-3 tahun)', 'Mengenali huruf besar dan kecil', 'Mengenali huruf dan bunyi huruf',
+    'Mengikuti instruksi 2 langkah', 'Mengikuti instruksi 3 langkah',
+    'Mengenali emosi dasar (1-2 tahun)', 'Mengucapkan tolong dan terima kasih',
+    'Mengungkapkan perasaan', 'Mengucapkan maaf', 'Menunjukkan empati',
+    'Mengendalikan emosi dengan arahan', 'Menghargai pendapat teman'
+  );
 END $$;

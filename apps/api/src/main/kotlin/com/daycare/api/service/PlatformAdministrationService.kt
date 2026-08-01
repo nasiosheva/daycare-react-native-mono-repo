@@ -173,6 +173,7 @@ class PlatformAdministrationService(
         require(membership.organizationId == organizationId && membership.role == Role.STAFF_ADMIN) { "Staff Admin account was not found" }
         require(!membership.primaryStaffAdmin) { "Primary Staff Admin cannot be removed" }
         membership.active = false
+        membership.deactivatedAt = Instant.now()
         return tenantResponse(organization)
     }
 
