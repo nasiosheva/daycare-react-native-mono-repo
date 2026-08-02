@@ -4,6 +4,7 @@ import com.daycare.api.domain.InvoiceSource
 import com.daycare.api.domain.PrivateTutorType
 import com.daycare.api.domain.PrivateTutoringRequestStatus
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.ServicePlanType
 import com.daycare.api.persistence.BranchRepository
 import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.ChildPlacementRepository
@@ -24,7 +25,7 @@ import com.daycare.api.persistence.PrivateTutoringServiceTutorRepository
 import com.daycare.api.persistence.UserProfileRepository
 import com.daycare.api.realtime.RealtimeFlag
 import com.daycare.api.realtime.RealtimePublisher
-import jakarta.validation.constraints.DecimalMin
+import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
@@ -47,7 +48,9 @@ data class UpsertPrivateTutoringServiceRequest(
     @field:Min(0) val minAgeMonths: Int,
     @field:Min(0) val maxAgeMonths: Int,
     @field:Min(15) @field:Max(480) val durationMinutes: Int,
-    @field:DecimalMin("0.01") val price: BigDecimal,
+    @field:DecimalMax("1000000000") val dailyPrice: BigDecimal? = null,
+    @field:DecimalMax("1000000000") val weeklyPrice: BigDecimal? = null,
+    @field:DecimalMax("1000000000") val monthlyPrice: BigDecimal? = null,
     val learningLevelIds: Set<UUID>,
     val tutorIds: Set<UUID>,
     val active: Boolean = true,
@@ -61,11 +64,11 @@ data class UpsertPrivateTutorRequest(
     val active: Boolean = true,
 )
 
-data class CreatePrivateTutoringRequest(val childId: UUID, val preferredAt: LocalDateTime? = null, @field:Size(max = 500) val note: String? = null)
+data class CreatePrivateTutoringRequest(val childId: UUID, val pricingType: ServicePlanType, val preferredAt: LocalDateTime? = null, @field:Size(max = 500) val note: String? = null)
 data class DecidePrivateTutoringRequest(val approved: Boolean, val tutorId: UUID? = null, val scheduledAt: LocalDateTime? = null, @field:Size(max = 500) val rejectionReason: String? = null)
 data class PrivateTutorResponse(val id: UUID, val type: PrivateTutorType, val staffUserId: UUID?, val displayName: String, val bio: String, val active: Boolean)
-data class PrivateTutoringServiceResponse(val id: UUID, val branchId: UUID, val name: String, val description: String, val minAgeMonths: Int, val maxAgeMonths: Int, val durationMinutes: Int, val price: BigDecimal, val learningLevelIds: Set<UUID>, val tutors: List<PrivateTutorResponse>, val active: Boolean)
-data class PrivateTutoringRequestResponse(val id: UUID, val childId: UUID, val childName: String, val serviceName: String, val providerName: String?, val durationMinutes: Int, val price: BigDecimal, val preferredAt: LocalDateTime?, val scheduledAt: LocalDateTime?, val note: String?, val decisionReason: String?, val status: PrivateTutoringRequestStatus, val invoiceId: UUID?, val invoiceStatus: com.daycare.api.domain.InvoiceStatus?, val createdAt: Instant)
+data class PrivateTutoringServiceResponse(val id: UUID, val branchId: UUID, val name: String, val description: String, val minAgeMonths: Int, val maxAgeMonths: Int, val durationMinutes: Int, val dailyPrice: BigDecimal?, val weeklyPrice: BigDecimal?, val monthlyPrice: BigDecimal?, val learningLevelIds: Set<UUID>, val tutors: List<PrivateTutorResponse>, val active: Boolean)
+data class PrivateTutoringRequestResponse(val id: UUID, val childId: UUID, val childName: String, val serviceName: String, val providerName: String?, val durationMinutes: Int, val price: BigDecimal, val pricingType: ServicePlanType, val preferredAt: LocalDateTime?, val scheduledAt: LocalDateTime?, val note: String?, val decisionReason: String?, val status: PrivateTutoringRequestStatus, val invoiceId: UUID?, val invoiceStatus: com.daycare.api.domain.InvoiceStatus?, val createdAt: Instant)
 
 @Service
 class PrivateTutoringService(
@@ -97,7 +100,7 @@ class PrivateTutoringService(
     fun createService(jwt: Jwt, organizationId: UUID, request: UpsertPrivateTutoringServiceRequest): PrivateTutoringServiceResponse {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         validateServiceRequest(organizationId, request)
-        val service = services.save(PrivateTutoringService(organizationId = organizationId, branchId = request.branchId, name = request.name.trim(), description = request.description.trim(), minAgeMonths = request.minAgeMonths, maxAgeMonths = request.maxAgeMonths, durationMinutes = request.durationMinutes, price = request.price, active = request.active))
+        val service = services.save(PrivateTutoringService(organizationId = organizationId, branchId = request.branchId, name = request.name.trim(), description = request.description.trim(), minAgeMonths = request.minAgeMonths, maxAgeMonths = request.maxAgeMonths, durationMinutes = request.durationMinutes, dailyPrice = request.dailyPrice, weeklyPrice = request.weeklyPrice, monthlyPrice = request.monthlyPrice, active = request.active))
         replaceServiceLinks(service.id, request.learningLevelIds, request.tutorIds)
         publishManagement(organizationId)
         return serviceResponses(listOf(service)).single()
@@ -108,7 +111,7 @@ class PrivateTutoringService(
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         validateServiceRequest(organizationId, request)
         val service = service(serviceId, organizationId)
-        service.branchId = request.branchId; service.name = request.name.trim(); service.description = request.description.trim(); service.minAgeMonths = request.minAgeMonths; service.maxAgeMonths = request.maxAgeMonths; service.durationMinutes = request.durationMinutes; service.price = request.price; service.active = request.active
+        service.branchId = request.branchId; service.name = request.name.trim(); service.description = request.description.trim(); service.minAgeMonths = request.minAgeMonths; service.maxAgeMonths = request.maxAgeMonths; service.durationMinutes = request.durationMinutes; service.dailyPrice = request.dailyPrice; service.weeklyPrice = request.weeklyPrice; service.monthlyPrice = request.monthlyPrice; service.active = request.active
         replaceServiceLinks(service.id, request.learningLevelIds, request.tutorIds)
         publishManagement(organizationId)
         return serviceResponses(listOf(service)).single()
@@ -151,7 +154,12 @@ class PrivateTutoringService(
         val child = childScopes.requireParentLinkedChild(scope, request.childId, organizationId)
         val matching = matchingServices(organizationId, child, request.preferredAt?.toLocalDate() ?: LocalDate.now())
         val service = matching.firstOrNull { it.id == serviceId } ?: throw IllegalArgumentException("Private tutoring service is not available for this child")
-        val created = requests.save(PrivateTutoringRequest(organizationId = organizationId, branchId = child.branchId, parentUserId = scope.user.id, childId = child.id, privateTutoringServiceId = service.id, serviceName = service.name, durationMinutes = service.durationMinutes, price = service.price, preferredAt = request.preferredAt, parentNote = request.note?.trim()?.ifBlank { null }))
+        val price = when (request.pricingType) {
+            ServicePlanType.DAILY -> service.dailyPrice
+            ServicePlanType.WEEKLY -> service.weeklyPrice
+            ServicePlanType.MONTHLY -> service.monthlyPrice
+        } ?: throw IllegalArgumentException("Selected pricing option is not available for this service")
+        val created = requests.save(PrivateTutoringRequest(organizationId = organizationId, branchId = child.branchId, parentUserId = scope.user.id, childId = child.id, privateTutoringServiceId = service.id, serviceName = service.name, durationMinutes = service.durationMinutes, price = price, pricingType = request.pricingType, preferredAt = request.preferredAt, parentNote = request.note?.trim()?.ifBlank { null }))
         notifyStaffAdmins(organizationId, "Pengajuan les privat baru", "Pengajuan les ${service.name} untuk ${child.fullName()} menunggu persetujuan.", "/private-tutoring-admin")
         return requestResponse(created)
     }
@@ -230,6 +238,9 @@ class PrivateTutoringService(
 
     private fun validateServiceRequest(organizationId: UUID, request: UpsertPrivateTutoringServiceRequest) {
         require(request.minAgeMonths <= request.maxAgeMonths) { "Minimum age must not exceed maximum age" }
+        val prices = listOfNotNull(request.dailyPrice, request.weeklyPrice, request.monthlyPrice)
+        require(prices.isNotEmpty()) { "At least one price is required" }
+        require(prices.all { it > BigDecimal.ZERO }) { "Price must be greater than zero" }
         require(request.learningLevelIds.isNotEmpty()) { "At least one learning level is required" }
         require(request.tutorIds.isNotEmpty()) { "At least one tutor is required" }
         val branch = branches.findById(request.branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
@@ -244,6 +255,8 @@ class PrivateTutoringService(
     private fun replaceServiceLinks(serviceId: UUID, learningLevelIds: Set<UUID>, tutorIds: Set<UUID>) {
         serviceLevels.deleteAllByPrivateTutoringServiceId(serviceId)
         serviceTutors.deleteAllByPrivateTutoringServiceId(serviceId)
+        serviceLevels.flush()
+        serviceTutors.flush()
         serviceLevels.saveAll(learningLevelIds.map { PrivateTutoringServiceLearningLevel(privateTutoringServiceId = serviceId, learningLevelId = it) })
         serviceTutors.saveAll(tutorIds.map { PrivateTutoringServiceTutor(privateTutoringServiceId = serviceId, privateTutorId = it) })
     }
@@ -281,14 +294,14 @@ class PrivateTutoringService(
         val serviceTutorLinks = serviceTutors.findAllByPrivateTutoringServiceIdIn(ids)
         val tutorsById = tutors.findAllById(serviceTutorLinks.map { it.privateTutorId }.toSet()).associateBy { it.id }
         val tutorIdsByService = serviceTutorLinks.groupBy { it.privateTutoringServiceId }
-        return source.map { service -> PrivateTutoringServiceResponse(service.id, service.branchId, service.name, service.description, service.minAgeMonths, service.maxAgeMonths, service.durationMinutes, service.price, levelsByService[service.id].orEmpty().map { it.learningLevelId }.toSet(), tutorIdsByService[service.id].orEmpty().mapNotNull { tutorsById[it.privateTutorId] }.map(::tutorResponse), service.active) }
+        return source.map { service -> PrivateTutoringServiceResponse(service.id, service.branchId, service.name, service.description, service.minAgeMonths, service.maxAgeMonths, service.durationMinutes, service.dailyPrice, service.weeklyPrice, service.monthlyPrice, levelsByService[service.id].orEmpty().map { it.learningLevelId }.toSet(), tutorIdsByService[service.id].orEmpty().mapNotNull { tutorsById[it.privateTutorId] }.map(::tutorResponse), service.active) }
     }
 
     private fun tutorResponse(tutor: PrivateTutor) = PrivateTutorResponse(tutor.id, tutor.type, tutor.staffUserId, tutor.displayName, tutor.bio, tutor.active)
     private fun requestResponse(request: PrivateTutoringRequest): PrivateTutoringRequestResponse {
         val child = child(request.childId, request.organizationId)
         val invoice = request.invoiceId?.let { invoices.findById(it).orElse(null) }
-        return PrivateTutoringRequestResponse(request.id, child.id, child.fullName(), request.serviceName, request.providerName, request.durationMinutes, request.price, request.preferredAt, request.scheduledAt, request.parentNote, request.decisionReason, request.status, request.invoiceId, invoice?.status, request.createdAt)
+        return PrivateTutoringRequestResponse(request.id, child.id, child.fullName(), request.serviceName, request.providerName, request.durationMinutes, request.price, request.pricingType, request.preferredAt, request.scheduledAt, request.parentNote, request.decisionReason, request.status, request.invoiceId, invoice?.status, request.createdAt)
     }
     private fun service(serviceId: UUID, organizationId: UUID) = services.findById(serviceId).orElseThrow { IllegalArgumentException("Private tutoring service was not found") }.also { require(it.organizationId == organizationId) { "Private tutoring service belongs to a different organization" } }
     private fun tutor(tutorId: UUID, organizationId: UUID) = tutors.findById(tutorId).orElseThrow { IllegalArgumentException("Tutor was not found") }.also { require(it.organizationId == organizationId) { "Tutor belongs to a different organization" } }

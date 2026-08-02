@@ -351,7 +351,9 @@ class PrivateTutoringService(
     @Column(name = "min_age_months", nullable = false) var minAgeMonths: Int = 0,
     @Column(name = "max_age_months", nullable = false) var maxAgeMonths: Int = 0,
     @Column(name = "duration_minutes", nullable = false) var durationMinutes: Int = 30,
-    @Column(nullable = false, precision = 14, scale = 2) var price: java.math.BigDecimal = java.math.BigDecimal.ZERO,
+    @Column(name = "daily_price", precision = 14, scale = 2) var dailyPrice: java.math.BigDecimal? = null,
+    @Column(name = "weekly_price", precision = 14, scale = 2) var weeklyPrice: java.math.BigDecimal? = null,
+    @Column(name = "monthly_price", precision = 14, scale = 2) var monthlyPrice: java.math.BigDecimal? = null,
     @Column(nullable = false) var active: Boolean = true,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
@@ -395,6 +397,7 @@ class PrivateTutoringRequest(
     @Column(name = "provider_name") var providerName: String? = null,
     @Column(name = "duration_minutes", nullable = false) var durationMinutes: Int = 30,
     @Column(nullable = false, precision = 14, scale = 2) var price: java.math.BigDecimal = java.math.BigDecimal.ZERO,
+    @Enumerated(EnumType.STRING) @Column(name = "pricing_type", nullable = false) var pricingType: ServicePlanType = ServicePlanType.DAILY,
     @Column(name = "preferred_at") var preferredAt: java.time.LocalDateTime? = null,
     @Column(name = "scheduled_at") var scheduledAt: java.time.LocalDateTime? = null,
     @Column(name = "parent_note", length = 500) var parentNote: String? = null,

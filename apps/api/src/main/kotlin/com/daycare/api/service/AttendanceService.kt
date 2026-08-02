@@ -95,6 +95,9 @@ class AttendanceService(
         val operationalDate = LocalDate.now(ZoneId.of(timezone))
         val current = attendance.findByChildIdAndOperationalDate(child.id, operationalDate)
         val now = Instant.now()
+        val eventTime = command.at ?: now
+        if (eventTime.isAfter(now)) throw IllegalArgumentException("Attendance time cannot be in the future")
+        if (LocalDate.ofInstant(eventTime, ZoneId.of(timezone)) != operationalDate) throw IllegalArgumentException("Attendance time must be within today")
         val record = when (command.action) {
             AttendanceAction.CHECK_IN -> {
                 if (current?.checkedInAt != null && current.checkedOutAt == null) throw AttendanceConflict("Child is already checked in")
@@ -103,9 +106,10 @@ class AttendanceService(
             }
             AttendanceAction.CHECK_OUT -> current?.takeIf { it.checkedInAt != null && it.checkedOutAt == null } ?: throw AttendanceConflict("Child must be checked in before check-out")
         }
+        if (command.action == AttendanceAction.CHECK_OUT && record.checkedInAt?.let { eventTime.isBefore(it) } == true) throw IllegalArgumentException("Check-out time cannot be before check-in")
         if (command.action == AttendanceAction.CHECK_IN && InstitutionCapability.DAYCARE_OPERATIONS in scope.capabilities) bookingEligibility.consumeCheckIn(organizationId, child.id, operationalDate)
-        if (command.action == AttendanceAction.CHECK_IN) { record.checkedInAt = now; record.checkInMethod = command.method.name }
-        else { record.checkedOutAt = now; record.checkOutMethod = command.method.name }
+        if (command.action == AttendanceAction.CHECK_IN) { record.checkedInAt = eventTime; record.checkInMethod = command.method.name }
+        else { record.checkedOutAt = eventTime; record.checkOutMethod = command.method.name }
         val saved = attendance.save(record)
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "ATTENDANCE", entityId = saved.id, action = command.action.name, source = command.method.name))
         guardians.findAllByChildId(child.id).forEach { guardian -> notifications.notify(organizationId, guardian.userId, "Kehadiran ${child.firstName}", "${child.fullName()} berhasil ${if (command.action == AttendanceAction.CHECK_IN) "check-in" else "check-out"}.", realtimeFlags = setOf(RealtimeFlag.ATTENDANCE)) }
@@ -149,4 +153,4 @@ class AttendanceService(
     }
 }
 
-data class AttendanceCommand(val action: AttendanceAction, val method: AttendanceMethod, val qrToken: String? = null, val note: String? = null)
+data class AttendanceCommand(val action: AttendanceAction, val method: AttendanceMethod, val qrToken: String? = null, val note: String? = null, val at: Instant? = null)

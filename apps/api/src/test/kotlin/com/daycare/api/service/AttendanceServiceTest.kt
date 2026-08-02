@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+import com.daycare.api.domain.AttendanceAction
+import com.daycare.api.domain.AttendanceMethod
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AttendanceRepository
 import com.daycare.api.persistence.AttendanceRecord
@@ -17,6 +19,7 @@ import com.daycare.api.persistence.UserProfile
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito.any
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.`when`
 import org.springframework.security.oauth2.jwt.Jwt
@@ -24,6 +27,7 @@ import java.util.Optional
 import java.util.UUID
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 
 class AttendanceServiceTest {
     @Test
@@ -85,6 +89,36 @@ class AttendanceServiceTest {
 
         assertThrows(IllegalArgumentException::class.java) {
             fixtures.service.childAttendanceReport(fixtures.jwt, fixtures.organizationId, fixtures.branch.id, LocalDate.of(2026, 7, 2), LocalDate.of(2026, 7, 1))
+        }
+    }
+
+    @Test
+    fun `records a manual check-in at the staff-provided time`() {
+        val fixtures = Fixtures()
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
+        val operationalDate = LocalDate.now(ZoneId.of(fixtures.branch.timezone))
+        val at = Instant.now().minusSeconds(90)
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF))).thenReturn(fixtures.scope)
+        `when`(fixtures.childScopes.requireStaffManagedChild(fixtures.scope, child.id, fixtures.organizationId)).thenReturn(child)
+        `when`(fixtures.branches.findById(child.branchId)).thenReturn(Optional.of(fixtures.branch))
+        `when`(fixtures.attendance.findByChildIdAndOperationalDate(child.id, operationalDate)).thenReturn(null)
+        `when`(fixtures.attendance.save(any(AttendanceRecord::class.java))).thenAnswer { it.arguments[0] }
+
+        val response = fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_IN, AttendanceMethod.MANUAL, at = at))
+
+        assertEquals(at, response.checkedInAt)
+    }
+
+    @Test
+    fun `rejects a check-in time in the future`() {
+        val fixtures = Fixtures()
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF))).thenReturn(fixtures.scope)
+        `when`(fixtures.childScopes.requireStaffManagedChild(fixtures.scope, child.id, fixtures.organizationId)).thenReturn(child)
+        `when`(fixtures.branches.findById(child.branchId)).thenReturn(Optional.of(fixtures.branch))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_IN, AttendanceMethod.MANUAL, at = Instant.now().plusSeconds(3600)))
         }
     }
 

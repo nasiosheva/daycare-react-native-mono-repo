@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useEffect, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { AppText, Button, FloatingActionButton, ShimmerList, colors, NavigationCard, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren } from "@/attendance/useAttendance";
@@ -103,11 +103,19 @@ function StaffHome({ displayName, organizationName, managedChildren, tasksByChil
 
 function ParentHome({ displayName, organizationName, hasDaycareOperations }: { displayName: string; organizationName: string; hasDaycareOperations: boolean }) {
   const router = useRouter();
-  const { organizationId } = useAuth();
+  const { api, organizationId } = useAuth();
   const { t, formatCurrency, formatDate } = useI18n();
   const children = useChildren(true);
   const entitlements = useEntitlements(hasDaycareOperations);
   const invoices = useInvoices(true);
+  const privateTutoringServices = useQueries({
+    queries: (children.data ?? []).map((child) => ({
+      queryKey: ["private-tutoring-services", organizationId, child.id],
+      queryFn: () => api.parentPrivateTutoringServices(child.id),
+      enabled: Boolean(organizationId),
+    })),
+  });
+  const hasPrivateTutoring = privateTutoringServices.some((query) => (query.data?.length ?? 0) > 0);
   const summary = createParentHomeSummary(children.data ?? [], entitlements.data ?? [], invoices.data ?? []);
   const childrenUnavailable = children.isFetching || children.isError;
   const servicesUnavailable = hasDaycareOperations && (entitlements.isFetching || entitlements.isError);
@@ -134,10 +142,10 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
       </View>)}
       {!childrenUnavailable && summary.children.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
     </SummarySection>
-    <NavigationCard accessibilityLabel={t("privateTutoring.menu")} onPress={() => router.push("/private-tutoring")}>
+    {hasPrivateTutoring && <NavigationCard accessibilityLabel={t("privateTutoring.menu")} onPress={() => router.push("/private-tutoring")}>
       <AppText variant="h5">{t("privateTutoring.menu")}</AppText>
       <AppText tone="muted">{t("privateTutoring.description")}</AppText>
-    </NavigationCard>
+    </NavigationCard>}
     <SummarySection title={t("home.parentPayments")}>
       {invoices.isFetching && <ShimmerList />}
       {invoices.isError && <Button variant="secondary" onPress={() => invoices.refetch()}>{t("common.retry")}</Button>}

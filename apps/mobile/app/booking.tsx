@@ -25,7 +25,7 @@ function BookingScreenContent() {
   const { organizationId } = useAuth();
   const children = useChildren(); const plans = useServicePlans(); const entitlements = useEntitlements(); const bookings = useBookings(); const invoices = useInvoices(); const purchase = usePurchaseService(); const bookEntitlement = useBookEntitlement();
   const { t, formatCurrency, formatDate } = useI18n();
-  const [childId, setChildId] = useState<string | null>(null); const [planId, setPlanId] = useState<string | null>(null); const [creditEntitlementId, setCreditEntitlementId] = useState<string | null>(null); const [dateInput, setDateInput] = useState(""); const [bookingDates, setBookingDates] = useState<string[]>([]);
+  const [childId, setChildId] = useState<string | null>(null); const [planId, setPlanId] = useState<string | null>(null); const [creditEntitlementId, setCreditEntitlementId] = useState<string | null>(null); const [bookingDates, setBookingDates] = useState<string[]>([]);
   const [listSheet, setListSheet] = useState<ListSheet>(null);
   const [bookFormOpen, setBookFormOpen] = useState(false);
   const plan = useMemo(() => plans.data?.find((item) => item.id === planId) ?? null, [plans.data, planId]);
@@ -36,10 +36,10 @@ function BookingScreenContent() {
   const pendingChildInvoicesTotal = useMemo(() => pendingChildInvoices.reduce((sum, item) => sum + item.totalAmount, 0), [pendingChildInvoices]);
   const childBookings = useMemo(() => bookings.data?.filter((item) => item.childId === childId) ?? [], [bookings.data, childId]);
   const closeListSheet = () => setListSheet(null);
-  const addDate = () => { if (!isIsoDate(dateInput)) return Alert.alert(t("booking.dateFormat"), t("booking.dateFormatDescription")); if (bookingDates.includes(dateInput)) return; setBookingDates((dates) => [...dates, dateInput].sort()); setDateInput(""); };
-  const selectPlan = (item: ServicePlan) => { setPlanId(item.id); setCreditEntitlementId(null); setBookingDates([]); setDateInput(""); setListSheet(null); setBookFormOpen(true); };
-  const useRemaining = (entitlementId: string, entitlementChildId: string) => { setCreditEntitlementId(entitlementId); setChildId(entitlementChildId); setBookingDates([]); setDateInput(""); setListSheet(null); setBookFormOpen(true); };
-  const closeBookForm = () => { setBookFormOpen(false); setPlanId(null); setCreditEntitlementId(null); setBookingDates([]); setDateInput(""); };
+  const pickDate = (value: string) => { if (!isIsoDate(value) || bookingDates.includes(value)) return; setBookingDates((dates) => [...dates, value].sort()); };
+  const selectPlan = (item: ServicePlan) => { setPlanId(item.id); setCreditEntitlementId(null); setBookingDates([]); setListSheet(null); setBookFormOpen(true); };
+  const useRemaining = (entitlementId: string, entitlementChildId: string) => { setCreditEntitlementId(entitlementId); setChildId(entitlementChildId); setBookingDates([]); setListSheet(null); setBookFormOpen(true); };
+  const closeBookForm = () => { setBookFormOpen(false); setPlanId(null); setCreditEntitlementId(null); setBookingDates([]); };
   const submit = async () => {
     if (creditEntitlement) {
       if (bookingDates.length === 0) return Alert.alert(t("booking.selectDate"), t("booking.selectDateDescription"));
@@ -114,10 +114,10 @@ function BookingScreenContent() {
       negativeAction={{ label: t("common.cancel"), onPress: closeBookForm }}
       positiveAction={{ label: creditEntitlement ? t("booking.useCredit") : t("booking.createOrder"), loading: purchase.isPending || bookEntitlement.isPending, onPress: () => void submit() }}
     >
-      {(creditEntitlement || plan?.type !== "MONTHLY") && <View style={styles.form}><AppText variant="label">{t("booking.bookingDate", { description: creditEntitlement ? t("booking.creditLimit", { count: creditEntitlement.remainingCredits ?? 0 }) : plan?.type === "DAILY" ? t("booking.oneDate") : t("booking.maximumDays", { count: plan?.creditCount ?? 0 }) })}</AppText><View style={styles.row}><View style={styles.datePicker}><DatePicker placeholder={t("booking.selectDate")} value={dateInput} onChange={setDateInput} minimumDate={formatIsoDate(new Date())} /></View><Button variant="secondary" onPress={addDate}>{t("booking.add")}</Button></View><AppText tone="muted">{bookingDates.join(", ") || t("booking.noDate")}</AppText></View>}
+      {(creditEntitlement || plan?.type !== "MONTHLY") && <View style={styles.form}><AppText variant="label">{t("booking.bookingDate", { description: creditEntitlement ? t("booking.creditLimit", { count: creditEntitlement.remainingCredits ?? 0 }) : plan?.type === "DAILY" ? t("booking.oneDate") : t("booking.maximumDays", { count: plan?.creditCount ?? 0 }) })}</AppText><DatePicker placeholder={t("booking.selectDate")} value="" onChange={pickDate} minimumDate={formatIsoDate(new Date())} /><AppText tone="muted">{bookingDates.join(", ") || t("booking.noDate")}</AppText></View>}
       {!creditEntitlement && plan?.type === "MONTHLY" && <AppText tone="muted">{t("booking.monthlyDescription")}</AppText>}
     </BottomSheet>
   </AppScreen>;
 }
 function PlanCard({ plan, selected, onPress, formatCurrency, t }: { plan: ServicePlan; selected: boolean; onPress: () => void; formatCurrency: (value: number) => string; t: ReturnType<typeof useI18n>["t"] }) { return <View style={styles.card}><AppText variant="heading">{plan.name}</AppText><AppText>{formatCurrency(plan.price)} · {t(servicePlanTypeKey(plan.type))}</AppText>{plan.type === "WEEKLY" && <AppText tone="muted">{t("booking.weeklyDays", { count: plan.creditCount ?? 0, policy: plan.unusedCreditPolicy === "CARRY_FORWARD" ? t("booking.carryForward") : t("booking.expire") })}</AppText>}<Button variant={selected ? "primary" : "secondary"} onPress={onPress}>{selected ? t("booking.selected") : t("booking.select")}</Button></View>; }
-const styles = StyleSheet.create({ row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, tile: { flexGrow: 1, flexBasis: "47%" }, form: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, datePicker: { flex: 1, minWidth: 180 }, card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint } });
+const styles = StyleSheet.create({ row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, tile: { flexGrow: 1, flexBasis: "47%" }, form: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint } });
