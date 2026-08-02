@@ -1,1 +1,0 @@
-ALTER TABLE memberships ADD COLUMN deactivated_at TIMESTAMPTZ;

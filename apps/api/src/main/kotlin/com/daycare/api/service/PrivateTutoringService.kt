@@ -3,6 +3,7 @@ package com.daycare.api.service
 import com.daycare.api.domain.InvoiceSource
 import com.daycare.api.domain.PrivateTutorType
 import com.daycare.api.domain.PrivateTutoringRequestStatus
+import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.ServicePlanType
 import com.daycare.api.persistence.BranchRepository
@@ -92,13 +93,13 @@ class PrivateTutoringService(
 ) {
     @Transactional(readOnly = true)
     fun managedServices(jwt: Jwt, organizationId: UUID): List<PrivateTutoringServiceResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM, readOnly = true)
         return serviceResponses(services.findAllByOrganizationIdOrderByCreatedAtDesc(organizationId))
     }
 
     @Transactional
     fun createService(jwt: Jwt, organizationId: UUID, request: UpsertPrivateTutoringServiceRequest): PrivateTutoringServiceResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         validateServiceRequest(organizationId, request)
         val service = services.save(PrivateTutoringService(organizationId = organizationId, branchId = request.branchId, name = request.name.trim(), description = request.description.trim(), minAgeMonths = request.minAgeMonths, maxAgeMonths = request.maxAgeMonths, durationMinutes = request.durationMinutes, dailyPrice = request.dailyPrice, weeklyPrice = request.weeklyPrice, monthlyPrice = request.monthlyPrice, active = request.active))
         replaceServiceLinks(service.id, request.learningLevelIds, request.tutorIds)
@@ -108,7 +109,7 @@ class PrivateTutoringService(
 
     @Transactional
     fun updateService(jwt: Jwt, organizationId: UUID, serviceId: UUID, request: UpsertPrivateTutoringServiceRequest): PrivateTutoringServiceResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         validateServiceRequest(organizationId, request)
         val service = service(serviceId, organizationId)
         service.branchId = request.branchId; service.name = request.name.trim(); service.description = request.description.trim(); service.minAgeMonths = request.minAgeMonths; service.maxAgeMonths = request.maxAgeMonths; service.durationMinutes = request.durationMinutes; service.dailyPrice = request.dailyPrice; service.weeklyPrice = request.weeklyPrice; service.monthlyPrice = request.monthlyPrice; service.active = request.active
@@ -119,13 +120,13 @@ class PrivateTutoringService(
 
     @Transactional(readOnly = true)
     fun managedTutors(jwt: Jwt, organizationId: UUID): List<PrivateTutorResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM, readOnly = true)
         return tutors.findAllByOrganizationIdOrderByDisplayNameAsc(organizationId).map(::tutorResponse)
     }
 
     @Transactional
     fun createTutor(jwt: Jwt, organizationId: UUID, request: UpsertPrivateTutorRequest): PrivateTutorResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         val tutor = tutors.save(tutorFromRequest(organizationId, request))
         publishManagement(organizationId)
         return tutorResponse(tutor)
@@ -133,7 +134,7 @@ class PrivateTutoringService(
 
     @Transactional
     fun updateTutor(jwt: Jwt, organizationId: UUID, tutorId: UUID, request: UpsertPrivateTutorRequest): PrivateTutorResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         val tutor = tutor(tutorId, organizationId)
         val replacement = tutorFromRequest(organizationId, request)
         tutor.type = replacement.type; tutor.staffUserId = replacement.staffUserId; tutor.displayName = replacement.displayName; tutor.bio = replacement.bio; tutor.active = replacement.active
@@ -143,14 +144,14 @@ class PrivateTutoringService(
 
     @Transactional(readOnly = true)
     fun parentServices(jwt: Jwt, organizationId: UUID, childId: UUID): List<PrivateTutoringServiceResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.PARENT), readOnly = true)
+        val scope = access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.ACADEMIC_CURRICULUM, readOnly = true)
         val child = childScopes.requireParentLinkedChild(scope, childId, organizationId)
         return matchingServices(organizationId, child, LocalDate.now())
     }
 
     @Transactional
     fun createParentRequest(jwt: Jwt, organizationId: UUID, serviceId: UUID, request: CreatePrivateTutoringRequest): PrivateTutoringRequestResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.PARENT))
+        val scope = access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.ACADEMIC_CURRICULUM)
         val child = childScopes.requireParentLinkedChild(scope, request.childId, organizationId)
         val matching = matchingServices(organizationId, child, request.preferredAt?.toLocalDate() ?: LocalDate.now())
         val service = matching.firstOrNull { it.id == serviceId } ?: throw IllegalArgumentException("Private tutoring service is not available for this child")
@@ -166,19 +167,19 @@ class PrivateTutoringService(
 
     @Transactional(readOnly = true)
     fun parentRequests(jwt: Jwt, organizationId: UUID): List<PrivateTutoringRequestResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.PARENT), readOnly = true)
+        val scope = access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.ACADEMIC_CURRICULUM, readOnly = true)
         return requests.findAllByOrganizationIdAndParentUserIdOrderByCreatedAtDesc(organizationId, scope.user.id).map(::requestResponse)
     }
 
     @Transactional(readOnly = true)
     fun managedRequests(jwt: Jwt, organizationId: UUID): List<PrivateTutoringRequestResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM, readOnly = true)
         return requests.findAllByOrganizationIdOrderByCreatedAtDesc(organizationId).map(::requestResponse)
     }
 
     @Transactional
     fun decideRequest(jwt: Jwt, organizationId: UUID, requestId: UUID, decision: DecidePrivateTutoringRequest): PrivateTutoringRequestResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         val request = request(requestId, organizationId)
         require(request.status == PrivateTutoringRequestStatus.PENDING_APPROVAL) { "Private tutoring request cannot be decided" }
         if (!decision.approved) {
@@ -205,7 +206,7 @@ class PrivateTutoringService(
 
     @Transactional
     fun cancelParentRequest(jwt: Jwt, organizationId: UUID, requestId: UUID): PrivateTutoringRequestResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.PARENT))
+        val scope = access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.ACADEMIC_CURRICULUM)
         val request = request(requestId, organizationId)
         require(request.parentUserId == scope.user.id) { "Private tutoring request is not available" }
         require(request.status in setOf(PrivateTutoringRequestStatus.PENDING_APPROVAL, PrivateTutoringRequestStatus.PENDING_PAYMENT)) { "Private tutoring request cannot be cancelled" }

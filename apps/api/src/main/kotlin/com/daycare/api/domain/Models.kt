@@ -42,12 +42,26 @@ enum class TenantSubscriptionPlan { STARTER, STANDARD, PREMIUM }
 enum class TenantSubscriptionStatus { TRIAL, PENDING_PAYMENT, ACTIVE, SUSPENDED, EXPIRED }
 enum class TenantPaymentStatus { PENDING, PAID, VOID }
 enum class InstitutionCapability { DAYCARE_OPERATIONS, ACADEMIC_CURRICULUM }
+enum class EducationOfferingStatus { DRAFT, PUBLISHED, PAUSED, CLOSED, ARCHIVED }
+enum class EducationEnrollmentMode { DAYCARE_SERVICE, SCHOOL_ADMISSION }
 
 object InstitutionTypeCodes {
     const val DAYCARE = "DAYCARE"
+    const val TPA = "TPA"
+    const val KB = "KB"
+    const val SPS = "SPS"
     const val PAUD = "PAUD"
     const val TK = "TK"
-    val builtIn = setOf(DAYCARE, PAUD, TK)
+    const val RA = "RA"
+    const val BIMBA = "BIMBA"
+    const val SD = "SD"
+    const val MI = "MI"
+    const val SMP = "SMP"
+    const val MTS = "MTS"
+    const val SMA = "SMA"
+    const val MA = "MA"
+    const val SMK = "SMK"
+    val builtIn = setOf(DAYCARE, TPA, KB, SPS, PAUD, TK, RA, BIMBA, SD, MI, SMP, MTS, SMA, MA, SMK)
 }
 
 fun institutionCapabilities(types: Set<String>): Set<InstitutionCapability> = buildSet {

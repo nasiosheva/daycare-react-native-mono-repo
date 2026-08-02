@@ -30,6 +30,7 @@ interface MembershipRepository : JpaRepository<Membership, UUID> {
 }
 interface OrganizationRepository : JpaRepository<Organization, UUID> { fun findAllByNameContainingIgnoreCase(name: String): List<Organization> }
 interface OrganizationTypeAssignmentRepository : JpaRepository<OrganizationTypeAssignment, UUID> { fun findAllByOrganizationId(organizationId: UUID): List<OrganizationTypeAssignment>; fun existsByType(type: String): Boolean }
+interface EducationOfferingRepository : JpaRepository<EducationOffering, UUID> { fun findAllByOrganizationIdOrderByCreatedAtAsc(organizationId: UUID): List<EducationOffering>; fun findAllByOrganizationIdAndBranchIdAndStatus(organizationId: UUID, branchId: UUID, status: com.daycare.api.domain.EducationOfferingStatus): List<EducationOffering> }
 interface InstitutionTypeDefinitionRepository : JpaRepository<InstitutionTypeDefinition, String> { fun findAllByActiveTrueOrderByNameAsc(): List<InstitutionTypeDefinition>; fun existsByNameIgnoreCase(name: String): Boolean; fun findByNameIgnoreCase(name: String): InstitutionTypeDefinition? }
 interface AcademicYearRepository : JpaRepository<AcademicYear, UUID> { fun findAllByOrganizationIdOrderByStartsOnDesc(organizationId: UUID): List<AcademicYear> }
 interface CurriculumProgramRepository : JpaRepository<CurriculumProgram, UUID> {

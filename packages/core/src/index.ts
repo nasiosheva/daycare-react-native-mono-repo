@@ -55,6 +55,10 @@ export type TenantPaymentStatus = (typeof tenantPaymentStatuses)[number];
 export type InstitutionType = string;
 export const institutionCapabilities = ["DAYCARE_OPERATIONS", "ACADEMIC_CURRICULUM"] as const;
 export type InstitutionCapability = (typeof institutionCapabilities)[number];
+export const educationOfferingStatuses = ["DRAFT", "PUBLISHED", "PAUSED", "CLOSED", "ARCHIVED"] as const;
+export type EducationOfferingStatus = (typeof educationOfferingStatuses)[number];
+export const educationEnrollmentModes = ["DAYCARE_SERVICE", "SCHOOL_ADMISSION"] as const;
+export type EducationEnrollmentMode = (typeof educationEnrollmentModes)[number];
 export const staffReminderTargets = ["HOME", "ATTENDANCE", "DEVELOPMENT", "CHILDREN", "BOOKING_APPROVALS"] as const;
 export type StaffReminderTarget = (typeof staffReminderTargets)[number];
 

@@ -14,17 +14,19 @@ import { servicePlanTypeKey } from "@/i18n/translations";
 import { pricingOptions } from "@/private-tutoring/pricingOptions";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate } from "@/date-picker/date";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 export default function PrivateTutoringScreen() {
   const router = useRouter(); const { api, profile, organizationId } = useAuth(); const { t, formatCurrency, formatDate } = useI18n(); const client = useQueryClient();
   const children = useChildren(); const [childId, setChildId] = useState<string>(); const [search, setSearch] = useState(""); const [selected, setSelected] = useState<PrivateTutoringService>(); const [pricingType, setPricingType] = useState<ServicePlanType>(); const [preferredDate, setPreferredDate] = useState(""); const [preferredTime, setPreferredTime] = useState(""); const [note, setNote] = useState("");
-  const services = useQuery({ queryKey: ["private-tutoring-services", organizationId, childId], queryFn: () => api.parentPrivateTutoringServices(childId!), enabled: Boolean(organizationId && childId) });
+  const access = useUiAccessContext(Boolean(organizationId)); const canUsePrivateTutoring = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
+  const services = useQuery({ queryKey: ["private-tutoring-services", organizationId, childId], queryFn: () => api.parentPrivateTutoringServices(childId!), enabled: Boolean(organizationId && childId && canUsePrivateTutoring) });
   const requests = useQuery({ queryKey: ["private-tutoring-requests", organizationId], queryFn: () => api.parentPrivateTutoringRequests(), enabled: Boolean(organizationId) });
   const refresh = () => { void client.invalidateQueries({ queryKey: ["private-tutoring-services", organizationId] }); void client.invalidateQueries({ queryKey: ["private-tutoring-requests", organizationId] }); void client.invalidateQueries({ queryKey: ["invoices", organizationId] }); };
   const create = useMutation({ mutationFn: ({ serviceId, input }: { serviceId: string; input: { childId: string; pricingType: ServicePlanType; preferredAt?: string; note?: string } }) => api.createParentPrivateTutoringRequest(serviceId, input), onSuccess: refresh });
   const cancel = useMutation({ mutationFn: (requestId: string) => api.cancelParentPrivateTutoringRequest(requestId), onSuccess: refresh });
   const visibleServices = useMemo(() => services.data?.filter((item) => `${item.name} ${item.description}`.toLowerCase().includes(search.trim().toLowerCase())) ?? [], [search, services.data]);
-  if (!profile) return null; if (!profile.memberships.some((item) => item.organizationId === organizationId && item.role === "PARENT" && item.active)) return <Redirect href="/home" />;
+  if (!profile) return null; if (!profile.memberships.some((item) => item.organizationId === organizationId && item.role === "PARENT" && item.active) || (!access.isLoading && !canUsePrivateTutoring)) return <Redirect href="/home" />;
   const openService = (service: PrivateTutoringService) => { setSelected(service); setPricingType(pricingOptions(service)[0]?.type); };
   const closeSheet = () => { setSelected(undefined); setPricingType(undefined); setPreferredDate(""); setPreferredTime(""); setNote(""); };
   const submit = async () => { if (!selected || !childId || !pricingType) return; try { await create.mutateAsync({ serviceId: selected.id, input: { childId, pricingType, preferredAt: preferredDate && preferredTime ? `${preferredDate}T${preferredTime}` : undefined, note: note.trim() || undefined } }); closeSheet(); } catch (error) { Alert.alert(t("privateTutoring.submitFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); } };

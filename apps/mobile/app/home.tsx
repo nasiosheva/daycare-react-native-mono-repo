@@ -19,6 +19,7 @@ import { authErrorMessage } from "@/auth/authErrorMessage";
 import { unreadNotificationBadge, unreadNotificationCount } from "@/notifications/unreadBadge";
 import { parentEnrollmentQueryKey } from "@/parent-enrollment/queryKeys";
 import { isInactiveStaffMembership } from "@/navigation/inactiveStaffRouteAccess";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -105,6 +106,8 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
   const router = useRouter();
   const { api, organizationId } = useAuth();
   const { t, formatCurrency, formatDate } = useI18n();
+  const access = useUiAccessContext(true);
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
   const children = useChildren(true);
   const entitlements = useEntitlements(hasDaycareOperations);
   const invoices = useInvoices(true);
@@ -112,7 +115,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
     queries: (children.data ?? []).map((child) => ({
       queryKey: ["private-tutoring-services", organizationId, child.id],
       queryFn: () => api.parentPrivateTutoringServices(child.id),
-      enabled: Boolean(organizationId),
+      enabled: Boolean(organizationId && hasAcademicOffering),
     })),
   });
   const hasPrivateTutoring = privateTutoringServices.some((query) => (query.data?.length ?? 0) > 0);

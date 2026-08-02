@@ -28,6 +28,8 @@ import com.daycare.api.domain.UnusedCreditPolicy
 import com.daycare.api.domain.TenantPaymentStatus
 import com.daycare.api.domain.TenantSubscriptionPlan
 import com.daycare.api.domain.TenantSubscriptionStatus
+import com.daycare.api.domain.EducationEnrollmentMode
+import com.daycare.api.domain.EducationOfferingStatus
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -35,6 +37,8 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
+import org.hibernate.annotations.JdbcTypeCode
+import org.hibernate.type.SqlTypes
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
@@ -88,13 +92,34 @@ class OrganizationTypeAssignment(
     @Column(name = "type_code", nullable = false) var type: String = InstitutionTypeCodes.DAYCARE,
 )
 
+@Entity @Table(name = "education_offerings", uniqueConstraints = [UniqueConstraint(columnNames = ["organization_id", "branch_id", "institution_type", "enrollment_mode", "program_code"])])
+class EducationOffering(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(),
+    @Column(name = "institution_type", nullable = false, length = 80) var institutionType: String = "",
+    @Enumerated(EnumType.STRING) @Column(name = "enrollment_mode", nullable = false) var enrollmentMode: EducationEnrollmentMode = EducationEnrollmentMode.DAYCARE_SERVICE,
+    @Column(name = "capabilities", nullable = false, length = 500) var capabilities: String = "",
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: EducationOfferingStatus = EducationOfferingStatus.DRAFT,
+    @Column(name = "program_code", nullable = false, length = 80) var programCode: String = "DEFAULT",
+    @Column(nullable = false) var revision: Long = 1,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
 @Entity @Table(name = "institution_type_definitions")
 class InstitutionTypeDefinition(
     @Id @Column(name = "code", nullable = false, updatable = false) var code: String = "",
     @Column(name = "name", nullable = false) var name: String = "",
+    @Column(name = "description", length = 2000) var description: String? = null,
     @Column(name = "active", nullable = false) var active: Boolean = true,
     @Column(name = "parent_occupation_visible", nullable = false) var parentOccupationVisible: Boolean = false,
     @Column(name = "parent_income_range_visible", nullable = false) var parentIncomeRangeVisible: Boolean = false,
+    @Column(name = "logo", length = 500) var logo: String? = null,
+    @Column(name = "background_color", length = 32) var backgroundColor: String? = null,
+    @Column(name = "border_color", length = 32) var borderColor: String? = null,
+    @Column(name = "text_color", length = 32) var textColor: String? = null,
+    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "parameters", nullable = false, columnDefinition = "jsonb") var parameters: Map<String, String> = emptyMap(),
 )
 
 @Entity @Table(name = "academic_years")

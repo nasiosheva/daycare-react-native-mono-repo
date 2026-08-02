@@ -191,13 +191,13 @@ describe("ApiClient", () => {
     const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
 
     await client.institutionTypes();
-    await client.createInstitutionType({ name: "Taman Bermain", parentOccupationVisible: true, parentIncomeRangeVisible: false });
-    await client.updateInstitutionType("TAMAN_BERMAIN", { name: "Kelompok Bermain", parentOccupationVisible: true, parentIncomeRangeVisible: true });
+    await client.createInstitutionType({ name: "Taman Bermain", description: "Program bermain", parentOccupationVisible: true, parentIncomeRangeVisible: false, logo: "https://cdn.example.test/logo.png", backgroundColor: "#FFF0D8", parameters: { minimumAgeMonths: "12" } });
+    await client.updateInstitutionType("TAMAN_BERMAIN", { name: "Kelompok Bermain", description: "Program kelompok", parentOccupationVisible: true, parentIncomeRangeVisible: true, logo: "", borderColor: "#D89A37", textColor: "#634000", parameters: { enrollmentLabel: "Daftar" } });
     await client.deleteInstitutionType("TAMAN_BERMAIN");
 
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types", expect.anything());
-    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types", expect.objectContaining({ method: "POST", body: JSON.stringify({ name: "Taman Bermain", parentOccupationVisible: true, parentIncomeRangeVisible: false }) }));
-    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types/TAMAN_BERMAIN", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ name: "Kelompok Bermain", parentOccupationVisible: true, parentIncomeRangeVisible: true }) }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types", expect.objectContaining({ method: "POST", body: JSON.stringify({ name: "Taman Bermain", description: "Program bermain", parentOccupationVisible: true, parentIncomeRangeVisible: false, logo: "https://cdn.example.test/logo.png", backgroundColor: "#FFF0D8", parameters: { minimumAgeMonths: "12" } }) }));
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types/TAMAN_BERMAIN", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ name: "Kelompok Bermain", description: "Program kelompok", parentOccupationVisible: true, parentIncomeRangeVisible: true, logo: "", borderColor: "#D89A37", textColor: "#634000", parameters: { enrollmentLabel: "Daftar" } }) }));
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/platform/institution-types/TAMAN_BERMAIN", expect.objectContaining({ method: "DELETE" }));
   });
 

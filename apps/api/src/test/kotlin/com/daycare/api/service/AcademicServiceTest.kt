@@ -1,6 +1,7 @@
 package com.daycare.api.service
 
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.persistence.AcademicYearRepository
 import com.daycare.api.persistence.CurriculumActivityAssessmentRepository
 import com.daycare.api.persistence.CurriculumActivityRepository
@@ -36,7 +37,7 @@ class AcademicServiceTest {
         val organizationId = UUID.randomUUID()
         val globalProgram = CurriculumProgram(name = "Fondasi Global")
         val tenantProgram = CurriculumProgram(organizationId = organizationId, name = "Fondasi Tenant")
-        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true))
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.ACADEMIC_CURRICULUM, readOnly = true))
             .thenReturn(AccessScope(UserProfile(), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), emptySet()))
         `when`(programs.searchAvailableForOrganization(organizationId, "fondasi")).thenReturn(listOf(globalProgram, tenantProgram))
         `when`(programGoals.findAllByCurriculumProgramId(globalProgram.id)).thenReturn(emptyList())
@@ -64,7 +65,7 @@ class AcademicServiceTest {
         val jwt = mock(Jwt::class.java)
         val organizationId = UUID.randomUUID()
         val foreignDevelopmentProgram = DevelopmentProgram(organizationId = UUID.randomUUID(), name = "Foreign development program")
-        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), emptySet()))
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)).thenReturn(AccessScope(UserProfile(), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), emptySet()))
         `when`(developmentPrograms.findById(foreignDevelopmentProgram.id)).thenReturn(Optional.of(foreignDevelopmentProgram))
         val service = AcademicService(access, academicYears, programs, programGoals, developmentPrograms, activities, assessments)
 

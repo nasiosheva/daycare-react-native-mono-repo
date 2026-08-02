@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.net.URI
 import java.util.Locale
 
 data class InstitutionTypeDefinitionResponse(
@@ -16,11 +17,23 @@ data class InstitutionTypeDefinitionResponse(
     val name: String,
     val parentOccupationVisible: Boolean,
     val parentIncomeRangeVisible: Boolean,
+    val logo: String? = null,
+    val backgroundColor: String? = null,
+    val borderColor: String? = null,
+    val textColor: String? = null,
+    val parameters: Map<String, String> = emptyMap(),
+    val description: String? = null,
 )
 data class CreateInstitutionTypeDefinitionRequest(
     @field:NotBlank @field:Size(max = 100) val name: String,
+    @field:Size(max = 2000) val description: String? = null,
     val parentOccupationVisible: Boolean? = null,
     val parentIncomeRangeVisible: Boolean? = null,
+    @field:Size(max = 500) val logo: String? = null,
+    @field:Size(max = 32) val backgroundColor: String? = null,
+    @field:Size(max = 32) val borderColor: String? = null,
+    @field:Size(max = 32) val textColor: String? = null,
+    @field:Size(max = 50) val parameters: Map<String, String>? = null,
 )
 
 @Service
@@ -45,8 +58,14 @@ class InstitutionTypeCatalogService(
         return response(types.save(InstitutionTypeDefinition(
             code = code,
             name = name,
+            description = normalizeOptionalText(request.description),
             parentOccupationVisible = request.parentOccupationVisible ?: false,
             parentIncomeRangeVisible = request.parentIncomeRangeVisible ?: false,
+            logo = normalizeLogo(request.logo),
+            backgroundColor = normalizePresentationValue(request.backgroundColor),
+            borderColor = normalizePresentationValue(request.borderColor),
+            textColor = normalizePresentationValue(request.textColor),
+            parameters = normalizeParameters(request.parameters),
         )))
     }
 
@@ -58,8 +77,14 @@ class InstitutionTypeCatalogService(
         val matchingType = types.findByNameIgnoreCase(name)
         require(matchingType == null || matchingType.code == type.code) { "Institution type already exists" }
         type.name = name
+        request.description?.let { type.description = normalizeOptionalText(it) }
         request.parentOccupationVisible?.let { type.parentOccupationVisible = it }
         request.parentIncomeRangeVisible?.let { type.parentIncomeRangeVisible = it }
+        request.logo?.let { type.logo = normalizeLogo(it) }
+        request.backgroundColor?.let { type.backgroundColor = normalizePresentationValue(it) }
+        request.borderColor?.let { type.borderColor = normalizePresentationValue(it) }
+        request.textColor?.let { type.textColor = normalizePresentationValue(it) }
+        request.parameters?.let { type.parameters = normalizeParameters(it) }
         return response(type)
     }
 
@@ -88,5 +113,45 @@ class InstitutionTypeCatalogService(
 
     private fun normalizeExistingCode(code: String) = code.trim().uppercase(Locale.ROOT)
 
-    private fun response(type: InstitutionTypeDefinition) = InstitutionTypeDefinitionResponse(type.code, type.name, type.parentOccupationVisible, type.parentIncomeRangeVisible)
+    private fun normalizeLogo(logo: String?): String? {
+        val normalized = normalizePresentationValue(logo) ?: return null
+        val uri = runCatching { URI(normalized) }.getOrNull()
+        require(uri?.scheme.equals("https", ignoreCase = true) && !uri?.host.isNullOrBlank()) { "Institution type logo must be a valid HTTPS URL" }
+        return normalized
+    }
+
+    private fun normalizePresentationValue(value: String?) = value?.trim()?.takeIf(String::isNotBlank)
+
+    private fun normalizeOptionalText(value: String?) = value?.trim()?.takeIf(String::isNotBlank)
+
+    private fun normalizeParameters(parameters: Map<String, String>?): Map<String, String> {
+        if (parameters == null) return emptyMap()
+        require(parameters.size <= 50) { "Institution type parameters exceed the allowed limit" }
+        val normalized = linkedMapOf<String, String>()
+        parameters.forEach { (key, value) ->
+            val normalizedKey = key.trim()
+            require(parameterKeyPattern.matches(normalizedKey)) { "Institution type parameter key is invalid" }
+            val normalizedValue = value.trim()
+            require(normalizedValue.length <= 1_000) { "Institution type parameter value is too long" }
+            require(normalized.put(normalizedKey, normalizedValue) == null) { "Institution type parameter key is duplicated" }
+        }
+        return normalized
+    }
+
+    private fun response(type: InstitutionTypeDefinition) = InstitutionTypeDefinitionResponse(
+        type.code,
+        type.name,
+        type.parentOccupationVisible,
+        type.parentIncomeRangeVisible,
+        type.logo,
+        type.backgroundColor,
+        type.borderColor,
+        type.textColor,
+        type.parameters,
+        type.description,
+    )
+
+    private companion object {
+        val parameterKeyPattern = Regex("[a-z][a-zA-Z0-9_]{0,63}")
+    }
 }
