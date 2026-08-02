@@ -14,4 +14,5 @@ export const env = {
     appId: required(process.env.EXPO_PUBLIC_FIREBASE_APP_ID, "EXPO_PUBLIC_FIREBASE_APP_ID"),
   },
   googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "",
+  googleMapsGeocodingApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_GEOCODING_API_KEY ?? "",
 } as const;

@@ -203,10 +203,10 @@ export type ParentEnrollmentCheckoutInput = { organizationId: string; branchId: 
 export type PrivateTutorType = "STAFF" | "EXTERNAL";
 export type PrivateTutoringRequestStatus = "PENDING_APPROVAL" | "PENDING_PAYMENT" | "CONFIRMED" | "REJECTED" | "CANCELLED";
 export type PrivateTutor = { id: string; type: PrivateTutorType; staffUserId?: string | null; displayName: string; bio: string; active: boolean };
-export type PrivateTutoringService = { id: string; branchId: string; name: string; description: string; minAgeMonths: number; maxAgeMonths: number; durationMinutes: number; price: number; learningLevelIds: string[]; tutors: PrivateTutor[]; active: boolean };
+export type PrivateTutoringService = { id: string; branchId: string; name: string; description: string; minAgeMonths: number; maxAgeMonths: number; durationMinutes: number; dailyPrice: number | null; weeklyPrice: number | null; monthlyPrice: number | null; learningLevelIds: string[]; tutors: PrivateTutor[]; active: boolean };
 export type UpsertPrivateTutoringServiceInput = Omit<PrivateTutoringService, "id" | "tutors"> & { tutorIds: string[] };
 export type UpsertPrivateTutorInput = { type: PrivateTutorType; staffUserId?: string; displayName?: string; bio?: string; active: boolean };
-export type PrivateTutoringRequest = { id: string; childId: string; childName: string; serviceName: string; providerName?: string | null; durationMinutes: number; price: number; preferredAt?: string | null; scheduledAt?: string | null; note?: string | null; decisionReason?: string | null; status: PrivateTutoringRequestStatus; invoiceId?: string | null; invoiceStatus?: InvoiceStatus | null; createdAt: string };
+export type PrivateTutoringRequest = { id: string; childId: string; childName: string; serviceName: string; providerName?: string | null; durationMinutes: number; price: number; pricingType: ServicePlanType; preferredAt?: string | null; scheduledAt?: string | null; note?: string | null; decisionReason?: string | null; status: PrivateTutoringRequestStatus; invoiceId?: string | null; invoiceStatus?: InvoiceStatus | null; createdAt: string };
 export type PaymentInstruction = { id: string; name: string; accountHolder: string; accountNumber: string; note?: string | null; active: boolean; displayOrder: number };
 export type UpsertPaymentInstructionInput = Omit<PaymentInstruction, "id">;
 export type AppNotification = { id: string; title: string; body: string; actionPath?: string | null; createdAt: string; readAt?: string | null };
@@ -281,7 +281,7 @@ export class ApiClient {
   async decidePrivateTutoringRequest(requestId: string, input: { approved: boolean; tutorId?: string; scheduledAt?: string; rejectionReason?: string }): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/manage/requests/${requestId}/decision`, { method: "POST", body: JSON.stringify(input) }); }
   async parentPrivateTutoringServices(childId: string): Promise<PrivateTutoringService[]> { return this.request(`/private-tutoring/parent/services?${new URLSearchParams({ childId }).toString()}`); }
   async parentPrivateTutoringRequests(): Promise<PrivateTutoringRequest[]> { return this.request("/private-tutoring/parent/requests"); }
-  async createParentPrivateTutoringRequest(serviceId: string, input: { childId: string; preferredAt?: string; note?: string }): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/services/${serviceId}/requests`, { method: "POST", body: JSON.stringify(input) }); }
+  async createParentPrivateTutoringRequest(serviceId: string, input: { childId: string; pricingType: ServicePlanType; preferredAt?: string; note?: string }): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/services/${serviceId}/requests`, { method: "POST", body: JSON.stringify(input) }); }
   async cancelParentPrivateTutoringRequest(requestId: string): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/requests/${requestId}/cancel`, { method: "POST" }); }
 
   async tenants(search?: string): Promise<Tenant[]> { const query = search?.trim(); return this.request(`/platform/tenants${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
@@ -441,7 +441,7 @@ export class ApiClient {
   async bindChildGuardian(childId: string, identifier: string): Promise<ChildGuardian> { return this.request(`/children/${childId}/guardians`, { method: "POST", body: JSON.stringify({ identifier }) }); }
   async unbindChildGuardian(childId: string, userId: string): Promise<void> { await this.request<void>(`/children/${childId}/guardians/${userId}`, { method: "DELETE" }); }
 
-  async recordAttendance(childId: string, command: { action: AttendanceAction; method: AttendanceMethod; qrToken?: string; note?: string }): Promise<Attendance> {
+  async recordAttendance(childId: string, command: { action: AttendanceAction; method: AttendanceMethod; qrToken?: string; note?: string; at?: string }): Promise<Attendance> {
     return this.request(`/children/${childId}/attendance`, { method: "POST", body: JSON.stringify(command) });
   }
 

@@ -34,6 +34,12 @@
           "cameraPermission": "Izinkan Umur Emas mengakses kamera untuk mengambil gambar."
         }
       ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Izinkan Umur Emas mengakses lokasi untuk mendapatkan posisi Anda saat ini."
+        }
+      ],
       "@react-native-community/datetimepicker"
     ],
     "ios": {
