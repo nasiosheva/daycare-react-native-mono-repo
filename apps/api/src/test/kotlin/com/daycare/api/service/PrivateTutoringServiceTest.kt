@@ -1,6 +1,7 @@
 package com.daycare.api.service
 
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.persistence.Branch
 import com.daycare.api.persistence.BranchRepository
 import com.daycare.api.persistence.Child
@@ -56,7 +57,7 @@ class PrivateTutoringServiceTest {
         val wrongAge = PrivateTutoringService(organizationId = organizationId, branchId = child.branchId, name = "Bayi", minAgeMonths = 0, maxAgeMonths = 24, durationMinutes = 30, dailyPrice = java.math.BigDecimal("50000"))
         val tutor = PrivateTutor(organizationId = organizationId, displayName = "Bu Rani")
 
-        `when`(access.require(jwt, organizationId, setOf(Role.PARENT), readOnly = true)).thenReturn(scope)
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.ACADEMIC_CURRICULUM, readOnly = true)).thenReturn(scope)
         `when`(childScopes.requireParentLinkedChild(scope, child.id, organizationId)).thenReturn(child)
         `when`(placements.findByChildIdAndEndedOnIsNull(child.id)).thenReturn(ChildPlacement(organizationId = organizationId, childId = child.id, learningLevelId = levelId))
         `when`(services.findAllByOrganizationIdAndBranchIdAndActiveTrueOrderByNameAsc(organizationId, child.branchId)).thenReturn(listOf(matching, wrongAge))

@@ -110,6 +110,9 @@ import com.daycare.api.service.UpsertChildHealthRecordRequest
 import com.daycare.api.service.ChildIncidentService
 import com.daycare.api.service.CreateChildIncidentRequest
 import com.daycare.api.service.AnalyticsService
+import com.daycare.api.service.EducationOfferingService
+import com.daycare.api.service.UpsertEducationOfferingRequest
+import com.daycare.api.service.SetEducationOfferingStatusRequest
 import com.daycare.api.domain.Gender
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import jakarta.validation.Valid
@@ -189,6 +192,23 @@ class IdentityController(private val access: AccessService, private val identity
 
     @PutMapping("/parent-family-profile")
     fun updateParentFamilyProfile(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: UpdateParentFamilyProfileRequest) = parentFamilyProfiles.update(jwt, request)
+}
+
+@RestController
+@RequestMapping("/v1/education-offerings")
+@SecurityRequirement(name = "bearerAuth")
+class EducationOfferingController(private val offerings: EducationOfferingService) {
+    @GetMapping("/context")
+    fun context(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = offerings.context(jwt, organizationId)
+
+    @GetMapping
+    fun list(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = offerings.list(jwt, organizationId)
+
+    @PostMapping @ResponseStatus(HttpStatus.CREATED)
+    fun create(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertEducationOfferingRequest) = offerings.create(jwt, organizationId, request)
+
+    @PostMapping("/{offeringId}/status")
+    fun status(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable offeringId: UUID, @Valid @RequestBody request: SetEducationOfferingStatusRequest) = offerings.changeStatus(jwt, organizationId, offeringId, request)
 }
 
 @RestController

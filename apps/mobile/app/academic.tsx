@@ -5,15 +5,17 @@ import { AppText, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 export default function AcademicScreen() {
   const router = useRouter();
   const { profile, organizationId } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const access = useUiAccessContext(Boolean(membership));
 
   if (!profile) return null;
-  if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
+  if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role) || (!access.isLoading && !hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM"))) return <Redirect href="/home" />;
 
   return <AppScreen>
     <AppText variant="title">{t("learning.title")}</AppText>

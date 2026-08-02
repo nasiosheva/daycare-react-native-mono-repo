@@ -8,13 +8,16 @@ import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { servicePlanTypeKey } from "@/i18n/translations";
 import { pricingOptions } from "@/private-tutoring/pricingOptions";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 export default function PrivateTutoringAdminScreen() {
   const router = useRouter(); const { api, profile, organizationId } = useAuth(); const { t, formatCurrency } = useI18n(); const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const services = useQuery({ queryKey: ["private-tutoring-admin-services", organizationId], queryFn: () => api.privateTutoringServices(), enabled: membership?.role === "STAFF_ADMIN" });
+  const access = useUiAccessContext(Boolean(membership));
+  const canUsePrivateTutoring = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
+  const services = useQuery({ queryKey: ["private-tutoring-admin-services", organizationId], queryFn: () => api.privateTutoringServices(), enabled: membership?.role === "STAFF_ADMIN" && canUsePrivateTutoring });
   const tutors = useQuery({ queryKey: ["private-tutoring-tutors", organizationId], queryFn: () => api.privateTutors(), enabled: membership?.role === "STAFF_ADMIN" });
   const requests = useQuery({ queryKey: ["private-tutoring-admin-requests", organizationId], queryFn: () => api.privateTutoringRequests(), enabled: membership?.role === "STAFF_ADMIN" });
-  if (!profile) return null; if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
+  if (!profile) return null; if (membership?.role !== "STAFF_ADMIN" || (!access.isLoading && !canUsePrivateTutoring)) return <Redirect href="/home" />;
   return <AppScreen showBottomNavigation={false} title={t("privateTutoring.adminTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.content}>
     <AppText tone="muted">{t("privateTutoring.adminDescription")}</AppText><View style={styles.row}><Button disabled={membership.active === false} onPress={() => router.push("/private-tutoring-service-form")}>{t("privateTutoring.addService")}</Button><Button disabled={membership.active === false} variant="secondary" onPress={() => router.push("/private-tutor-form")}>{t("privateTutoring.addTutor")}</Button></View>
     <AppText variant="heading">{t("privateTutoring.services")}</AppText>{services.isFetching && <ShimmerList />}{services.data?.map((service) => <NavigationCard key={service.id} accessibilityLabel={service.name} onPress={() => router.push({ pathname: "/private-tutoring-service-form", params: { serviceId: service.id } })}><AppText variant="h5">{service.name}</AppText>{pricingOptions(service).map((option) => <AppText key={option.type} tone="muted">{formatCurrency(option.price)} · {t(servicePlanTypeKey(option.type))}</AppText>)}<AppText tone="muted">{t("privateTutoring.duration", { count: service.durationMinutes })}</AppText><AppText variant="caption" tone="muted">{service.active ? t("privateTutoring.active") : t("privateTutoring.inactive")}</AppText></NavigationCard>)}{!services.isFetching && services.data?.length === 0 && <AppText tone="muted">{t("privateTutoring.noServices")}</AppText>}

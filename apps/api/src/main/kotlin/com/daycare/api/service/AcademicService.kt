@@ -1,6 +1,7 @@
 package com.daycare.api.service
 
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.persistence.AcademicYear
 import com.daycare.api.persistence.AcademicYearRepository
 import com.daycare.api.persistence.CurriculumActivity
@@ -58,20 +59,20 @@ class AcademicService(
 ) {
     @Transactional(readOnly = true)
     fun academicYears(jwt: Jwt, organizationId: UUID): List<AcademicYearResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.ACADEMIC_CURRICULUM, readOnly = true)
         return academicYears.findAllByOrganizationIdOrderByStartsOnDesc(organizationId).map(::academicYearResponse)
     }
 
     @Transactional
     fun createAcademicYear(jwt: Jwt, organizationId: UUID, request: CreateAcademicYearRequest): AcademicYearResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         require(!request.endsOn.isBefore(request.startsOn)) { "Academic year end date must be after its start date" }
         return academicYearResponse(academicYears.save(AcademicYear(organizationId = organizationId, name = request.name.trim(), startsOn = request.startsOn, endsOn = request.endsOn)))
     }
 
     @Transactional(readOnly = true)
     fun curriculumPrograms(jwt: Jwt, organizationId: UUID, search: String? = null, includeArchived: Boolean = false): List<CurriculumProgramResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.ACADEMIC_CURRICULUM, readOnly = true)
         val query = search?.trim().orEmpty()
         val programs = if (query.isBlank()) {
             if (includeArchived) curriculumPrograms.findAllByOrganizationIdIsNullOrderByNameAsc() + curriculumPrograms.findAllByOrganizationIdOrderByNameAsc(organizationId)
@@ -85,7 +86,7 @@ class AcademicService(
 
     @Transactional
     fun createCurriculumProgram(jwt: Jwt, organizationId: UUID, request: CreateCurriculumProgramRequest): CurriculumProgramResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         validateTenantProgramRequest(organizationId, request, existingProgramId = null)
         val program = curriculumPrograms.save(CurriculumProgram(organizationId = organizationId, academicYearId = request.academicYearId, name = request.name.trim(), description = request.description.trim()))
         replaceProgramGoals(program.id, request.developmentProgramIds)
@@ -94,7 +95,7 @@ class AcademicService(
 
     @Transactional
     fun updateCurriculumProgram(jwt: Jwt, organizationId: UUID, programId: UUID, request: CreateCurriculumProgramRequest): CurriculumProgramResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         validateTenantProgramRequest(organizationId, request, existingProgramId = programId)
         val program = tenantProgram(programId, organizationId)
         program.academicYearId = request.academicYearId
@@ -106,25 +107,25 @@ class AcademicService(
 
     @Transactional
     fun setCurriculumProgramActive(jwt: Jwt, organizationId: UUID, programId: UUID, active: Boolean): CurriculumProgramResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         return curriculumProgramResponse(tenantProgram(programId, organizationId).also { it.active = active })
     }
 
     @Transactional(readOnly = true)
     fun activities(jwt: Jwt, organizationId: UUID): List<CurriculumActivityResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.ACADEMIC_CURRICULUM, readOnly = true)
         return curriculumActivities.findAllByOrganizationIdOrderByCreatedAtDesc(organizationId).map(::activityResponse)
     }
 
     @Transactional
     fun createActivity(jwt: Jwt, organizationId: UUID, request: UpsertCurriculumActivityRequest): CurriculumActivityResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         return activityResponse(curriculumActivities.save(CurriculumActivity(organizationId = organizationId, name = request.name.trim(), description = request.description.trim())))
     }
 
     @Transactional
     fun updateActivity(jwt: Jwt, organizationId: UUID, activityId: UUID, request: UpsertCurriculumActivityRequest): CurriculumActivityResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         val activity = activity(activityId, organizationId)
         activity.name = request.name.trim()
         activity.description = request.description.trim()
@@ -133,27 +134,27 @@ class AcademicService(
 
     @Transactional
     fun archiveActivity(jwt: Jwt, organizationId: UUID, activityId: UUID): CurriculumActivityResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         return activity(activityId, organizationId).also { it.active = false }.let(::activityResponse)
     }
 
     @Transactional(readOnly = true)
     fun activityAssessments(jwt: Jwt, organizationId: UUID, activityId: UUID): List<CurriculumActivityAssessmentResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.ACADEMIC_CURRICULUM, readOnly = true)
         activity(activityId, organizationId)
         return curriculumActivityAssessments.findAllByOrganizationIdAndActivityIdOrderByCreatedAtDesc(organizationId, activityId).map(::activityAssessmentResponse)
     }
 
     @Transactional
     fun createActivityAssessment(jwt: Jwt, organizationId: UUID, activityId: UUID, request: CreateCurriculumActivityAssessmentRequest): CurriculumActivityAssessmentResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         activity(activityId, organizationId)
         return activityAssessmentResponse(curriculumActivityAssessments.save(CurriculumActivityAssessment(organizationId = organizationId, activityId = activityId, name = request.name.trim(), description = request.description.trim())))
     }
 
     @Transactional
     fun removeActivityAssessment(jwt: Jwt, organizationId: UUID, activityId: UUID, assessmentId: UUID) {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         activity(activityId, organizationId)
         val assessment = curriculumActivityAssessments.findById(assessmentId).orElseThrow { IllegalArgumentException("Curriculum activity assessment was not found") }
         require(assessment.organizationId == organizationId && assessment.activityId == activityId) { "Curriculum activity assessment belongs to a different activity" }

@@ -11,6 +11,7 @@ import { createStaffAdminSummary } from "@/home/staffAdminSummary";
 import { useI18n } from "@/i18n/I18nProvider";
 import { tenantReadinessIssueKey } from "@/i18n/translations";
 import { hasInstitutionCapability } from "@daycare/core";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 const menuReadinessIssues = {
   staff: ["STAFF_ADMIN_REQUIRED"],
@@ -32,6 +33,8 @@ export default function StaffAdminScreen() {
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const readOnly = membership?.active === false;
   const hasDaycareOperations = hasInstitutionCapability(membership?.capabilities ?? [], "DAYCARE_OPERATIONS");
+  const access = useUiAccessContext(Boolean(membership));
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
   const users = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: membership?.role === "STAFF_ADMIN" });
   const invoices = useInvoices();
   const entitlements = useEntitlements();
@@ -56,7 +59,7 @@ export default function StaffAdminScreen() {
     <MenuItem title={t("paymentInstruction.title")} description={t("paymentInstruction.managementDescription")} attentionIssues={attentionIssues(readiness.data?.issues, menuReadinessIssues.paymentInstructions)} onPress={() => router.push("/payment-instructions")} />
     {hasDaycareOperations && <MenuItem title={t("staffAdmin.subscriptions")} description={t("staffAdmin.subscriptionsDescription")} onPress={() => router.push("/parent-subscriptions")} />}
     {hasDaycareOperations && <MenuItem title={t("staffAdmin.plans")} description={t("staffAdmin.plansDescription")} attentionIssues={attentionIssues(readiness.data?.issues, menuReadinessIssues.plans)} onPress={() => router.push("/billing-admin")} />}
-    <MenuItem title={t("privateTutoring.menu")} description={t("privateTutoring.adminDescription")} onPress={() => router.push("/private-tutoring-admin")} />
+    {hasAcademicOffering && <MenuItem title={t("privateTutoring.menu")} description={t("privateTutoring.adminDescription")} onPress={() => router.push("/private-tutoring-admin")} />}
     <MenuItem title={t("staffAdmin.branches")} description={t("staffAdmin.branchesDescription")} attentionIssues={attentionIssues(readiness.data?.issues, menuReadinessIssues.branches)} onPress={() => router.push("/branches" as never)} />
     <MenuItem title={t("learning.classroom")} description={t("learning.addClassroomDescription")} attentionIssues={attentionIssues(readiness.data?.issues, menuReadinessIssues.classrooms)} onPress={() => router.push("/classrooms")} />
     <MenuItem title={t("childAttendanceReport.menu")} description={t("childAttendanceReport.menuDescription")} onPress={() => router.push("/child-attendance-report" as never)} />

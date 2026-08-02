@@ -68,6 +68,53 @@ class InstitutionTypeCatalogServiceTest {
     }
 
     @Test
+    fun `stores optional presentation fields and rejects a non HTTPS logo`() {
+        val types = mock(InstitutionTypeDefinitionRepository::class.java)
+        val organizationTypes = mock(OrganizationTypeAssignmentRepository::class.java)
+        val access = mock(PlatformAccessService::class.java)
+        val jwt = mock(Jwt::class.java)
+        `when`(access.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
+        `when`(types.existsByNameIgnoreCase("Taman Bermain")).thenReturn(false)
+        `when`(types.existsById("TAMAN_BERMAIN")).thenReturn(false)
+        `when`(types.save(any(InstitutionTypeDefinition::class.java))).thenAnswer { it.arguments[0] }
+        val service = InstitutionTypeCatalogService(types, organizationTypes, access)
+
+        val result = service.create(jwt, CreateInstitutionTypeDefinitionRequest(
+            name = "Taman Bermain",
+            description = "Program bermain untuk usia dini.",
+            logo = "https://cdn.example.test/logo.png",
+            backgroundColor = "#FFF0D8",
+            borderColor = "#D89A37",
+            textColor = "#634000",
+            parameters = mapOf("minimumAgeMonths" to "12"),
+        ))
+
+        assertEquals("https://cdn.example.test/logo.png", result.logo)
+        assertEquals("Program bermain untuk usia dini.", result.description)
+        assertEquals("#FFF0D8", result.backgroundColor)
+        assertEquals(mapOf("minimumAgeMonths" to "12"), result.parameters)
+        assertThrows(IllegalArgumentException::class.java) {
+            service.create(jwt, CreateInstitutionTypeDefinitionRequest(name = "Logo Tidak Aman", logo = "http://example.test/logo.png"))
+        }
+    }
+
+    @Test
+    fun `rejects unsafe dynamic parameter names`() {
+        val types = mock(InstitutionTypeDefinitionRepository::class.java)
+        val organizationTypes = mock(OrganizationTypeAssignmentRepository::class.java)
+        val access = mock(PlatformAccessService::class.java)
+        val jwt = mock(Jwt::class.java)
+        `when`(access.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
+        `when`(types.existsByNameIgnoreCase("Taman Bermain")).thenReturn(false)
+        `when`(types.existsById("TAMAN_BERMAIN")).thenReturn(false)
+        val service = InstitutionTypeCatalogService(types, organizationTypes, access)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            service.create(jwt, CreateInstitutionTypeDefinitionRequest("Taman Bermain", parameters = mapOf("1invalid" to "value")))
+        }
+    }
+
+    @Test
     fun `deletes only an unused custom institution type`() {
         val types = mock(InstitutionTypeDefinitionRepository::class.java)
         val organizationTypes = mock(OrganizationTypeAssignmentRepository::class.java)

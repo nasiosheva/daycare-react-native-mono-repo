@@ -1,4 +1,4 @@
-import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildAbsencePurpose, ChildAbsenceRequestStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, GoalDomain, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, ParentFamilyProfileInput, ParentIncomeRange, ParentOccupation, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffLeaveRequestStatus, StaffLeaveRequestType, StaffReminderTarget, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
+import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildAbsencePurpose, ChildAbsenceRequestStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, EducationEnrollmentMode, EducationOfferingStatus, GoalDomain, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, ParentFamilyProfileInput, ParentIncomeRange, ParentOccupation, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffLeaveRequestStatus, StaffLeaveRequestType, StaffReminderTarget, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -147,7 +147,13 @@ export type OvertimeCharge = { id: string; invoiceId: string; branchId: string; 
 export type TenantPayment = { id: string; amount: number; status: TenantPaymentStatus; dueDate: string; paidAt: string | null };
 export type TenantStaffAdmin = { id: string; email: string | null; displayName: string | null; status: "ACTIVE" | "INACTIVE" | "PENDING"; primary: boolean };
 export type TenantBranch = { id: string; name: string; timezone: string; fullAddress?: string | null; googleMapsUrl?: string | null; active: boolean; primary: boolean };
-export type InstitutionTypeDefinition = { code: string; name: string; parentOccupationVisible: boolean; parentIncomeRangeVisible: boolean };
+export type InstitutionTypePresentationInput = { logo?: string | null; backgroundColor?: string | null; borderColor?: string | null; textColor?: string | null };
+export type InstitutionTypeParameters = Record<string, string>;
+export type InstitutionTypeDefinitionInput = { name: string; description?: string | null; parentOccupationVisible?: boolean; parentIncomeRangeVisible?: boolean; parameters?: InstitutionTypeParameters } & InstitutionTypePresentationInput;
+export type InstitutionTypeDefinition = { code: string; name: string; description: string | null; parentOccupationVisible: boolean; parentIncomeRangeVisible: boolean; logo: string | null; backgroundColor: string | null; borderColor: string | null; textColor: string | null; parameters: InstitutionTypeParameters };
+export type EducationOffering = { id: string; branchId: string; institutionType: InstitutionType; enrollmentMode: EducationEnrollmentMode; capabilities: InstitutionCapability[]; status: EducationOfferingStatus; programCode: string; revision: number };
+export type UiAccessContext = { organizationId: string; role: Role; active: boolean; revision: number; offerings: EducationOffering[] };
+export type UpsertEducationOfferingInput = { branchId: string; institutionType: InstitutionType; enrollmentMode: EducationEnrollmentMode; programCode?: string };
 export type ParentFamilyProfileForTenant = { husbandOccupation?: ParentOccupation | null; husbandIncomeRange?: ParentIncomeRange | null; wifeOccupation?: ParentOccupation | null; wifeIncomeRange?: ParentIncomeRange | null };
 export type Tenant = { id: string; name: string; branchName: string | null; branches: TenantBranch[]; institutionTypes: InstitutionType[]; capabilities: InstitutionCapability[]; subscriptionPlan: TenantSubscriptionPlan | null; subscriptionStatus: TenantSubscriptionStatus | null; periodStart: string | null; periodEnd: string | null; trialEndsAt: string | null; monthlyFee: number | null; staffAdmin: TenantStaffAdmin | null; staffAdmins: TenantStaffAdmin[]; payments: TenantPayment[] };
 export type TenantReadinessStatus = "READY" | "NEEDS_ATTENTION";
@@ -257,6 +263,10 @@ export class ApiClient {
   async identityCheck(): Promise<IdentityCheckResult> { return this.request("/auth/identity-check"); }
   async updateMyProfile(input: { gender: ChildGender; dateOfBirth: string }): Promise<CurrentUser> { return this.request("/me", { method: "PATCH", body: JSON.stringify(input) }); }
   async updateMyUsername(username?: string): Promise<CurrentUser> { return this.request("/me/username", { method: "PATCH", body: JSON.stringify({ username }) }); }
+  async uiAccessContext(): Promise<UiAccessContext> { return this.request("/education-offerings/context"); }
+  async educationOfferings(): Promise<EducationOffering[]> { return this.request("/education-offerings"); }
+  async createEducationOffering(input: UpsertEducationOfferingInput): Promise<EducationOffering> { return this.request("/education-offerings", { method: "POST", body: JSON.stringify(input) }); }
+  async setEducationOfferingStatus(offeringId: string, status: EducationOfferingStatus): Promise<EducationOffering> { return this.request(`/education-offerings/${offeringId}/status`, { method: "POST", body: JSON.stringify({ status }) }); }
   async parentFamilyProfile(): Promise<CurrentUser["parentFamilyProfile"]> { return this.request("/parent-family-profile"); }
   async updateParentFamilyProfile(input: ParentFamilyProfileInput): Promise<NonNullable<CurrentUser["parentFamilyProfile"]>> { return this.request("/parent-family-profile", { method: "PUT", body: JSON.stringify(input) }); }
   async parentEnrollmentCatalog(): Promise<ParentTenantCatalog[]> { return this.request("/parent-enrollment/catalog"); }
@@ -288,8 +298,8 @@ export class ApiClient {
   async tenantReadiness(): Promise<TenantReadinessSummary> { return this.request("/platform/tenant-readiness"); }
   async organizationReadiness(): Promise<TenantReadiness> { return this.request("/tenant-readiness"); }
   async institutionTypes(): Promise<InstitutionTypeDefinition[]> { return this.request("/platform/institution-types"); }
-  async createInstitutionType(input: { name: string; parentOccupationVisible?: boolean; parentIncomeRangeVisible?: boolean }): Promise<InstitutionTypeDefinition> { return this.request("/platform/institution-types", { method: "POST", body: JSON.stringify(input) }); }
-  async updateInstitutionType(code: string, input: { name: string; parentOccupationVisible?: boolean; parentIncomeRangeVisible?: boolean }): Promise<InstitutionTypeDefinition> { return this.request(`/platform/institution-types/${code}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async createInstitutionType(input: InstitutionTypeDefinitionInput): Promise<InstitutionTypeDefinition> { return this.request("/platform/institution-types", { method: "POST", body: JSON.stringify(input) }); }
+  async updateInstitutionType(code: string, input: InstitutionTypeDefinitionInput): Promise<InstitutionTypeDefinition> { return this.request(`/platform/institution-types/${code}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async deleteInstitutionType(code: string): Promise<void> { await this.request<void>(`/platform/institution-types/${code}`, { method: "DELETE" }); }
   async tenant(organizationId: string): Promise<Tenant> { return this.request(`/platform/tenants/${organizationId}`); }
   async createTenant(input: CreateTenantInput): Promise<Tenant> { return this.request("/platform/tenants", { method: "POST", body: JSON.stringify(input) }); }

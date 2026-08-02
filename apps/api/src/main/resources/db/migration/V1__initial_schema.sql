@@ -1273,3 +1273,339 @@ CREATE TABLE parent_family_profiles (
 ALTER TABLE institution_type_definitions
   ADD COLUMN IF NOT EXISTS parent_occupation_visible BOOLEAN NOT NULL DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS parent_income_range_visible BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- ===================================================================
+-- Consolidated baseline: formerly V2__global_program_revisions_and_platform_knowledge.sql
+-- ===================================================================
+ALTER TABLE development_programs
+  ADD COLUMN revised_from_program_id UUID REFERENCES development_programs(id),
+  ADD COLUMN revision_number INTEGER NOT NULL DEFAULT 1;
+CREATE INDEX development_programs_revision_source_idx ON development_programs (revised_from_program_id);
+
+CREATE TABLE platform_knowledge_candidates (
+  id UUID PRIMARY KEY,
+  normalized_key VARCHAR(512) NOT NULL UNIQUE,
+  topic_name VARCHAR(120) NOT NULL,
+  learning_level_name VARCHAR(120) NOT NULL,
+  min_age_months INTEGER,
+  max_age_months INTEGER,
+  domain VARCHAR(40) NOT NULL,
+  duration_days INTEGER NOT NULL,
+  indicator_names TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL,
+  supporting_tenant_count INTEGER NOT NULL,
+  relevant_tenant_count INTEGER NOT NULL,
+  support_percent INTEGER NOT NULL,
+  minimum_tenant_threshold INTEGER NOT NULL,
+  minimum_support_percent INTEGER NOT NULL,
+  algorithm_version VARCHAR(40) NOT NULL,
+  reviewed_at TIMESTAMPTZ,
+  reviewed_by_user_id UUID REFERENCES users(id),
+  review_reason VARCHAR(1000),
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX platform_knowledge_candidates_status_idx ON platform_knowledge_candidates (status, updated_at DESC);
+
+-- ===================================================================
+-- Consolidated baseline: formerly V3__private_tutoring.sql
+-- ===================================================================
+CREATE TABLE private_tutoring_services (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  branch_id UUID NOT NULL REFERENCES branches(id),
+  name VARCHAR(120) NOT NULL,
+  description VARCHAR(2000) NOT NULL,
+  min_age_months INTEGER NOT NULL,
+  max_age_months INTEGER NOT NULL,
+  duration_minutes INTEGER NOT NULL,
+  price NUMERIC(14,2) NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL,
+  CONSTRAINT private_tutoring_services_age_range CHECK (min_age_months >= 0 AND min_age_months <= max_age_months),
+  CONSTRAINT private_tutoring_services_duration CHECK (duration_minutes BETWEEN 15 AND 480),
+  CONSTRAINT private_tutoring_services_price CHECK (price > 0)
+);
+CREATE INDEX private_tutoring_services_catalog_idx ON private_tutoring_services (organization_id, branch_id, active);
+
+CREATE TABLE private_tutoring_service_learning_levels (
+  id UUID PRIMARY KEY,
+  private_tutoring_service_id UUID NOT NULL REFERENCES private_tutoring_services(id) ON DELETE CASCADE,
+  learning_level_id UUID NOT NULL REFERENCES learning_levels(id),
+  UNIQUE (private_tutoring_service_id, learning_level_id)
+);
+
+CREATE TABLE private_tutors (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  type VARCHAR(20) NOT NULL,
+  staff_user_id UUID REFERENCES users(id),
+  display_name VARCHAR(200) NOT NULL,
+  bio VARCHAR(2000) NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL,
+  CONSTRAINT private_tutors_type CHECK ((type = 'STAFF' AND staff_user_id IS NOT NULL) OR (type = 'EXTERNAL' AND staff_user_id IS NULL))
+);
+CREATE UNIQUE INDEX private_tutors_staff_unique ON private_tutors (organization_id, staff_user_id) WHERE staff_user_id IS NOT NULL;
+
+CREATE TABLE private_tutoring_service_tutors (
+  id UUID PRIMARY KEY,
+  private_tutoring_service_id UUID NOT NULL REFERENCES private_tutoring_services(id) ON DELETE CASCADE,
+  private_tutor_id UUID NOT NULL REFERENCES private_tutors(id),
+  UNIQUE (private_tutoring_service_id, private_tutor_id)
+);
+
+CREATE TABLE private_tutoring_requests (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  branch_id UUID NOT NULL REFERENCES branches(id),
+  parent_user_id UUID NOT NULL REFERENCES users(id),
+  child_id UUID NOT NULL REFERENCES children(id),
+  private_tutoring_service_id UUID NOT NULL REFERENCES private_tutoring_services(id),
+  private_tutor_id UUID REFERENCES private_tutors(id),
+  service_name VARCHAR(120) NOT NULL,
+  provider_name VARCHAR(200),
+  duration_minutes INTEGER NOT NULL,
+  price NUMERIC(14,2) NOT NULL,
+  preferred_at TIMESTAMP,
+  scheduled_at TIMESTAMP,
+  parent_note VARCHAR(500),
+  decision_reason VARCHAR(500),
+  status VARCHAR(24) NOT NULL,
+  invoice_id UUID UNIQUE REFERENCES invoices(id),
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX private_tutoring_requests_parent_idx ON private_tutoring_requests (organization_id, parent_user_id, created_at DESC);
+CREATE INDEX private_tutoring_requests_review_idx ON private_tutoring_requests (organization_id, status, created_at ASC);
+CREATE INDEX private_tutoring_requests_tutor_schedule_idx ON private_tutoring_requests (private_tutor_id, scheduled_at);
+
+-- ===================================================================
+-- Consolidated baseline: formerly V4-V12
+-- ===================================================================
+ALTER TABLE branches ADD COLUMN full_address VARCHAR(2000);
+ALTER TABLE branches ADD COLUMN google_maps_url VARCHAR(2048);
+
+ALTER TABLE development_program_items ADD COLUMN priority BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE child_health_records (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  child_id UUID NOT NULL UNIQUE REFERENCES children(id) ON DELETE CASCADE,
+  blood_type VARCHAR(10),
+  allergies VARCHAR(2000),
+  medical_conditions VARCHAR(2000),
+  medications VARCHAR(2000),
+  emergency_instructions VARCHAR(2000),
+  updated_by_user_id UUID NOT NULL REFERENCES users(id),
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE child_incident_reports (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  branch_id UUID NOT NULL REFERENCES branches(id),
+  child_id UUID NOT NULL REFERENCES children(id),
+  reported_by_user_id UUID NOT NULL REFERENCES users(id),
+  severity VARCHAR(20) NOT NULL,
+  category VARCHAR(20) NOT NULL,
+  description VARCHAR(2000) NOT NULL,
+  action_taken VARCHAR(2000),
+  occurred_at TIMESTAMPTZ NOT NULL,
+  photo_content_type VARCHAR(50),
+  photo_data BYTEA,
+  acknowledged_by_user_id UUID REFERENCES users(id),
+  acknowledged_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX child_incident_reports_child_idx ON child_incident_reports (child_id, occurred_at DESC);
+
+ALTER TABLE memberships ADD COLUMN deactivated_at TIMESTAMPTZ;
+
+CREATE TABLE development_entry_media (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  development_entry_id UUID NOT NULL REFERENCES development_entries(id) ON DELETE CASCADE,
+  kind VARCHAR(10) NOT NULL,
+  content_type VARCHAR(50) NOT NULL,
+  data BYTEA NOT NULL,
+  duration_ms INTEGER,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX development_entry_media_entry_idx ON development_entry_media (development_entry_id, display_order);
+
+CREATE TABLE child_incident_acknowledgements (
+  id UUID PRIMARY KEY,
+  incident_id UUID NOT NULL REFERENCES child_incident_reports(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id),
+  acknowledged_at TIMESTAMPTZ NOT NULL,
+  UNIQUE (incident_id, user_id)
+);
+
+INSERT INTO child_incident_acknowledgements (id, incident_id, user_id, acknowledged_at)
+SELECT gen_random_uuid(), id, acknowledged_by_user_id, acknowledged_at
+FROM child_incident_reports
+WHERE acknowledged_by_user_id IS NOT NULL AND acknowledged_at IS NOT NULL;
+
+ALTER TABLE child_programs
+    ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    ADD COLUMN parent_visible BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN parent_summary VARCHAR(2000),
+    ADD COLUMN home_guidance VARCHAR(2000),
+    ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE TABLE child_program_steps (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  child_program_id UUID NOT NULL REFERENCES child_programs(id) ON DELETE CASCADE,
+  title VARCHAR(200) NOT NULL,
+  description VARCHAR(2000) NOT NULL,
+  home_guidance VARCHAR(2000),
+  parent_visible BOOLEAN NOT NULL DEFAULT FALSE,
+  completed BOOLEAN NOT NULL DEFAULT FALSE,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX child_program_steps_program_idx ON child_program_steps (organization_id, child_program_id, display_order, created_at);
+
+CREATE TABLE child_program_staff_notes (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  child_program_id UUID NOT NULL REFERENCES child_programs(id) ON DELETE CASCADE,
+  child_program_step_id UUID REFERENCES child_program_steps(id) ON DELETE SET NULL,
+  author_user_id UUID NOT NULL REFERENCES users(id),
+  note VARCHAR(2000) NOT NULL,
+  recorded_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX child_program_staff_notes_program_idx ON child_program_staff_notes (organization_id, child_program_id, recorded_at DESC);
+
+CREATE TABLE child_program_parent_feedback (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  child_program_id UUID NOT NULL REFERENCES child_programs(id) ON DELETE CASCADE,
+  parent_user_id UUID NOT NULL REFERENCES users(id),
+  note VARCHAR(2000) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX child_program_parent_feedback_program_idx ON child_program_parent_feedback (organization_id, child_program_id, created_at DESC);
+
+CREATE TABLE child_goal_conclusion_corrections (
+    id UUID PRIMARY KEY,
+    organization_id UUID NOT NULL REFERENCES organizations(id),
+    child_goal_id UUID NOT NULL REFERENCES child_goals(id) ON DELETE CASCADE,
+    previous_outcome VARCHAR(20) NOT NULL,
+    previous_summary VARCHAR(2000) NOT NULL,
+    corrected_outcome VARCHAR(20) NOT NULL,
+    corrected_summary VARCHAR(2000) NOT NULL,
+    reason VARCHAR(500) NOT NULL,
+    corrected_by_user_id UUID NOT NULL REFERENCES users(id),
+    corrected_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX child_goal_conclusion_corrections_goal_idx
+    ON child_goal_conclusion_corrections (organization_id, child_goal_id, corrected_at);
+
+-- ===================================================================
+-- Consolidated baseline: formerly V13__private_tutoring_pricing_type.sql
+-- ===================================================================
+ALTER TABLE private_tutoring_services
+  ADD COLUMN daily_price NUMERIC(14,2),
+  ADD COLUMN weekly_price NUMERIC(14,2),
+  ADD COLUMN monthly_price NUMERIC(14,2);
+
+UPDATE private_tutoring_services SET daily_price = price;
+
+ALTER TABLE private_tutoring_services DROP CONSTRAINT private_tutoring_services_price;
+ALTER TABLE private_tutoring_services DROP COLUMN price;
+
+ALTER TABLE private_tutoring_services
+  ADD CONSTRAINT private_tutoring_services_prices_positive CHECK (
+    (daily_price IS NULL OR daily_price > 0)
+    AND (weekly_price IS NULL OR weekly_price > 0)
+    AND (monthly_price IS NULL OR monthly_price > 0)
+  ),
+  ADD CONSTRAINT private_tutoring_services_has_price CHECK (
+    daily_price IS NOT NULL OR weekly_price IS NOT NULL OR monthly_price IS NOT NULL
+  );
+
+ALTER TABLE private_tutoring_requests
+  ADD COLUMN pricing_type VARCHAR(16) NOT NULL DEFAULT 'DAILY';
+
+ALTER TABLE private_tutoring_requests
+  ADD CONSTRAINT private_tutoring_requests_pricing_type CHECK (pricing_type IN ('DAILY', 'WEEKLY', 'MONTHLY'));
+
+-- ===================================================================
+-- Consolidated baseline: formerly V14-V19
+-- ===================================================================
+CREATE TABLE education_offerings (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  branch_id UUID NOT NULL REFERENCES branches(id),
+  institution_type VARCHAR(80) NOT NULL,
+  enrollment_mode VARCHAR(40) NOT NULL,
+  capabilities VARCHAR(500) NOT NULL DEFAULT '',
+  status VARCHAR(40) NOT NULL,
+  program_code VARCHAR(80) NOT NULL DEFAULT 'DEFAULT',
+  revision BIGINT NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (organization_id, branch_id, institution_type, enrollment_mode, program_code)
+);
+
+CREATE INDEX education_offerings_scope_idx ON education_offerings (organization_id, branch_id, status);
+
+INSERT INTO education_offerings (id, organization_id, branch_id, institution_type, enrollment_mode, capabilities, status, program_code, revision, created_at, updated_at)
+SELECT gen_random_uuid(), assignment.organization_id, branch.id, assignment.type_code,
+  CASE WHEN assignment.type_code = 'DAYCARE' THEN 'DAYCARE_SERVICE' ELSE 'SCHOOL_ADMISSION' END,
+  CASE WHEN assignment.type_code = 'DAYCARE' THEN 'DAYCARE_OPERATIONS'
+       WHEN assignment.type_code IN ('PAUD', 'TK') THEN 'ACADEMIC_CURRICULUM'
+       ELSE '' END,
+  'PUBLISHED', 'DEFAULT', 1, NOW(), NOW()
+FROM organization_types assignment
+JOIN branches branch ON branch.organization_id = assignment.organization_id AND branch.active = TRUE;
+
+INSERT INTO institution_type_definitions (code, name, active) VALUES
+  ('TPA', 'Taman Penitipan Anak', TRUE),
+  ('KB', 'Kelompok Bermain', TRUE),
+  ('SPS', 'Satuan PAUD Sejenis', TRUE),
+  ('RA', 'Raudhatul Athfal', TRUE),
+  ('BIMBA', 'BIMBA', TRUE),
+  ('SD', 'Sekolah Dasar', TRUE),
+  ('MI', 'Madrasah Ibtidaiyah', TRUE),
+  ('SMP', 'Sekolah Menengah Pertama', TRUE),
+  ('MTS', 'Madrasah Tsanawiyah', TRUE),
+  ('SMA', 'Sekolah Menengah Atas', TRUE),
+  ('MA', 'Madrasah Aliyah', TRUE),
+  ('SMK', 'Sekolah Menengah Kejuruan', TRUE)
+ON CONFLICT (code) DO NOTHING;
+
+ALTER TABLE institution_type_definitions
+  ADD COLUMN IF NOT EXISTS logo VARCHAR(500),
+  ADD COLUMN IF NOT EXISTS background_color VARCHAR(32),
+  ADD COLUMN IF NOT EXISTS border_color VARCHAR(32),
+  ADD COLUMN IF NOT EXISTS text_color VARCHAR(32),
+  ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS description VARCHAR(2000);
+
+UPDATE institution_type_definitions
+SET description = CASE code
+  WHEN 'DAYCARE' THEN 'Layanan penitipan anak dengan operasional harian, paket layanan, booking, dan kehadiran.'
+  WHEN 'TPA' THEN 'Layanan penitipan anak untuk perawatan, pengasuhan, dan kegiatan sesuai usia.'
+  WHEN 'KB' THEN 'Satuan pendidikan anak usia dini untuk kelompok bermain.'
+  WHEN 'SPS' THEN 'Layanan PAUD berbasis masyarakat dengan bentuk penyelenggaraan yang beragam.'
+  WHEN 'PAUD' THEN 'Pendidikan anak usia dini untuk stimulasi tumbuh kembang sebelum pendidikan dasar.'
+  WHEN 'TK' THEN 'Pendidikan anak usia dini dalam bentuk taman kanak-kanak.'
+  WHEN 'RA' THEN 'Pendidikan anak usia dini berciri keagamaan Islam setara taman kanak-kanak.'
+  WHEN 'BIMBA' THEN 'Program bimbingan minat baca dan belajar awal untuk anak usia dini.'
+  WHEN 'SD' THEN 'Pendidikan dasar jenjang sekolah dasar.'
+  WHEN 'MI' THEN 'Pendidikan dasar berciri keagamaan Islam setara sekolah dasar.'
+  WHEN 'SMP' THEN 'Pendidikan dasar jenjang sekolah menengah pertama.'
+  WHEN 'MTS' THEN 'Pendidikan dasar berciri keagamaan Islam setara sekolah menengah pertama.'
+  WHEN 'SMA' THEN 'Pendidikan menengah umum jenjang sekolah menengah atas.'
+  WHEN 'MA' THEN 'Pendidikan menengah berciri keagamaan Islam setara sekolah menengah atas.'
+  WHEN 'SMK' THEN 'Pendidikan menengah kejuruan dengan program keahlian.'
+END
+WHERE code IN ('DAYCARE', 'TPA', 'KB', 'SPS', 'PAUD', 'TK', 'RA', 'BIMBA', 'SD', 'MI', 'SMP', 'MTS', 'SMA', 'MA', 'SMK')
+  AND (description IS NULL OR BTRIM(description) = '');
