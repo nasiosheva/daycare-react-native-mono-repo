@@ -126,6 +126,10 @@ class AccessService(
         if (!scope.membership.active) throw AccessDeniedException("Your tenant access is read-only")
     }
 
+    fun requireAnyCapability(scope: AccessScope, allowedCapabilities: Set<InstitutionCapability>) {
+        if (scope.capabilities.none { it in allowedCapabilities }) throw AccessDeniedException("This feature is not enabled for the institution")
+    }
+
     @Transactional
     fun updatePersonalDetails(jwt: Jwt, gender: Gender, dateOfBirth: LocalDate): CurrentUserResponse {
         identityService.updatePersonalDetails(jwt, gender, dateOfBirth)

@@ -76,8 +76,8 @@ interface PlatformAdministratorRepository : JpaRepository<PlatformAdministrator,
 interface TenantSubscriptionRepository : JpaRepository<TenantSubscription, UUID> { fun findByOrganizationId(organizationId: UUID): TenantSubscription? }
 interface TenantPaymentRepository : JpaRepository<TenantPayment, UUID> { fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<TenantPayment> }
 interface BranchRepository : JpaRepository<Branch, UUID> { fun findFirstByOrganizationId(organizationId: UUID): Branch?; fun findByOrganizationIdAndPrimaryTrue(organizationId: UUID): Branch?; fun findAllByOrganizationId(organizationId: UUID): List<Branch>; fun findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId: UUID): List<Branch>; fun findAllByOrganizationIdAndNameContainingIgnoreCase(organizationId: UUID, name: String): List<Branch>; @Lock(LockModeType.PESSIMISTIC_WRITE) fun findWithLockById(id: UUID): Branch? }
-interface BranchOperatingHourRepository : JpaRepository<BranchOperatingHour, UUID> { fun findAllByBranchIdOrderByDayOfWeekAsc(branchId: UUID): List<BranchOperatingHour>; fun deleteAllByBranchId(branchId: UUID) }
-interface BranchOvertimeRateTierRepository : JpaRepository<BranchOvertimeRateTier, UUID> { fun findAllByBranchIdOrderByDisplayOrderAsc(branchId: UUID): List<BranchOvertimeRateTier>; fun deleteAllByBranchId(branchId: UUID) }
+interface BranchOperatingHourRepository : JpaRepository<BranchOperatingHour, UUID> { fun findAllByBranchIdOrderByDayOfWeekAsc(branchId: UUID): List<BranchOperatingHour>; fun findAllByBranchIdIn(branchIds: Collection<UUID>): List<BranchOperatingHour>; fun deleteAllByBranchId(branchId: UUID) }
+interface BranchOvertimeRateTierRepository : JpaRepository<BranchOvertimeRateTier, UUID> { fun findAllByBranchIdOrderByDisplayOrderAsc(branchId: UUID): List<BranchOvertimeRateTier>; fun findAllByBranchIdIn(branchIds: Collection<UUID>): List<BranchOvertimeRateTier>; fun deleteAllByBranchId(branchId: UUID) }
 interface OvertimeChargeRepository : JpaRepository<OvertimeCharge, UUID> { fun findAllByOrganizationIdOrderByOperationalDateDesc(organizationId: UUID): List<OvertimeCharge>; fun findByInvoiceId(invoiceId: UUID): OvertimeCharge?; fun findAllByOrganizationIdAndChildIdAndOperationalDate(organizationId: UUID, childId: UUID, operationalDate: LocalDate): List<OvertimeCharge> }
 interface OvertimeChargeTierSnapshotRepository : JpaRepository<OvertimeChargeTierSnapshot, UUID> { fun findAllByOvertimeChargeIdOrderByDisplayOrderAsc(overtimeChargeId: UUID): List<OvertimeChargeTierSnapshot>; fun deleteAllByOvertimeChargeId(overtimeChargeId: UUID) }
 interface ClassroomRepository : JpaRepository<Classroom, UUID> { fun findAllByOrganizationIdOrderByNameAsc(organizationId: UUID): List<Classroom>; fun findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId: UUID): List<Classroom> }
@@ -116,12 +116,19 @@ interface ChildStaffAssignmentRepository : JpaRepository<ChildStaffAssignment, U
     fun existsByOrganizationIdAndChildIdAndUserId(organizationId: UUID, childId: UUID, userId: UUID): Boolean
     fun existsByChildIdAndUserId(childId: UUID, userId: UUID): Boolean
 }
-interface GuardianLinkRepository : JpaRepository<GuardianLink, UUID> { fun findAllByUserId(userId: UUID): List<GuardianLink>; fun existsByChildIdAndUserId(childId: UUID, userId: UUID): Boolean; fun findAllByChildId(childId: UUID): List<GuardianLink> }
+interface GuardianLinkRepository : JpaRepository<GuardianLink, UUID> { fun findAllByUserId(userId: UUID): List<GuardianLink>; fun existsByChildIdAndUserId(childId: UUID, userId: UUID): Boolean; fun findAllByChildId(childId: UUID): List<GuardianLink>; fun findAllByChildIdIn(childIds: Collection<UUID>): List<GuardianLink> }
 interface AttendanceRepository : JpaRepository<AttendanceRecord, UUID> {
     fun findByChildIdAndOperationalDate(childId: UUID, operationalDate: LocalDate): AttendanceRecord?
     fun findAllByChildIdInAndOperationalDateIn(childIds: List<UUID>, operationalDates: List<LocalDate>): List<AttendanceRecord>
     fun findAllByChildIdInAndOperationalDateBetween(childIds: List<UUID>, startsOn: LocalDate, endsOn: LocalDate): List<AttendanceRecord>
+    fun findAllByCheckedOutAtIsNullAndOvertimeAlertSentAtIsNull(): List<AttendanceRecord>
 }
+interface PickupAuthorizationRepository : JpaRepository<PickupAuthorization, UUID> {
+    fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<PickupAuthorization>
+}
+interface EmergencyContactRepository : JpaRepository<EmergencyContact, UUID> { fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<EmergencyContact> }
+interface ConsentDefinitionRepository : JpaRepository<ConsentDefinition, UUID> { fun findAllByOrganizationIdAndActiveTrue(organizationId: UUID): List<ConsentDefinition> }
+interface ConsentRecordRepository : JpaRepository<ConsentRecord, UUID> { fun findAllByOrganizationIdAndChildIdAndGuardianUserId(organizationId: UUID, childId: UUID, guardianUserId: UUID): List<ConsentRecord> }
 interface ChildAbsenceRequestRepository : JpaRepository<ChildAbsenceRequest, UUID> {
     fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildAbsenceRequest>
     fun findAllByOrganizationIdAndStatusOrderByStartDateAscCreatedAtAsc(organizationId: UUID, status: com.daycare.api.domain.ChildAbsenceRequestStatus): List<ChildAbsenceRequest>

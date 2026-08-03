@@ -9,6 +9,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import type { Classroom } from "@daycare/api-client";
+import { hasLegacyLearningAccess, hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 const assignmentRoles = ["STAFF", "NURSE", "MISS"] as const;
 
@@ -20,12 +21,15 @@ export default function ClassroomsScreen() {
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
   const canManage = isStaffAdmin && membership.active;
+  const access = useUiAccessContext(Boolean(membership));
+  const canAccessLegacyClasses = hasLegacyLearningAccess(membership?.capabilities, access.data);
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
   const [filterBranchId, setFilterBranchId] = useState<string>();
-  const filterBranches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: isStaffAdmin });
-  const periods = useQuery({ queryKey: ["learning-periods", organizationId], queryFn: () => api.academicYears(), enabled: Boolean(membership) });
-  const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: Boolean(membership) });
-  const classrooms = useQuery({ queryKey: ["classrooms", organizationId, filterBranchId], queryFn: () => api.classrooms({ branchId: isStaffAdmin ? filterBranchId : undefined }), enabled: Boolean(membership) });
-  const branches = useQuery({ queryKey: ["learning-branches", organizationId], queryFn: () => api.learningBranches(), enabled: Boolean(membership) });
+  const filterBranches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: isStaffAdmin && canAccessLegacyClasses });
+  const periods = useQuery({ queryKey: ["learning-periods", organizationId], queryFn: () => api.academicYears(), enabled: canAccessLegacyClasses && hasAcademicOffering });
+  const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: canAccessLegacyClasses });
+  const classrooms = useQuery({ queryKey: ["classrooms", organizationId, filterBranchId], queryFn: () => api.classrooms({ branchId: isStaffAdmin ? filterBranchId : undefined }), enabled: canAccessLegacyClasses });
+  const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: canAccessLegacyClasses });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ["classrooms", organizationId] });
   const createClassroom = useMutation({ mutationFn: api.createClassroom.bind(api), onSuccess: refresh });
   const updateClassroom = useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof api.updateClassroom>[1] }) => api.updateClassroom(id, input), onSuccess: refresh });
@@ -38,6 +42,7 @@ export default function ClassroomsScreen() {
 
   if (!profile) return null;
   if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
+  if (!access.isLoading && !canAccessLegacyClasses) return <Redirect href="/academic" />;
 
   const failure = (error: unknown) => Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"));
   const editClassroom = (classroom: Classroom) => { setEditingClassroomId(classroom.id); setName(classroom.name); setBranchId(classroom.branchId); setLevelId(classroom.learningLevelId ?? undefined); setPeriodId(classroom.learningPeriodId ?? undefined); setCapacity(classroom.capacity?.toString() ?? ""); };
@@ -70,8 +75,8 @@ export default function ClassroomsScreen() {
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t(editingClassroomId ? "learning.editClassroom" : "learning.addClassroom")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t(editingClassroomId ? "common.save" : "learning.addClassroom"), loading: createClassroom.isPending || updateClassroom.isPending, onPress: () => void save() }}>
       <View style={styles.fieldGroup}><AppText variant="label">{t("learning.branch")}</AppText><View style={styles.options}>{branches.data?.map((branch) => <Button key={branch.id} variant={branchId === branch.id ? "primary" : "secondary"} onPress={() => setBranchId(branch.id)}>{branch.name}</Button>)}</View></View>
-      <View style={styles.fieldGroup}><AppText variant="label">{t("learning.level")}</AppText><View style={styles.options}>{levels.data?.filter((level) => level.active).map((level) => <Button key={level.id} variant={levelId === level.id ? "primary" : "secondary"} onPress={() => setLevelId(level.id)}>{level.name}</Button>)}</View>{levels.data?.every((level) => !level.active) && <View style={styles.options}><AppText tone="muted">{t("learning.noActiveLevelsForClassroom")}</AppText><Button variant="secondary" onPress={openLearningLevels}>{t("learning.addLevel")}</Button></View>}</View>
-      <View style={styles.fieldGroup}><AppText variant="label">{t("learning.selectPeriod")}</AppText><View style={styles.options}><Button variant="secondary" onPress={() => setPeriodId(undefined)}>{t("learning.clearPeriod")}</Button>{periods.data?.map((period) => <Button key={period.id} variant={periodId === period.id ? "primary" : "secondary"} onPress={() => setPeriodId(period.id)}>{period.name}</Button>)}</View></View>
+      <View style={styles.fieldGroup}><AppText variant="label">{t(hasAcademicOffering ? "learning.level" : "learning.legacyLevel")}</AppText><View style={styles.options}>{levels.data?.filter((level) => level.active).map((level) => <Button key={level.id} variant={levelId === level.id ? "primary" : "secondary"} onPress={() => setLevelId(level.id)}>{level.name}</Button>)}</View>{levels.data?.every((level) => !level.active) && <View style={styles.options}><AppText tone="muted">{t("learning.noActiveLevelsForClassroom")}</AppText><Button variant="secondary" onPress={openLearningLevels}>{t(hasAcademicOffering ? "learning.addLevel" : "learning.addLegacyLevel")}</Button></View>}</View>
+      {hasAcademicOffering && <View style={styles.fieldGroup}><AppText variant="label">{t("learning.selectPeriod")}</AppText><View style={styles.options}><Button variant="secondary" onPress={() => setPeriodId(undefined)}>{t("learning.clearPeriod")}</Button>{periods.data?.map((period) => <Button key={period.id} variant={periodId === period.id ? "primary" : "secondary"} onPress={() => setPeriodId(period.id)}>{period.name}</Button>)}</View></View>}
       <TextInput style={styles.input} placeholder={t("learning.classroomName")} value={name} onChangeText={setName} />
       <TextInput style={styles.input} inputMode="numeric" placeholder={t("learning.capacity")} value={capacity} onChangeText={setCapacity} />
     </BottomSheet>

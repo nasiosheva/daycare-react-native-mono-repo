@@ -221,7 +221,7 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/device-notification-preference", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ installationId: "installation-id", muteDuration: "ONE_HOUR" }) }));
   });
 
-  it("sends the selected child hierarchy filters to the tenant endpoint", async () => {
+  it("sends the selected child hierarchy and guardian filters to the tenant endpoint", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
     vi.stubGlobal("fetch", fetchMock);
     const client = new ApiClient({
@@ -231,9 +231,9 @@ describe("ApiClient", () => {
       getLanguage: () => "id",
     });
 
-    await client.children({ branchId: "branch-id", learningLevelId: "level-id", classroomId: "classroom-id" });
+    await client.children({ branchId: "branch-id", learningLevelId: "level-id", classroomId: "classroom-id", guardianStatus: "UNLINKED" });
 
-    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/children?branchId=branch-id&learningLevelId=level-id&classroomId=classroom-id", expect.anything());
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/children?branchId=branch-id&learningLevelId=level-id&classroomId=classroom-id&guardianStatus=UNLINKED", expect.anything());
   });
 
   it("creates and decides a child absence request", async () => {

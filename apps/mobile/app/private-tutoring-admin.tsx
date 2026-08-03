@@ -15,8 +15,8 @@ export default function PrivateTutoringAdminScreen() {
   const access = useUiAccessContext(Boolean(membership));
   const canUsePrivateTutoring = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
   const services = useQuery({ queryKey: ["private-tutoring-admin-services", organizationId], queryFn: () => api.privateTutoringServices(), enabled: membership?.role === "STAFF_ADMIN" && canUsePrivateTutoring });
-  const tutors = useQuery({ queryKey: ["private-tutoring-tutors", organizationId], queryFn: () => api.privateTutors(), enabled: membership?.role === "STAFF_ADMIN" });
-  const requests = useQuery({ queryKey: ["private-tutoring-admin-requests", organizationId], queryFn: () => api.privateTutoringRequests(), enabled: membership?.role === "STAFF_ADMIN" });
+  const tutors = useQuery({ queryKey: ["private-tutoring-tutors", organizationId], queryFn: () => api.privateTutors(), enabled: membership?.role === "STAFF_ADMIN" && canUsePrivateTutoring });
+  const requests = useQuery({ queryKey: ["private-tutoring-admin-requests", organizationId], queryFn: () => api.privateTutoringRequests(), enabled: membership?.role === "STAFF_ADMIN" && canUsePrivateTutoring });
   if (!profile) return null; if (membership?.role !== "STAFF_ADMIN" || (!access.isLoading && !canUsePrivateTutoring)) return <Redirect href="/home" />;
   return <AppScreen showBottomNavigation={false} title={t("privateTutoring.adminTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.content}>
     <AppText tone="muted">{t("privateTutoring.adminDescription")}</AppText><View style={styles.row}><Button disabled={membership.active === false} onPress={() => router.push("/private-tutoring-service-form")}>{t("privateTutoring.addService")}</Button><Button disabled={membership.active === false} variant="secondary" onPress={() => router.push("/private-tutor-form")}>{t("privateTutoring.addTutor")}</Button></View>

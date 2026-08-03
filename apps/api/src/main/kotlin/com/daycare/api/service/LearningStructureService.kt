@@ -2,6 +2,7 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.ChildCareRole
 import com.daycare.api.domain.ChildEnrollmentStatus
+import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.InstitutionTypeCodes
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AcademicYearRepository
@@ -25,6 +26,7 @@ import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.UserProfileRepository
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -78,15 +80,23 @@ class LearningStructureService(
     private val childScopes: ChildScopeService,
     private val branchFilters: BranchListFilterService,
 ) {
+    private val legacyLearningCapabilities = setOf(InstitutionCapability.DAYCARE_OPERATIONS, InstitutionCapability.ACADEMIC_CURRICULUM)
+
+    private fun requireLegacyLearningScope(jwt: Jwt, organizationId: UUID, roles: Set<Role>, readOnly: Boolean = false): AccessScope {
+        val scope = access.require(jwt, organizationId, roles, readOnly = readOnly)
+        access.requireAnyCapability(scope, legacyLearningCapabilities)
+        return scope
+    }
+
     @Transactional(readOnly = true)
     fun branches(jwt: Jwt, organizationId: UUID): List<LearningBranchResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
         return branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId).map { LearningBranchResponse(it.id, it.name) }
     }
 
     @Transactional(readOnly = true)
     fun templates(jwt: Jwt, organizationId: UUID): List<LearningLevelTemplateResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        val scope = requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
         return buildList {
             if (InstitutionTypeCodes.DAYCARE in scope.institutionTypes) addAll(daycareTemplates)
             if (InstitutionTypeCodes.PAUD in scope.institutionTypes) add(LearningLevelTemplateResponse("PAUD", "PAUD", 36, 72))
@@ -125,13 +135,14 @@ class LearningStructureService(
 
     @Transactional(readOnly = true)
     fun levels(jwt: Jwt, organizationId: UUID): List<LearningLevelResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
         return levels.findAllByOrganizationIdOrderByDisplayOrderAscNameAsc(organizationId).map(::levelResponse)
     }
 
     @Transactional
     fun createLevel(jwt: Jwt, organizationId: UUID, request: UpsertLearningLevelRequest): LearningLevelResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val scope = requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        if (request.curriculumProgramIds.isNotEmpty()) access.requireAnyCapability(scope, setOf(InstitutionCapability.ACADEMIC_CURRICULUM))
         validateLevel(request)
         validatePrograms(organizationId, request.curriculumProgramIds)
         val level = levels.save(LearningLevel(organizationId = organizationId, name = request.name.trim(), minAgeMonths = request.minAgeMonths, maxAgeMonths = request.maxAgeMonths, displayOrder = request.displayOrder))
@@ -141,9 +152,11 @@ class LearningStructureService(
 
     @Transactional
     fun updateLevel(jwt: Jwt, organizationId: UUID, levelId: UUID, request: UpsertLearningLevelRequest): LearningLevelResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val scope = requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         validateLevel(request)
         val level = level(levelId, organizationId)
+        val currentCurriculumProgramIds = levelPrograms.findAllByLearningLevelId(level.id).map { it.curriculumProgramId }.toSet()
+        if (request.curriculumProgramIds != currentCurriculumProgramIds) access.requireAnyCapability(scope, setOf(InstitutionCapability.ACADEMIC_CURRICULUM))
         validatePrograms(organizationId, request.curriculumProgramIds, level.id)
         level.name = request.name.trim(); level.minAgeMonths = request.minAgeMonths; level.maxAgeMonths = request.maxAgeMonths; level.displayOrder = request.displayOrder
         replacePrograms(level.id, request.curriculumProgramIds)
@@ -152,20 +165,27 @@ class LearningStructureService(
 
     @Transactional
     fun archiveLevel(jwt: Jwt, organizationId: UUID, levelId: UUID): LearningLevelResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         return level(levelId, organizationId).also { it.active = false }.let(::levelResponse)
     }
 
     @Transactional(readOnly = true)
     fun classrooms(jwt: Jwt, organizationId: UUID, filter: BranchListFilter = BranchListFilter()): List<ClassroomResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        val scope = requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
         branchFilters.validate(organizationId, filter)
-        return classrooms.findAllByOrganizationIdOrderByNameAsc(organizationId).filter { filter.branchId == null || it.branchId == filter.branchId }.map(::classroomResponse)
+        val assignedClassroomIds = if (scope.membership.role == Role.STAFF) {
+            classroomAssignments.findAllByOrganizationIdAndUserId(organizationId, scope.user.id).map { it.classroomId }.plus(listOfNotNull(scope.membership.classroomId)).toSet()
+        } else emptySet()
+        return classrooms.findAllByOrganizationIdOrderByNameAsc(organizationId)
+            .filter { filter.branchId == null || it.branchId == filter.branchId }
+            .filter { scope.membership.role != Role.STAFF || it.id in assignedClassroomIds }
+            .map(::classroomResponse)
     }
 
     @Transactional
     fun createClassroom(jwt: Jwt, organizationId: UUID, request: UpsertClassroomRequest): ClassroomResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val scope = requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        if (request.learningPeriodId != null) access.requireAnyCapability(scope, setOf(InstitutionCapability.ACADEMIC_CURRICULUM))
         validateClassroomReferences(organizationId, request)
         val classroom = classrooms.save(Classroom(organizationId = organizationId, branchId = request.branchId, learningLevelId = request.learningLevelId, academicYearId = request.learningPeriodId, name = request.name.trim(), capacity = request.capacity))
         return classroomResponse(classroom)
@@ -173,29 +193,30 @@ class LearningStructureService(
 
     @Transactional
     fun updateClassroom(jwt: Jwt, organizationId: UUID, classroomId: UUID, request: UpsertClassroomRequest): ClassroomResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val scope = requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         validateClassroomReferences(organizationId, request)
         val classroom = classroom(classroomId, organizationId)
+        if (request.learningPeriodId != classroom.academicYearId) access.requireAnyCapability(scope, setOf(InstitutionCapability.ACADEMIC_CURRICULUM))
         classroom.branchId = request.branchId; classroom.learningLevelId = request.learningLevelId; classroom.academicYearId = request.learningPeriodId; classroom.name = request.name.trim(); classroom.capacity = request.capacity
         return classroomResponse(classroom)
     }
 
     @Transactional
     fun archiveClassroom(jwt: Jwt, organizationId: UUID, classroomId: UUID): ClassroomResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         return classroom(classroomId, organizationId).also { it.active = false }.let(::classroomResponse)
     }
 
     @Transactional(readOnly = true)
     fun classroomStaff(jwt: Jwt, organizationId: UUID, classroomId: UUID): List<ClassroomStaffAssignmentResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
-        classroom(classroomId, organizationId)
+        val scope = requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        visibleClassroom(scope, classroomId, organizationId)
         return classroomAssignments.findAllByOrganizationIdAndClassroomIdOrderByCreatedAtDesc(organizationId, classroomId).mapNotNull(::classroomStaffResponse)
     }
 
     @Transactional
     fun assignClassroomStaff(jwt: Jwt, organizationId: UUID, classroomId: UUID, request: AssignClassroomStaffRequest): ClassroomStaffAssignmentResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         val classroom = classroom(classroomId, organizationId)
         val membership = memberships.findAllByUserIdAndOrganizationId(request.userId, organizationId).firstOrNull { it.active && it.role in setOf(Role.STAFF_ADMIN, Role.STAFF) }
             ?: throw IllegalArgumentException("Only active Staff Admin or Staff users can be assigned to a classroom")
@@ -207,7 +228,7 @@ class LearningStructureService(
 
     @Transactional
     fun unassignClassroomStaff(jwt: Jwt, organizationId: UUID, classroomId: UUID, assignmentId: UUID) {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         classroom(classroomId, organizationId)
         val assignment = classroomAssignments.findById(assignmentId).orElseThrow { IllegalArgumentException("Classroom staff assignment was not found") }
         require(assignment.organizationId == organizationId && assignment.classroomId == classroomId) { "Classroom staff assignment belongs to a different classroom" }
@@ -216,21 +237,21 @@ class LearningStructureService(
 
     @Transactional(readOnly = true)
     fun classroomPrograms(jwt: Jwt, organizationId: UUID, classroomId: UUID): List<ClassroomProgramResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
-        classroom(classroomId, organizationId)
+        val scope = requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        visibleClassroom(scope, classroomId, organizationId)
         return classroomPrograms.findAllByOrganizationIdAndClassroomIdOrderByCreatedAtDesc(organizationId, classroomId).map(::classroomProgramResponse)
     }
 
     @Transactional
     fun createClassroomProgram(jwt: Jwt, organizationId: UUID, classroomId: UUID, request: CreateClassroomProgramRequest): ClassroomProgramResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         classroom(classroomId, organizationId)
         return classroomProgramResponse(classroomPrograms.save(ClassroomProgram(organizationId = organizationId, classroomId = classroomId, name = request.name.trim(), description = request.description?.trim().orEmpty())))
     }
 
     @Transactional
     fun removeClassroomProgram(jwt: Jwt, organizationId: UUID, classroomId: UUID, programId: UUID) {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         classroom(classroomId, organizationId)
         val program = classroomPrograms.findById(programId).orElseThrow { IllegalArgumentException("Classroom program was not found") }
         require(program.organizationId == organizationId && program.classroomId == classroomId) { "Classroom program belongs to a different classroom" }
@@ -239,14 +260,14 @@ class LearningStructureService(
 
     @Transactional(readOnly = true)
     fun placements(jwt: Jwt, organizationId: UUID, childId: UUID): List<ChildPlacementResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        val scope = requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
         if (scope.membership.role == Role.STAFF) childScopes.requireStaffManagedChild(scope, childId, organizationId) else requireChild(childId, organizationId)
         return placements.findAllByOrganizationIdAndChildIdOrderByStartsOnDesc(organizationId, childId).map(::placementResponse)
     }
 
     @Transactional(readOnly = true)
     fun placementOptions(jwt: Jwt, organizationId: UUID, childId: UUID): List<ClassroomResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
+        val scope = requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
         val child = if (scope.membership.role == Role.STAFF) childScopes.requireStaffManagedChild(scope, childId, organizationId) else requireChild(childId, organizationId)
         require(child.enrollmentStatus == ChildEnrollmentStatus.ACTIVE) { "Child enrollment is still pending Parent approval" }
         val activeBranchIds = branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId).map { it.id }.toSet()
@@ -257,7 +278,7 @@ class LearningStructureService(
 
     @Transactional
     fun placeChild(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreateChildPlacementRequest): ChildPlacementResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
+        val scope = requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
         access.requireWritable(scope)
         val child = if (scope.membership.role == Role.STAFF) childScopes.requireStaffManagedChild(scope, childId, organizationId) else requireChild(childId, organizationId)
         require(child.enrollmentStatus == ChildEnrollmentStatus.ACTIVE) { "Child enrollment is still pending Parent approval" }
@@ -310,6 +331,14 @@ class LearningStructureService(
     private fun level(id: UUID, organizationId: UUID) = levels.findById(id).orElseThrow { IllegalArgumentException("Learning level was not found") }.also { require(it.organizationId == organizationId) { "Learning level belongs to a different organization" } }
     private fun globalLevel(id: UUID) = levels.findById(id).orElseThrow { IllegalArgumentException("Learning level was not found") }.also { require(it.organizationId == null) { "Learning level is not global" } }
     private fun classroom(id: UUID, organizationId: UUID) = classrooms.findById(id).orElseThrow { IllegalArgumentException("Classroom was not found") }.also { require(it.organizationId == organizationId) { "Classroom belongs to a different organization" } }
+    private fun visibleClassroom(scope: AccessScope, classroomId: UUID, organizationId: UUID): Classroom {
+        val classroom = classroom(classroomId, organizationId)
+        if (scope.membership.role == Role.STAFF) {
+            val assignedClassroomIds = classroomAssignments.findAllByOrganizationIdAndUserId(organizationId, scope.user.id).map { it.classroomId }.plus(listOfNotNull(scope.membership.classroomId)).toSet()
+            if (classroom.id !in assignedClassroomIds) throw AccessDeniedException("Staff member is not assigned to this classroom")
+        }
+        return classroom
+    }
     private fun requireChild(id: UUID, organizationId: UUID) = children.findById(id).orElseThrow { IllegalArgumentException("Child was not found") }.also { require(it.organizationId == organizationId) { "Child belongs to a different organization" }; require(it.active) { "Child is inactive" } }
     private fun levelResponse(level: LearningLevel): LearningLevelResponse = LearningLevelResponse(level.id, level.name, level.minAgeMonths, level.maxAgeMonths, level.displayOrder, if (level.organizationId == null) LearningLevelSource.GLOBAL else LearningLevelSource.TENANT, level.isTemplate, level.active, levelPrograms.findAllByLearningLevelId(level.id).map { it.curriculumProgramId }.toSet())
     private fun classroomResponse(classroom: Classroom): ClassroomResponse = ClassroomResponse(classroom.id, classroom.branchId, classroom.learningLevelId, classroom.academicYearId, classroom.name, classroom.capacity, classroom.active, activeChildren(classroom.id))

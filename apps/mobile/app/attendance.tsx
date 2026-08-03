@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import type { ChildListFilter } from "@daycare/api-client";
 import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -15,7 +16,7 @@ type ConfirmState = { childId: string; childName: string; action: "CHECK_IN" | "
 
 export default function AttendanceScreen() {
   const router = useRouter();
-  const { profile, organizationId } = useAuth();
+  const { api, profile, organizationId } = useAuth();
   const { t, formatTime } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
@@ -24,20 +25,25 @@ export default function AttendanceScreen() {
   const [childFilter, setChildFilter] = useState<ChildListFilter>({});
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [time, setTime] = useState("");
+  const [pickupAuthorizationId, setPickupAuthorizationId] = useState<string | null>(null);
+  const [pickupExceptionReason, setPickupExceptionReason] = useState("");
   const children = useChildren(isStaffAdmin ? childFilter : {});
   const record = useRecordAttendance();
+  const pickupAuthorizations = useQuery({ queryKey: ["pickup-authorizations", organizationId, confirm?.childId], queryFn: () => api.pickupAuthorizations(confirm!.childId), enabled: Boolean(confirm?.childId && confirm.action === "CHECK_OUT") });
   const totalChildren = children.data?.length ?? 0;
   const presentCount = children.data?.filter((child) => child.todayCheckedInAt).length ?? 0;
   const confirmLabel = confirm?.action === "CHECK_IN" ? t("attendance.checkIn") : t("attendance.checkOut");
   const openConfirm = (child: { id: string; fullName: string }, action: "CHECK_IN" | "CHECK_OUT") => {
     setTime(formatIsoTime(new Date()));
+    setPickupAuthorizationId(null);
+    setPickupExceptionReason("");
     setConfirm({ childId: child.id, childName: child.fullName, action });
   };
   const submit = async () => {
     if (!confirm) return;
     const actionLabel = confirm.action === "CHECK_IN" ? t("attendance.checkIn") : t("attendance.checkOut");
     try {
-      await record.mutateAsync({ childId: confirm.childId, action: confirm.action, method: "MANUAL", at: dateFromIsoTime(time).toISOString() });
+      await record.mutateAsync({ childId: confirm.childId, action: confirm.action, method: "MANUAL", at: dateFromIsoTime(time).toISOString(), pickupAuthorizationId: confirm.action === "CHECK_OUT" ? pickupAuthorizationId ?? undefined : undefined, pickupExceptionReason: confirm.action === "CHECK_OUT" ? pickupExceptionReason.trim() || undefined : undefined });
       setConfirm(null);
       Alert.alert(t("attendance.success"), t("attendance.recorded", { action: actionLabel }));
     } catch (error) {
@@ -54,8 +60,9 @@ export default function AttendanceScreen() {
     {children.isError && <Button onPress={() => children.refetch()}>{t("common.retry")}</Button>}
     {!children.isFetching && !children.isError && totalChildren === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
     {!children.isFetching && children.data?.map((child) => {
-      const checkedIn = Boolean(child.todayCheckedInAt);
-      const checkedOut = Boolean(child.todayCheckedOutAt);
+        const checkedIn = Boolean(child.todayCheckedInAt);
+        const checkedOut = Boolean(child.todayCheckedOutAt);
+        const allowedActions = child.attendanceContext?.allowedActions ?? [];
       return <View key={child.id} style={styles.card}>
         <View style={styles.cardHeader}>
           <AppText variant="heading">{child.fullName}</AppText>
@@ -68,9 +75,10 @@ export default function AttendanceScreen() {
           <AppText variant="caption" tone="muted">{t("attendance.checkOutTime")}: {child.todayCheckedOutAt ? formatTime(child.todayCheckedOutAt) : "—"}</AppText>
         </View>
         {!readOnly && <View style={styles.actions}>
-          <Button disabled={record.isPending || checkedIn} onPress={() => openConfirm(child, "CHECK_IN")}>{t("attendance.checkIn")}</Button>
-          <Button variant="secondary" disabled={record.isPending || !checkedIn || checkedOut} onPress={() => openConfirm(child, "CHECK_OUT")}>{t("attendance.checkOut")}</Button>
+          <Button disabled={record.isPending || !allowedActions.includes("CHECK_IN")} onPress={() => openConfirm(child, "CHECK_IN")}>{t("attendance.checkIn")}</Button>
+          <Button variant="secondary" disabled={record.isPending || !allowedActions.includes("CHECK_OUT")} onPress={() => openConfirm(child, "CHECK_OUT")}>{t("attendance.checkOut")}</Button>
         </View>}
+        {!readOnly && child.attendanceContext?.unavailableReason && <AppText tone="muted">{child.attendanceContext.unavailableReason}</AppText>}
       </View>;
     })}
     <BottomSheet
@@ -82,6 +90,13 @@ export default function AttendanceScreen() {
       positiveAction={{ label: confirmLabel, loading: record.isPending, onPress: () => void submit() }}
     >
       {confirm && <AppText>{t("attendance.confirmMessage", { action: confirmLabel, name: confirm.childName })}</AppText>}
+      {confirm?.action === "CHECK_OUT" && <View style={styles.pickupSection}>
+        <AppText variant="label">{t("pickup.title")}</AppText>
+        {pickupAuthorizations.data?.filter((item) => item.status === "ACTIVE").map((item) => <Button key={item.id} variant={pickupAuthorizationId === item.id ? "primary" : "secondary"} onPress={() => { setPickupAuthorizationId(item.id); setPickupExceptionReason(""); }}>{item.pickupPersonName} · {item.relationship}</Button>)}
+        {!pickupAuthorizations.isFetching && !pickupAuthorizations.data?.some((item) => item.status === "ACTIVE") && <AppText tone="muted">{t("pickup.empty")}</AppText>}
+        {!isStaffAdmin && !pickupAuthorizationId && <AppText tone="danger">{t("pickup.exceptionOnlyAdmin")}</AppText>}
+        {isStaffAdmin && !pickupAuthorizationId && <><AppText variant="label">{t("pickup.exception")}</AppText><TextInput value={pickupExceptionReason} onChangeText={setPickupExceptionReason} placeholder={t("pickup.exceptionReason")} style={styles.exceptionInput} multiline /></>}
+      </View>}
       <View style={styles.timeField}>
         <AppText variant="label">{t("attendance.time")}</AppText>
         <DatePicker mode="time" value={time} onChange={setTime} placeholder={t("attendance.time")} />
@@ -96,6 +111,8 @@ const styles = StyleSheet.create({
   times: { gap: spacing.xs },
   actions: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
   timeField: { gap: spacing.xs },
+  pickupSection: { gap: spacing.xs },
+  exceptionInput: { minHeight: 72, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, padding: spacing.sm, color: colors.text, textAlignVertical: "top" },
   statusBadge: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.pill },
   statusBadgeIn: { backgroundColor: colors.accentSoft },
   statusBadgeOut: { backgroundColor: colors.disabled },

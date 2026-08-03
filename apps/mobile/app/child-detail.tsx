@@ -14,6 +14,7 @@ import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate, isIsoDate } from "@/date-picker/date";
 import { notify } from "@/notify/notify";
 import { capitalizeWords } from "@/text/capitalizeWords";
+import { hasLegacyLearningAccess, hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 const assignmentRoles = ["STAFF", "NURSE", "MISS"] as const;
 
@@ -27,6 +28,9 @@ export default function ChildDetailScreen() {
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canManage = membership?.role === "STAFF_ADMIN" && membership.active;
   const canManagePrograms = canManage || (membership?.role === "STAFF" && membership.active && membership.canManageChildPrograms);
+  const access = useUiAccessContext(Boolean(membership));
+  const canAccessLegacyClasses = hasLegacyLearningAccess(membership?.capabilities, access.data);
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
   const childProfile = useChildProfile(childId);
   const updateChild = useUpdateChild(childId ?? "");
   const deactivateChild = useDeactivateChild(childId ?? "");
@@ -37,9 +41,9 @@ export default function ChildDetailScreen() {
   const bindGuardian = useBindChildGuardian(childId ?? "");
   const unbindGuardian = useUnbindChildGuardian(childId ?? "");
   const staff = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: membership?.role === "STAFF_ADMIN" && Boolean(childId) });
-  const placementOptions = useQuery({ queryKey: ["child-placement-options", organizationId, childId], queryFn: () => api.childPlacementOptions(childId!), enabled: Boolean(childId && membership?.active) });
-  const academicYears = useQuery({ queryKey: ["academic-years", organizationId], queryFn: () => api.academicYears(), enabled: Boolean(childId && membership) });
-  const placements = useQuery({ queryKey: ["child-placements", organizationId, childId], queryFn: () => api.childPlacements(childId!), enabled: Boolean(childId && membership) });
+  const placementOptions = useQuery({ queryKey: ["child-placement-options", organizationId, childId], queryFn: () => api.childPlacementOptions(childId!), enabled: Boolean(childId && membership?.active && canAccessLegacyClasses) });
+  const academicYears = useQuery({ queryKey: ["academic-years", organizationId], queryFn: () => api.academicYears(), enabled: Boolean(childId && hasAcademicOffering) });
+  const placements = useQuery({ queryKey: ["child-placements", organizationId, childId], queryFn: () => api.childPlacements(childId!), enabled: Boolean(childId && membership && canAccessLegacyClasses) });
   const placeChild = useMutation({ mutationFn: (input: { classroomId: string; startsOn?: string }) => api.placeChild(childId!, input), onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["child-placements", organizationId, childId] }); void queryClient.invalidateQueries({ queryKey: ["child-placement-options", organizationId, childId] }); void queryClient.invalidateQueries({ queryKey: ["children", organizationId] }); } });
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -144,14 +148,14 @@ export default function ChildDetailScreen() {
       <AppText variant="h5">{childProfile.data.child.fullName}</AppText>
       <AppText tone="muted">{childProfile.data.child.gender === "MALE" ? t("children.genderMale") : childProfile.data.child.gender === "FEMALE" ? t("children.genderFemale") : t("children.genderUnspecified")}</AppText>
       <AppText tone="muted">{childProfile.data.child.dateOfBirth}</AppText>
-      <View style={styles.options}><Button variant="secondary" onPress={() => router.push({ pathname: "/goals", params: { childId } })}>{t("goals.title")}</Button>{canManage && <><Button variant="secondary" onPress={() => setSheet("edit")}>{t("children.edit")}</Button><Button variant="danger" loading={deactivateChild.isPending} onPress={deactivate}>{t("children.deactivate")}</Button></>}</View>
+      <View style={styles.options}>{hasAcademicOffering && <Button variant="secondary" onPress={() => router.push({ pathname: "/goals", params: { childId } })}>{t("goals.title")}</Button>}{canManage && <><Button variant="secondary" onPress={() => setSheet("edit")}>{t("children.edit")}</Button><Button variant="danger" loading={deactivateChild.isPending} onPress={deactivate}>{t("children.deactivate")}</Button></>}</View>
     </View>}
     {childId && childProfile.data && <>
       {membership?.active === false && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
-      <NavigationCard accessibilityLabel={t("learning.placements")} onPress={() => setPlacementsOpen(true)}>
+      {canAccessLegacyClasses && <NavigationCard accessibilityLabel={t("learning.placements")} onPress={() => setPlacementsOpen(true)}>
         <AppText variant="h5">{t("learning.placements")}</AppText>
         <AppText tone={placements.data?.length ? "default" : "muted"}>{placements.data?.length ? t("learning.placementsSummary", { count: placements.data.length }) : t("learning.noPlacements")}</AppText>
-      </NavigationCard>
+      </NavigationCard>}
       {canManagePrograms && <NavigationCard accessibilityLabel={t("children.programs")} onPress={() => setProgramsOpen(true)}>
         <AppText variant="h5">{t("children.programs")}</AppText>
         <AppText tone={childProfile.data.programs.length ? "default" : "muted"}>{childProfile.data.programs.length ? t("children.programsSummary", { count: childProfile.data.programs.length }) : t("children.noPrograms")}</AppText>
@@ -164,6 +168,8 @@ export default function ChildDetailScreen() {
         <AppText variant="h5">{t("children.guardians")}</AppText>
         <AppText tone={childProfile.data.guardians.length ? "default" : "muted"}>{childProfile.data.guardians.length ? t("children.guardiansSummary", { count: childProfile.data.guardians.length }) : t("children.noGuardians")}</AppText>
       </NavigationCard>}
+      {canManage && <NavigationCard accessibilityLabel={t("pickup.manage")} onPress={() => router.push({ pathname: "/pickup-authorizations", params: { childId } } as never)}><AppText variant="h5">{t("pickup.title")}</AppText><AppText tone="muted">{t("pickup.manage")}</AppText></NavigationCard>}
+      {canManage && <NavigationCard accessibilityLabel={t("emergencyContacts.manage")} onPress={() => router.push({ pathname: "/emergency-contacts", params: { childId } } as never)}><AppText variant="h5">{t("emergencyContacts.title")}</AppText><AppText tone="muted">{t("emergencyContacts.manage")}</AppText></NavigationCard>}
     </>}
 
     <BottomSheet visible={placementsOpen} onClose={() => setPlacementsOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("learning.placements")}>
@@ -193,11 +199,12 @@ export default function ChildDetailScreen() {
       <Button variant="secondary" onPress={() => { setGuardiansOpen(false); setSheet("guardian"); }}>{t("children.bindGuardian")}</Button>
       {childProfile.isFetching && <ShimmerList variant="row" />}
       {childProfile.isError && <View style={styles.errorState}><AppText tone="muted">{t("common.error")}</AppText><Button variant="secondary" onPress={() => void childProfile.refetch()}>{t("common.retry")}</Button></View>}
-      {!childProfile.isFetching && childProfile.data?.guardians.map((guardian) => <View key={guardian.userId} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{guardian.displayName}</AppText><AppText variant="bodySmall" tone="muted">{guardian.email ?? guardian.username}</AppText></View><Button variant="danger" loading={unbindGuardian.isPending} onPress={() => void removeGuardian(guardian.userId)}>{t("children.unbindGuardian")}</Button></View>)}
+      {!childProfile.isFetching && childProfile.data?.guardians.map((guardian) => <View key={guardian.userId} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{guardian.displayName}</AppText><AppText variant="bodySmall" tone="muted">{guardian.email ?? guardian.username}</AppText>{!guardian.validParentAccount && <AppText variant="caption" tone="danger">{t("children.guardianInvalid")}</AppText>}</View><Button variant="danger" loading={unbindGuardian.isPending} onPress={() => void removeGuardian(guardian.userId)}>{t("children.unbindGuardian")}</Button></View>)}
       {!childProfile.isFetching && childProfile.data?.guardians.length === 0 && <AppText tone="muted">{t("children.noGuardians")}</AppText>}
     </BottomSheet>
     <BottomSheet visible={sheet === "guardian"} onClose={() => { setSheet(null); setGuardianIdentifier(""); }} closeAccessibilityLabel={t("common.close")} title={t("children.bindGuardian")} negativeAction={{ label: t("common.cancel"), onPress: () => { setSheet(null); setGuardianIdentifier(""); } }} positiveAction={{ label: t("children.bindGuardian"), loading: bindGuardian.isPending, disabled: !guardianIdentifier.trim(), onPress: () => void saveGuardianBind() }}>
       <TextInput style={styles.input} placeholder={t("children.guardianIdentifier")} autoCapitalize="none" value={guardianIdentifier} onChangeText={setGuardianIdentifier} />
+      <AppText variant="caption" tone="muted">{t("children.guardianIdentifierInfo")}</AppText>
     </BottomSheet>
     <BottomSheet visible={sheet === "edit"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("children.edit")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("children.save"), loading: updateChild.isPending, onPress: () => void saveChild() }}>
       <TextInput style={styles.input} autoCapitalize="words" placeholder={t("children.firstName")} value={firstName} onChangeText={(value) => setFirstName(capitalizeWords(value))} />

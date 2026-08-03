@@ -46,6 +46,8 @@ data class ParentEnrollmentCheckoutRequest(
 )
 data class ParentEnrollmentApprovalRequest(val approved: Boolean, @field:Size(max = 500) val rejectionReason: String? = null)
 data class ParentEnrollmentRetryRequest(val bookingDates: List<LocalDate> = emptyList())
+enum class ParentEnrollmentAccessState { PENDING_APPROVAL, PAYMENT_DUE, PAYMENT_REVIEW, ACTIVE, BILLING_LIMITED, CLOSED }
+enum class ParentEnrollmentAllowedAction { REAPPLY, UPLOAD_PAYMENT_PROOF }
 data class ParentTenantPlanResponse(val id: UUID, val name: String, val type: com.daycare.api.domain.ServicePlanType, val price: java.math.BigDecimal, val creditCount: Int?, val bookingRequiresApproval: Boolean, val dailyCapacity: Int?)
 data class ParentTenantBranchResponse(val id: UUID, val name: String, val dailyCapacity: Int?)
 data class ParentTenantCatalogResponse(val organizationId: UUID, val organizationName: String, val branches: List<ParentTenantBranchResponse>, val plans: List<ParentTenantPlanResponse>)
@@ -63,6 +65,8 @@ data class ParentEnrollmentResponse(
     val totalAmount: java.math.BigDecimal,
     val rejectionReason: String?,
     val createdAt: Instant,
+    val accessState: ParentEnrollmentAccessState,
+    val allowedActions: Set<ParentEnrollmentAllowedAction>,
     val parentFamilyProfile: ParentFamilyProfileForTenantResponse? = null,
 )
 
@@ -233,7 +237,18 @@ class ParentEnrollmentService(
     private fun response(enrollment: ParentEnrollment, includeParentFamilyProfile: Boolean = false): ParentEnrollmentResponse {
         val child = children.findById(enrollment.childId).orElseThrow { IllegalArgumentException("Child was not found") }
         val invoice = enrollment.invoiceId?.let { invoices.findById(it).orElseThrow { IllegalArgumentException("Invoice was not found") } }
-        return ParentEnrollmentResponse(enrollment.id, enrollment.organizationId, enrollment.branchId, child.id, child.fullName(), enrollment.invoiceId, enrollment.entitlementId, enrollment.status, invoice?.status, enrollment.selectedPlanName, enrollment.selectedTotalAmount, enrollment.rejectionReason, enrollment.createdAt, if (includeParentFamilyProfile) familyProfileVisibility.forTenant(enrollment.organizationId, enrollment.userId) else null)
+        val access = accessState(enrollment.status, invoice?.status)
+        return ParentEnrollmentResponse(enrollment.id, enrollment.organizationId, enrollment.branchId, child.id, child.fullName(), enrollment.invoiceId, enrollment.entitlementId, enrollment.status, invoice?.status, enrollment.selectedPlanName, enrollment.selectedTotalAmount, enrollment.rejectionReason, enrollment.createdAt, access.first, access.second, if (includeParentFamilyProfile) familyProfileVisibility.forTenant(enrollment.organizationId, enrollment.userId) else null)
+    }
+
+    private fun accessState(status: ParentEnrollmentStatus, invoiceStatus: InvoiceStatus?): Pair<ParentEnrollmentAccessState, Set<ParentEnrollmentAllowedAction>> = when {
+        status == ParentEnrollmentStatus.PENDING_APPROVAL -> ParentEnrollmentAccessState.PENDING_APPROVAL to emptySet()
+        status in setOf(ParentEnrollmentStatus.REJECTED, ParentEnrollmentStatus.CANCELLED, ParentEnrollmentStatus.EXPIRED) -> ParentEnrollmentAccessState.CLOSED to setOf(ParentEnrollmentAllowedAction.REAPPLY)
+        invoiceStatus == InvoiceStatus.OVERDUE -> ParentEnrollmentAccessState.BILLING_LIMITED to setOf(ParentEnrollmentAllowedAction.REAPPLY)
+        invoiceStatus == InvoiceStatus.PENDING -> ParentEnrollmentAccessState.PAYMENT_DUE to setOf(ParentEnrollmentAllowedAction.UPLOAD_PAYMENT_PROOF)
+        invoiceStatus == InvoiceStatus.PAYMENT_SUBMITTED -> ParentEnrollmentAccessState.PAYMENT_REVIEW to emptySet()
+        invoiceStatus == InvoiceStatus.PAID -> ParentEnrollmentAccessState.ACTIVE to emptySet()
+        else -> ParentEnrollmentAccessState.PAYMENT_DUE to emptySet()
     }
     private fun Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")
 }

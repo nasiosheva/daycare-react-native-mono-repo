@@ -35,6 +35,17 @@ class BookingEligibilityServiceTest {
     }
 
     @Test
+    fun `eligibility reports a readable reason when no active service is available`() {
+        `when`(entitlements.findAllByOrganizationIdAndChildId(organizationId, childId)).thenReturn(emptyList())
+        `when`(bookings.findByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)).thenReturn(null)
+
+        val eligibility = service.checkInEligibility(organizationId, childId, date)
+
+        assertEquals(false, eligibility.allowed)
+        assertEquals("Tidak ada booking terkonfirmasi atau paket bulanan aktif untuk hari ini", eligibility.reason)
+    }
+
+    @Test
     fun `confirmed daily booking consumes one reserved credit at check-in`() {
         val entitlement = ServiceEntitlement(organizationId = organizationId, childId = childId, status = EntitlementStatus.ACTIVE, planType = ServicePlanType.DAILY, totalCredits = 1, reservedCredits = 1)
         val booking = Booking(organizationId = organizationId, childId = childId, entitlementId = entitlement.id, bookingDate = date, status = BookingStatus.CONFIRMED)

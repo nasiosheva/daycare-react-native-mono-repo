@@ -15,6 +15,20 @@ class BookingEligibilityService(
     private val entitlements: ServiceEntitlementRepository,
     private val bookings: BookingRepository,
 ) {
+    @Transactional(readOnly = true)
+    fun checkInEligibility(organizationId: UUID, childId: UUID, date: LocalDate): BookingEligibility {
+        val monthlyEntitlement = entitlements.findAllByOrganizationIdAndChildId(organizationId, childId).firstOrNull {
+            it.status == EntitlementStatus.ACTIVE && it.planType == ServicePlanType.MONTHLY && !date.isBefore(it.periodStart) && !date.isAfter(it.validUntil)
+        }
+        if (monthlyEntitlement != null) return BookingEligibility(true)
+
+        val booking = bookings.findByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)
+            ?: return BookingEligibility(false, "Tidak ada booking terkonfirmasi atau paket bulanan aktif untuk hari ini")
+        val entitlement = entitlements.findById(booking.entitlementId).orElse(null)
+            ?: return BookingEligibility(false, "Entitlement layanan booking tidak ditemukan")
+        return if (entitlement.status == EntitlementStatus.ACTIVE) BookingEligibility(true) else BookingEligibility(false, "Entitlement layanan booking tidak aktif")
+    }
+
     @Transactional
     fun consumeCheckIn(organizationId: UUID, childId: UUID, date: LocalDate) {
         val monthlyEntitlement = entitlements.findAllByOrganizationIdAndChildId(organizationId, childId).firstOrNull {
@@ -32,3 +46,5 @@ class BookingEligibilityService(
         if (entitlement.totalCredits != null && entitlement.usedCredits >= entitlement.totalCredits!!) entitlement.status = EntitlementStatus.EXHAUSTED
     }
 }
+
+data class BookingEligibility(val allowed: Boolean, val reason: String? = null)

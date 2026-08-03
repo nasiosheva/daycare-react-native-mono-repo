@@ -9,6 +9,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { goalPickerLabel } from "@/i18n/translations";
 import { AppScreen } from "@/navigation/AppScreen";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
@@ -19,15 +20,17 @@ export default function CurriculumProgramsScreen() {
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canManage = membership?.role === "STAFF_ADMIN" && membership.active;
-  const periods = useQuery({ queryKey: ["learning-periods", organizationId], queryFn: () => api.academicYears(), enabled: Boolean(membership) });
+  const access = useUiAccessContext(Boolean(membership));
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
+  const periods = useQuery({ queryKey: ["learning-periods", organizationId], queryFn: () => api.academicYears(), enabled: hasAcademicOffering });
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [goalSearch, setGoalSearch] = useState("");
   const [debouncedGoalSearch, setDebouncedGoalSearch] = useState("");
   useEffect(() => { const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300); return () => clearTimeout(handle); }, [search]);
   useEffect(() => { const handle = setTimeout(() => setDebouncedGoalSearch(goalSearch.trim()), 300); return () => clearTimeout(handle); }, [goalSearch]);
-  const programs = useQuery({ queryKey: ["curriculum-programs", organizationId, debouncedSearch], queryFn: () => api.curriculumPrograms(debouncedSearch || undefined, true), enabled: Boolean(membership) });
-  const developmentProgramsQuery = useQuery({ queryKey: ["development-programs", organizationId, debouncedGoalSearch], queryFn: () => api.developmentPrograms(debouncedGoalSearch || undefined), enabled: Boolean(membership && canManage) });
+  const programs = useQuery({ queryKey: ["curriculum-programs", organizationId, debouncedSearch], queryFn: () => api.curriculumPrograms(debouncedSearch || undefined, true), enabled: hasAcademicOffering });
+  const developmentProgramsQuery = useQuery({ queryKey: ["development-programs", organizationId, debouncedGoalSearch], queryFn: () => api.developmentPrograms(debouncedGoalSearch || undefined), enabled: hasAcademicOffering && canManage });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ["curriculum-programs", organizationId] });
   const createProgram = useMutation({ mutationFn: api.createCurriculumProgram.bind(api), onSuccess: refresh });
   const updateProgram = useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof api.updateCurriculumProgram>[1] }) => api.updateCurriculumProgram(id, input), onSuccess: refresh });
@@ -38,6 +41,7 @@ export default function CurriculumProgramsScreen() {
 
   if (!profile) return null;
   if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
+  if (!access.isLoading && !hasAcademicOffering) return <Redirect href="/academic" />;
 
   const close = () => { setVisible(false); setEditing(undefined); setName(""); setDescription(""); setPeriodId(undefined); setDevelopmentProgramIds([]); setGoalSearch(""); };
   const openAdd = () => { close(); setVisible(true); };

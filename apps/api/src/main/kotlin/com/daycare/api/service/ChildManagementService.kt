@@ -2,6 +2,7 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.Gender
+import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.ChildCareRole
 import com.daycare.api.domain.ChildProgramStatus
 import com.daycare.api.persistence.ChildProgram
@@ -89,7 +90,7 @@ data class ParentChildProgramResponse(
     val feedback: List<ChildProgramParentFeedbackResponse>,
 )
 data class ChildStaffAssignmentResponse(val id: UUID, val userId: UUID, val displayName: String, val email: String?, val assignmentRole: String)
-data class ChildGuardianResponse(val userId: UUID, val displayName: String, val email: String?, val username: String?)
+data class ChildGuardianResponse(val userId: UUID, val displayName: String, val email: String?, val username: String?, val validParentAccount: Boolean)
 data class ChildProfileResponse(val child: ChildResponse, val programs: List<ChildProgramResponse>, val staffAssignments: List<ChildStaffAssignmentResponse>, val guardians: List<ChildGuardianResponse>)
 
 @Service
@@ -110,7 +111,7 @@ class ChildManagementService(
     fun profile(jwt: Jwt, organizationId: UUID, childId: UUID): ChildProfileResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
         val child = if (scope.membership.role == Role.STAFF) childScopes.requireStaffManagedChild(scope, childId, organizationId) else child(childId, organizationId)
-        return ChildProfileResponse(childResponse(child), programResponses(organizationId, child.id), assignmentResponses(organizationId, child.id), guardianResponses(child.id))
+        return ChildProfileResponse(childResponse(child), programResponses(organizationId, child.id), assignmentResponses(organizationId, child.id), if (scope.membership.role == Role.STAFF_ADMIN) guardianResponses(child.id) else emptyList())
     }
 
     @Transactional
@@ -120,11 +121,12 @@ class ChildManagementService(
         val identifier = request.identifier.trim()
         val parent = (if (identifier.contains("@")) users.findByEmailIgnoreCase(identifier) else users.findByUsernameIgnoreCase(identifier))
             ?: throw IllegalArgumentException("Parent account was not found")
+        require(parent.registrationRole == RegistrationRole.PARENT) { "Only a registered Parent account can be linked to a child" }
         val parentMembership = memberships.findAllByUserIdAndOrganizationId(parent.id, organizationId).firstOrNull { it.role == Role.PARENT }
         if (parentMembership == null) memberships.save(Membership(userId = parent.id, organizationId = organizationId, role = Role.PARENT, branchId = child.branchId))
         else { parentMembership.active = true; parentMembership.deactivatedAt = null }
         if (!guardianLinks.existsByChildIdAndUserId(child.id, parent.id)) guardianLinks.save(GuardianLink(childId = child.id, userId = parent.id))
-        return ChildGuardianResponse(parent.id, parent.displayName, parent.email, parent.username)
+        return ChildGuardianResponse(parent.id, parent.displayName, parent.email, parent.username, validParentAccount = true)
     }
 
     @Transactional
@@ -319,5 +321,5 @@ class ChildManagementService(
     private fun staffNoteResponse(note: ChildProgramStaffNote) = ChildProgramStaffNoteResponse(note.id, note.childProgramStepId, note.note, users.findById(note.authorUserId).map { it.displayName }.orElse("Unknown"), note.recordedAt)
     private fun parentFeedbackResponse(feedback: ChildProgramParentFeedback, includeParentName: Boolean) = ChildProgramParentFeedbackResponse(feedback.id, feedback.note, if (includeParentName) users.findById(feedback.parentUserId).map { it.displayName }.orElse("Unknown") else null, feedback.createdAt)
     private fun assignmentResponses(organizationId: UUID, childId: UUID) = assignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId).mapNotNull { assignment -> users.findById(assignment.userId).map { user -> ChildStaffAssignmentResponse(assignment.id, user.id, user.displayName, user.email, assignment.assignmentRole) }.orElse(null) }
-    private fun guardianResponses(childId: UUID) = guardianLinks.findAllByChildId(childId).mapNotNull { link -> users.findById(link.userId).map { user -> ChildGuardianResponse(user.id, user.displayName, user.email, user.username) }.orElse(null) }
+    private fun guardianResponses(childId: UUID) = guardianLinks.findAllByChildId(childId).mapNotNull { link -> users.findById(link.userId).map { user -> ChildGuardianResponse(user.id, user.displayName, user.email, user.username, user.registrationRole == RegistrationRole.PARENT) }.orElse(null) }
 }

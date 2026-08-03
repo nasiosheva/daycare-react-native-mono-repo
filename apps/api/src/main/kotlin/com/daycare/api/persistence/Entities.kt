@@ -30,6 +30,10 @@ import com.daycare.api.domain.TenantSubscriptionPlan
 import com.daycare.api.domain.TenantSubscriptionStatus
 import com.daycare.api.domain.EducationEnrollmentMode
 import com.daycare.api.domain.EducationOfferingStatus
+import com.daycare.api.domain.PickupAuthorizationStatus
+import com.daycare.api.domain.PickupVerificationMethod
+import com.daycare.api.domain.ConsentPurpose
+import com.daycare.api.domain.ConsentStatus
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -616,7 +620,52 @@ class AttendanceRecord(
     @Column(name = "checked_out_at") var checkedOutAt: Instant? = null,
     @Column(name = "check_in_method") var checkInMethod: String? = null,
     @Column(name = "check_out_method") var checkOutMethod: String? = null,
+    @Column(name = "pickup_authorization_id") var pickupAuthorizationId: UUID? = null,
+    @Column(name = "pickup_person_name", length = 160) var pickupPersonName: String? = null,
+    @Column(name = "pickup_verification_method", length = 40) var pickupVerificationMethod: String? = null,
+    @Column(name = "checkout_verified_by_user_id") var checkoutVerifiedByUserId: UUID? = null,
+    @Column(name = "checkout_exception_reason", length = 500) var checkoutExceptionReason: String? = null,
+    @Column(name = "overtime_alert_sent_at") var overtimeAlertSentAt: Instant? = null,
 )
+
+@Entity @Table(name = "pickup_authorizations")
+class PickupAuthorization(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "pickup_person_name", nullable = false, length = 160) var pickupPersonName: String = "",
+    @Column(nullable = false, length = 100) var relationship: String = "",
+    @Enumerated(EnumType.STRING) @Column(name = "verification_method", nullable = false, length = 40) var verificationMethod: PickupVerificationMethod = PickupVerificationMethod.PHOTO_ID,
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 40) var status: PickupAuthorizationStatus = PickupAuthorizationStatus.PENDING_VERIFICATION,
+    @Column(name = "effective_from", nullable = false) var effectiveFrom: Instant = Instant.now(),
+    @Column(name = "effective_until") var effectiveUntil: Instant? = null,
+    @Column(name = "created_by_user_id", nullable = false) var createdByUserId: UUID = UUID.randomUUID(),
+    @Column(name = "verified_by_user_id") var verifiedByUserId: UUID? = null,
+    @Column(name = "verified_at") var verifiedAt: Instant? = null,
+    @Column(name = "revoked_by_user_id") var revokedByUserId: UUID? = null,
+    @Column(name = "revoked_at") var revokedAt: Instant? = null,
+    @Column(name = "revocation_reason", length = 500) var revocationReason: String? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "emergency_contacts")
+class EmergencyContact(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(nullable = false, length = 160) var name: String = "",
+    @Column(nullable = false, length = 100) var relationship: String = "",
+    @Column(nullable = false, length = 32) var phoneNumber: String = "",
+    @Column(name = "created_by_user_id", nullable = false) var createdByUserId: UUID = UUID.randomUUID(),
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "consent_definitions")
+class ConsentDefinition(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Enumerated(EnumType.STRING) @Column(nullable = false) var purpose: ConsentPurpose = ConsentPurpose.MEDIA_MARKETING, @Column(nullable = false, length = 160) var title: String = "", @Column(nullable = false, length = 4000) var content: String = "", @Column(nullable = false) var revision: Int = 1, @Column(nullable = false) var active: Boolean = true, @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now())
+
+@Entity @Table(name = "consent_records")
+class ConsentRecord(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(), @Column(name = "definition_id", nullable = false) var definitionId: UUID = UUID.randomUUID(), @Enumerated(EnumType.STRING) @Column(nullable = false) var status: ConsentStatus = ConsentStatus.PENDING, @Column(name = "definition_revision", nullable = false) var definitionRevision: Int = 1, @Column(name = "content_snapshot", nullable = false, length = 4000) var contentSnapshot: String = "", @Column(name = "guardian_user_id", nullable = false) var guardianUserId: UUID = UUID.randomUUID(), @Column(name = "decided_at") var decidedAt: Instant? = null, @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now())
 
 @Entity @Table(name = "child_absence_requests")
 class ChildAbsenceRequest(

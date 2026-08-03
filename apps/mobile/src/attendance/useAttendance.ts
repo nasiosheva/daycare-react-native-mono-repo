@@ -14,7 +14,7 @@ export function useRecordAttendance() {
   const { api, organizationId } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ childId, action, method, qrToken, at }: { childId: string; action: AttendanceAction; method: AttendanceMethod; qrToken?: string; at?: string }) => api.recordAttendance(childId, { action, method, qrToken, at }),
+    mutationFn: ({ childId, action, method, qrToken, at, pickupAuthorizationId, pickupExceptionReason }: { childId: string; action: AttendanceAction; method: AttendanceMethod; qrToken?: string; at?: string; pickupAuthorizationId?: string; pickupExceptionReason?: string }) => api.recordAttendance(childId, { action, method, qrToken, at, pickupAuthorizationId, pickupExceptionReason }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["children", organizationId] }),
   });
 }

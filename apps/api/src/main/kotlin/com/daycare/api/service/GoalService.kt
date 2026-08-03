@@ -4,6 +4,7 @@ import com.daycare.api.domain.ChildGoalOutcome
 import com.daycare.api.domain.ChildGoalStatus
 import com.daycare.api.domain.GoalDomain
 import com.daycare.api.domain.GoalCheckInOutcome
+import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AuditLog
 import com.daycare.api.persistence.AuditLogRepository
@@ -103,6 +104,12 @@ class GoalService(
     private val classroomStaffAssignments: ClassroomStaffAssignmentRepository,
     private val memberships: MembershipRepository,
 ) {
+    private fun requireAcademicScope(jwt: Jwt, organizationId: UUID, roles: Set<Role>, readOnly: Boolean = false): AccessScope {
+        val scope = access.require(jwt, organizationId, roles, readOnly = readOnly)
+        access.requireAnyCapability(scope, setOf(InstitutionCapability.ACADEMIC_CURRICULUM))
+        return scope
+    }
+
     @Transactional(readOnly = true)
     fun globalPrograms(jwt: Jwt, search: String? = null): List<DevelopmentProgramResponse> {
         platformAccess.requirePlatformAdmin(jwt)
@@ -169,7 +176,7 @@ class GoalService(
 
     @Transactional(readOnly = true)
     fun programs(jwt: Jwt, organizationId: UUID, search: String? = null, curriculumProgramId: UUID? = null): List<DevelopmentProgramResponse> {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
         val query = search?.trim().orEmpty()
         val visible = if (query.isBlank()) programs.findVisibleToOrganization(organizationId) else programs.searchVisibleToOrganization(organizationId, query)
         val linkedProgramIds = curriculumProgramId?.let { id ->
@@ -182,7 +189,7 @@ class GoalService(
 
     @Transactional
     fun createProgram(jwt: Jwt, organizationId: UUID, request: UpsertDevelopmentProgramRequest): DevelopmentProgramResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         validateProgramScope(organizationId, request.learningLevelId)
         require(programs.findByOrganizationIdAndLearningLevelIdAndDomain(organizationId, request.learningLevelId, request.domain) == null) { "A program already exists for this learning level and domain" }
         val program = programs.save(DevelopmentProgram(organizationId = organizationId, learningLevelId = request.learningLevelId, name = request.name.trim(), description = request.description.trim(), durationDays = request.durationDays, minimumYesPercent = request.minimumYesPercent, minimumYesStreak = request.minimumYesStreak, domain = request.domain))
@@ -192,7 +199,7 @@ class GoalService(
 
     @Transactional
     fun updateProgram(jwt: Jwt, organizationId: UUID, programId: UUID, request: UpsertDevelopmentProgramRequest): DevelopmentProgramResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         validateProgramScope(organizationId, request.learningLevelId)
         val program = program(programId, organizationId); requireTenantOwned(program)
         if (program.learningLevelId != request.learningLevelId || program.domain != request.domain) {
@@ -205,7 +212,7 @@ class GoalService(
 
     @Transactional
     fun deleteProgram(jwt: Jwt, organizationId: UUID, programId: UUID) {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         val program = program(programId, organizationId); requireTenantOwned(program)
         require(!goals.existsByProgramId(program.id)) { "Program is already assigned to children and cannot be deleted" }
         programs.delete(program)
@@ -214,7 +221,7 @@ class GoalService(
 
     @Transactional
     fun createIndicator(jwt: Jwt, organizationId: UUID, programId: UUID, request: UpsertGoalIndicatorRequest): DevelopmentProgramResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         val program = program(programId, organizationId); requireTenantOwned(program)
         val displayOrder = goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id).size
         goalIndicators.save(DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = program.id, name = request.name.trim(), displayOrder = displayOrder, priority = request.priority))
@@ -224,7 +231,7 @@ class GoalService(
 
     @Transactional
     fun updateIndicator(jwt: Jwt, organizationId: UUID, programId: UUID, indicatorId: UUID, request: UpsertGoalIndicatorRequest): DevelopmentProgramResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         val program = program(programId, organizationId); requireTenantOwned(program)
         val indicator = indicator(indicatorId, program.id)
         indicator.name = request.name.trim(); indicator.displayOrder = request.displayOrder; indicator.priority = request.priority
@@ -234,7 +241,7 @@ class GoalService(
 
     @Transactional
     fun archiveIndicator(jwt: Jwt, organizationId: UUID, programId: UUID, indicatorId: UUID): DevelopmentProgramResponse {
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         val program = program(programId, organizationId); requireTenantOwned(program)
         val indicator = indicator(indicatorId, program.id)
         require(goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id).count { it.active } > 1) { "Program needs at least one active indicator" }
@@ -245,7 +252,7 @@ class GoalService(
 
     @Transactional(readOnly = true)
     fun childGoals(jwt: Jwt, organizationId: UUID, childId: UUID): List<ChildGoalResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), readOnly = true)
+        val scope = requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), readOnly = true)
         authorizeChild(scope, organizationId, childId)
         val childGoalsList = goals.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId)
         if (childGoalsList.isEmpty()) return emptyList()
@@ -267,7 +274,7 @@ class GoalService(
 
     @Transactional
     fun assign(jwt: Jwt, organizationId: UUID, childId: UUID, request: AssignChildGoalRequest): ChildGoalResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF)); access.requireWritable(scope)
+        val scope = requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF)); access.requireWritable(scope)
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         val curriculumProgram = curriculumPrograms.findById(request.curriculumProgramId).orElseThrow { IllegalArgumentException("Curriculum program was not found") }
         require(curriculumProgram.active && (curriculumProgram.organizationId == null || curriculumProgram.organizationId == organizationId)) { "Curriculum program is not available" }
@@ -316,7 +323,7 @@ class GoalService(
     private data class WritableCheckInContext(val scope: AccessScope, val goal: ChildGoal, val program: DevelopmentProgram)
 
     private fun writableCheckInContext(jwt: Jwt, organizationId: UUID, goalId: UUID): WritableCheckInContext {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF)); access.requireWritable(scope)
+        val scope = requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF)); access.requireWritable(scope)
         val goal = goal(goalId, organizationId); require(goal.status == ChildGoalStatus.ACTIVE) { "Goal is already completed" }
         authorizeChild(scope, organizationId, goal.childId)
         return WritableCheckInContext(scope, goal, program(goal.programId, organizationId))
@@ -339,7 +346,7 @@ class GoalService(
 
     @Transactional(readOnly = true)
     fun checkInPhoto(jwt: Jwt, organizationId: UUID, goalId: UUID, date: LocalDate, indicatorId: UUID): GoalPhotoResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), readOnly = true)
+        val scope = requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), readOnly = true)
         val goal = goal(goalId, organizationId)
         authorizeChild(scope, organizationId, goal.childId)
         val checkIn = checkIns.findByChildGoalIdAndIndicatorIdAndCheckInDate(goalId, indicatorId, date) ?: throw IllegalArgumentException("Check-in was not found")
@@ -349,7 +356,7 @@ class GoalService(
 
     @Transactional(readOnly = true)
     fun checkInAudio(jwt: Jwt, organizationId: UUID, goalId: UUID, date: LocalDate, indicatorId: UUID): GoalAudioResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), readOnly = true)
+        val scope = requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), readOnly = true)
         val goal = goal(goalId, organizationId)
         authorizeChild(scope, organizationId, goal.childId)
         val checkIn = checkIns.findByChildGoalIdAndIndicatorIdAndCheckInDate(goalId, indicatorId, date) ?: throw IllegalArgumentException("Check-in was not found")
@@ -359,7 +366,7 @@ class GoalService(
 
     @Transactional
     fun finalize(jwt: Jwt, organizationId: UUID, goalId: UUID, request: FinalizeChildGoalRequest): ChildGoalResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF)); access.requireWritable(scope)
+        val scope = requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF)); access.requireWritable(scope)
         val goal = goal(goalId, organizationId); require(goal.status == ChildGoalStatus.ACTIVE) { "Goal is already completed" }
         authorizeChild(scope, organizationId, goal.childId)
         goal.status = ChildGoalStatus.COMPLETED; goal.finalOutcome = request.outcome; goal.finalSummary = request.summary.trim(); goal.finalizedByUserId = scope.user.id; goal.finalizedAt = Instant.now()
@@ -370,7 +377,7 @@ class GoalService(
 
     @Transactional
     fun correctConclusion(jwt: Jwt, organizationId: UUID, goalId: UUID, request: CorrectChildGoalConclusionRequest) {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN)); access.requireWritable(scope)
+        val scope = requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN)); access.requireWritable(scope)
         val goal = goal(goalId, organizationId)
         require(goal.status == ChildGoalStatus.COMPLETED) { "Only a completed Goal conclusion can be corrected" }
         val previousOutcome = requireNotNull(goal.finalOutcome) { "Completed Goal is missing a final outcome" }

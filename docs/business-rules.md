@@ -8,8 +8,8 @@ Aturan yang ditandai sebagai **target** menyatakan arah produk yang telah disetu
 
 - **Tenant** adalah batas data dan penagihan. Anak, cabang, kelas, tagihan, layanan, booking, perkembangan, dan konfigurasi operasional selalu dimiliki tepat oleh satu tenant.
 - Satu tenant dapat memiliki beberapa cabang aktif, tetapi hanya satu cabang utama. Keanggotaan `STAFF_ADMIN` berlaku untuk seluruh tenant, bukan hanya cabang tertentu. Setiap daftar atau agregasi yang difilter per cabang (mis. jumlah staf aktif per cabang, daftar akun tenant per cabang) wajib tetap menyertakan setiap `STAFF_ADMIN` pada cabang mana pun yang difilter, terlepas dari nilai `branchId` pada membership-nya (biasanya `null`) — mempersempit per cabang tidak boleh menyembunyikan akun yang secara aturan berlaku lintas cabang.
-- **Platform Admin (`ADMIN`)** mengelola lifecycle tenant, langganan, pembayaran tenant, master jenis lembaga, kurikulum global, Program Perkembangan global, serta kategori perkembangan global. Pada setiap jenis lembaga, Platform Admin menetapkan secara terpisah apakah Staff Admin tenant boleh melihat jenis pekerjaan Parent dan/atau rentang penghasilan Parent. Home Admin juga menyediakan dashboard kesiapan tenant yang bersifat informatif: ia melaporkan langganan, Staff Admin, cabang, kelas, dan—khusus Daycare—paket layanan, kapasitas cabang, serta instruksi pembayaran yang belum lengkap. Dashboard ini tidak mengubah status tenant atau visibilitas katalog Parent.
-- **Staff Admin (`STAFF_ADMIN`)** mengelola konfigurasi dan operasi tenant: cabang, anak, kelas, pendamping, Goal, layanan, les privat, pembayaran Parent, booking, dan persetujuan enrollment. Home Staff Admin secara read-only menampilkan kesiapan tenant aktif dengan aturan yang sama seperti dashboard Platform Admin; kartu hanya menunjukkan konfigurasi yang belum lengkap dan membuka hub Kelola, tanpa mengubah akses, langganan, atau visibilitas katalog Parent.
+- **Platform Admin (`ADMIN`)** mengelola lifecycle tenant, langganan, pembayaran tenant, master jenis lembaga, kurikulum global, Program Perkembangan global, serta kategori perkembangan global. Pada setiap jenis lembaga, Platform Admin menetapkan secara terpisah apakah Staff Admin tenant boleh melihat jenis pekerjaan Parent dan/atau rentang penghasilan Parent. Home Admin juga menyediakan dashboard kesiapan tenant yang bersifat informatif: ia melaporkan langganan, Staff Admin, cabang, serta Kelas legacy hanya untuk tenant dengan `DAYCARE_OPERATIONS` atau offering `PUBLISHED` ber-capability `ACADEMIC_CURRICULUM`; Daycare juga memerlukan paket layanan, kapasitas pada setiap cabang aktif, jam operasional pada setiap cabang aktif, serta instruksi pembayaran. Dashboard ini tidak mengubah status tenant atau visibilitas katalog Parent.
+- **Staff Admin (`STAFF_ADMIN`)** mengelola konfigurasi dan operasi tenant: cabang, anak, kelas, pendamping, Goal, layanan, les privat, pembayaran Parent, booking, dan persetujuan enrollment. Home Staff Admin secara read-only menampilkan kesiapan tenant aktif dengan aturan yang sama seperti dashboard Platform Admin; kartu hanya menunjukkan konfigurasi yang belum lengkap dan membuka hub Kelola, tanpa mengubah akses, langganan, atau visibilitas katalog Parent. Hub Kelola menampilkan checklist langkah yang dapat ditindaklanjuti dari respons server; langganan tetap hanya berupa pemberitahuan karena dikelola Platform Admin, dan penambahan anak bukan prasyarat agar lembaga siap menerima pendaftaran.
 - **Staff (`STAFF`)** hanya dapat membaca atau mengubah data anak dalam penugasan langsungnya atau kelas aktif yang ditugaskan kepadanya. Kemampuan tambahan, seperti mengelola Program Pendampingan Anak atau kategori perkembangan, harus diberikan secara eksplisit oleh Staff Admin. Home Staff menyediakan ikon inbox notifikasi dengan badge belum dibaca; inbox beserta pengaturannya tidak lagi dibuka dari Profile.
 - **Parent (`PARENT`)** hanya dapat melihat dan bertindak atas anak yang terhubung sebagai wali pada tenant aktif. Satu Parent dapat memiliki relasi pada beberapa tenant. Pengecualian yang disengaja adalah `ParentOperatingHoursOverview`: read model agregat **read-only** dari server yang hanya memuat anak dan jam operasional pada tenant yang memang memiliki guardian authority aktif, selalu dikelompokkan dengan `organizationId`/nama tenant dan child scope asal. Ia tidak dapat dipakai sebagai sumber query tenant biasa, cache lintas-tenant, deep link mutasi, atau ID yang dapat dikirim ke endpoint operasi; setiap tap ke detail harus membangun ulang context tenant legal terlebih dahulu.
 - Setelah signup, akun dengan `registrationRole=PARENT` dapat melengkapi profil keluarga global dari Profile, tanpa menambah field pada signup. Data suami dan istri—tanggal lahir, jenis pekerjaan, dan rentang penghasilan bulanan—seluruhnya opsional dan tetap sama saat Parent berpindah tenant. Pilihan pekerjaan dibatasi ke daftar sistem; rentang penghasilan dibatasi ke tidak ada penghasilan, kurang dari Rp3 juta, Rp3–5 juta, Rp5–10 juta, Rp10–20 juta, atau lebih dari Rp20 juta. Data ini hanya menjadi pertimbangan manual biaya SPP sekolah anak; sistem tidak menghitung atau mengubah SPP, paket, booking, maupun kredit secara otomatis. Tanggal lahir tetap hanya untuk Parent. Jika tenant mengaktifkan field terkait, server boleh membuat projection/snapshot minimal pada pengajuan Parent untuk `STAFF_ADMIN` ber-scope penerimaan/keuangan yang benar-benar sedang memproses pengajuan tersebut; profil keluarga global penuh tetap owner-only. `STAFF`, tenant tanpa izin tersebut, Platform Admin, daftar tenant umum, dan endpoint profil global tidak menerima field tersebut.
@@ -49,7 +49,9 @@ Aturan yang ditandai sebagai **target** menyatakan arah produk yang telah disetu
 
 Parent dapat membatalkan aplikasi yang masih `PENDING_APPROVAL`. Ketika invoice enrollment yang telah disetujui melewati jatuh tempo dan Parent tidak memiliki entitlement aktif lain pada tenant itu, akses operasional Parent tenant dinonaktifkan dan Parent perlu mengajukan aplikasi baru.
 
-Selain jalur aplikasi di atas, Staff Admin dapat menautkan langsung akun Parent yang **sudah ada** ke seorang anak dari layar detail anak (atau sekaligus saat membuat anak baru), dengan mencari akun itu memakai username atau email persis (salah satu wajib diisi; akun yang tidak ditemukan ditolak). Penautan ini tidak membuat akun Parent baru, aplikasi, invoice, maupun entitlement layanan apa pun — hanya membuat (atau mengaktifkan kembali) membership `PARENT` pada tenant tersebut dan relasi wali-anak bila belum ada. Staff Admin juga dapat memutus relasi ini. Jalur ini ditujukan untuk anak yang datanya sudah diinput langsung oleh Staff Admin (mis. migrasi data atau pendaftaran luring), sebagai pelengkap—bukan pengganti—alur persetujuan enrollment Parent di atas.
+Selain jalur aplikasi di atas, Staff Admin dapat menautkan langsung akun Parent yang **sudah ada** ke seorang anak dari layar detail anak (atau sekaligus saat membuat anak baru), dengan mencari username atau email persis (salah satu wajib diisi; akun yang tidak ditemukan ditolak). Akun target **wajib** memiliki `UserProfile.registrationRole=PARENT`; membership tenant berperan `PARENT`, akun Staff/Admin, atau akun lama tanpa registration role tidak dapat ditautkan sebagai wali baru. Penautan ini tidak membuat akun Parent baru, undangan, aplikasi, invoice, maupun entitlement layanan apa pun — hanya membuat (atau mengaktifkan kembali) membership `PARENT` pada tenant tersebut dan relasi wali-anak bila belum ada. Staff Admin juga dapat memutus relasi ini; tindakan tersebut hanya menghapus relasi wali-anak dan tidak menonaktifkan membership secara otomatis. Anak yang belum memiliki Parent tetap dapat dikelola dalam operasi tenant.
+
+Daftar **Anak** Staff Admin menghitung status wali dari relasi yang sudah berada dalam child scope server dan hanya mengirimkannya kepada Staff Admin: `LINKED` bila setidaknya satu relasi dan seluruh akun target adalah Parent terdaftar, `UNLINKED` bila belum ada relasi, dan `REVIEW_REQUIRED` bila relasi lama mengarah ke akun yang hilang, bukan Parent, atau tanpa registration role. Staff Admin dapat memfilter ketiga status tersebut; filter memakai Bottom Sheet draf dan baru memengaruhi daftar maupun ekspor laporan Anak setelah **OK**. Relasi lama yang perlu diperiksa tidak dicabut, dikonversi, atau diberi membership otomatis; Staff Admin meninjaunya pada detail anak dan dapat melepas relasi yang salah secara manual. Status, filter, penanda peringatan, dan daftar wali pada detail ini tidak dikirim kepada Staff, Parent, atau Platform Admin. Jalur ini ditujukan untuk anak yang datanya sudah diinput langsung oleh Staff Admin (mis. migrasi data atau pendaftaran luring), sebagai pelengkap—bukan pengganti—alur persetujuan enrollment Parent di atas.
 
 ### Les privat
 
@@ -71,6 +73,7 @@ Selain jalur aplikasi di atas, Staff Admin dapat menautkan langsung akun Parent 
 - Pada tenant dengan capability `DAYCARE_OPERATIONS`, kehadiran memerlukan booking yang telah dikonfirmasi. PAUD dan TK tetap dapat memakai kehadiran sebagai shared core tanpa prasyarat booking Daycare.
 - Check-in/out dapat dilakukan manual atau melalui QR Parent. Payload QR diverifikasi terhadap child ID dan nama yang ditandatangani server; nama tampilan saja tidak dipercaya.
 - Check-in/out manual meminta konfirmasi eksplisit sebelum disimpan dan boleh menyertakan jam kejadian pilihan Staff (bukan hanya waktu saat submit). Server memvalidasi tiga batasan pada jam tersebut: tidak boleh berada di masa depan, harus jatuh pada hari operasional cabang anak yang sama (dihitung memakai zona waktu cabang, bukan zona waktu server), dan jam check-out tidak boleh lebih awal dari jam check-in yang sudah tercatat.
+- Job terjadwal memeriksa setiap menit anak yang masih check-in (belum check-out) pada cabang yang jam operasionalnya untuk hari itu sudah lewat. Bila cabang tersebut juga memiliki minimal satu blok tarif overtime aktif, setiap wali anak menerima satu notifikasi (inbox, realtime, dan push bila tersedia) yang memberitahukan anak masih tercatat hadir dan berpotensi dikenakan biaya tambahan; notifikasi ini dikirim tepat sekali per hari operasional per anak, bukan diulang setiap menit job berjalan. Ini murni pemberitahuan proaktif, bukan pembuatan charge overtime—charge overtime aktualnya tetap dibuat manual oleh Staff Admin sesuai §13.6.2. Cabang tanpa blok tarif overtime tidak menerima notifikasi ini karena anak yang telat dijemput di sana tidak akan pernah dikenakan biaya tambahan.
 - Layar QR Parent menampilkan QR anak secara langsung tanpa langkah pilih anak lebih dulu ketika Parent hanya memiliki tepat satu anak yang terlihat pada layar tersebut (baik karena Parent hanya punya satu anak, maupun karena layar dibuka dengan `childId` tertentu). Ketika anak yang terlihat lebih dari satu, Parent tetap memilih anak dari daftar terlebih dahulu sebelum QR ditampilkan pada BottomSheet, seperti semula.
 - Staff Admin dapat mengunduh rekap kehadiran anak per cabang untuk rentang tanggal inklusif dalam PDF atau XLSX dari menu Kelola. Rekap hanya mencakup anak aktif dengan enrollment aktif pada cabang yang dipilih dan memuat total check-in, total check-out, serta check-in yang belum check-out untuk setiap anak. Anak tanpa record kehadiran tetap ditampilkan dengan total nol; total nol tidak boleh diberi label atau diartikan sebagai ketidakhadiran karena bisa tidak ada booking atau hari operasional pada periode tersebut. Staff dan Parent tidak menerima akses ekspor ini. Cabang wajib milik tenant dan rentang tanggal harus valid; Staff Admin yang tidak aktif tetap hanya-baca sesuai aturan tenant.
 - Parent yang sudah terhubung dapat mengajukan anak tidak masuk untuk rentang tanggal hari ini atau masa depan dengan alasan sakit, keluar kota, acara keluarga, keadaan darurat, atau alasan lain yang wajib diberi catatan. Pengajuan yang tanggalnya tumpang tindih dan masih `PENDING` atau sudah `APPROVED` ditolak. Parent hanya dapat membatalkan pengajuan miliknya saat masih `PENDING`; Staff Admin atau Staff dalam scope anak menyetujui atau menolak, dan penolakan wajib memiliki alasan. Pengajuan tidak masuk bersifat informatif: tidak membuat, membatalkan, mengubah, maupun mengembalikan booking atau kredit layanan. Kehadiran aktual tetap dicatat melalui flow kehadiran yang berlaku.
@@ -246,8 +249,8 @@ Ketika flow, aturan bisnis, kontrak API, konfigurasi, atau verifikasi berubah:
 ## 12. Target: platform multi-jenjang yang aman dan dapat dipakai ulang
 
 Bagian ini adalah **aturan target dan prioritas produk**. Ia merangkum hasil
-perbandingan model saat ini dengan operasi yang lazim pada Daycare, PAUD, TK,
-SD, dan SMP. Tidak ada capability, role, screen, API, atau migrasi baru yang
+perbandingan model saat ini dengan operasi yang lazim pada penitipan,
+pendidikan usia dini, sekolah dasar, dan sekolah menengah. Tidak ada capability, role, screen, API, atau migrasi baru yang
 boleh dianggap tersedia hanya karena tercantum di bagian ini. Setiap tahap
 implementasi harus tetap mempertahankan histori dan perilaku Daycare yang
 sudah berjalan.
@@ -277,10 +280,10 @@ sudah berjalan.
 
 | Area | Aturan saat ini | Risiko bila langsung dipakai untuk sekolah | Aturan target |
 | --- | --- | --- | --- |
-| Jenis lembaga | Capability operasional hanya dibedakan untuk Daycare serta kurikulum PAUD/TK. | Menambah `SD` atau `SMP` ke katalog saja menghasilkan tenant tanpa alur inti. | SD dan SMP hanya boleh ditawarkan setelah capability sekolah yang eksplisit tersedia dan diaktifkan per penawaran cabang. |
+| Jenis lembaga | Capability operasional hanya dibedakan untuk Daycare serta kurikulum PAUD/TK. | Menambah `RA`, `SD`, `MI`, `SMP`, `MTS`, `SMA`, `MA`, atau `SMK` ke katalog saja menghasilkan tenant tanpa alur inti. | Jenis pendidikan usia dini atau sekolah hanya boleh ditawarkan setelah capability yang eksplisit tersedia dan diaktifkan per penawaran cabang. |
 | Penerimaan | Enrollment Parent dimulai dari paket Daycare, entitlement, dan booking. | Sekolah reguler tidak selalu menjual kredit layanan atau booking harian. | Penerimaan sekolah dipisahkan dari enrollment Daycare; masing-masing memiliki status, kuota, dokumen, dan tagihan sendiri. |
 | Penempatan | `Classroom` dan `ChildPlacement` sudah dapat menyimpan tahun ajaran, tetapi flow saat ini masih membatasi satu penempatan aktif per anak secara global. | Kenaikan kelas, tinggal kelas, mutasi, dan layanan Daycare paralel akan mengubah atau mengaburkan riwayat. | Penempatan akademik terikat unit pendidikan dan tahun ajaran; riwayat tidak pernah ditimpa. |
-| Perkembangan dan nilai | Goal menggunakan indikator harian `Yes`/`No`. | Nilai mapel, rubrik, remedial, dan rapor tidak dapat diperlakukan sebagai Goal perkembangan. | PAUD/TK memakai portofolio perkembangan; SD/SMP memakai mata pelajaran, asesmen, dan rapor yang terbit terpisah. |
+| Perkembangan dan nilai | Goal menggunakan indikator harian `Yes`/`No`. | Nilai mapel, rubrik, remedial, dan rapor tidak dapat diperlakukan sebagai Goal perkembangan. | Pendidikan usia dini (`KB`, `SPS`, `PAUD`, `TK`, `RA`) memakai portofolio perkembangan; sekolah (`SD`, `MI`, `SMP`, `MTS`, `SMA`, `MA`, `SMK`) memakai mata pelajaran, asesmen, dan rapor yang terbit terpisah. |
 | Kehadiran | Daycare mensyaratkan booking terkonfirmasi; PAUD/TK dapat hadir tanpa booking. | Absensi sekolah, keterlambatan, dan kehadiran per mata pelajaran tidak mempunyai sumber kebenaran yang jelas. | Kehadiran sekolah berasal dari kalender/jadwal dan direkonsiliasi oleh sekolah; izin Parent tidak langsung mengganti catatan aktual. |
 | Keuangan | Paket, entitlement, kredit, dan invoice Daycare menjadi pusat alur. | SPP bulanan, uang pangkal, kegiatan, serta diskon/beasiswa sekolah tidak memiliki lifecycle yang tepat. | Produk keuangan sekolah menggunakan kewajiban per tahun ajaran/semester/bulan, terpisah dari kredit Daycare. |
 | Perlindungan anak | Catatan kesehatan dan insiden tersedia, tetapi penjemput, persetujuan, dan kontak darurat belum menjadi model lintas layanan. | Check-out atau tindakan darurat dapat dilakukan tanpa otorisasi yang cukup. | Otorisasi penjemputan, kontak darurat, consent, dan jejak audit menjadi fondasi bersama semua jenjang. |
@@ -288,16 +291,17 @@ sudah berjalan.
 ### 12.2 Prinsip model lembaga dan capability
 
 - Tenant tetap merupakan batas data dan penagihan. Satu tenant dapat menawarkan
-  Daycare, PAUD, TK, SD, dan/atau SMP, tetapi **penawaran aktif** harus
+  lebih dari satu jenis lembaga yang sesuai dengan matriks §12.2.2, tetapi **penawaran aktif** harus
   dikonfigurasi per cabang dan per jenis lembaga. Memilih jenis lembaga pada
   tenant tidak berarti semua cabang otomatis menyelenggarakannya.
 - `DAYCARE_OPERATIONS` tetap khusus bagi layanan penitipan: paket/entitlement,
   booking, check-in/out, jam operasional, penjemputan, dan overtime. Capability
-  ini tidak menjadi prasyarat PAUD, TK, SD, atau SMP yang tidak menawarkan
+  ini tidak menjadi prasyarat pendidikan usia dini atau sekolah yang tidak menawarkan
   penitipan.
 - **Target:** `EARLY_CHILDHOOD_EDUCATION` mencakup kurikulum dan portofolio
-  perkembangan PAUD/TK; `SCHOOL_ACADEMICS` mencakup tahun ajaran, mata
-  pelajaran, jadwal, asesmen, dan rapor SD/SMP; dan
+  perkembangan untuk `KB`, `SPS`, `PAUD`, `TK`, dan `RA`; `SCHOOL_ACADEMICS`
+  mencakup tahun ajaran, mata pelajaran, jadwal, asesmen, dan rapor untuk
+  `SD`, `MI`, `SMP`, `MTS`, `SMA`, `MA`, dan `SMK`; dan
   `EDUCATION_STUDENT_AFFAIRS` mencakup absensi sekolah, izin, mutasi, tata
   tertib, serta komunikasi wali. Penerimaan dan tagihan sekolah memakai
   `EDUCATION_ADMISSIONS` dan `EDUCATION_BILLING` secara terpisah. Kode target
@@ -316,7 +320,7 @@ sudah berjalan.
   lifecycle dan penagihan sendiri. Jangan menyamakan layanan tersebut dengan
   rombel atau memasukkannya diam-diam ke paket akademik.
 - Istilah tampilan dapat memakai **Peserta Didik** untuk semua jenjang, sambil
-  mempertahankan istilah **Anak** pada konteks Daycare/PAUD/TK. Model dan API
+  mempertahankan istilah **Anak** pada konteks penitipan dan pendidikan usia dini. Model dan API
   lama bernama `Child` tidak boleh diubah hanya untuk kosmetik; perubahan nama
   data memerlukan rencana kompatibilitas tersendiri.
 
@@ -340,13 +344,13 @@ role, membership aktif, assignment Staff, dan kebijakan data yang sudah ada;
 
 | Jenis lembaga bawaan | Fitur khusus yang boleh tampil saat ini | Fitur yang wajib disembunyikan saat ini |
 | --- | --- | --- |
-| `DAYCARE` | Fitur bersama; Paket Layanan, entitlement, enrollment Parent Daycare, pembayaran layanan Daycare, booking dan approval booking, QR/check-in/out yang mensyaratkan booking, jam operasional, penjemputan, dan overtime—hanya bila offering memiliki `DAYCARE_OPERATIONS`. | Les privat; Tingkatan, rombel, Program Kurikulum, Program Perkembangan, Goal, dan aktivitas kurikulum bila tidak ada offering akademik terpisah; seluruh penerimaan sekolah, mata pelajaran/jadwal/nilai/rapor, tagihan sekolah, dan kas kelas. |
-| `TPA`, `KB`, `SPS` | Fitur bersama saja. Kode ini dapat disimpan/dipilih untuk identitas lembaga dan tidak memberikan capability tambahan. | Seluruh operasi komersial Daycare; les privat; seluruh entry point akademik/kurikulum saat ini; serta seluruh fitur target penerimaan, akademik sekolah, tagihan sekolah, dan kas kelas. |
-| `PAUD`, `TK` | Fitur bersama; Tingkatan, rombel, Program Kurikulum, Program Perkembangan, Goal, dan aktivitas kurikulum; serta les privat. Semua entry point ini hanya tampil bila ada offering `PUBLISHED` dengan `ACADEMIC_CURRICULUM`; les privat dibatasi khusus PAUD/TK sebagaimana §3. | Paket/entitlement, enrollment dan booking Daycare, QR Daycare, jam operasional, penjemputan, dan overtime jika cabang tidak juga memiliki offering `DAYCARE_OPERATIONS`; serta penerimaan sekolah, portofolio/rapor pendidikan usia dini, mata pelajaran/jadwal/nilai/rapor sekolah, tagihan sekolah, dan kas kelas yang masih target. |
-| `RA`, `BIMBA` | Fitur bersama saja. Walaupun programnya dapat memiliki kemiripan operasional dengan PAUD/TK, kesamaan nama atau kelompok usia bukan dasar pemberian akses. | `ACADEMIC_CURRICULUM` saat ini, termasuk Tingkatan/rombel/Program Kurikulum/Goal dan les privat; seluruh operasi Daycare; serta seluruh fitur target sekolah. Mengaktifkan kurikulum atau les privat untuk salah satu kode ini memerlukan capability, offering, scope data, API, dan perubahan aturan eksplisit terlebih dahulu. |
-| `SD`, `MI` | Fitur bersama saja. | Semua operasi Daycare kecuali cabang juga memiliki offering Daycare tersendiri; seluruh entry point kurikulum PAUD/TK dan les privat; serta penerimaan sekolah, tahun ajaran, mata pelajaran, jadwal, asesmen, rapor, absensi sekolah, tagihan sekolah, dan kas kelas sampai capability targetnya benar-benar tersedia. |
-| `SMP`, `MTS` | Fitur bersama saja. | Semua operasi Daycare kecuali cabang juga memiliki offering Daycare tersendiri; seluruh entry point kurikulum PAUD/TK dan les privat; serta penerimaan sekolah, tahun ajaran, mata pelajaran, jadwal, asesmen, rapor, absensi sekolah, tagihan sekolah, dan kas kelas sampai capability targetnya benar-benar tersedia. |
-| `SMA`, `MA`, `SMK` | Fitur bersama saja. | Semua operasi Daycare kecuali cabang juga memiliki offering Daycare tersendiri; seluruh entry point kurikulum PAUD/TK dan les privat; serta penerimaan sekolah, tahun ajaran, mata pelajaran, jadwal, asesmen, rapor, absensi sekolah, tagihan sekolah, dan kas kelas sampai capability targetnya benar-benar tersedia. |
+| `DAYCARE` | Fitur bersama; Paket Layanan, entitlement, enrollment Parent Daycare, pembayaran layanan Daycare, booking dan approval booking, QR/check-in/out yang mensyaratkan booking, jam operasional, penjemputan, dan overtime—hanya bila offering memiliki `DAYCARE_OPERATIONS`. | Les privat; **rombel akademik** dan Tingkatan/Program Kurikulum/Program Perkembangan/Goal akademik bila tidak ada offering akademik terpisah; seluruh penerimaan sekolah, mata pelajaran/jadwal/nilai/rapor, tagihan sekolah, dan kas kelas. Kelompok layanan operasional bukan rombel akademik (lihat §12.2.2). |
+| `TPA`, `KB`, `SPS` | Fitur bersama saja. Kode ini dapat disimpan/dipilih untuk identitas lembaga dan tidak memberikan capability tambahan. | Seluruh operasi komersial Daycare; les privat; seluruh entry point akademik/kurikulum saat ini; serta seluruh fitur target penerimaan, akademik sekolah, tagihan sekolah, dan kas kelas. Kelompok yang kelak dipakai untuk layanan/belajar tidak boleh disebut rombel akademik sebelum target §12.2.2 tersedia. |
+| `PAUD`, `TK` | Fitur bersama; Tingkatan, **kelas/kelompok belajar legacy**, Program Kurikulum, Program Perkembangan, Goal, dan aktivitas kurikulum; serta les privat. Semua entry point ini hanya tampil bila ada offering `PUBLISHED` dengan `ACADEMIC_CURRICULUM`; les privat dibatasi khusus PAUD/TK sebagaimana §3. | Paket/entitlement, enrollment dan booking Daycare, QR Daycare, jam operasional, penjemputan, dan overtime jika cabang tidak juga memiliki offering `DAYCARE_OPERATIONS`; serta penerimaan sekolah, portofolio/rapor pendidikan usia dini, mata pelajaran/jadwal/nilai/rapor sekolah, tagihan sekolah, dan kas kelas yang masih target. Rombel akademik kanonis menunggu scope target §13.8. |
+| `RA`, `BIMBA` | Fitur bersama saja. Walaupun programnya dapat memiliki kemiripan operasional dengan PAUD/TK, kesamaan nama atau kelompok usia bukan dasar pemberian akses. | `ACADEMIC_CURRICULUM` saat ini, termasuk Tingkatan/rombel/Program Kurikulum/Goal dan les privat; seluruh operasi Daycare; serta seluruh fitur target sekolah. Mengaktifkan kurikulum atau les privat untuk salah satu kode ini memerlukan capability, offering, scope data, API, dan perubahan aturan eksplisit terlebih dahulu. §12.2.2 membedakan target RA sebagai pendidikan usia dini dari BIMBA sebagai program pendampingan. |
+| `SD`, `MI` | Fitur bersama saja. | Semua operasi Daycare kecuali cabang juga memiliki offering Daycare tersendiri; seluruh entry point kurikulum PAUD/TK dan les privat; serta penerimaan sekolah, tahun ajaran, **rombel akademik**, mata pelajaran, jadwal, asesmen, rapor, absensi sekolah, tagihan sekolah, dan kas kelas sampai capability targetnya benar-benar tersedia. |
+| `SMP`, `MTS` | Fitur bersama saja. | Semua operasi Daycare kecuali cabang juga memiliki offering Daycare tersendiri; seluruh entry point kurikulum PAUD/TK dan les privat; serta penerimaan sekolah, tahun ajaran, **rombel akademik**, mata pelajaran, jadwal, asesmen, rapor, absensi sekolah, tagihan sekolah, dan kas kelas sampai capability targetnya benar-benar tersedia. |
+| `SMA`, `MA`, `SMK` | Fitur bersama saja. | Semua operasi Daycare kecuali cabang juga memiliki offering Daycare tersendiri; seluruh entry point kurikulum PAUD/TK dan les privat; serta penerimaan sekolah, tahun ajaran, **rombel akademik**, mata pelajaran, jadwal, asesmen, rapor, absensi sekolah, tagihan sekolah, dan kas kelas sampai capability targetnya benar-benar tersedia. |
 
 - `RA`, `BIMBA`, `SD`, `MI`, `SMP`, `MTS`, `SMA`, `MA`, dan `SMK` adalah
   **katalog dan identitas lembaga yang tersedia**, bukan janji bahwa produk
@@ -398,10 +402,93 @@ role, membership aktif, assignment Staff, dan kebijakan data yang sudah ada;
   kunci, tipe/nilai yang sah, default, owner, scope, efek UI/API, serta
   kompatibilitas ketika nilai diubah atau dihapus.
 
+### 12.2.2 Batas kelompok layanan, kelompok belajar, dan rombel akademik
+
+`Classroom` legacy saat ini adalah wadah kelompok tenant yang masih dipakai
+bersama oleh beberapa flow. Ia **bukan** bukti bahwa sebuah lembaga telah
+memiliki rombel akademik. Untuk menghindari pengguna, UI, dan API memberi
+makna yang berbeda pada data yang sama, istilah berikut bersifat kanonis:
+
+| Istilah tampilan | Makna dan scope | Bukan pengganti |
+| --- | --- | --- |
+| **Kelompok Layanan** | Pengelompokan operasi penitipan pada satu cabang untuk pembagian pendamping, daftar anak, dan kegiatan harian. Ia tidak memiliki tahun ajaran, mata pelajaran, rapor, atau kuota penerimaan. | Rombel akademik, kapasitas booking harian Daycare, atau Tingkatan pendidikan. |
+| **Kelompok Belajar** | Pengelompokan pembelajaran usia dini atau program pendampingan. Pada implementasi legacy dapat memakai `Classroom`, tetapi belum memiliki scope pendidikan lengkap. | Bukti bahwa penempatan akademik, kalender, rapor, atau kas kelas sudah tersedia. |
+| **Rombel Akademik** | Unit penempatan pendidikan kanonis pada satu `EducationOffering`, cabang, tahun ajaran, Tingkatan, dan kapasitas. Ia adalah `AcademicClassroom` target pada §13.8 dan hanya dapat digunakan oleh `AcademicPlacement`. | `Classroom` legacy, nama kelas bebas, kelompok layanan, atau kuota penerimaan. |
+
+- Sampai model target §13.8 tersedia, UI yang membaca `Classroom` legacy harus
+  memakai label umum **Kelas** atau label kelompok sesuai matriks di bawah.
+  Ia tidak boleh memberi label **Rombel** bila record tersebut belum membawa
+  scope akademik kanonis. Layar saat ini yang menulis “Rombel” untuk semua
+  `Classroom` legacy adalah **gap implementasi**, bukan alasan untuk
+  memperlakukan group tersebut sebagai kelas akademik.
+- Kontrak legacy masih mewajibkan `learningLevelId` pada `Classroom` dan dapat
+  menyimpan `learningPeriodId`. Saat data legacy belum dimigrasikan, keduanya
+  hanya metadata kompatibilitas: `learningLevelId` dapat dipakai Daycare
+  sebagai **Kelompok usia** untuk menyiapkan Kelas, sedangkan
+  `learningPeriodId`, relasi Program Kurikulum, dan label **Tingkatan** hanya
+  boleh ditulis melalui capability `ACADEMIC_CURRICULUM`. Metadata ini tidak
+  mengubah Kelas menjadi Rombel Akademik, tidak menciptakan tahun ajaran atau
+  penempatan akademik, dan tidak boleh di-backfill atau dipetakan otomatis.
+  Update non-akademik pada record lama boleh mempertahankan nilai metadata
+  lama yang sama persis, tetapi tidak boleh menambah, mengganti, atau
+  menghapus relasi akademik tanpa capability tersebut.
+- Satu learner boleh berada pada Kelompok Layanan dan Rombel Akademik pada
+  tanggal yang sama, misalnya TK pagi dan penitipan setelah sekolah. Kedua
+  relasi harus memakai ID serta scope offering sendiri; memindahkan atau
+  mengarsipkan satu relasi tidak boleh mengubah relasi lainnya.
+- Kapasitas Kelompok Layanan, kapasitas Rombel Akademik, kuota penerimaan, dan
+  kapasitas booking harian adalah empat metrik berbeda. Tidak satu pun boleh
+  diisi, ditampilkan, atau divalidasi sebagai substitusi bagi yang lain.
+- Istilah, visibilitas, dan pilihan kelompok selalu berasal dari `UiAccessContext`
+  serta resource scoped server. `institutionType`, nama kelas, umur learner,
+  atau urutan data tidak boleh dipakai client untuk menebak kind kelompok.
+
+#### Matriks jenis lembaga dan keberadaan rombel
+
+Status **saat ini** pada tabel menjelaskan yang boleh tampil pada code saat
+ini. Kolom **arah target** tidak mengizinkan wiring dini: setiap target tetap
+memerlukan offering `PUBLISHED`, capability efektif, migration scope,
+authorization server, serta kontrak UI/API sesuai §12.2 dan §13.
+
+| Jenis lembaga | Tujuan utama | Status kelompok saat ini | Label kanonis sekarang | Arah target dan batas rombel |
+| --- | --- | --- | --- | --- |
+| `DAYCARE` | Penitipan dan perawatan harian. | `DAYCARE_OPERATIONS` tersedia hanya untuk offering Daycare. `Classroom` legacy dapat dipakai sebagai kelompok operasional bila memang dikonfigurasi tenant, tetapi tidak membuka akademik. | **Kelompok Layanan**; gunakan **Kelas** hanya sebagai fallback generik. | **Tidak ada Rombel Akademik** pada offering Daycare. Rombel hanya dapat ada dari offering pendidikan lain yang berdiri sendiri pada cabang yang sama. |
+| `TPA` | Penitipan anak. | Katalog-only; belum memiliki capability operasional khusus walaupun domainnya serupa Daycare. | Tidak ada entry point kelompok khusus. | Bila capability layanan penitipan dan offering eksplisit kelak disetujui, gunakan **Kelompok Layanan**; **bukan** rombel akademik. Tidak boleh mewarisi `DAYCARE_OPERATIONS` hanya dari kode atau nama TPA. |
+| `KB`, `SPS` | Pendidikan dan stimulasi usia dini berbasis kelompok. | Katalog-only; tidak mendapat kurikulum/rombel dari code saat ini. | Tidak ada entry point kelompok khusus. | Setelah `EARLY_CHILDHOOD_EDUCATION` tersedia, gunakan **Kelompok Belajar**; Rombel Akademik hanya ada bila target `AcademicYear` + `AcademicPlacement` + `AcademicClassroom` diaktifkan untuk offering tersebut. |
+| `PAUD`, `TK` | Pendidikan usia dini. | Offering `PUBLISHED` dengan `ACADEMIC_CURRICULUM` boleh memakai Tingkatan dan `Classroom` legacy untuk kurikulum/Goal. | **Kelas** atau **Kelompok Belajar**; istilah “rombel” legacy tidak boleh menyiratkan data §13.8 sudah ada. | Menjadi **Rombel Akademik** setelah capability `EARLY_CHILDHOOD_EDUCATION` dan scope tahun ajaran target tersedia. Portofolio perkembangan tetap terpisah dari nilai sekolah. |
+| `RA` | Pendidikan usia dini berciri keagamaan. | Katalog-only; tidak memperoleh capability PAUD/TK otomatis. | Tidak ada entry point kelompok khusus. | Memakai model **Kelompok Belajar/Rombel Akademik pendidikan usia dini** yang sama dengan PAUD/TK hanya setelah capability, offering, dan contract target diaktifkan secara eksplisit. Les privat PAUD/TK tidak ikut terbuka otomatis. |
+| `BIMBA` | Program pendampingan minat baca/belajar atau keterampilan dasar. | Katalog-only. | Tidak ada entry point kelompok khusus. | Bila program group-based disetujui, gunakan **Kelompok Program** yang scoped ke offering/program; **tidak ada Rombel Akademik**, rapor sekolah, atau kas kelas hanya karena ada kelompok. |
+| `SD`, `MI` | Pendidikan dasar. | Katalog-only; penerimaan, tahun ajaran, dan kelas akademik belum tersedia. | Tidak ada entry point kelas/rombel akademik. | **Rombel Akademik wajib** untuk peserta didik aktif: terikat offering, cabang, tahun ajaran, Tingkatan, kapasitas, dan `AcademicPlacement`. Tidak boleh menggunakan `Classroom` legacy. |
+| `SMP`, `MTS` | Pendidikan menengah pertama. | Katalog-only; tidak ada flow sekolah saat ini. | Tidak ada entry point kelas/rombel akademik. | **Rombel Akademik wajib** dengan scope yang sama; jadwal, mata pelajaran, absensi, nilai, rapor, dan kas kelas (bila diaktifkan) selalu scoped ke rombel tersebut. |
+| `SMA`, `MA` | Pendidikan menengah atas. | Katalog-only; tidak ada flow sekolah saat ini. | Tidak ada entry point kelas/rombel akademik. | **Rombel Akademik wajib** dengan scope yang sama; peminatan/konsentrasi, bila kelak dipakai, adalah atribut atau scope tambahan dan bukan pengganti rombel. |
+| `SMK` | Pendidikan menengah kejuruan. | Katalog-only; tidak ada flow sekolah atau kejuruan saat ini. | Tidak ada entry point kelas/rombel akademik. | **Rombel Akademik wajib**. Program keahlian/konsentrasi keahlian harus menjadi scope terkontrol tambahan sebelum feature kejuruan dipublikasikan; ia tidak boleh disimpan hanya di nama rombel atau mengubah data SMA/MA. |
+
+- `KB`, `SPS`, `RA`, `PAUD`, dan `TK` tidak boleh disamakan dengan Daycare
+  hanya karena sama-sama melayani usia dini. Sebaliknya, `DAYCARE` dan `TPA`
+  tidak boleh otomatis mendapatkan Tingkatan atau Rombel Akademik hanya karena
+  anak dikelompokkan berdasarkan usia.
+- `BIMBA` tidak boleh dipaksakan menjadi PAUD/TK atau sekolah reguler untuk
+  mendapatkan kurikulum, rombel, admission, atau billing. Jika kebutuhan
+  produk BIMBA berkembang, capability tersendiri dan kontrak program/kelompok
+  harus didokumentasikan sebelum feature apa pun dibuka.
+- Untuk `SD`, `MI`, `SMP`, `MTS`, `SMA`, `MA`, dan `SMK`, Rombel Akademik
+  hanya muncul setelah learner memiliki `EducationEnrollment` yang legal dan
+  Staff membuat `AcademicPlacement` efektif. Admission `ACCEPTED`, Parent
+  membership, invoice, nama tingkatan, atau keberadaan `Classroom` legacy
+  tidak cukup untuk membuat atau menampilkan rombel.
+- Kas kelas tetap **tidak ada** untuk semua tipe sampai offering pendidikan
+  mengaktifkan `CLASS_FUND_OPERATIONS` dan memenuhi seluruh precondition
+  §13.11.1. Rombel akademik sendiri tidak memberikan capability kas kelas.
+- Data `Classroom`/`ChildPlacement` legacy tidak boleh di-backfill menjadi
+  Kelompok Layanan, Kelompok Belajar, atau Rombel Akademik berdasarkan nama,
+  usia, atau institution type. Saat target diaktifkan, Staff Admin memilih
+  pemetaan yang sah melalui flow teraudit; data yang tidak dipetakan tetap
+  berstatus legacy dan read-only untuk scope akademik baru.
+
 ### 12.3 Penerimaan, enrollment, dan lifecycle Peserta Didik
 
 - Flow pada §3 tetap menjadi flow **enrollment layanan Daycare**. Ia tidak
-  boleh dipaksakan untuk penerimaan PAUD, TK, SD, atau SMP yang tidak membeli
+  boleh dipaksakan untuk penerimaan pendidikan usia dini atau sekolah yang tidak membeli
   paket penitipan.
 - **Target penerimaan sekolah:** Parent/wali memilih penawaran penerimaan yang
   dipublikasikan untuk cabang, jenis lembaga, tahun ajaran, dan tingkatan yang
@@ -435,7 +522,8 @@ role, membership aktif, assignment Staff, dan kebijakan data yang sudah ada;
 
 ### 12.4 Tahun ajaran, penempatan, dan jadwal
 
-- **Target:** setiap operasi PAUD/TK/SD/SMP memiliki `AcademicYear` dengan
+- **Target:** setiap operasi pendidikan usia dini atau sekolah yang memakai
+  Rombel Akademik memiliki `AcademicYear` dengan
   tanggal mulai/selesai, status, dan satu atau lebih periode/semester. Kalender
   operasional menentukan hari belajar, libur, kegiatan khusus, dan penutupan
   cabang; kalender tidak mengubah riwayat kehadiran yang telah dikunci.
@@ -465,9 +553,9 @@ role, membership aktif, assignment Staff, dan kebijakan data yang sudah ada;
   kehadiran terpisah. Dengan demikian, aturan §4 bahwa pengajuan izin tidak
   mengubah kehadiran secara otomatis tetap berlaku.
 - Goal dan Daily Assessment yang ada tetap cocok untuk observasi perkembangan,
-  terutama Daycare/PAUD/TK. Nilai `Yes`/`No`, streak, dan persentase Goal tidak
+  terutama Daycare dan pendidikan usia dini. Nilai `Yes`/`No`, streak, dan persentase Goal tidak
   boleh dikonversi menjadi nilai mata pelajaran atau menentukan kenaikan kelas.
-- **Target PAUD/TK:** portofolio perkembangan dapat mengelompokkan observasi,
+- **Target pendidikan usia dini:** portofolio perkembangan dapat mengelompokkan observasi,
   karya, foto/media yang disetujui, dan ringkasan periode berdasarkan domain
   perkembangan. Ringkasan Parent hanya terbuka setelah dipublikasikan oleh
   sekolah.
@@ -559,7 +647,7 @@ role, membership aktif, assignment Staff, dan kebijakan data yang sudah ada;
 2. **Operasi sekolah inti:** kalender, kuota, mutasi/kenaikan/kelulusan,
    kehadiran sekolah, serta tagihan sekolah dengan lifecycle terpisah.
 3. **Pembelajaran dan Parent experience:** jadwal, mata pelajaran, asesmen,
-   rapor yang dipublikasikan, portofolio PAUD/TK, dan komunikasi ber-audience.
+   rapor yang dipublikasikan, portofolio pendidikan usia dini, dan komunikasi ber-audience.
 4. **Perlindungan dan layanan tambahan:** penjemputan terotorisasi, consent,
    log obat, transport, makan, dan akun Student bila fondasi aksesnya sudah
    teruji.
@@ -700,7 +788,7 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
 | `institutionType` | Salah satu jenis lembaga aktif tenant. Jenis ini hanya label domain; capability efektif tetap berasal dari field capability offering. |
 | `capabilities` | Set capability eksplisit. Tidak boleh dihitung sendiri oleh UI dari `institutionType`. |
 | `enrollmentMode` | `DAYCARE_SERVICE` atau `SCHOOL_ADMISSION`. Satu offering hanya memiliki satu mode utama agar form Parent tidak bercampur. |
-| `academicYearScope` | Untuk PAUD/TK/SD/SMP, hubungan ke tahun ajaran disimpan pada konfigurasi tahun ajaran, cycle, enrollment, placement, dan jadwal; bukan sebagai satu `academicYearId` mutable pada offering. Read model boleh mengirim `activeAcademicYearId` sebagai ringkasan yang tidak dapat ditulis. Daycare/layanan tambahan dapat tidak memiliki scope tahun ajaran. |
+| `academicYearScope` | Untuk offering pendidikan usia dini atau sekolah yang memakai Rombel Akademik, hubungan ke tahun ajaran disimpan pada konfigurasi tahun ajaran, cycle, enrollment, placement, dan jadwal; bukan sebagai satu `academicYearId` mutable pada offering. Read model boleh mengirim `activeAcademicYearId` sebagai ringkasan yang tidak dapat ditulis. Daycare dan program pendampingan dapat tidak memiliki scope tahun ajaran. |
 | `learningLevelIds` | Superset tingkatan yang secara struktural didukung offering. UI tidak boleh menawarkan tingkatan tenant lain atau tingkatan arsip. Untuk admission, daftar ini bukan authority eligibility/kuota/submit; `AdmissionCycleLevel` pada cycle `OPEN` di §13.7 adalah satu-satunya sumber kebenaran. |
 | `catalogAvailability` | Ringkasan kanonis dari server untuk tampilan katalog. Untuk `SCHOOL_ADMISSION`, jendela, biaya, eligibility, dan kuota berasal dari `AdmissionCycle`/level/fee pada §13.7; untuk `DAYCARE_SERVICE`, ia berasal dari kontrak paket/cabang yang berlaku. Tidak ada field offering generik yang menjadi sumber submit kedua. Nilai tanpa batas tetap dikirim dengan policy eksplisit, bukan `null` yang ditafsirkan UI. |
 | `status`, `revision` | Menentukan visibilitas dan operasi. Setiap perubahan publish/pause/close mengubah revision. |
@@ -755,7 +843,7 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
 | `DAYCARE_OPERATIONS` | Berlaku saat ini | Paket layanan, entitlement, booking, check-in/out, jam operasional, overtime | Tidak membuka penerimaan sekolah, rapor, atau absensi mata pelajaran. |
 | `ACADEMIC_CURRICULUM` | Berlaku untuk endpoint Program Kurikulum/aktivitas dan les privat, serta untuk entry point mobile yang membaca `UiAccessContext` dari offering published. Migrasi scope `offeringId` pada seluruh record akademik lama tetap pekerjaan lanjutan; sebelum itu server mempertahankan gate capability tenant sebagai compatibility guard dan tidak boleh dianggap sebagai pengganti authorization per offering. | Tingkatan, rombel, Program Kurikulum, Program Perkembangan, Goal, dan aktivitas kurikulum | Tidak dianggap sebagai izin nilai mapel, rapor, atau jadwal SD/SMP. |
 | `EDUCATION_ADMISSIONS` | Target | Siklus penerimaan, requirement dokumen, review, waitlist, dan offer sekolah | Tidak membuka paket/entitlement/booking Daycare. |
-| `EARLY_CHILDHOOD_EDUCATION` | Target | Portofolio PAUD/TK, ringkasan periode, dan penawaran penerimaan pendidikan usia dini | Tidak mengaktifkan booking Daycare kecuali offering juga memiliki `DAYCARE_OPERATIONS`. |
+| `EARLY_CHILDHOOD_EDUCATION` | Target | Portofolio pendidikan usia dini, ringkasan periode, dan penawaran penerimaan untuk `KB`, `SPS`, `PAUD`, `TK`, atau `RA` | Tidak mengaktifkan booking Daycare kecuali offering juga memiliki `DAYCARE_OPERATIONS`. |
 | `SCHOOL_ACADEMICS` | Target | Tahun ajaran, mata pelajaran, jadwal, tugas, asesmen, rapor | Tidak mengizinkan pembayaran, penerimaan, atau disiplin tanpa capability masing-masing. |
 | `EDUCATION_STUDENT_AFFAIRS` | Target | Kehadiran sekolah, izin, mutasi, kelulusan, pengumuman wali | Tidak mengizinkan perubahan nilai atau konfigurasi kurikulum. |
 | `EDUCATION_BILLING` | Target | Kewajiban biaya sekolah, adjustment, invoice sekolah, dan receipt | Tidak membuat entitlement, credit ledger, atau booking Daycare. |
@@ -845,11 +933,18 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
 | Application `CANCELLED` | Tidak ada layanan aktif dari aplikasi itu | Baca histori saja | Baca histori saja | Tidak ada edit atau restore dari UI. |
 | Invoice enrollment `OVERDUE` dan tidak ada entitlement aktif lain | Mengikuti restriction Daycare legacy §3 | Baca reason; UI saat ini menyimpulkan sendiri dari `status`/`invoiceStatus` mentah kapan menampilkan retry/pengajuan baru (lihat catatan di bawah tabel ini) — bukan dari action code server eksplisit | Kelola pembayaran sesuai scope | Tidak ada booking baru, QR, mutasi operasional, atau asumsi bahwa invoice overdue selalu masih dapat dibayar. |
 
-- Status distinct `BILLING_LIMITED` beserta action code eksplisit `REAPPLY`/`UPLOAD_PAYMENT_PROOF` dari server **belum diimplementasikan**; ini adalah kontrak target, bukan perilaku saat ini. Implementasi saat ini (`apps/mobile/app/parent-enrollment.tsx`) menyimpulkan sendiri di client kapan menampilkan retry/pengajuan baru dari kombinasi field mentah `status` (`CANCELLED`/`EXPIRED`) dan `invoiceStatus` (`OVERDUE`), bukan dari action code eksplisit yang dikirim server. Kontrak target berikut ini yang seharusnya berlaku: `BILLING_LIMITED` pada invoice enrollment Daycare legacy tidak berarti tombol
-  bayar/upload bukti selalu tersedia. Bila policy §3 mengharuskan Parent
-  mengajukan ulang, server mengirim status read-only dan action `REAPPLY`,
-  bukan `UPLOAD_PAYMENT_PROOF`. Ini berbeda dari restriction finance pendidikan
-  §13.11, yang default-nya `NONE` dan tidak menonaktifkan enrollment akademik.
+- Response enrollment Daycare mengirim `accessState` kanonis dan
+  `allowedActions`; mobile hanya merender state tersebut dan tidak lagi
+  menyimpulkan aksi dari kombinasi `status` dan `invoiceStatus` mentah.
+  Nilai saat ini adalah `PENDING_APPROVAL`, `PAYMENT_DUE`, `PAYMENT_REVIEW`,
+  `ACTIVE`, `BILLING_LIMITED`, dan `CLOSED`. `BILLING_LIMITED` pada invoice
+  enrollment Daycare legacy mengirim `REAPPLY`, bukan
+  `UPLOAD_PAYMENT_PROOF`; ia bukan izin implisit untuk membayar invoice yang
+  sudah overdue. `PAYMENT_DUE` hanya mengirim `UPLOAD_PAYMENT_PROOF` bila
+  invoice masih `PENDING`. `REAPPLY` tersedia pada application yang sudah
+  ditutup (`REJECTED`, `CANCELLED`, atau `EXPIRED`) dan pada
+  `BILLING_LIMITED`. Ini berbeda dari restriction finance pendidikan §13.11,
+  yang default-nya `NONE` dan tidak menonaktifkan enrollment akademik.
 
 - Checkout multi-anak harus mendapat hasil server yang eksplisit untuk setiap
   anak atau diperlakukan atomik seluruhnya. UI tidak boleh menampilkan sukses
@@ -899,6 +994,12 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
   `DAYCARE_OPERATIONS`. Payload mingguan selalu berisi tepat tujuh hari. Hari
   nonaktif tidak memiliki `opensAt`/`closesAt`; hari aktif wajib memiliki dua
   nilai `HH:mm` pada timezone cabang dengan `opensAt < closesAt`.
+- Kesiapan Daycare mensyaratkan setiap cabang aktif memiliki konfigurasi
+  mingguan yang valid: tepat satu record untuk setiap hari, setidaknya satu
+  hari aktif, dan waktu valid pada seluruh hari aktif. Blok tarif overtime
+  tidak menjadi prasyarat kesiapan karena dapat memang tidak dipakai. Anak
+  aktif juga bukan prasyarat; lembaga yang sudah siap harus dapat menerima
+  anak pertama.
 - Template jam operasional hanya mengganti seluruh **draft lokal**. Memilih
   template tidak menyimpan apa pun sampai Staff Admin menekan Simpan. Ketika
   template diganti, seluruh hari dan seluruh blok overtime draft lama diganti,
@@ -1146,12 +1247,24 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
 
 ### 13.9 Kehadiran lintas layanan tanpa collision
 
-**Target** (belum diimplementasikan — tidak ada `AttendanceContext`/`attendancePolicy` di backend maupun mobile saat ini; layar kehadiran Daycare yang berjalan (`apps/mobile/app/attendance.tsx`) menyimpulkan state tombol langsung di client dari `child.todayCheckedInAt`/`todayCheckedOutAt`, bukan dari objek policy server seperti dideskripsikan di bawah ini):
+**Implementasi Daycare saat ini:** roster Staff dan Staff Admin menerima
+`AttendanceContext` dari server. Untuk context Daycare, `attendancePolicy`
+adalah `DAYCARE_BOOKING_REQUIRED`, memuat tanggal operasional serta zona waktu
+cabang, dan `allowedActions` hanya berisi `CHECK_IN` atau `CHECK_OUT` setelah
+server mengevaluasi record hari ini serta entitlement/booking. Tanpa capability
+Daycare, policy menjadi `NONE` dan tidak ada action. Mobile memakai
+`allowedActions` untuk tombol manual dan menampilkan alasan penolakan dari
+server; ia tidak menyimpulkan kelayakan dari timestamp lokal. Validasi final
+tetap terjadi kembali pada mutasi check-in/out agar context yang stale tidak
+pernah menjadi otorisasi.
+
+**Target lintas layanan berikutnya** (belum diimplementasikan untuk penawaran
+pendidikan dan context gabungan):
 
 - Kebijakan kehadiran efektif harus dikembalikan server pada roster dan detail
   peserta didik sebagai `AttendanceContext`. UI tidak boleh menyimpulkan
   kebijakan dari capability tenant gabungan, karena satu tenant dapat memiliki
-  Daycare dan PAUD/TK/SD/SMP sekaligus.
+  Daycare, pendidikan usia dini, dan sekolah sekaligus.
 
 | `attendancePolicy` | Resource sumber kebenaran | UI yang tampil | Prasyarat |
 | --- | --- | --- | --- |
@@ -1195,13 +1308,14 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
   scan sebagai `Alert.alert` sekali-tampil, bukan state tombol persisten
   seperti tersirat di atas — gap kecil terhadap target ini.
 
-### 13.10 Portofolio PAUD/TK, akademik SD/SMP, tugas, dan laporan
+### 13.10 Portofolio pendidikan usia dini, akademik sekolah, tugas, dan laporan
 
 - Goal dan Daily Assessment yang ada tetap menjadi flow perkembangan generik.
   Mereka tidak menjadi tabel nilai, tugas, mata pelajaran, atau rapor. UI
   harus menampilkan badge domain yang jelas agar Staff tidak memilih flow yang
   salah untuk data yang sama.
-- Target portofolio PAUD/TK memiliki resource berikut:
+- Target portofolio pendidikan usia dini (`KB`, `SPS`, `PAUD`, `TK`, dan `RA`)
+  memiliki resource berikut:
 
 | Resource | Scope dan lifecycle | UI/otorisasi |
 | --- | --- | --- |
@@ -1706,7 +1820,30 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
 
 #### 13.13.1 Relasi keselamatan dan check-out
 
-**Target** (belum diimplementasikan — tidak ada `EmergencyContact`/`PickupAuthorization`/`PICKUP_VERIFY` di codebase saat ini; check-out Daycare yang berjalan hanya mencatat `checkedOutAt`/`checkOutMethod` tanpa konsep otorisasi/verifikasi penjemput):
+**Implementasi Daycare V1 saat ini:** `PickupAuthorization` tersimpan terpisah
+dari `GuardianLink`, membawa identitas penjemput, hubungan, metode verifikasi,
+masa berlaku, status, pembuat, verifier/revoker, serta audit immutable. Parent
+yang sudah terhubung dapat mengajukan dan mencabut pengajuannya sendiri;
+Staff Admin mengaktifkan atau mencabutnya. Staff dalam child scope tidak dapat
+mengaktifkan/mencabut, tetapi dapat memilih authorization yang `ACTIVE` pada
+check-out. Check-out Daycare menyimpan snapshot authorization, nama penjemput,
+metode, operator, dan alasan exception bila dipakai. Tanpa authorization aktif,
+check-out ditolak kecuali dilakukan oleh Staff Admin aktif dengan alasan wajib.
+QR attendance bukan kredensial penjemput dan batas finansial tidak dipakai untuk
+menolak check-out.
+
+**Fondasi kontak darurat saat ini:** `EmergencyContact` adalah resource terpisah
+dari `GuardianLink` dan `PickupAuthorization`, berisi nama, hubungan, nomor
+telepon, pembuat, dan audit. Parent terkait dapat membuat/menghapus kontak yang
+dibuatnya sendiri; Staff Admin dapat membaca dan menghapus kontak dalam child
+scope. Kontak darurat tidak memberi hak masuk akun, hak pickup, atau hak consent.
+
+**Target yang belum dibangun:** grant eksplisit `MANAGE_PICKUP`/`PICKUP_VERIFY`,
+status/masa berlaku kontak darurat, idempotency key/correlation ID, serta witness
+atau second approver yang dikendalikan policy offering. Hingga grant tersedia,
+Parent terkait menggantikan `MANAGE_PICKUP` dan child scope Staff menggantikan
+`PICKUP_VERIFY` untuk V1; ini tidak boleh diperluas ke child lain atau tenant
+lain.
 
 - `GuardianLink`, `EmergencyContact`, dan `PickupAuthorization` adalah entity
   berbeda. Satu orang dapat direferensikan oleh lebih dari satu entity, tetapi
@@ -1739,7 +1876,14 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
 
 #### 13.13.2 Consent yang direvisi dan dibekukan
 
-**Target** (belum diimplementasikan — tidak ada `ConsentDefinition`/`ConsentRecord`/`GuardianAuthority`/`HEALTH_EMERGENCY_OVERRIDE` di codebase saat ini; tidak ada mekanisme consent tenant-scoped sama sekali pada implementasi berjalan):
+**Fondasi saat ini:** schema tenant-scoped `ConsentDefinition` dan
+`ConsentRecord` sudah tersedia. Record membekukan revision dan isi definisi,
+purpose, child, guardian, status, dan waktu keputusan; model ini belum memiliki
+endpoint atau UI sehingga tidak boleh dianggap sebagai consent yang dapat
+dikumpulkan atau dipakai untuk tindakan medis/obat.
+
+**Target yang belum dibangun:** API, UI, `GuardianAuthority`, scope cabang/
+offering, evidence, serta `HEALTH_EMERGENCY_OVERRIDE`.
 
 - `ConsentDefinition` bersifat tenant-scoped dan membawa revision serta scope
   eksplisit `TENANT`, `BRANCH`, atau `OFFERING`; scope cabang/offering wajib

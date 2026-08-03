@@ -9,9 +9,10 @@ type ChildFilterSheetProps = {
   filter: ChildListFilter;
   onClose: () => void;
   onApply: (filter: ChildListFilter) => void;
+  showGuardianStatus?: boolean;
 };
 
-export function ChildFilterSheet({ visible, filter, onClose, onApply }: ChildFilterSheetProps) {
+export function ChildFilterSheet({ visible, filter, onClose, onApply, showGuardianStatus = false }: ChildFilterSheetProps) {
   const { t } = useI18n();
   const [draftFilter, setDraftFilter] = useState<ChildListFilter>({});
 
@@ -28,6 +29,6 @@ export function ChildFilterSheet({ visible, filter, onClose, onApply }: ChildFil
     negativeAction={{ label: t("children.clearFilters"), onPress: () => setDraftFilter({}) }}
     positiveAction={{ label: t("common.ok"), onPress: () => onApply(draftFilter) }}
   >
-    <ChildFilterTabs filter={draftFilter} onChange={setDraftFilter} enabled={visible} />
+    <ChildFilterTabs filter={draftFilter} onChange={setDraftFilter} enabled={visible} showGuardianStatus={showGuardianStatus} />
   </BottomSheet>;
 }
