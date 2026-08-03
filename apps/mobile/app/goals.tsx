@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ChildGoal, ChildListFilter, CurriculumProgram, DevelopmentProgram, GoalCheckInAudioInput, GoalCheckInBatchInput, GoalCheckInPhotoInput, GoalIndicator, UpsertDevelopmentProgramInput } from "@daycare/api-client";
 import { childGoalOutcomes, goalDomains, goalCheckInOutcomes, type ChildGoalOutcome, type GoalCheckInOutcome, type GoalDomain } from "@daycare/core";
@@ -20,6 +21,7 @@ import { useAudioRecording, useAudioPlayback } from "@/audio";
 import { encodeLocalFileBase64 } from "@/development/encodeLocalFile";
 import { checkInAudioPlaybackUri } from "@/development/checkInAudioUri";
 import { GoalDailyRecord } from "@/goals/GoalDailyRecord";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 type Sheet = "assign" | "finalize" | "correct" | null;
 type GoalCheckInDrafts = Record<string, GoalCheckInOutcome>;
@@ -36,6 +38,8 @@ export default function GoalsScreen() {
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
   const canAdmin = isStaffAdmin && membership.active;
   const canWrite = Boolean(membership?.active && (membership.role === "STAFF_ADMIN" || membership.role === "STAFF"));
+  const access = useUiAccessContext(Boolean(membership));
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
   const [filterVisible, setFilterVisible] = useState(false);
   const [childFilter, setChildFilter] = useState<ChildListFilter>({});
   const children = useChildren(isStaffAdmin ? childFilter : {});
@@ -51,16 +55,16 @@ export default function GoalsScreen() {
     const handle = setTimeout(() => setDebouncedProgramSearch(programSearch.trim()), 300);
     return () => clearTimeout(handle);
   }, [programSearch]);
-  const programs = useQuery({ queryKey: ["development-programs", organizationId], queryFn: () => api.developmentPrograms(), enabled: canWrite });
-  const curriculumPrograms = useQuery({ queryKey: ["curriculum-programs", organizationId], queryFn: () => api.curriculumPrograms(), enabled: canWrite });
-  const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: canWrite });
-  const classrooms = useQuery({ queryKey: ["classrooms", organizationId], queryFn: () => api.classrooms(), enabled: canWrite });
-  const goals = useQuery({ queryKey: ["child-goals", organizationId, childId], queryFn: () => api.childGoals(childId!), enabled: Boolean(selectedChild && membership) });
+  const programs = useQuery({ queryKey: ["development-programs", organizationId], queryFn: () => api.developmentPrograms(), enabled: canWrite && hasAcademicOffering });
+  const curriculumPrograms = useQuery({ queryKey: ["curriculum-programs", organizationId], queryFn: () => api.curriculumPrograms(), enabled: canWrite && hasAcademicOffering });
+  const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: canWrite && hasAcademicOffering });
+  const classrooms = useQuery({ queryKey: ["classrooms", organizationId], queryFn: () => api.classrooms(), enabled: canWrite && hasAcademicOffering });
+  const goals = useQuery({ queryKey: ["child-goals", organizationId, childId], queryFn: () => api.childGoals(childId!), enabled: Boolean(selectedChild && membership && hasAcademicOffering) });
   const refreshGoals = () => { void queryClient.invalidateQueries({ queryKey: ["development-programs", organizationId] }); void queryClient.invalidateQueries({ queryKey: ["child-goals", organizationId, childId] }); };
   const [sheet, setSheet] = useState<Sheet>(null);
   const [curriculumProgramId, setCurriculumProgramId] = useState<string>(); const [programId, setProgramId] = useState<string>(); const [finalGoalId, setFinalGoalId] = useState<string>(); const [finalOutcome, setFinalOutcome] = useState<ChildGoalOutcome>("ACHIEVED"); const [finalSummary, setFinalSummary] = useState("");
   const [correctionGoalId, setCorrectionGoalId] = useState<string>(); const [correctionOutcome, setCorrectionOutcome] = useState<ChildGoalOutcome>("ACHIEVED"); const [correctionSummary, setCorrectionSummary] = useState(""); const [correctionReason, setCorrectionReason] = useState("");
-  const assignPrograms = useQuery({ queryKey: ["development-programs", organizationId, curriculumProgramId, debouncedProgramSearch], queryFn: () => api.developmentPrograms(debouncedProgramSearch || undefined, curriculumProgramId), enabled: canWrite && Boolean(curriculumProgramId) });
+  const assignPrograms = useQuery({ queryKey: ["development-programs", organizationId, curriculumProgramId, debouncedProgramSearch], queryFn: () => api.developmentPrograms(debouncedProgramSearch || undefined, curriculumProgramId), enabled: canWrite && hasAcademicOffering && Boolean(curriculumProgramId) });
   const assign = useMutation({ mutationFn: () => api.assignChildGoal(childId!, { curriculumProgramId: curriculumProgramId!, programId: programId! }), onSuccess: () => { refreshGoals(); setSheet(null); setCurriculumProgramId(undefined); setProgramId(undefined); } });
   const finalize = useMutation({ mutationFn: () => api.finalizeChildGoal(finalGoalId!, { outcome: finalOutcome, summary: finalSummary.trim() }), onSuccess: () => { refreshGoals(); setSheet(null); setFinalGoalId(undefined); setFinalSummary(""); } });
   const correctConclusion = useMutation({ mutationFn: () => api.correctChildGoalConclusion(correctionGoalId!, { outcome: correctionOutcome, summary: correctionSummary.trim(), reason: correctionReason.trim() }), onSuccess: () => { refreshGoals(); setSheet(null); setCorrectionGoalId(undefined); setCorrectionSummary(""); setCorrectionReason(""); } });
@@ -124,6 +128,7 @@ export default function GoalsScreen() {
   const archiveIndicatorMutation = useMutation({ mutationFn: (indicatorId: string) => api.archiveGoalIndicator(editingProgramId!, indicatorId), onSuccess: refreshGoals });
 
   if (!profile || !membership) return null;
+  if (!access.isLoading && !hasAcademicOffering) return <Redirect href="/home" />;
 
   const resetProgramForm = () => { setProgramName(""); setProgramDescription(""); setProgramDurationDays("100"); setProgramMinimumPercent("90"); setProgramMinimumStreak("14"); setProgramLearningLevelId(undefined); setProgramDomain(undefined); setNewIndicatorNames([""]); setOpenInfo(null); };
   const openCreateProgram = () => { setEditingProgramId(undefined); resetProgramForm(); setProgramFormOpen(true); };

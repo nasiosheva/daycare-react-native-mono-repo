@@ -2,6 +2,7 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.AttendanceAction
 import com.daycare.api.domain.AttendanceMethod
+import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AttendanceRepository
 import com.daycare.api.persistence.AttendanceRecord
@@ -12,6 +13,7 @@ import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.Classroom
 import com.daycare.api.persistence.ClassroomRepository
 import com.daycare.api.persistence.GuardianLinkRepository
+import com.daycare.api.persistence.GuardianLink
 import com.daycare.api.persistence.LearningLevel
 import com.daycare.api.persistence.LearningLevelRepository
 import com.daycare.api.persistence.Membership
@@ -58,6 +60,25 @@ class AttendanceServiceTest {
         assertThrows(IllegalArgumentException::class.java) {
             fixtures.service.listChildren(fixtures.jwt, fixtures.organizationId, ChildListFilter(branchId = fixtures.branch.id, classroomId = classroom.id))
         }
+    }
+
+    @Test
+    fun `Staff Admin sees and filters guardian-link review status`() {
+        val fixtures = Fixtures()
+        val linkedChild = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
+        val unlinkedChild = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Bima")
+        val legacyChild = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Citra")
+        val parent = UserProfile(registrationRole = RegistrationRole.PARENT)
+        val nonParent = UserProfile()
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, Role.entries.toSet())).thenReturn(fixtures.scope)
+        `when`(fixtures.childScopes.visibleChildren(fixtures.scope, fixtures.organizationId)).thenReturn(listOf(linkedChild, unlinkedChild, legacyChild))
+        `when`(fixtures.guardians.findAllByChildIdIn(listOf(linkedChild.id, unlinkedChild.id, legacyChild.id))).thenReturn(listOf(GuardianLink(childId = linkedChild.id, userId = parent.id), GuardianLink(childId = legacyChild.id, userId = nonParent.id)))
+        `when`(fixtures.users.findAllById(listOf(parent.id, nonParent.id))).thenReturn(listOf(parent, nonParent))
+
+        val children = fixtures.service.listChildren(fixtures.jwt, fixtures.organizationId, ChildListFilter(guardianStatus = ChildGuardianStatus.REVIEW_REQUIRED))
+
+        assertEquals(listOf("Citra"), children.map { it.fullName })
+        assertEquals(ChildGuardianStatus.REVIEW_REQUIRED, children.single().guardianStatus)
     }
 
     @Test
@@ -126,6 +147,8 @@ class AttendanceServiceTest {
         val organizationId: UUID = UUID.randomUUID()
         val jwt: Jwt = mock(Jwt::class.java)
         val access: AccessService = mock(AccessService::class.java)
+        val guardians: GuardianLinkRepository = mock(GuardianLinkRepository::class.java)
+        val users: com.daycare.api.persistence.UserProfileRepository = mock(com.daycare.api.persistence.UserProfileRepository::class.java)
         val childScopes: ChildScopeService = mock(ChildScopeService::class.java)
         val branches: BranchRepository = mock(BranchRepository::class.java)
         val levels: LearningLevelRepository = mock(LearningLevelRepository::class.java)
@@ -137,7 +160,8 @@ class AttendanceServiceTest {
         val scope = AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet())
         val service = AttendanceService(
             access,
-            mock(GuardianLinkRepository::class.java),
+            guardians,
+            users,
             childScopes,
             branches,
             levels,
@@ -147,6 +171,7 @@ class AttendanceServiceTest {
             mock(AttendanceQrService::class.java),
             mock(NotificationService::class.java),
             mock(BookingEligibilityService::class.java),
+            mock(PickupAuthorizationService::class.java),
         )
     }
 }

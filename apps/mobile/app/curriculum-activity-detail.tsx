@@ -8,6 +8,7 @@ import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, 
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 type Sheet = "edit" | "assessment" | null;
 
@@ -20,9 +21,11 @@ export default function CurriculumActivityDetailScreen() {
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canManage = membership?.role === "STAFF_ADMIN" && membership.active;
-  const activities = useQuery({ queryKey: ["curriculum-activities", organizationId], queryFn: () => api.curriculumActivities(), enabled: Boolean(membership) });
+  const access = useUiAccessContext(Boolean(membership));
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
+  const activities = useQuery({ queryKey: ["curriculum-activities", organizationId], queryFn: () => api.curriculumActivities(), enabled: hasAcademicOffering });
   const activity = activities.data?.find((item) => item.id === activityId);
-  const assessments = useQuery({ queryKey: ["curriculum-activity-assessments", organizationId, activityId], queryFn: () => api.curriculumActivityAssessments(activityId!), enabled: Boolean(membership && activityId) });
+  const assessments = useQuery({ queryKey: ["curriculum-activity-assessments", organizationId, activityId], queryFn: () => api.curriculumActivityAssessments(activityId!), enabled: Boolean(activityId && hasAcademicOffering) });
   const refreshActivities = () => queryClient.invalidateQueries({ queryKey: ["curriculum-activities", organizationId] });
   const updateActivity = useMutation({ mutationFn: (input: { name: string; description: string }) => api.updateCurriculumActivity(activityId!, input), onSuccess: refreshActivities });
   const archiveActivity = useMutation({ mutationFn: () => api.archiveCurriculumActivity(activityId!), onSuccess: refreshActivities });
@@ -43,6 +46,7 @@ export default function CurriculumActivityDetailScreen() {
 
   if (!profile) return null;
   if (!activityId || !membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
+  if (!access.isLoading && !hasAcademicOffering) return <Redirect href="/academic" />;
 
   const closeEditSheet = () => setSheet(null);
   const saveActivity = async () => {

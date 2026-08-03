@@ -101,6 +101,8 @@ class ParentEnrollmentServiceTest {
         assertEquals(listOf("Alya", "Bima Putra"), response.map { it.childName })
         assertEquals(listOf("Citra"), additionalTenantResponse.map { it.childName })
         assertEquals(listOf(ParentEnrollmentStatus.PENDING_APPROVAL, ParentEnrollmentStatus.PENDING_APPROVAL), response.map { it.status })
+        assertEquals(listOf(ParentEnrollmentAccessState.PENDING_APPROVAL, ParentEnrollmentAccessState.PENDING_APPROVAL), response.map { it.accessState })
+        assertEquals(listOf(emptySet<ParentEnrollmentAllowedAction>(), emptySet<ParentEnrollmentAllowedAction>()), response.map { it.allowedActions })
         assertEquals(listOf<UUID?>(null, null), response.map { it.invoiceId })
         val childCaptor = ArgumentCaptor.forClass(Child::class.java)
         verify(children, times(3)).save(childCaptor.capture())

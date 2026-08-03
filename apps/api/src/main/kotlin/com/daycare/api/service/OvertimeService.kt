@@ -4,6 +4,7 @@ import com.daycare.api.domain.InvoiceSource
 import com.daycare.api.domain.InvoiceStatus
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.Role
+import com.daycare.api.persistence.AttendanceRepository
 import com.daycare.api.persistence.BranchOperatingHour
 import com.daycare.api.persistence.BranchOperatingHourRepository
 import com.daycare.api.persistence.BranchOvertimeRateTier
@@ -24,13 +25,17 @@ import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Positive
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.util.UUID
 
 data class OperatingHourInput(@field:NotNull val dayOfWeek: DayOfWeek, val active: Boolean, val opensAt: LocalTime? = null, val closesAt: LocalTime? = null)
@@ -52,6 +57,7 @@ class OvertimeService(
     private val tiers: BranchOvertimeRateTierRepository,
     private val charges: OvertimeChargeRepository,
     private val snapshots: OvertimeChargeTierSnapshotRepository,
+    private val attendance: AttendanceRepository,
     private val notifications: NotificationService,
     private val identityService: IdentityService,
     private val memberships: MembershipRepository,
@@ -145,6 +151,35 @@ class OvertimeService(
         require(invoice.status == InvoiceStatus.PENDING) { "Overtime charge is not awaiting payment" }
         invoice.status = InvoiceStatus.VOID
         notifications.notify(organizationId, charge.payerUserId, "Tagihan overtime dibatalkan", "Tagihan overtime untuk ${charge.operationalDate} telah dibatalkan.", realtimeFlags = setOf(RealtimeFlag.INVOICES))
+    }
+
+    @Scheduled(cron = "0 * * * * *")
+    @Transactional
+    fun sendOvertimeAlerts() {
+        val openAttendance = attendance.findAllByCheckedOutAtIsNullAndOvertimeAlertSentAtIsNull()
+        if (openAttendance.isEmpty()) return
+        val branchIds = openAttendance.map { it.branchId }.toSet()
+        val branchesById = branches.findAllById(branchIds).associateBy { it.id }
+        val hoursByBranch = hours.findAllByBranchIdIn(branchIds).groupBy { it.branchId }
+        val tiersByBranch = tiers.findAllByBranchIdIn(branchIds).groupBy { it.branchId }
+        val guardiansByChild = guardians.findAllByChildIdIn(openAttendance.map { it.childId }.toSet()).groupBy { it.childId }
+        openAttendance.forEach { record ->
+            val branch = branchesById[record.branchId] ?: return@forEach
+            if (tiersByBranch[branch.id].orEmpty().isEmpty()) return@forEach
+            if (InstitutionCapability.DAYCARE_OPERATIONS !in organizationCapabilities.forOrganization(branch.organizationId).capabilities) return@forEach
+            val zone = runCatching { ZoneId.of(branch.timezone) }.getOrElse { ZoneId.of("UTC") }
+            val now = ZonedDateTime.now(zone)
+            if (now.toLocalDate() != record.operationalDate) return@forEach
+            val closesAt = hoursByBranch[branch.id].orEmpty().singleOrNull { it.dayOfWeek == now.dayOfWeek && it.active }?.closesAt ?: return@forEach
+            if (!now.toLocalTime().isAfter(closesAt)) return@forEach
+            val child = children.findById(record.childId).orElse(null) ?: return@forEach
+            val childName = listOfNotNull(child.firstName, child.lastName).joinToString(" ")
+            guardiansByChild[record.childId].orEmpty().forEach { link ->
+                notifications.notify(record.organizationId, link.userId, "Anak masih di lokasi", "$childName masih tercatat hadir melewati jam operasional cabang dan dapat dikenakan biaya tambahan.", realtimeFlags = setOf(RealtimeFlag.ATTENDANCE))
+            }
+            record.overtimeAlertSentAt = Instant.now()
+            attendance.save(record)
+        }
     }
 
     private fun persistCharge(organizationId: UUID, childId: UUID, branchId: UUID, request: CreateOvertimeChargeRequest, existing: OvertimeCharge?): OvertimeChargeResponse {

@@ -66,9 +66,12 @@ export type ApiRequestLogEntry = {
   failure?: "NETWORK" | "TIMEOUT";
 };
 
-export type Child = Omit<ChildInput, "gender"> & { id: string; fullName: string; organizationId: string; branchId: string; gender: ChildGender | "UNSPECIFIED"; todayCheckedInAt?: string | null; todayCheckedOutAt?: string | null };
+export type ChildGuardianStatus = "LINKED" | "UNLINKED" | "REVIEW_REQUIRED";
+export type AttendancePolicy = "DAYCARE_BOOKING_REQUIRED" | "NONE";
+export type AttendanceContext = { operationalDate: string; timezone: string; attendancePolicy: AttendancePolicy; allowedActions: AttendanceAction[]; unavailableReason?: string | null };
+export type Child = Omit<ChildInput, "gender"> & { id: string; fullName: string; organizationId: string; branchId: string; gender: ChildGender | "UNSPECIFIED"; todayCheckedInAt?: string | null; todayCheckedOutAt?: string | null; guardianStatus?: ChildGuardianStatus | null; attendanceContext?: AttendanceContext | null };
 export type BranchListFilter = { branchId?: string };
-export type ChildListFilter = { branchId?: string; learningLevelId?: string; classroomId?: string };
+export type ChildListFilter = { branchId?: string; learningLevelId?: string; classroomId?: string; guardianStatus?: ChildGuardianStatus };
 export type ChildAttendanceReportFilter = { branchId: string; startsOn: string; endsOn: string };
 export type UpdateChildInput = Omit<ChildInput, "classroomId">;
 export type ChildProgramStatus = "ACTIVE" | "COMPLETED" | "DISCONTINUED";
@@ -83,7 +86,7 @@ export type CreateChildProgramStepInput = { title: string; description?: string;
 export type UpdateChildProgramStepInput = { title: string; description?: string; homeGuidance?: string; parentVisible: boolean; completed: boolean; displayOrder: number };
 export type ChildAssignmentRole = "STAFF" | "NURSE" | "MISS";
 export type ChildStaffAssignment = { id: string; userId: string; displayName: string; email?: string | null; assignmentRole: ChildAssignmentRole };
-export type ChildGuardian = { userId: string; displayName: string; email?: string | null; username?: string | null };
+export type ChildGuardian = { userId: string; displayName: string; email?: string | null; username?: string | null; validParentAccount: boolean };
 export type ChildProfile = { child: Child; programs: ChildProgram[]; staffAssignments: ChildStaffAssignment[]; guardians: ChildGuardian[] };
 export type Attendance = {
   id: string;
@@ -93,6 +96,15 @@ export type Attendance = {
   checkedOutAt?: string;
   method: AttendanceMethod;
 };
+export type PickupAuthorizationStatus = "PENDING_VERIFICATION" | "ACTIVE" | "SUSPENDED" | "EXPIRED" | "REVOKED";
+export type PickupVerificationMethod = "PHOTO_ID" | "KNOWN_TO_GUARDIAN" | "OTHER";
+export type PickupAuthorization = { id: string; childId: string; pickupPersonName: string; relationship: string; verificationMethod: PickupVerificationMethod; status: PickupAuthorizationStatus; effectiveFrom: string; effectiveUntil?: string | null; createdAt: string; canRevoke: boolean };
+export type CreatePickupAuthorizationInput = { pickupPersonName: string; relationship: string; verificationMethod: PickupVerificationMethod; effectiveFrom?: string; effectiveUntil?: string };
+export type EmergencyContact = { id: string; childId: string; name: string; relationship: string; phoneNumber: string; canRemove: boolean };
+export type CreateEmergencyContactInput = { name: string; relationship: string; phoneNumber: string };
+export type ConsentPurpose = "MEDIA_MARKETING" | "HEALTH_EMERGENCY" | "MEDICATION" | "OUTING" | "PICKUP";
+export type ConsentDefinition = { id: string; purpose: ConsentPurpose; title: string; content: string; revision: number };
+export type ConsentRecord = { definitionId: string; status: "PENDING" | "GRANTED" | "DECLINED" | "WITHDRAWN" | "EXPIRED" | "SUPERSEDED"; revision: number; decidedAt?: string | null };
 export type ChildAbsenceRequest = { id: string; childId: string; childName: string; branchId: string; purpose: ChildAbsencePurpose; note?: string | null; startDate: string; endDate: string; status: ChildAbsenceRequestStatus; rejectionReason?: string | null; createdAt: string; decidedAt?: string | null };
 export type CreateChildAbsenceRequestInput = { childId: string; purpose: ChildAbsencePurpose; startDate: string; endDate: string; note?: string };
 export type DevelopmentEntryMedia = { id: string; kind: "PHOTO" | "AUDIO"; contentType: string; durationMs?: number | null };
@@ -157,7 +169,7 @@ export type UpsertEducationOfferingInput = { branchId: string; institutionType: 
 export type ParentFamilyProfileForTenant = { husbandOccupation?: ParentOccupation | null; husbandIncomeRange?: ParentIncomeRange | null; wifeOccupation?: ParentOccupation | null; wifeIncomeRange?: ParentIncomeRange | null };
 export type Tenant = { id: string; name: string; branchName: string | null; branches: TenantBranch[]; institutionTypes: InstitutionType[]; capabilities: InstitutionCapability[]; subscriptionPlan: TenantSubscriptionPlan | null; subscriptionStatus: TenantSubscriptionStatus | null; periodStart: string | null; periodEnd: string | null; trialEndsAt: string | null; monthlyFee: number | null; staffAdmin: TenantStaffAdmin | null; staffAdmins: TenantStaffAdmin[]; payments: TenantPayment[] };
 export type TenantReadinessStatus = "READY" | "NEEDS_ATTENTION";
-export type TenantReadinessIssue = "SUBSCRIPTION_NOT_ACTIVE" | "STAFF_ADMIN_REQUIRED" | "ACTIVE_BRANCH_REQUIRED" | "ACTIVE_CLASSROOM_REQUIRED" | "ACTIVE_SERVICE_PLAN_REQUIRED" | "BRANCH_CAPACITY_REQUIRED" | "PAYMENT_INSTRUCTION_REQUIRED";
+export type TenantReadinessIssue = "SUBSCRIPTION_NOT_ACTIVE" | "STAFF_ADMIN_REQUIRED" | "ACTIVE_BRANCH_REQUIRED" | "ACTIVE_CLASSROOM_REQUIRED" | "ACTIVE_SERVICE_PLAN_REQUIRED" | "BRANCH_CAPACITY_REQUIRED" | "OPERATING_HOURS_REQUIRED" | "PAYMENT_INSTRUCTION_REQUIRED";
 export type TenantReadiness = { tenantId: string; tenantName: string; status: TenantReadinessStatus; issues: TenantReadinessIssue[] };
 export type TenantReadinessSummary = { readyCount: number; needsAttentionCount: number; tenants: TenantReadiness[] };
 export type CreateTenantInput = { tenantName: string; branchName: string; institutionTypes: InstitutionType[]; subscriptionPlan: TenantSubscriptionPlan; monthlyFee?: number; trialMonths?: number; staffAdminName: string; staffAdminUsername?: string; staffAdminEmail: string; staffAdminPassword: string };
@@ -203,7 +215,9 @@ export type DevelopmentCategoryOption = { id: string; name: string; active: bool
 export type ParentTenantPlan = { id: string; name: string; type: ServicePlanType; price: number; creditCount?: number | null; bookingRequiresApproval: boolean; dailyCapacity?: number | null };
 export type ParentTenantCatalog = { organizationId: string; organizationName: string; branches: Array<{ id: string; name: string; dailyCapacity?: number | null }>; plans: ParentTenantPlan[] };
 export type ParentEnrollmentStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "EXPIRED" | "CANCELLED";
-export type ParentEnrollment = { id: string; organizationId: string; branchId: string; childId: string; childName: string; invoiceId?: string | null; entitlementId?: string | null; status: ParentEnrollmentStatus; invoiceStatus?: InvoiceStatus | null; planName: string; totalAmount: number; rejectionReason?: string | null; createdAt: string; parentFamilyProfile?: ParentFamilyProfileForTenant | null };
+export type ParentEnrollmentAccessState = "PENDING_APPROVAL" | "PAYMENT_DUE" | "PAYMENT_REVIEW" | "ACTIVE" | "BILLING_LIMITED" | "CLOSED";
+export type ParentEnrollmentAllowedAction = "REAPPLY" | "UPLOAD_PAYMENT_PROOF";
+export type ParentEnrollment = { id: string; organizationId: string; branchId: string; childId: string; childName: string; invoiceId?: string | null; entitlementId?: string | null; status: ParentEnrollmentStatus; invoiceStatus?: InvoiceStatus | null; planName: string; totalAmount: number; rejectionReason?: string | null; createdAt: string; accessState: ParentEnrollmentAccessState; allowedActions: ParentEnrollmentAllowedAction[]; parentFamilyProfile?: ParentFamilyProfileForTenant | null };
 export type ParentChildProfile = { child: Child; branch: { id: string; name: string; fullAddress?: string | null; googleMapsUrl?: string | null }; placement?: { classroomName: string; learningLevelName?: string | null } | null; programs: ParentChildProgram[]; staffAssignments: Array<{ displayName: string; assignmentRole: ChildAssignmentRole }> };
 export type ParentEnrollmentCheckoutInput = { organizationId: string; branchId: string; planId: string; bookingDates: string[]; promoCode?: string; children: Array<{ firstName: string; lastName?: string; gender: ChildGender; dateOfBirth: string }> };
 export type PrivateTutorType = "STAFF" | "EXTERNAL";
@@ -428,6 +442,7 @@ export class ApiClient {
     if (filter.branchId) params.set("branchId", filter.branchId);
     if (filter.learningLevelId) params.set("learningLevelId", filter.learningLevelId);
     if (filter.classroomId) params.set("classroomId", filter.classroomId);
+    if (filter.guardianStatus) params.set("guardianStatus", filter.guardianStatus);
     const query = params.toString();
     return this.request(`/children${query ? `?${query}` : ""}`);
   }
@@ -451,9 +466,19 @@ export class ApiClient {
   async bindChildGuardian(childId: string, identifier: string): Promise<ChildGuardian> { return this.request(`/children/${childId}/guardians`, { method: "POST", body: JSON.stringify({ identifier }) }); }
   async unbindChildGuardian(childId: string, userId: string): Promise<void> { await this.request<void>(`/children/${childId}/guardians/${userId}`, { method: "DELETE" }); }
 
-  async recordAttendance(childId: string, command: { action: AttendanceAction; method: AttendanceMethod; qrToken?: string; note?: string; at?: string }): Promise<Attendance> {
+  async recordAttendance(childId: string, command: { action: AttendanceAction; method: AttendanceMethod; qrToken?: string; note?: string; at?: string; pickupAuthorizationId?: string; pickupExceptionReason?: string }): Promise<Attendance> {
     return this.request(`/children/${childId}/attendance`, { method: "POST", body: JSON.stringify(command) });
   }
+
+  async pickupAuthorizations(childId: string): Promise<PickupAuthorization[]> { return this.request(`/children/${childId}/pickup-authorizations`); }
+  async createPickupAuthorization(childId: string, input: CreatePickupAuthorizationInput): Promise<PickupAuthorization> { return this.request(`/children/${childId}/pickup-authorizations`, { method: "POST", body: JSON.stringify(input) }); }
+  async activatePickupAuthorization(childId: string, authorizationId: string): Promise<PickupAuthorization> { return this.request(`/children/${childId}/pickup-authorizations/${authorizationId}/activate`, { method: "POST" }); }
+  async revokePickupAuthorization(childId: string, authorizationId: string, reason: string): Promise<PickupAuthorization> { return this.request(`/children/${childId}/pickup-authorizations/${authorizationId}/revoke`, { method: "POST", body: JSON.stringify({ reason }) }); }
+  async emergencyContacts(childId: string): Promise<EmergencyContact[]> { return this.request(`/children/${childId}/emergency-contacts`); }
+  async createEmergencyContact(childId: string, input: CreateEmergencyContactInput): Promise<EmergencyContact> { return this.request(`/children/${childId}/emergency-contacts`, { method: "POST", body: JSON.stringify(input) }); }
+  async removeEmergencyContact(childId: string, contactId: string): Promise<void> { await this.request<void>(`/children/${childId}/emergency-contacts/${contactId}`, { method: "DELETE" }); }
+  async consentDefinitions(): Promise<ConsentDefinition[]> { return this.request("/consent-definitions"); }
+  async decideConsent(childId: string, definitionId: string, granted: boolean): Promise<ConsentRecord> { return this.request(`/children/${childId}/consents`, { method: "POST", body: JSON.stringify({ definitionId, granted }) }); }
 
   async issueAttendanceQr(childId: string): Promise<{ token: string; expiresAt: string }> {
     return this.request(`/children/${childId}/attendance-qr`);
@@ -513,6 +538,7 @@ export class ApiClient {
     if (filter.branchId) params.set("branchId", filter.branchId);
     if (filter.learningLevelId) params.set("learningLevelId", filter.learningLevelId);
     if (filter.classroomId) params.set("classroomId", filter.classroomId);
+    if (filter.guardianStatus) params.set("guardianStatus", filter.guardianStatus);
     return this.requestFile(`/reports/children/export?${params.toString()}`);
   }
 

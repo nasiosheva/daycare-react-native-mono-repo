@@ -9,6 +9,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import type { LearningLevel } from "@daycare/api-client";
+import { hasLegacyLearningAccess, hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 export default function LearningLevelsScreen() {
   const router = useRouter();
@@ -17,9 +18,15 @@ export default function LearningLevelsScreen() {
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canManage = membership?.role === "STAFF_ADMIN" && membership.active;
-  const templates = useQuery({ queryKey: ["learning-level-templates", organizationId], queryFn: () => api.learningLevelTemplates(), enabled: Boolean(membership) });
-  const programs = useQuery({ queryKey: ["curriculum-programs", organizationId], queryFn: () => api.curriculumPrograms(), enabled: Boolean(membership) });
-  const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: Boolean(membership) });
+  const access = useUiAccessContext(Boolean(membership));
+  const canAccessLegacyClasses = hasLegacyLearningAccess(membership?.capabilities, access.data);
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
+  const levelTitle = t(hasAcademicOffering ? "learning.level" : "learning.legacyLevel");
+  const addLevelTitle = t(hasAcademicOffering ? "learning.addLevel" : "learning.addLegacyLevel");
+  const editLevelTitle = t(hasAcademicOffering ? "learning.editLevel" : "learning.editLegacyLevel");
+  const templates = useQuery({ queryKey: ["learning-level-templates", organizationId], queryFn: () => api.learningLevelTemplates(), enabled: canAccessLegacyClasses });
+  const programs = useQuery({ queryKey: ["curriculum-programs", organizationId], queryFn: () => api.curriculumPrograms(), enabled: canAccessLegacyClasses && hasAcademicOffering });
+  const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: canAccessLegacyClasses });
   const refresh = () => { void queryClient.invalidateQueries({ queryKey: ["learning-levels", organizationId] }); void queryClient.invalidateQueries({ queryKey: ["classrooms", organizationId] }); };
   const createLevel = useMutation({ mutationFn: api.createLearningLevel.bind(api), onSuccess: refresh });
   const updateLevel = useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof api.updateLearningLevel>[1] }) => api.updateLearningLevel(id, input), onSuccess: refresh });
@@ -37,6 +44,7 @@ export default function LearningLevelsScreen() {
 
   if (!profile) return null;
   if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
+  if (!access.isLoading && !canAccessLegacyClasses) return <Redirect href="/academic" />;
 
   const failure = (error: unknown) => setFormError(error instanceof Error ? error.message : t("learning.saveFailed"));
   const useTemplate = (templateName: string, minimum?: number | null, maximum?: number | null) => { setName(templateName); setMinAge(minimum?.toString() ?? ""); setMaxAge(maximum?.toString() ?? ""); setFormError(null); };
@@ -49,7 +57,7 @@ export default function LearningLevelsScreen() {
     const minimum = parseOptionalNonNegativeInteger(minAge);
     const maximum = parseOptionalNonNegativeInteger(maxAge);
     const order = parseOptionalNonNegativeInteger(displayOrder);
-    if (!name.trim()) return setFormError(t("learning.levelRequired"));
+    if (!name.trim()) return setFormError(t(hasAcademicOffering ? "learning.levelRequired" : "learning.legacyLevelRequired"));
     if (minimum === null || maximum === null || (minimum != null && maximum != null && minimum > maximum)) return setFormError(t("learning.invalidAgeRange"));
     if (order == null) return setFormError(t("learning.invalidOrder"));
     const input = { name: name.trim(), minAgeMonths: minimum, maxAgeMonths: maximum, displayOrder: order, curriculumProgramIds: selectedPrograms };
@@ -60,7 +68,7 @@ export default function LearningLevelsScreen() {
   };
   const toggleProgram = (id: string) => setSelectedPrograms((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
 
-  return <AppScreen showBottomNavigation={false} title={t("learning.level")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton accessibilityLabel={t("learning.addLevel")} onPress={openCreate}>+ {t("learning.addLevel")}</FloatingActionButton> : undefined}>
+  return <AppScreen showBottomNavigation={false} title={levelTitle} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton accessibilityLabel={addLevelTitle} onPress={openCreate}>+ {addLevelTitle}</FloatingActionButton> : undefined}>
     {archiveError && <AppText accessibilityRole="alert" tone="danger">{archiveError}</AppText>}
     {levels.isFetching && <ShimmerList />}
     {levels.isError && <View style={styles.feedback}><AppText accessibilityRole="alert" tone="danger">{t("learning.loadFailed")}</AppText><Button variant="secondary" onPress={() => void levels.refetch()}>{t("common.retry")}</Button></View>}
@@ -74,22 +82,23 @@ export default function LearningLevelsScreen() {
         <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.archive")} disabled={archiveLevel.isPending} onPress={() => { setArchiveError(null); setPendingArchive(level); }} />
       </View>}
     </View>)}
-    {!levels.isFetching && !levels.isError && levels.data?.length === 0 && <AppText tone="muted">{t("learning.noLevels")}</AppText>}
+    {!levels.isFetching && !levels.isError && levels.data?.length === 0 && <AppText tone="muted">{t(hasAcademicOffering ? "learning.noLevels" : "learning.noLegacyLevels")}</AppText>}
 
-    <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t(editingLevelId ? "learning.editLevel" : "learning.addLevel")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t(editingLevelId ? "common.save" : "learning.addLevel"), loading: createLevel.isPending || updateLevel.isPending, onPress: () => void save() }}>
+    <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={editingLevelId ? editLevelTitle : addLevelTitle} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: editingLevelId ? t("common.save") : addLevelTitle, loading: createLevel.isPending || updateLevel.isPending, onPress: () => void save() }}>
       {formError && <AppText accessibilityRole="alert" tone="danger">{formError}</AppText>}
       <AppText variant="label">{t("learning.templates")}</AppText>
       {templates.isLoading && <ShimmerList variant="tile" />}
       {templates.isError && <View style={styles.feedback}><AppText accessibilityRole="alert" tone="danger">{t("learning.loadFailed")}</AppText><Button variant="secondary" onPress={() => void templates.refetch()}>{t("common.retry")}</Button></View>}
       {!templates.isLoading && <View style={styles.options}>{templates.data?.map((template) => <Button key={template.code} variant="secondary" onPress={() => useTemplate(template.name, template.minAgeMonths, template.maxAgeMonths)}>{template.name}</Button>)}</View>}
-      <TextInput style={styles.input} placeholder={t("learning.levelName")} value={name} onChangeText={(value) => { setName(value); setFormError(null); }} />
+      <TextInput style={styles.input} placeholder={t(hasAcademicOffering ? "learning.levelName" : "learning.legacyLevelName")} value={name} onChangeText={(value) => { setName(value); setFormError(null); }} />
       <TextInput style={styles.input} inputMode="numeric" placeholder={t("learning.minAge")} value={minAge} onChangeText={(value) => { setMinAge(value); setFormError(null); }} />
       <TextInput style={styles.input} inputMode="numeric" placeholder={t("learning.maxAge")} value={maxAge} onChangeText={(value) => { setMaxAge(value); setFormError(null); }} />
       <TextInput style={styles.input} inputMode="numeric" placeholder={t("learning.order")} value={displayOrder} onChangeText={(value) => { setDisplayOrder(value); setFormError(null); }} />
-      <AppText variant="label">{t("academic.program")}</AppText>
-      {programs.isLoading && <ShimmerList variant="tile" />}
-      {programs.isError && <View style={styles.feedback}><AppText accessibilityRole="alert" tone="danger">{t("learning.loadFailed")}</AppText><Button variant="secondary" onPress={() => void programs.refetch()}>{t("common.retry")}</Button></View>}
-      {!programs.isLoading && <View style={styles.options}>{programs.data?.map((program) => <Button key={program.id} variant={selectedPrograms.includes(program.id) ? "primary" : "secondary"} onPress={() => toggleProgram(program.id)}>{program.name}{program.source === "GLOBAL" ? ` · ${t("globalCurriculum.global")}` : ""}</Button>)}</View>}
+      {hasAcademicOffering && <><AppText variant="label">{t("academic.program")}</AppText>
+        {programs.isLoading && <ShimmerList variant="tile" />}
+        {programs.isError && <View style={styles.feedback}><AppText accessibilityRole="alert" tone="danger">{t("learning.loadFailed")}</AppText><Button variant="secondary" onPress={() => void programs.refetch()}>{t("common.retry")}</Button></View>}
+        {!programs.isLoading && <View style={styles.options}>{programs.data?.map((program) => <Button key={program.id} variant={selectedPrograms.includes(program.id) ? "primary" : "secondary"} onPress={() => toggleProgram(program.id)}>{program.name}{program.source === "GLOBAL" ? ` · ${t("globalCurriculum.global")}` : ""}</Button>)}</View>}
+      </>}
     </BottomSheet>
 
     <BottomSheet visible={pendingArchive !== null} onClose={() => setPendingArchive(null)} closeAccessibilityLabel={t("common.close")} title={t("learning.archive")} negativeAction={{ label: t("common.cancel"), onPress: () => setPendingArchive(null) }} positiveAction={{ label: t("learning.archive"), variant: "danger", loading: archiveLevel.isPending, onPress: () => pendingArchive && archiveLevel.mutate(pendingArchive.id) }}>

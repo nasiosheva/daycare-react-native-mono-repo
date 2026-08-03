@@ -10,3 +10,7 @@ export function useUiAccessContext(enabled = true) {
 export function hasOfferingCapability(context: ReturnType<typeof useUiAccessContext>["data"], capability: InstitutionCapability) {
   return context?.offerings.some((offering) => hasInstitutionCapability(offering.capabilities, capability)) ?? false;
 }
+
+export function hasLegacyLearningAccess(capabilities: readonly InstitutionCapability[] | undefined, context: ReturnType<typeof useUiAccessContext>["data"]) {
+  return hasInstitutionCapability(capabilities ?? [], "DAYCARE_OPERATIONS") || hasOfferingCapability(context, "ACADEMIC_CURRICULUM");
+}

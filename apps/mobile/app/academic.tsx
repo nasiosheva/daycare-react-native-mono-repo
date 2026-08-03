@@ -5,7 +5,7 @@ import { AppText, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
-import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
+import { hasLegacyLearningAccess, hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 export default function AcademicScreen() {
   const router = useRouter();
@@ -13,24 +13,26 @@ export default function AcademicScreen() {
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const access = useUiAccessContext(Boolean(membership));
+  const hasLegacyClasses = hasLegacyLearningAccess(membership?.capabilities, access.data);
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
 
   if (!profile) return null;
-  if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role) || (!access.isLoading && !hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM"))) return <Redirect href="/home" />;
+  if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
 
   return <AppScreen>
     <AppText variant="title">{t("learning.title")}</AppText>
     <AppText tone="muted">{t("learning.subtitle")}</AppText>
     {membership.active === false && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     <View style={styles.actionsGrid}>
-      {membership.role === "STAFF_ADMIN" && <ActionCard title={t("goals.title")} description={t("goals.menuDescription")} onPress={() => router.push("/goals")} />}
-      {membership.role === "STAFF_ADMIN" && <ActionCard title={t("analytics.title")} description={t("analytics.menuDescription")} onPress={() => router.push("/analytics")} />}
-      <ActionCard title={t("children.title")} description={t("children.menuDescription")} onPress={() => router.push("/children")} />
-      <ActionCard title={t("academic.year")} description={t("academic.addYearDescription")} onPress={() => router.push("/academic-years")} />
-      <ActionCard title={t("academic.program")} description={t("academic.addProgramDescription")} onPress={() => router.push("/curriculum-programs")} />
-      {membership.role === "STAFF_ADMIN" && <ActionCard title={t("learning.level")} description={t("learning.addLevelDescription")} onPress={() => router.push("/learning-levels")} />}
-      <ActionCard title={t("learning.classroom")} description={t("learning.addClassroomDescription")} onPress={() => router.push("/classrooms")} />
-      <ActionCard title={t("learning.activities")} description={t("learning.addActivityDescription")} onPress={() => router.push("/curriculum-activities")} />
+      {hasLegacyClasses && <ActionCard title={t("learning.classroom")} description={t("learning.addClassroomDescription")} onPress={() => router.push("/classrooms")} />}
+      {hasAcademicOffering && <>
+        <ActionCard title={t("academic.year")} description={t("academic.addYearDescription")} onPress={() => router.push("/academic-years")} />
+        <ActionCard title={t("academic.program")} description={t("academic.addProgramDescription")} onPress={() => router.push("/curriculum-programs")} />
+        {membership.role === "STAFF_ADMIN" && <ActionCard title={t("learning.level")} description={t("learning.addLevelDescription")} onPress={() => router.push("/learning-levels")} />}
+        <ActionCard title={t("learning.activities")} description={t("learning.addActivityDescription")} onPress={() => router.push("/curriculum-activities")} />
+      </>}
     </View>
+    {!access.isLoading && !hasLegacyClasses && <AppText tone="muted">{t("learning.noClassrooms")}</AppText>}
   </AppScreen>;
 }
 

@@ -58,12 +58,12 @@ export default function ParentEnrollmentScreen() {
 }
 
 function EnrollmentAction({ enrollment, onApply, onPay, t }: { enrollment: ParentEnrollment; onApply: () => void; onPay: () => void; t: ReturnType<typeof useI18n>["t"] }) {
-  if (enrollment.status === "PENDING_APPROVAL") return <AppText tone="muted">{t("parentEnrollment.pendingApproval")}</AppText>;
-  if (enrollment.status === "REJECTED") return <><AppText tone="danger">{t("parentEnrollment.rejected")}</AppText><Button variant="secondary" onPress={onApply}>{t("parentEnrollment.retry")}</Button></>;
-  if (enrollment.status === "CANCELLED" || enrollment.status === "EXPIRED" || enrollment.invoiceStatus === "OVERDUE") return <><AppText tone="muted">{t("parentEnrollment.expired")}</AppText><Button variant="secondary" onPress={onApply}>{t("parentEnrollment.retry")}</Button></>;
-  if (enrollment.invoiceStatus === "PENDING") return <><AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText><Button onPress={onPay}>{t("parentEnrollment.pay")}</Button></>;
-  if (enrollment.invoiceStatus === "PAYMENT_SUBMITTED") return <AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>;
-  if (enrollment.invoiceStatus === "PAID") return <AppText tone="muted">{t("parentEnrollment.paid")}</AppText>;
+  if (enrollment.accessState === "PENDING_APPROVAL") return <AppText tone="muted">{t("parentEnrollment.pendingApproval")}</AppText>;
+  if (enrollment.accessState === "CLOSED") return <><AppText tone={enrollment.status === "REJECTED" ? "danger" : "muted"}>{enrollment.status === "REJECTED" ? t("parentEnrollment.rejected") : t("parentEnrollment.expired")}</AppText>{enrollment.allowedActions.includes("REAPPLY") && <Button variant="secondary" onPress={onApply}>{t("parentEnrollment.retry")}</Button>}</>;
+  if (enrollment.accessState === "BILLING_LIMITED") return <><AppText tone="muted">{t("parentEnrollment.expired")}</AppText>{enrollment.allowedActions.includes("REAPPLY") && <Button variant="secondary" onPress={onApply}>{t("parentEnrollment.retry")}</Button>}</>;
+  if (enrollment.accessState === "PAYMENT_DUE") return <><AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText>{enrollment.allowedActions.includes("UPLOAD_PAYMENT_PROOF") && <Button onPress={onPay}>{t("parentEnrollment.pay")}</Button>}</>;
+  if (enrollment.accessState === "PAYMENT_REVIEW") return <AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>;
+  if (enrollment.accessState === "ACTIVE") return <AppText tone="muted">{t("parentEnrollment.paid")}</AppText>;
   return <AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText>;
 }
 

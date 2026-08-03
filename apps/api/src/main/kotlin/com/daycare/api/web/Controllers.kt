@@ -5,6 +5,13 @@ import com.daycare.api.service.IdentityService
 import com.daycare.api.service.AdministrationService
 import com.daycare.api.service.AttendanceCommand
 import com.daycare.api.service.AttendanceService
+import com.daycare.api.service.PickupAuthorizationService
+import com.daycare.api.service.CreatePickupAuthorizationRequest
+import com.daycare.api.service.RevokePickupAuthorizationRequest
+import com.daycare.api.service.EmergencyContactService
+import com.daycare.api.service.CreateEmergencyContactRequest
+import com.daycare.api.service.ConsentService
+import com.daycare.api.service.ConsentDecisionRequest
 import com.daycare.api.service.BillingService
 import com.daycare.api.service.BookingApprovalRequest
 import com.daycare.api.service.CreateEntitlementBookingsRequest
@@ -38,6 +45,7 @@ import com.daycare.api.service.AssignClassroomStaffRequest
 import com.daycare.api.service.CreateClassroomProgramRequest
 import com.daycare.api.service.CreateChildPlacementRequest
 import com.daycare.api.service.ChildListFilter
+import com.daycare.api.service.ChildGuardianStatus
 import com.daycare.api.service.BranchListFilter
 import com.daycare.api.service.GoalService
 import com.daycare.api.service.UpsertDevelopmentProgramRequest
@@ -430,7 +438,7 @@ class PlatformController(
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class InstitutionController(private val attendance: AttendanceService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val parentChildProfiles: ParentChildProfileService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService, private val tenantReadiness: TenantReadinessService, private val childHealth: ChildHealthService, private val childIncidents: ChildIncidentService) {
+class InstitutionController(private val attendance: AttendanceService, private val pickupAuthorizations: PickupAuthorizationService, private val emergencyContacts: EmergencyContactService, private val consents: ConsentService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val parentChildProfiles: ParentChildProfileService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService, private val tenantReadiness: TenantReadinessService, private val childHealth: ChildHealthService, private val childIncidents: ChildIncidentService) {
     @GetMapping("/tenant-readiness")
     fun tenantReadiness(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = tenantReadiness.organizationReadiness(jwt, organizationId)
 
@@ -441,11 +449,12 @@ class InstitutionController(private val attendance: AttendanceService, private v
         @RequestParam(required = false) branchId: UUID?,
         @RequestParam(required = false) learningLevelId: UUID?,
         @RequestParam(required = false) classroomId: UUID?,
-    ) = attendance.listChildren(jwt, organizationId, ChildListFilter(branchId, learningLevelId, classroomId))
+        @RequestParam(required = false) guardianStatus: ChildGuardianStatus?,
+    ) = attendance.listChildren(jwt, organizationId, ChildListFilter(branchId, learningLevelId, classroomId, guardianStatus))
 
     @GetMapping("/reports/children/export")
-    fun exportChildren(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam format: ReportExportFormat, @RequestParam(required = false) branchId: UUID?, @RequestParam(required = false) learningLevelId: UUID?, @RequestParam(required = false) classroomId: UUID?): ResponseEntity<ByteArray> {
-        val report = childReports.children(jwt, organizationId, format, ChildListFilter(branchId, learningLevelId, classroomId))
+    fun exportChildren(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam format: ReportExportFormat, @RequestParam(required = false) branchId: UUID?, @RequestParam(required = false) learningLevelId: UUID?, @RequestParam(required = false) classroomId: UUID?, @RequestParam(required = false) guardianStatus: ChildGuardianStatus?): ResponseEntity<ByteArray> {
+        val report = childReports.children(jwt, organizationId, format, ChildListFilter(branchId, learningLevelId, classroomId, guardianStatus))
         return ResponseEntity.ok()
             .contentType(MediaType.parseMediaType(report.contentType))
             .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(report.fileName).build().toString())
@@ -544,6 +553,33 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PostMapping("/children/{childId}/attendance")
     fun recordAttendance(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody command: AttendanceCommand) = attendance.record(jwt, organizationId, childId, command)
+
+    @GetMapping("/children/{childId}/pickup-authorizations")
+    fun pickupAuthorizations(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = pickupAuthorizations.list(jwt, organizationId, childId)
+
+    @PostMapping("/children/{childId}/pickup-authorizations") @ResponseStatus(HttpStatus.CREATED)
+    fun createPickupAuthorization(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreatePickupAuthorizationRequest) = pickupAuthorizations.create(jwt, organizationId, childId, request)
+
+    @PostMapping("/children/{childId}/pickup-authorizations/{authorizationId}/activate")
+    fun activatePickupAuthorization(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable authorizationId: UUID) = pickupAuthorizations.activate(jwt, organizationId, childId, authorizationId)
+
+    @PostMapping("/children/{childId}/pickup-authorizations/{authorizationId}/revoke")
+    fun revokePickupAuthorization(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable authorizationId: UUID, @Valid @RequestBody request: RevokePickupAuthorizationRequest) = pickupAuthorizations.revoke(jwt, organizationId, childId, authorizationId, request)
+
+    @GetMapping("/children/{childId}/emergency-contacts")
+    fun emergencyContacts(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = emergencyContacts.list(jwt, organizationId, childId)
+
+    @PostMapping("/children/{childId}/emergency-contacts") @ResponseStatus(HttpStatus.CREATED)
+    fun createEmergencyContact(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateEmergencyContactRequest) = emergencyContacts.create(jwt, organizationId, childId, request)
+
+    @DeleteMapping("/children/{childId}/emergency-contacts/{contactId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun removeEmergencyContact(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable contactId: UUID) = emergencyContacts.remove(jwt, organizationId, childId, contactId)
+
+    @GetMapping("/consent-definitions")
+    fun consentDefinitions(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = consents.definitions(jwt, organizationId)
+
+    @PostMapping("/children/{childId}/consents")
+    fun decideConsent(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @RequestBody request: ConsentDecisionRequest) = consents.decide(jwt, organizationId, childId, request)
 
     @GetMapping("/children/{childId}/attendance-qr")
     fun issueQr(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = attendance.issueQr(jwt, organizationId, childId)

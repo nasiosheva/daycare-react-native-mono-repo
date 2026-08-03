@@ -8,6 +8,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { DatePicker } from "@/date-picker/DatePicker";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 export default function AcademicYearsScreen() {
   const router = useRouter();
@@ -16,7 +17,9 @@ export default function AcademicYearsScreen() {
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canManage = membership?.role === "STAFF_ADMIN" && membership.active;
-  const periods = useQuery({ queryKey: ["learning-periods", organizationId], queryFn: () => api.academicYears(), enabled: Boolean(membership) });
+  const access = useUiAccessContext(Boolean(membership));
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
+  const periods = useQuery({ queryKey: ["learning-periods", organizationId], queryFn: () => api.academicYears(), enabled: hasAcademicOffering });
   const createPeriod = useMutation({ mutationFn: api.createAcademicYear.bind(api), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["learning-periods", organizationId] }) });
   const [listOpen, setListOpen] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -24,6 +27,7 @@ export default function AcademicYearsScreen() {
 
   if (!profile) return null;
   if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
+  if (!access.isLoading && !hasAcademicOffering) return <Redirect href="/academic" />;
 
   const close = () => { setVisible(false); setName(""); setStart(""); setEnd(""); };
   const openAdd = () => { setListOpen(false); setVisible(true); };

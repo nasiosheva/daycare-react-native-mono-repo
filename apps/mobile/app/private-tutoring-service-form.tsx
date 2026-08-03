@@ -7,6 +7,7 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 const MAX_PRICE = 1_000_000_000;
 const digitsOnly = (value: string) => value.replace(/\D/g, "");
@@ -16,13 +17,14 @@ function parsePrice(value: string): number | undefined { const digits = digitsOn
 
 export default function PrivateTutoringServiceFormScreen() {
   const { serviceId } = useLocalSearchParams<{ serviceId?: string }>(); const router = useRouter(); const { api, profile, organizationId } = useAuth(); const { t } = useI18n(); const client = useQueryClient(); const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const services = useQuery({ queryKey: ["private-tutoring-admin-services", organizationId], queryFn: () => api.privateTutoringServices(), enabled: membership?.role === "STAFF_ADMIN" }); const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: Boolean(organizationId) }); const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: Boolean(organizationId) }); const tutors = useQuery({ queryKey: ["private-tutoring-tutors", organizationId], queryFn: () => api.privateTutors(), enabled: Boolean(organizationId) });
+  const access = useUiAccessContext(Boolean(membership)); const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
+  const services = useQuery({ queryKey: ["private-tutoring-admin-services", organizationId], queryFn: () => api.privateTutoringServices(), enabled: membership?.role === "STAFF_ADMIN" && hasAcademicOffering }); const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: Boolean(organizationId && hasAcademicOffering) }); const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: Boolean(organizationId && hasAcademicOffering) }); const tutors = useQuery({ queryKey: ["private-tutoring-tutors", organizationId], queryFn: () => api.privateTutors(), enabled: Boolean(organizationId && hasAcademicOffering) });
   const existing = services.data?.find((item) => item.id === serviceId); const [name, setName] = useState(""); const [description, setDescription] = useState(""); const [branchId, setBranchId] = useState(""); const [minAge, setMinAge] = useState("0"); const [maxAge, setMaxAge] = useState("120"); const [duration, setDuration] = useState("60"); const [dailyPrice, setDailyPrice] = useState(""); const [weeklyPrice, setWeeklyPrice] = useState(""); const [monthlyPrice, setMonthlyPrice] = useState(""); const [levelIds, setLevelIds] = useState<string[]>([]); const [tutorIds, setTutorIds] = useState<string[]>([]); const [active, setActive] = useState(true); const [openInfo, setOpenInfo] = useState<string | null>(null);
   useEffect(() => { if (!existing) return; setName(existing.name); setDescription(existing.description); setBranchId(existing.branchId); setMinAge(String(existing.minAgeMonths)); setMaxAge(String(existing.maxAgeMonths)); setDuration(String(existing.durationMinutes)); setDailyPrice(existing.dailyPrice != null ? formatThousands(String(existing.dailyPrice)) : ""); setWeeklyPrice(existing.weeklyPrice != null ? formatThousands(String(existing.weeklyPrice)) : ""); setMonthlyPrice(existing.monthlyPrice != null ? formatThousands(String(existing.monthlyPrice)) : ""); setLevelIds(existing.learningLevelIds); setTutorIds(existing.tutors.map((item) => item.id)); setActive(existing.active); }, [existing]);
   const save = useMutation({ mutationFn: (input: Parameters<typeof api.createPrivateTutoringService>[0]) => existing ? api.updatePrivateTutoringService(existing.id, input) : api.createPrivateTutoringService(input), onSuccess: () => { void client.invalidateQueries({ queryKey: ["private-tutoring-admin-services", organizationId] }); router.back(); } });
   const activeLevels = levels.data?.filter((item) => item.active && item.source === "TENANT") ?? [];
   const activeTutors = tutors.data?.filter((item) => item.active) ?? [];
-  if (!profile) return null; if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
+  if (!profile) return null; if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />; if (!access.isLoading && !hasAcademicOffering) return <Redirect href="/staff-admin" />;
   const toggle = (id: string, selected: string[], setSelected: (value: string[]) => void) => setSelected(selected.includes(id) ? selected.filter((item) => item !== id) : [...selected, id]);
   const submit = () => {
     const prices = [parsePrice(dailyPrice), parsePrice(weeklyPrice), parsePrice(monthlyPrice)];

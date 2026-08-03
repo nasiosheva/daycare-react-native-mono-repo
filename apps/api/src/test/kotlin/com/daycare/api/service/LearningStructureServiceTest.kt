@@ -1,6 +1,7 @@
 package com.daycare.api.service
 
 import com.daycare.api.domain.ChildEnrollmentStatus
+import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AcademicYearRepository
 import com.daycare.api.persistence.BranchCapacitySettingRepository
@@ -12,6 +13,7 @@ import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.Classroom
 import com.daycare.api.persistence.ClassroomProgramRepository
 import com.daycare.api.persistence.ClassroomRepository
+import com.daycare.api.persistence.ClassroomStaffAssignment
 import com.daycare.api.persistence.ClassroomStaffAssignmentRepository
 import com.daycare.api.persistence.CurriculumProgramRepository
 import com.daycare.api.persistence.CurriculumProgram
@@ -26,6 +28,7 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.doThrow
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.mockito.Mockito.any
@@ -66,6 +69,33 @@ class LearningStructureServiceTest {
 
         assertEquals(1, response.activeChildren)
         verify(placements).countByClassroomIdAndActiveEnrollmentStatus(classroom.id, ChildEnrollmentStatus.ACTIVE)
+    }
+
+    @Test
+    fun `Staff classroom list includes only their assigned classrooms`() {
+        val staff = UserProfile()
+        val assigned = Classroom(organizationId = organizationId, name = "Kelas Pelangi")
+        val other = Classroom(organizationId = organizationId, name = "Kelas Bulan")
+        val scope = AccessScope(staff, Membership(userId = staff.id, organizationId = organizationId, role = Role.STAFF), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)).thenReturn(scope)
+        `when`(classroomAssignments.findAllByOrganizationIdAndUserId(organizationId, staff.id)).thenReturn(listOf(ClassroomStaffAssignment(organizationId = organizationId, classroomId = assigned.id, userId = staff.id)))
+        `when`(classrooms.findAllByOrganizationIdOrderByNameAsc(organizationId)).thenReturn(listOf(assigned, other))
+
+        val response = service().classrooms(jwt, organizationId)
+
+        assertEquals(listOf(assigned.id), response.map { it.id })
+    }
+
+    @Test
+    fun `catalog-only tenant cannot read legacy classrooms`() {
+        val scope = AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)).thenReturn(scope)
+        doThrow(AccessDeniedException("This feature is not enabled for the institution"))
+            .`when`(access).requireAnyCapability(scope, setOf(InstitutionCapability.DAYCARE_OPERATIONS, InstitutionCapability.ACADEMIC_CURRICULUM))
+
+        assertThrows(AccessDeniedException::class.java) {
+            service().classrooms(jwt, organizationId)
+        }
     }
 
     @Test
@@ -144,8 +174,11 @@ class LearningStructureServiceTest {
     }
 
     private fun allowStaffAccess() {
+        val scope = AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet())
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF)))
-            .thenReturn(AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet()))
+            .thenReturn(scope)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true))
+            .thenReturn(scope)
     }
 
     private fun service() = LearningStructureService(

@@ -7,6 +7,7 @@ import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, Shimmer
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 export default function CurriculumActivitiesScreen() {
   const router = useRouter();
@@ -15,13 +16,16 @@ export default function CurriculumActivitiesScreen() {
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canManage = membership?.role === "STAFF_ADMIN" && membership.active;
-  const activities = useQuery({ queryKey: ["curriculum-activities", organizationId], queryFn: () => api.curriculumActivities(), enabled: Boolean(membership) });
+  const access = useUiAccessContext(Boolean(membership));
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
+  const activities = useQuery({ queryKey: ["curriculum-activities", organizationId], queryFn: () => api.curriculumActivities(), enabled: hasAcademicOffering });
   const createActivity = useMutation({ mutationFn: api.createCurriculumActivity.bind(api), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["curriculum-activities", organizationId] }) });
   const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState(""); const [description, setDescription] = useState("");
 
   if (!profile) return null;
   if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
+  if (!access.isLoading && !hasAcademicOffering) return <Redirect href="/academic" />;
 
   const close = () => { setFormOpen(false); setName(""); setDescription(""); };
   const openAdd = () => setFormOpen(true);

@@ -16,6 +16,10 @@ enum class ParentEnrollmentStatus { PENDING_APPROVAL, APPROVED, REJECTED, EXPIRE
 enum class ChildCareRole { STAFF, NURSE, MISS }
 enum class AttendanceMethod { MANUAL, QR }
 enum class AttendanceAction { CHECK_IN, CHECK_OUT }
+enum class PickupAuthorizationStatus { PENDING_VERIFICATION, ACTIVE, SUSPENDED, EXPIRED, REVOKED }
+enum class PickupVerificationMethod { PHOTO_ID, KNOWN_TO_GUARDIAN, OTHER }
+enum class ConsentPurpose { MEDIA_MARKETING, HEALTH_EMERGENCY, MEDICATION, OUTING, PICKUP }
+enum class ConsentStatus { PENDING, GRANTED, DECLINED, WITHDRAWN, EXPIRED, SUPERSEDED }
 enum class ChildAbsencePurpose { SICK, OUT_OF_TOWN, FAMILY_EVENT, EMERGENCY, OTHER }
 enum class ChildAbsenceRequestStatus { PENDING, APPROVED, REJECTED, CANCELLED }
 enum class IncidentSeverity { MINOR, MODERATE, SERIOUS }

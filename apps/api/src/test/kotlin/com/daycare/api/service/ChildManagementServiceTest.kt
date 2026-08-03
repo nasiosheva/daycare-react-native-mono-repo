@@ -1,6 +1,7 @@
 package com.daycare.api.service
 
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildProgramParentFeedbackRepository
 import com.daycare.api.persistence.ChildProgram
@@ -116,6 +117,32 @@ class ChildManagementServiceTest {
 
         assertEquals("Membaca", response.name)
         verify(childScopes).requireStaffManagedChild(scope, child.id, organizationId)
+    }
+
+    @Test
+    fun `Staff child profile does not include guardian links or their review status`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId)
+        val scope = AccessScope(UserProfile(), Membership(role = Role.STAFF), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
+        `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(programs.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id)).thenReturn(emptyList())
+        `when`(assignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id)).thenReturn(emptyList())
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
+
+        val response = service.profile(jwt, organizationId, child.id)
+
+        assertTrue(response.guardians.isEmpty())
+        verify(guardianLinks, never()).findAllByChildId(child.id)
     }
 
     @Test
@@ -271,7 +298,7 @@ class ChildManagementServiceTest {
         val jwt = mock(Jwt::class.java)
         val organizationId = UUID.randomUUID()
         val child = Child(organizationId = organizationId)
-        val parent = UserProfile(displayName = "Budi", email = "budi@gmail.com", username = "budi")
+        val parent = UserProfile(displayName = "Budi", email = "budi@gmail.com", username = "budi", registrationRole = RegistrationRole.PARENT)
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(), emptySet(), emptySet()))
         `when`(children.findById(child.id)).thenReturn(Optional.of(child))
         `when`(users.findByEmailIgnoreCase("budi@gmail.com")).thenReturn(parent)
@@ -303,7 +330,7 @@ class ChildManagementServiceTest {
         val jwt = mock(Jwt::class.java)
         val organizationId = UUID.randomUUID()
         val child = Child(organizationId = organizationId)
-        val parent = UserProfile(displayName = "Sinta", email = "sinta@gmail.com", username = "sinta")
+        val parent = UserProfile(displayName = "Sinta", email = "sinta@gmail.com", username = "sinta", registrationRole = RegistrationRole.PARENT)
         val existingMembership = Membership(userId = parent.id, organizationId = organizationId, role = Role.PARENT, active = false)
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(), emptySet(), emptySet()))
         `when`(children.findById(child.id)).thenReturn(Optional.of(child))
@@ -343,6 +370,34 @@ class ChildManagementServiceTest {
 
         assertEquals("Parent account was not found", error.message)
         verify(memberships, never()).save(any())
+    }
+
+    @Test
+    fun `binding rejects an existing account that was not registered as a Parent`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId)
+        val staffAccount = UserProfile(displayName = "Staff", email = "staff@example.com")
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(), emptySet(), emptySet()))
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(users.findByEmailIgnoreCase("staff@example.com")).thenReturn(staffAccount)
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            service.bindGuardian(jwt, organizationId, child.id, BindChildGuardianRequest("staff@example.com"))
+        }
+
+        assertEquals("Only a registered Parent account can be linked to a child", error.message)
+        verify(memberships, never()).save(any())
+        verify(guardianLinks, never()).save(any(GuardianLink::class.java))
     }
 
     @Test
