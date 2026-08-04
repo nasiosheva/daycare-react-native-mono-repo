@@ -14,7 +14,7 @@ Aturan yang ditandai sebagai **target** menyatakan arah produk yang telah disetu
 - **Parent (`PARENT`)** hanya dapat melihat dan bertindak atas anak yang terhubung sebagai wali pada tenant aktif. Satu Parent dapat memiliki relasi pada beberapa tenant. Pengecualian yang disengaja adalah `ParentOperatingHoursOverview`: read model agregat **read-only** dari server yang hanya memuat anak dan jam operasional pada tenant yang memang memiliki guardian authority aktif, selalu dikelompokkan dengan `organizationId`/nama tenant dan child scope asal. Ia tidak dapat dipakai sebagai sumber query tenant biasa, cache lintas-tenant, deep link mutasi, atau ID yang dapat dikirim ke endpoint operasi; setiap tap ke detail harus membangun ulang context tenant legal terlebih dahulu.
 - Setelah signup, akun dengan `registrationRole=PARENT` dapat melengkapi profil keluarga global dari Profile, tanpa menambah field pada signup. Data suami dan istri—tanggal lahir, jenis pekerjaan, dan rentang penghasilan bulanan—seluruhnya opsional dan tetap sama saat Parent berpindah tenant. Pilihan pekerjaan dibatasi ke daftar sistem; rentang penghasilan dibatasi ke tidak ada penghasilan, kurang dari Rp3 juta, Rp3–5 juta, Rp5–10 juta, Rp10–20 juta, atau lebih dari Rp20 juta. Data ini hanya menjadi pertimbangan manual biaya SPP sekolah anak; sistem tidak menghitung atau mengubah SPP, paket, booking, maupun kredit secara otomatis. Tanggal lahir tetap hanya untuk Parent. Jika tenant mengaktifkan field terkait, server boleh membuat projection/snapshot minimal pada pengajuan Parent untuk `STAFF_ADMIN` ber-scope penerimaan/keuangan yang benar-benar sedang memproses pengajuan tersebut; profil keluarga global penuh tetap owner-only. `STAFF`, tenant tanpa izin tersebut, Platform Admin, daftar tenant umum, dan endpoint profil global tidak menerima field tersebut.
 - Navigasi Parent menempatkan akses Profil pada ikon toolbar di Home, baik ketika Parent sudah memiliki tenant aktif maupun masih berada pada onboarding. Profil selalu merupakan child screen mandiri dengan app bar dan tombol kembali, bukan bottom tab Parent; keluar akun tetap hanya tersedia dari Profil. Semua pengguna yang sudah masuk dapat menambah, mengganti, atau mengosongkan username global opsional dari Profil. Username yang diisi harus unik secara global dan panjangnya 2–100 karakter; email tetap wajib dan tidak dapat diubah lewat flow ini.
-- Pengganti bahasa aplikasi (`LanguageSelectField`, dropdown yang membuka BottomSheet pilihan) hanya tersedia di layar Profil, untuk pengguna yang sudah masuk. Layar Sign In tidak menampilkan pengganti bahasa; bahasa pada layar pra-login mengikuti bahasa perangkat/preferensi tersimpan tanpa kontrol eksplisit di layar tersebut. Bahasa yang didukung aplikasi: Bahasa Indonesia (`id`, default), Inggris (`en`), Mandarin Sederhana (`zh`), dan Prancis (`fr`); keempatnya memiliki cakupan terjemahan lengkap dan identik untuk setiap string UI (`TranslationKey`) — tidak ada bahasa yang hanya sebagian diterjemahkan atau jatuh ke fallback Bahasa Indonesia secara diam-diam. Label peran seperti "Staff Admin" dan "Parent" sengaja tidak diterjemahkan dan tetap tampil sama di keempat bahasa.
+- Pengganti bahasa aplikasi (`LanguageSelectField`, dropdown yang membuka BottomSheet pilihan) hanya tersedia di layar Profil, untuk pengguna yang sudah masuk. Layar Sign In tidak menampilkan pengganti bahasa; bahasa pada layar pra-login mengikuti bahasa perangkat/preferensi tersimpan tanpa kontrol eksplisit di layar tersebut. Bahasa yang didukung aplikasi: Bahasa Indonesia (`id`, default), Inggris (`en`), Mandarin Sederhana (`zh`), Prancis (`fr`), Portugis (`pt`), Spanyol (`es`), dan Rusia (`ru`); ketujuhnya memiliki cakupan terjemahan lengkap dan identik untuk setiap string UI (`TranslationKey`) — tidak ada bahasa yang hanya sebagian diterjemahkan atau jatuh ke fallback Bahasa Indonesia secara diam-diam. Label peran seperti "Staff Admin" dan "Parent" sengaja tidak diterjemahkan dan tetap tampil sama di ketujuh bahasa.
 - Layar Sign In selalu terpusat secara vertikal dan horizontal di dalam viewport, baik pada mobile maupun web, terlepas dari tinggi layar. Ini berlaku pada seluruh lebar layar, bukan hanya breakpoint tertentu; pada layar pendek atau saat keyboard terbuka, konten tetap dapat digulir tanpa kehilangan kemampuan scroll ke elemen yang tertutup keyboard.
 - Metode Email/Password Firebase telah dinonaktifkan (dilakukan di Firebase Console) untuk seluruh pengguna, di seluruh peran. Identitas pihak ketiga yang tersisa di Firebase hanya **Google Sign-In** dan **Nomor HP (OTP)**.
 - Karena Firebase Email/Password sudah tidak ada, login dengan **email/username dan password** diverifikasi terhadap hash password milik aplikasi sendiri di database (mekanisme yang sebelumnya disebut `local auth`), bukan ke Firebase, lalu backend menerbitkan token sesi sendiri (issuer `daycare-local`) — berlaku untuk seluruh environment dan seluruh peran yang memakai password (Staff, Staff Admin, Platform Admin), bukan lagi kekhususan development di balik flag. Backend memilih decoder JWT (lokal atau Firebase) berdasarkan klaim `iss` token, sehingga kedua jenis sesi berjalan berdampingan. Google dan Nomor HP (OTP) Firebase adalah **verifikasi identitas**, bukan pembuatan akun maupun login password alternatif: `IdentityService.sync()` hanya boleh memakai identitas yang sudah cocok dengan `UserProfile` melalui Firebase UID, email, atau nomor HP dan tidak boleh membuat `UserProfile` baru. Jika email Google atau nomor HP belum terdapat pada akun mana pun, aplikasi mengarahkan pengguna ke `sign-up` untuk membuat akun Parent dengan nama, email, dan password. Email Google yang terverifikasi menjadi email pendaftaran yang tidak dapat diubah; nomor HP terverifikasi disimpan pada akun baru setelah pendaftaran sukses. Google yang sudah cocok dengan akun tidak menyelesaikan login dan diarahkan kembali ke email/username + password; nomor HP yang sudah cocok dapat menyelesaikan sesi OTP tanpa password. Endpoint pendaftaran lokal menerima token Firebase opsional hanya untuk memvalidasi email dan menyimpan nomor HP terverifikasi, lalu mengeluarkan token sesi aplikasi.
@@ -1876,14 +1876,49 @@ lain.
 
 #### 13.13.2 Consent yang direvisi dan dibekukan
 
-**Fondasi saat ini:** schema tenant-scoped `ConsentDefinition` dan
-`ConsentRecord` sudah tersedia. Record membekukan revision dan isi definisi,
-purpose, child, guardian, status, dan waktu keputusan; model ini belum memiliki
-endpoint atau UI sehingga tidak boleh dianggap sebagai consent yang dapat
-dikumpulkan atau dipakai untuk tindakan medis/obat.
+**Implementasi Consent V1 saat ini (Daycare saja):** Staff Admin aktif pada
+tenant dengan capability `DAYCARE_OPERATIONS` dapat membuat, merevisi,
+mengaktifkan, dan menonaktifkan definisi consent tenant-scoped. Parent yang
+terhubung ke anak hanya melihat definisi aktif dan status **keputusannya
+sendiri** untuk anak itu; ia dapat memberi, menolak, atau menarik persetujuan
+yang sebelumnya diberikan. Layar Parent tidak menerima nama, status, dokumen,
+atau keputusan guardian lain. Layar Staff Admin hanya mengelola definisi, bukan
+melihat keputusan per guardian/anak.
 
-**Target yang belum dibangun:** API, UI, `GuardianAuthority`, scope cabang/
-offering, evidence, serta `HEALTH_EMERGENCY_OVERRIDE`.
+Setiap revisi teks atau perubahan aktif/nonaktif menaikkan `revision` dan
+memerlukan `expectedRevision`; keputusan Parent baru selalu disimpan terhadap
+revision saat ini. `ConsentRecord` membekukan title dan isi definition; purpose
+tidak dapat diubah pada V1. Record juga menyimpan child, guardian, status,
+waktu keputusan, serta waktu penarikan. Constraint unik memakai
+`child + definition + guardian + revision`, sehingga keputusan revision lama
+tetap tersedia sebagai riwayat saat teks direvisi. Create/revise,
+aktif/nonaktif, grant/decline, dan withdrawal membuat audit event dasar.
+
+V1 ini **hanya pengumpulan dan pencatatan keputusan**. Ia tidak memberi
+otorisasi tindakan medis, pemberian obat, penjemputan, outing, penggunaan
+media, check-out, atau emergency override. API tindakan tersebut tidak boleh
+memakai `ConsentRecord` V1 sebagai allowlist; tujuan consent di UI hanya
+menjelaskan jenis policy yang kelak akan dipasangkan. Dengan demikian tidak ada
+putusan Parent yang secara keliru terlihat sebagai izin operasional atau klinis.
+
+**Target yang belum dibangun:** `GuardianAuthority`, scope cabang/offering,
+evidence, resolver konflik antar-guardian, idempotency/correlation key formal,
+serta `HEALTH_EMERGENCY_OVERRIDE`. Sebelum seluruh target ini dibangun dan
+diterapkan pada endpoint tindakan, status consent tidak boleh dipakai untuk
+mengizinkan atau menolak tindakan sensitif.
+
+- Kontrak V1 memakai `GET /consent-definitions/manage`, `POST
+  /consent-definitions`, `PUT /consent-definitions/{definitionId}`, dan `POST
+  /consent-definitions/{definitionId}/active` khusus Staff Admin Daycare.
+  Parent memakai `GET /children/{childId}/consents`, `POST
+  /children/{childId}/consents`, serta `POST /children/{childId}/consents/
+  {definitionId}/withdraw`. Semua route memvalidasi tenant aktif,
+  `DAYCARE_OPERATIONS`, role, child/guardian scope, dan status definition di
+  server; kontrol UI bukan sumber otorisasi.
+- Parent view mengagregasi hanya record actor pada revision definition aktif.
+  Tidak ada agregasi "siapa setuju" dan tidak ada policy konflik antar-wali pada
+  V1. Setelah reaktivasi atau revisi, revision bertambah dan Parent melihat
+  `PENDING` sampai ia mengambil keputusan baru.
 
 - `ConsentDefinition` bersifat tenant-scoped dan membawa revision serta scope
   eksplisit `TENANT`, `BRANCH`, atau `OFFERING`; scope cabang/offering wajib

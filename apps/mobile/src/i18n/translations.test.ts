@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { goalPickerLabel, translate, type TranslationKey } from "./translations";
+import { goalPickerLabel, supportedLocales, translate, type TranslationKey } from "./translations";
 
 describe("translations", () => {
   it("uses the active locale and interpolates values", () => {
@@ -10,6 +10,10 @@ describe("translations", () => {
   it("resolves the zh and fr locales with the same placeholder", () => {
     expect(translate("zh", "home.greeting", { name: "Ayu" })).toContain("Ayu");
     expect(translate("fr", "home.greeting", { name: "Ayu" })).toContain("Ayu");
+  });
+
+  it("includes the Consent V1 labels in every supported locale", () => {
+    for (const locale of supportedLocales) expect(translate(locale, "consent.title")).not.toBe("consent.title");
   });
 
   it("collapses the goal picker label when the name only repeats the domain", () => {
