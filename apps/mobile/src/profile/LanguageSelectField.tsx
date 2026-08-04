@@ -9,6 +9,9 @@ const localeLabels: Record<AppLocale, string> = {
   en: "English",
   zh: "中文（简体）",
   fr: "Français",
+  pt: "Português",
+  es: "Español",
+  ru: "Русский",
 };
 
 export function LanguageSelectField() {

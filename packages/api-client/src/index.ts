@@ -103,8 +103,12 @@ export type CreatePickupAuthorizationInput = { pickupPersonName: string; relatio
 export type EmergencyContact = { id: string; childId: string; name: string; relationship: string; phoneNumber: string; canRemove: boolean };
 export type CreateEmergencyContactInput = { name: string; relationship: string; phoneNumber: string };
 export type ConsentPurpose = "MEDIA_MARKETING" | "HEALTH_EMERGENCY" | "MEDICATION" | "OUTING" | "PICKUP";
-export type ConsentDefinition = { id: string; purpose: ConsentPurpose; title: string; content: string; revision: number };
-export type ConsentRecord = { definitionId: string; status: "PENDING" | "GRANTED" | "DECLINED" | "WITHDRAWN" | "EXPIRED" | "SUPERSEDED"; revision: number; decidedAt?: string | null };
+export type ConsentStatus = "PENDING" | "GRANTED" | "DECLINED" | "WITHDRAWN" | "EXPIRED" | "SUPERSEDED";
+export type ConsentDefinition = { id: string; purpose: ConsentPurpose; title: string; content: string; revision: number; active: boolean };
+export type ParentConsent = { definition: ConsentDefinition; status: ConsentStatus; decidedAt?: string | null; withdrawnAt?: string | null };
+export type ConsentRecord = { definitionId: string; status: ConsentStatus; revision: number; decidedAt?: string | null; withdrawnAt?: string | null };
+export type CreateConsentDefinitionInput = { purpose: ConsentPurpose; title: string; content: string };
+export type ReviseConsentDefinitionInput = { title: string; content: string; expectedRevision: number };
 export type ChildAbsenceRequest = { id: string; childId: string; childName: string; branchId: string; purpose: ChildAbsencePurpose; note?: string | null; startDate: string; endDate: string; status: ChildAbsenceRequestStatus; rejectionReason?: string | null; createdAt: string; decidedAt?: string | null };
 export type CreateChildAbsenceRequestInput = { childId: string; purpose: ChildAbsencePurpose; startDate: string; endDate: string; note?: string };
 export type DevelopmentEntryMedia = { id: string; kind: "PHOTO" | "AUDIO"; contentType: string; durationMs?: number | null };
@@ -478,7 +482,13 @@ export class ApiClient {
   async createEmergencyContact(childId: string, input: CreateEmergencyContactInput): Promise<EmergencyContact> { return this.request(`/children/${childId}/emergency-contacts`, { method: "POST", body: JSON.stringify(input) }); }
   async removeEmergencyContact(childId: string, contactId: string): Promise<void> { await this.request<void>(`/children/${childId}/emergency-contacts/${contactId}`, { method: "DELETE" }); }
   async consentDefinitions(): Promise<ConsentDefinition[]> { return this.request("/consent-definitions"); }
+  async managedConsentDefinitions(): Promise<ConsentDefinition[]> { return this.request("/consent-definitions/manage"); }
+  async createConsentDefinition(input: CreateConsentDefinitionInput): Promise<ConsentDefinition> { return this.request("/consent-definitions", { method: "POST", body: JSON.stringify(input) }); }
+  async reviseConsentDefinition(definitionId: string, input: ReviseConsentDefinitionInput): Promise<ConsentDefinition> { return this.request(`/consent-definitions/${definitionId}`, { method: "PUT", body: JSON.stringify(input) }); }
+  async setConsentDefinitionActive(definitionId: string, active: boolean, expectedRevision: number): Promise<ConsentDefinition> { return this.request(`/consent-definitions/${definitionId}/active`, { method: "POST", body: JSON.stringify({ active, expectedRevision }) }); }
+  async childConsents(childId: string): Promise<ParentConsent[]> { return this.request(`/children/${childId}/consents`); }
   async decideConsent(childId: string, definitionId: string, granted: boolean): Promise<ConsentRecord> { return this.request(`/children/${childId}/consents`, { method: "POST", body: JSON.stringify({ definitionId, granted }) }); }
+  async withdrawConsent(childId: string, definitionId: string): Promise<ConsentRecord> { return this.request(`/children/${childId}/consents/${definitionId}/withdraw`, { method: "POST" }); }
 
   async issueAttendanceQr(childId: string): Promise<{ token: string; expiresAt: string }> {
     return this.request(`/children/${childId}/attendance-qr`);

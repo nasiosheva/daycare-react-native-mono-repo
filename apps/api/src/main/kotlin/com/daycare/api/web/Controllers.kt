@@ -12,6 +12,9 @@ import com.daycare.api.service.EmergencyContactService
 import com.daycare.api.service.CreateEmergencyContactRequest
 import com.daycare.api.service.ConsentService
 import com.daycare.api.service.ConsentDecisionRequest
+import com.daycare.api.service.CreateConsentDefinitionRequest
+import com.daycare.api.service.ReviseConsentDefinitionRequest
+import com.daycare.api.service.SetConsentDefinitionActiveRequest
 import com.daycare.api.service.BillingService
 import com.daycare.api.service.BookingApprovalRequest
 import com.daycare.api.service.CreateEntitlementBookingsRequest
@@ -578,8 +581,26 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @GetMapping("/consent-definitions")
     fun consentDefinitions(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = consents.definitions(jwt, organizationId)
 
+    @GetMapping("/consent-definitions/manage")
+    fun managedConsentDefinitions(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = consents.managedDefinitions(jwt, organizationId)
+
+    @PostMapping("/consent-definitions") @ResponseStatus(HttpStatus.CREATED)
+    fun createConsentDefinition(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateConsentDefinitionRequest) = consents.createDefinition(jwt, organizationId, request)
+
+    @PutMapping("/consent-definitions/{definitionId}")
+    fun reviseConsentDefinition(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable definitionId: UUID, @Valid @RequestBody request: ReviseConsentDefinitionRequest) = consents.reviseDefinition(jwt, organizationId, definitionId, request)
+
+    @PostMapping("/consent-definitions/{definitionId}/active")
+    fun setConsentDefinitionActive(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable definitionId: UUID, @Valid @RequestBody request: SetConsentDefinitionActiveRequest) = consents.setDefinitionActive(jwt, organizationId, definitionId, request)
+
+    @GetMapping("/children/{childId}/consents")
+    fun parentConsents(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = consents.parentConsents(jwt, organizationId, childId)
+
     @PostMapping("/children/{childId}/consents")
-    fun decideConsent(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @RequestBody request: ConsentDecisionRequest) = consents.decide(jwt, organizationId, childId, request)
+    fun decideConsent(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: ConsentDecisionRequest) = consents.decide(jwt, organizationId, childId, request)
+
+    @PostMapping("/children/{childId}/consents/{definitionId}/withdraw")
+    fun withdrawConsent(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable definitionId: UUID) = consents.withdraw(jwt, organizationId, childId, definitionId)
 
     @GetMapping("/children/{childId}/attendance-qr")
     fun issueQr(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = attendance.issueQr(jwt, organizationId, childId)

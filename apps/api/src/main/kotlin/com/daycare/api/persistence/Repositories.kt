@@ -127,8 +127,8 @@ interface PickupAuthorizationRepository : JpaRepository<PickupAuthorization, UUI
     fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<PickupAuthorization>
 }
 interface EmergencyContactRepository : JpaRepository<EmergencyContact, UUID> { fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<EmergencyContact> }
-interface ConsentDefinitionRepository : JpaRepository<ConsentDefinition, UUID> { fun findAllByOrganizationIdAndActiveTrue(organizationId: UUID): List<ConsentDefinition> }
-interface ConsentRecordRepository : JpaRepository<ConsentRecord, UUID> { fun findAllByOrganizationIdAndChildIdAndGuardianUserId(organizationId: UUID, childId: UUID, guardianUserId: UUID): List<ConsentRecord> }
+interface ConsentDefinitionRepository : JpaRepository<ConsentDefinition, UUID> { fun findAllByOrganizationIdAndActiveTrueOrderByCreatedAtDesc(organizationId: UUID): List<ConsentDefinition>; fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<ConsentDefinition> }
+interface ConsentRecordRepository : JpaRepository<ConsentRecord, UUID> { fun findAllByOrganizationIdAndChildIdAndGuardianUserId(organizationId: UUID, childId: UUID, guardianUserId: UUID): List<ConsentRecord>; fun findByOrganizationIdAndChildIdAndDefinitionIdAndGuardianUserIdAndDefinitionRevision(organizationId: UUID, childId: UUID, definitionId: UUID, guardianUserId: UUID, definitionRevision: Int): ConsentRecord? }
 interface ChildAbsenceRequestRepository : JpaRepository<ChildAbsenceRequest, UUID> {
     fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildAbsenceRequest>
     fun findAllByOrganizationIdAndStatusOrderByStartDateAscCreatedAtAsc(organizationId: UUID, status: com.daycare.api.domain.ChildAbsenceRequestStatus): List<ChildAbsenceRequest>
