@@ -1,6 +1,6 @@
-# Umur Emas
+# Usia Emas
 
-Umur Emas is a multi-tenant early-childhood platform for web, iOS, Android, and tablets. The repository contains an Expo Router application, a Kotlin Spring Boot API, shared TypeScript domain logic, UI primitives, and a typed API client.
+Usia Emas is a multi-tenant early-childhood platform for web, iOS, Android, and tablets. The repository contains an Expo Router application, a Kotlin Spring Boot API, shared TypeScript domain logic, UI primitives, and a typed API client.
 
 > **Required project context:** Read [Business rules](docs/business-rules.md) before implementing, reviewing, or changing any business flow, API contract, data model, authorization rule, or architecture. It is the normative product-knowledge source for cross-module behavior. When code and the documented target rule differ, record the gap explicitly and do not silently redefine the rule from the current implementation.
 
@@ -181,7 +181,7 @@ cp .env.prod.example .env.prod
 
 `./run-android-local.sh` synchronizes the generated Android project with the Expo native configuration when needed, restores `android/local.properties` from `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or the standard macOS SDK location, then creates or refreshes and installs the Android development build before starting Metro. It can therefore be used as the one-command local Android client launcher, including after an Android application-package or native-plugin change. Before a clean Android prebuild, every Android launcher temporarily preserves the ignored `MYAPP_RELEASE_*` entries and their referenced release keystore, then restores them only into the regenerated local project. The other Android launchers start an installed Expo development build using the selected service environment, and rebuild it automatically when the native configuration changes. iOS launchers only build and run on the physical iPhone identified by `IOS_DEVICE_UDID`; simulators are intentionally unsupported. The `prod` scripts point at production services but do not create a signed store/release build and do not deploy the API.
 
-Android and iOS begin with a native splash screen configured from `apps/mobile/app.json`, then retain the full Umur Emas branded splash layout while authentication state restores. `BrandedSplash` composes that full-screen design from a gradient, SVG rays, the separate emblem asset, and text; it is not a screen-sized bitmap. Android 12 and newer necessarily show only the system-provided background and centered icon before React starts, because that is the Android platform launch-screen contract. Web intentionally does not use this native splash behavior. The launcher fingerprints the complete mobile asset directory, so changing a splash, icon, or other bundled asset automatically triggers Expo prebuild and synchronizes the generated native projects.
+Android and iOS begin with a native splash screen configured from `apps/mobile/app.json`, then retain the full Usia Emas branded splash layout while authentication state restores. `BrandedSplash` composes that full-screen design from a gradient, SVG rays, the separate emblem asset, and text; it is not a screen-sized bitmap. Android 12 and newer necessarily show only the system-provided background and centered icon before React starts, because that is the Android platform launch-screen contract. Web intentionally does not use this native splash behavior. The launcher fingerprints the complete mobile asset directory, so changing a splash, icon, or other bundled asset automatically triggers Expo prebuild and synchronizes the generated native projects.
 
 Run `./scripts/run-backend-local.sh` in its own terminal before starting a local Web, Android, or iOS launcher. It sources `.env`, validates local backend configuration, reuses PostgreSQL at `${POSTGRES_HOST:-localhost}:${POSTGRES_PORT:-5432}` or starts the optional Docker Compose PostgreSQL service, stops an existing API process only when that process is identified as owned by this repository, then starts a fresh API with Spring profile `local` in the foreground. It never kills an unrelated process that happens to use port 8080. This activates the local-only Platform Admin seeder when `LOCAL_AUTH_ENABLED=true` and `LOCAL_SEED_ENABLED=true`, and resets the configured local-admin password on startup. Stop the backend with Ctrl+C in that terminal.
 
@@ -203,7 +203,7 @@ Use the dedicated root launcher to build a signed APK for direct Android distrib
 ./build-android-release-apk.sh
 ```
 
-The launcher loads `.env.prod` and requires `EXPO_PUBLIC_APP_ENV=production`, JDK 21, a local Android SDK, `apps/mobile/google-services.json`, the generated `apps/mobile/android` project, and local release-signing values in `apps/mobile/android/gradle.properties`. It does not create, copy, upload, or commit a keystore. On success it verifies the APK signature and writes the signed artifact to `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`. Follow the full [Android release APK guide](docs/android-release-apk.md) for one-time signing setup, verification, and troubleshooting. `run-android-prod.sh` remains a development-client launcher for production services and does not create this APK.
+The launcher loads `.env.prod` and requires `EXPO_PUBLIC_APP_ENV=production`, JDK 21, a local Android SDK, `apps/mobile/google-services.json`, the generated `apps/mobile/android` project, and local release-signing values in `apps/mobile/android/gradle.properties`. It does not create, copy, upload, or commit a keystore. A signing-alias rename must preserve the same private-key certificate in that keystore, otherwise installed Android applications cannot receive a compatible update. On success it verifies the APK signature and writes the signed artifact to `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`. Follow the full [Android release APK guide](docs/android-release-apk.md) for one-time signing setup, verification, and troubleshooting. `run-android-prod.sh` remains a development-client launcher for production services and does not create this APK.
 
 For Google Play distribution, build a signed Android App Bundle instead:
 
@@ -217,10 +217,10 @@ It writes `apps/mobile/android/app/build/outputs/bundle/release/app-release.aab`
 
 Native Firebase and Google sign-in require a development build; Expo Go is not sufficient. Place the Firebase platform configuration files locally before building:
 
-- `apps/mobile/google-services.json` for Android.
-- `apps/mobile/GoogleService-Info.plist` for iOS.
+- `apps/mobile/google-services.json` for Android. This client configuration is version-controlled; it must never be confused with a Firebase service-account credential.
+- `apps/mobile/GoogleService-Info.plist` for iOS. Unlike the Android client configuration, this local iOS configuration remains ignored and must be provided to each iOS build environment.
 
-Register the Android SHA-1/SHA-256, iOS bundle ID (`com.children.platform`), authorized web domains, Firebase SMS region policy, and Google OAuth clients in Firebase. `./run-android-local.sh` creates and installs the local Android development build automatically. To create it manually for a non-local Android launcher, run:
+Each downloaded Firebase platform configuration must belong to the current Android application ID or iOS bundle ID; validate this before replacing an ignored local configuration file. Register the Android SHA-1/SHA-256, iOS bundle ID (`com.children.platform`), authorized web domains, Firebase SMS region policy, and Google OAuth clients in Firebase. `./run-android-local.sh` creates and installs the local Android development build automatically. To create it manually for a non-local Android launcher, run:
 
 ```sh
 corepack pnpm --filter @daycare/app exec expo run:android

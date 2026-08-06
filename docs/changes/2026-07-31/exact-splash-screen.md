@@ -1,9 +1,9 @@
-# Desain splash screen Umur Emas
+# Desain splash screen Usia Emas
 
 ## Perubahan
 
 - Membuat `BrandedSplash` sebagai layout React Native yang meniru arah desain referensi, bukan menyalin `splash_screen_exact.png`.
-- Layout terdiri dari `LinearGradient`, sinar radial `react-native-svg`, emblem Umur Emas yang sudah digunakan aplikasi, serta teks `UMUR EMAS`, `Tumbuh, Main, dan Belajar`, dan hak cipta.
+- Layout terdiri dari `LinearGradient`, sinar radial `react-native-svg`, emblem Usia Emas yang sudah digunakan aplikasi, serta teks `USIA EMAS`, `Tumbuh, Main, dan Belajar`, dan hak cipta.
 - `expo-splash-screen` native hanya memakai emblem dalam mode `contain`; layout penuh ditampilkan segera setelah React Native mulai dan tetap berada di atas aplikasi sampai autentikasi selesai.
 - Memperluas fingerprint launcher native agar perubahan pada aset mobile memicu Expo prebuild otomatis.
 
