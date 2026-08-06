@@ -2,7 +2,7 @@
 
 ## Change
 
-- Added the Expo native splash-screen module and configured `apps/mobile/app.json` to use the existing Umur Emas logo on a white background for Android and iOS.
+- Added the Expo native splash-screen module and configured `apps/mobile/app.json` to use the existing Usia Emas logo on a white background for Android and iOS.
 - The root Expo Router layout prevents the native splash from closing until the local session restore and Firebase identity observation complete, then fades it out after the first rendered frame.
 - The gate is explicitly disabled on web, so the existing web startup behavior is unchanged.
 

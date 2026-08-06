@@ -1,6 +1,7 @@
 import { Image, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle, Polygon } from "react-native-svg";
+import { appBrandNameUppercase, appCopyright } from "@daycare/ui";
 
 type BrandedSplashProps = {
   onLogoLoad: () => void;
@@ -33,9 +34,9 @@ export function BrandedSplash({ onLogoLoad }: BrandedSplashProps) {
       <View style={styles.content}>
         <Image source={require("../../assets/images/login-icon.png")} style={styles.logo} resizeMode="contain" onLoadEnd={onLogoLoad} />
         <View style={styles.copy}>
-          <Text style={styles.brand}>UMUR EMAS</Text>
+          <Text style={styles.brand}>{appBrandNameUppercase}</Text>
           <Text style={styles.tagline}>Tumbuh, Main, dan Belajar</Text>
-          <Text style={styles.copyright}>© 2026 Umur Emas App</Text>
+          <Text style={styles.copyright}>{appCopyright}</Text>
         </View>
       </View>
     </LinearGradient>

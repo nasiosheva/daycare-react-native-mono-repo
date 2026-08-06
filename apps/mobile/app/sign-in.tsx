@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Image, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
-import { AppText, Button, colors, PasswordInput, radius, Screen, spacing } from "@daycare/ui";
+import { appBrandName, AppText, Button, colors, PasswordInput, radius, Screen, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { authErrorMessage } from "@/auth/authErrorMessage";
 import { clearRememberedCredentials, loadRememberedCredentials, saveRememberedCredentials } from "@/auth/rememberedCredentialsStorage";
@@ -48,7 +48,7 @@ export default function SignInScreen() {
   };
   return <Screen><View style={styles.container}>
     <Image source={require("../assets/images/login-icon.png")} style={styles.logo} resizeMode="contain" />
-    <AppText variant="title">Umur Emas</AppText>
+    <AppText variant="title">{appBrandName}</AppText>
     <AppText variant="label">{t("auth.identifier")}</AppText>
     <TextInput style={styles.input} autoCapitalize="none" keyboardType="default" value={identifier} onChangeText={(value) => { setIdentifier(value); setErrorMessage(null); }} />
     <AppText variant="label">{t("auth.password")}</AppText>

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { FontAwesome } from "@expo/vector-icons";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
-import { AppText, Button, colors, PasswordInput, radius, Screen, spacing } from "@daycare/ui";
+import { appBrandName, AppText, Button, colors, PasswordInput, radius, Screen, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { capitalizeWords } from "@/text/capitalizeWords";
@@ -23,7 +23,7 @@ export default function SignUpScreen() {
   };
   const submitGoogle = async () => { try { setLoading(true); const result = await signInWithGoogle(); if (result.needsRegistration) { if (result.email) setEmail(result.email); return; } await signOut(); Alert.alert(t("auth.googleFailed"), t("auth.useEmail")); router.replace("/sign-in"); } catch (error) { Alert.alert(t("auth.googleFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); } finally { setLoading(false); } };
   return <Screen><View style={styles.content}>
-    <AppText variant="title">Umur Emas</AppText><AppText tone="muted">{t("auth.signUpSubtitle")}</AppText>
+    <AppText variant="title">{appBrandName}</AppText><AppText tone="muted">{t("auth.signUpSubtitle")}</AppText>
     <AppText variant="label">{t("profile.name")}</AppText><TextInput style={styles.input} autoCapitalize="words" value={displayName} onChangeText={(value) => setDisplayName(capitalizeWords(value))} />
     <AppText variant="label">{t("profile.usernameOptional")}</AppText><TextInput style={styles.input} autoCapitalize="none" autoCorrect={false} value={username} onChangeText={setUsername} />
     <AppText variant="label">{t("auth.email")}</AppText><TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} editable={!registrationRequired || !user?.email} />

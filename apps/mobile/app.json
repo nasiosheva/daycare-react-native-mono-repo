@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Umur Emas",
+    "name": "Usia Emas",
     "slug": "children-platform",
     "scheme": "children",
     "version": "0.1.0",
@@ -24,20 +24,20 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Izinkan Umur Emas mengakses mikrofon untuk merekam audio."
+          "microphonePermission": "Izinkan Usia Emas mengakses mikrofon untuk merekam audio."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Izinkan Umur Emas mengakses foto untuk memilih gambar.",
-          "cameraPermission": "Izinkan Umur Emas mengakses kamera untuk mengambil gambar."
+          "photosPermission": "Izinkan Usia Emas mengakses foto untuk memilih gambar.",
+          "cameraPermission": "Izinkan Usia Emas mengakses kamera untuk mengambil gambar."
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Izinkan Umur Emas mengakses lokasi untuk mendapatkan posisi Anda saat ini."
+          "locationWhenInUsePermission": "Izinkan Usia Emas mengakses lokasi untuk mendapatkan posisi Anda saat ini."
         }
       ],
       "@react-native-community/datetimepicker"

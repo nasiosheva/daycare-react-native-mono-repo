@@ -1,6 +1,7 @@
 export * from "./AppText";
 export * from "./AudioPlayer";
 export * from "./BackButton";
+export * from "./brand";
 export * from "./BottomSheet";
 export * from "./Button";
 export * from "./FloatingActionButton";

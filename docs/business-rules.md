@@ -1,4 +1,4 @@
-# Aturan Bisnis dan Platform Knowledge Umur Emas
+# Aturan Bisnis dan Platform Knowledge Usia Emas
 
 Dokumen ini adalah sumber normatif aturan bisnis dan pengetahuan produk lintas modul. Dokumen ini wajib dibaca sebelum implementasi, review, atau perubahan flow, kontrak API, model data, otorisasi, dan arsitektur. Detail implementasi, perubahan harian, hasil verifikasi, serta gap antara aturan target dan implementasi dicatat terpisah di `docs/changes/`.
 
@@ -2053,6 +2053,33 @@ mengizinkan atau menolak tindakan sensitif.
 | `PARENT` guardian aktif | Home per anak dengan badge Penitipan/Sekolah dan inbox | Semua kartu selalu child+offering scoped; invoice membuka sumber invoice yang tepat | Menggunakan anak pertama atau offering pertama secara implisit. |
 | `PARENT` billing/safety limited | Kartu reason, invoice, safety/inbox yang legal | Jalur penyelesaian jelas dan tak menutup emergency/check-out information | Redirect loop ke onboarding atau tampilan kosong tanpa alasan. |
 | `STUDENT` target | Jadwal/tugas/rapor diri sendiri | Context learner sudah dikunci server, UI tidak menyediakan child switcher | Parent finance, health, contact, roster, atau data siswa lain. |
+
+- Bottom navigation setiap role bersifat fixed dan didefinisikan tunggal di
+  `RoleBottomNavigation.tsx` (`navigationByRole`); route di luar daftar berikut
+  tidak boleh diklaim sebagai tab role tersebut:
+  - `ADMIN`: Home, Tenant (`/platform-tenants`), Master data (`/platform-catalog`).
+  - `STAFF_ADMIN`: Home, Children (`/children`), Kelas (`/academic`), Kelola
+    (`/staff-admin`).
+  - `STAFF`: Home, Aktivitas (`/staff-operations`), Kelas (`/academic`),
+    Persetujuan (`/booking-approvals`, hanya tampil bila membership memiliki
+    capability `DAYCARE_OPERATIONS`).
+  - `PARENT`: Home, QR hadir (`/parent-qr`), Booking (`/booking`), Jam
+    operasional (`/operational-hours`) — ketiga menu selain Home hanya tampil
+    bila membership memiliki capability `DAYCARE_OPERATIONS`.
+  - `PARENT_ONBOARDING` (registrasi Parent belum punya membership aktif):
+    Home, Pendaftaran (`/parent-enrollment`).
+  - Menekan tab menggunakan `router.replace`, bukan push — tab merepresentasikan
+    root, bukan screen yang ditumpuk.
+- Route yang bukan tab role aktor tetap dapat diakses lewat `router.push` dari
+  layar lain (mis. `STAFF` membuka `/children` dari `/staff-operations`
+  walau `/children` adalah tab milik `STAFF_ADMIN`). Untuk kasus ini screen
+  wajib merender dirinya sebagai pushed screen bagi role yang bukan pemilik tab
+  (`showBottomNavigation={false}`, app bar dengan judul dan back button) dan
+  sebagai tab root bagi role pemiliknya (`showBottomNavigation={true}`, tanpa
+  app bar/back button, judul dipindah ke body) — `showBottomNavigation` pada
+  `AppScreen` tidak otomatis konsisten dengan `header`/`title` dan harus
+  disinkronkan manual sesuai role per screen (lihat pola di
+  `booking-approvals.tsx` dan `children.tsx`).
 
 - UI Kas kelas memakai context offering → tahun ajaran → tingkatan → rombel →
   fund dan selalu menampilkan custody/status fund. Parent melihat kontribusi

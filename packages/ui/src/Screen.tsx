@@ -3,6 +3,7 @@ import { SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { backgroundGradient, colors, shadows, spacing } from "./theme";
 import { AppText } from "./AppText";
+import { appBrandName } from "./brand";
 import { subscribeInlineFeedback, type InlineFeedback } from "./InlineFeedback";
 
 export type ScreenProps = PropsWithChildren<{ title?: string; header?: ReactNode; headerAction?: ReactNode; footer?: ReactNode; floatingAction?: ReactNode; showAppBar?: boolean }>;
@@ -22,7 +23,7 @@ export function Screen({ children, title, header, headerAction, footer, floating
     <SafeAreaView style={styles.safe}>
       {shouldShowAppBar && <View style={styles.appBar}>
         {header && <View style={styles.leading}>{header}</View>}
-        <AppText variant="heading" numberOfLines={1} style={styles.title}>{title ?? "Umur Emas"}</AppText>
+        <AppText variant="heading" numberOfLines={1} style={styles.title}>{title ?? appBrandName}</AppText>
         {headerAction && <View style={styles.headerAction}>{headerAction}</View>}
       </View>}
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>

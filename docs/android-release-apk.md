@@ -50,7 +50,7 @@ If no release keystore exists yet, create it once on the secure developer machin
 ```sh
 keytool -genkeypair \
   -keystore apps/mobile/android/app/release.keystore \
-  -alias umur-emas-release \
+  -alias usia-emas-release \
   -keyalg RSA \
   -keysize 2048 \
   -validity 10000
