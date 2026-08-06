@@ -12,7 +12,7 @@ describe("ApiClient", () => {
     });
 
     await expect(client.createTenant({
-      tenantName: "Umur Emas",
+      tenantName: "Usia Emas",
       branchName: "Utama",
       institutionTypes: ["DAYCARE"],
       subscriptionPlan: "STARTER",

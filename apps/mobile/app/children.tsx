@@ -59,7 +59,8 @@ export default function ChildrenScreen() {
     } catch (error) { Alert.alert(t("children.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
   const openChild = (childId: string) => router.push({ pathname: "/child-detail", params: { childId} });
-  return <AppScreen showBottomNavigation={false} title={t("children.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton accessibilityLabel={t("children.add")} onPress={() => setAddVisible(true)}>+ {t("children.add")}</FloatingActionButton> : undefined}>
+  return <AppScreen showBottomNavigation={isStaffAdmin} title={isStaffAdmin ? undefined : t("children.title")} header={isStaffAdmin ? undefined : <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton accessibilityLabel={t("children.add")} onPress={() => setAddVisible(true)}>+ {t("children.add")}</FloatingActionButton> : undefined}>
+    {isStaffAdmin && <AppText variant="title">{t("children.title")}</AppText>}
     {isStaffAdmin && <Button variant="secondary" onPress={() => setFilterVisible(true)}>{t(hasActiveChildFilter ? "children.filterActive" : "children.filter")}</Button>}
     {canOpenDetail && <ChildrenReportActions canExport={canExport} filter={childFilter} />}
     <AppText variant="bodySmall" tone="muted">{t("children.menuDescription")}</AppText>

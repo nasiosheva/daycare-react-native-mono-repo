@@ -57,7 +57,7 @@ class TenantReadinessServiceTest {
 
     @Test
     fun `returns ready for a fully configured Daycare tenant`() {
-        val tenant = Organization(name = "Umur Emas")
+        val tenant = Organization(name = "Usia Emas")
         val branch = Branch(organizationId = tenant.id, name = "Utama")
         defaults(listOf(tenant))
         `when`(organizationTypes.findAll()).thenReturn(listOf(OrganizationTypeAssignment(organizationId = tenant.id, type = "DAYCARE")))
@@ -68,7 +68,7 @@ class TenantReadinessServiceTest {
         `when`(plans.findAll()).thenReturn(listOf(ServicePlan(organizationId = tenant.id, name = "Bulanan", active = true)))
         `when`(capacities.findAll()).thenReturn(listOf(BranchCapacitySetting(organizationId = tenant.id, branchId = branch.id, dailyCapacity = 20)))
         `when`(operatingHours.findAll()).thenReturn(operatingHoursFor(branch.id))
-        `when`(instructions.findAll()).thenReturn(listOf(TenantPaymentInstruction(organizationId = tenant.id, name = "BCA", accountHolder = "Umur Emas", accountNumber = "123", active = true)))
+        `when`(instructions.findAll()).thenReturn(listOf(TenantPaymentInstruction(organizationId = tenant.id, name = "BCA", accountHolder = "Usia Emas", accountNumber = "123", active = true)))
 
         val response = service().readiness(jwt)
 
@@ -162,7 +162,7 @@ class TenantReadinessServiceTest {
         `when`(plans.findAll()).thenReturn(listOf(ServicePlan(organizationId = tenant.id, name = "Harian", active = true)))
         `when`(capacities.findAll()).thenReturn(listOf(BranchCapacitySetting(organizationId = tenant.id, branchId = configuredBranch.id, dailyCapacity = 20)))
         `when`(operatingHours.findAll()).thenReturn(operatingHoursFor(configuredBranch.id) + operatingHoursFor(missingCapacityBranch.id))
-        `when`(instructions.findAll()).thenReturn(listOf(TenantPaymentInstruction(organizationId = tenant.id, name = "BCA", accountHolder = "Umur Emas", accountNumber = "123", active = true)))
+        `when`(instructions.findAll()).thenReturn(listOf(TenantPaymentInstruction(organizationId = tenant.id, name = "BCA", accountHolder = "Usia Emas", accountNumber = "123", active = true)))
 
         val response = service().readiness(jwt).tenants.single()
 
@@ -181,7 +181,7 @@ class TenantReadinessServiceTest {
         `when`(classrooms.findAll()).thenReturn(listOf(Classroom(organizationId = tenant.id, branchId = branch.id, name = "Matahari", active = true)))
         `when`(plans.findAll()).thenReturn(listOf(ServicePlan(organizationId = tenant.id, name = "Bulanan", active = true)))
         `when`(capacities.findAll()).thenReturn(listOf(BranchCapacitySetting(organizationId = tenant.id, branchId = branch.id, dailyCapacity = 20)))
-        `when`(instructions.findAll()).thenReturn(listOf(TenantPaymentInstruction(organizationId = tenant.id, name = "BCA", accountHolder = "Umur Emas", accountNumber = "123", active = true)))
+        `when`(instructions.findAll()).thenReturn(listOf(TenantPaymentInstruction(organizationId = tenant.id, name = "BCA", accountHolder = "Usia Emas", accountNumber = "123", active = true)))
 
         val response = service().readiness(jwt).tenants.single()
 

@@ -26,7 +26,6 @@ web-build/
 !.env.*.example
 
 # Firebase and signing credentials
-apps/mobile/google-services.json
 apps/mobile/GoogleService-Info.plist
 *.jks
 *.keystore
