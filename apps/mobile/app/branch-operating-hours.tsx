@@ -3,7 +3,7 @@ import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, BackButton, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import type { BranchOperatingHour, OperatingDay, OvertimeRateTier } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -32,6 +32,7 @@ function BranchOperatingHoursScreenContent() {
   const operatingHours = useQuery({ queryKey: ["branch-operating-hours", organizationId, branchId], queryFn: () => api.branchOperatingHours(branchId!), enabled: membership?.role === "STAFF_ADMIN" && Boolean(branchId) });
   const [hours, setHours] = useState<BranchOperatingHour[]>(defaultHours);
   const [tiers, setTiers] = useState<OvertimeRateTier[]>([{ durationMinutes: 15, amount: 100000 }]);
+  const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
   useEffect(() => { if (operatingHours.data) { setHours(operatingDays.map((dayOfWeek) => operatingHours.data?.hours.find((item) => item.dayOfWeek === dayOfWeek) ?? { dayOfWeek, active: false, opensAt: null, closesAt: null })); setTiers(operatingHours.data.tiers); } }, [operatingHours.data]);
   const save = useMutation({ mutationFn: () => api.updateBranchOperatingHours(branchId!, { hours, tiers }), onSuccess: () => client.invalidateQueries({ queryKey: ["branch-operating-hours", organizationId, branchId] }) });
   const valid = useMemo(() => hours.every((hour) => !hour.active || Boolean(hour.opensAt && hour.closesAt && hour.closesAt > hour.opensAt)) && tiers.every((tier) => tier.durationMinutes > 0 && tier.amount > 0), [hours, tiers]);
@@ -43,7 +44,7 @@ function BranchOperatingHoursScreenContent() {
   const applyOperatingHoursTemplate = (template: OperatingHoursTemplate) => setHours(operatingHoursTemplate(template));
   const submit = async () => {
     if (!valid) return Alert.alert(t("overtime.invalidConfiguration"));
-    try { await save.mutateAsync(); Alert.alert(t("overtime.saved")); }
+    try { await save.mutateAsync(); setShowSaveConfirmation(true); }
     catch (error) { Alert.alert(t("overtime.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
 
@@ -59,6 +60,9 @@ function BranchOperatingHoursScreenContent() {
     {tiers.map((tier, index) => <View key={index} style={styles.card}><AppText variant="label">{t("overtime.tier", { number: index + 1 })}</AppText><View style={styles.row}><View style={styles.field}><AppText variant="caption" tone="muted">{t("overtime.durationMinutes")}</AppText><TextInput style={styles.input} keyboardType="number-pad" value={String(tier.durationMinutes)} onChangeText={(value) => updateTier(index, { durationMinutes: Number(value) || 0 })} /></View><View style={styles.field}><AppText variant="caption" tone="muted">{t("overtime.amount")}</AppText><TextInput style={styles.input} keyboardType="decimal-pad" value={String(tier.amount)} onChangeText={(value) => updateTier(index, { amount: Number(value) || 0 })} /><AppText variant="caption" tone="muted">{formatCurrency(tier.amount)}</AppText></View></View><Button variant="danger" onPress={() => setTiers((current) => current.filter((_, tierIndex) => tierIndex !== index))}>{t("overtime.removeTier")}</Button></View>)}
     <Button variant="secondary" onPress={() => setTiers((current) => [...current, { durationMinutes: 15, amount: 100000 }])}>{t("overtime.addTier")}</Button>
     <Button loading={save.isPending} disabled={!valid || membership.active === false} onPress={() => void submit()}>{t("common.save")}</Button>
+    <BottomSheet visible={showSaveConfirmation} onClose={() => setShowSaveConfirmation(false)} closeAccessibilityLabel={t("common.close")} title={t("overtime.saved")} positiveAction={{ label: t("common.ok"), onPress: () => router.back() }}>
+      <AppText tone="muted">{t("overtime.saved")}</AppText>
+    </BottomSheet>
   </AppScreen>;
 }
 

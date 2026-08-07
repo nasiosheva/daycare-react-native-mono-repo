@@ -1001,9 +1001,13 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
   aktif juga bukan prasyarat; lembaga yang sudah siap harus dapat menerima
   anak pertama.
 - Template jam operasional hanya mengganti seluruh **draft lokal**. Memilih
-  template tidak menyimpan apa pun sampai Staff Admin menekan Simpan. Ketika
-  template diganti, seluruh hari dan seluruh blok overtime draft lama diganti,
-  bukan digabung sebagian.
+template tidak menyimpan apa pun sampai Staff Admin menekan Simpan. Ketika
+template diganti, seluruh hari dan seluruh blok overtime draft lama diganti,
+bukan digabung sebagian.
+- Setelah simpan jam operasional berhasil, form menampilkan konfirmasi. Ia
+  kembali ke layar sebelumnya hanya setelah Staff Admin menekan **OK**. Bila
+  simpan gagal, form dan draft tetap terbuka serta menampilkan error; aplikasi
+  tidak melakukan kembali atau retry otomatis.
 - Blok overtime adalah daftar berurutan dan kumulatif: durasi positif, urutan
   meningkat ketat, dan nominal positif. Blok pertama dapat dihapus; ketika
   tidak ada blok, UI menampilkan bahwa overtime belum dikonfigurasi dan server
@@ -1884,6 +1888,12 @@ sendiri** untuk anak itu; ia dapat memberi, menolak, atau menarik persetujuan
 yang sebelumnya diberikan. Layar Parent tidak menerima nama, status, dokumen,
 atau keputusan guardian lain. Layar Staff Admin hanya mengelola definisi, bukan
 melihat keputusan per guardian/anak.
+
+Layar **Definisi persetujuan** menyediakan action informasi baca-saja di
+toolbar untuk Staff Admin yang sama. Halaman ini menjelaskan dengan bahasa
+sederhana fungsi pencatatan V1, keputusan yang diambil Parent, revision, cara
+memilih purpose, serta batas bahwa V1 belum mengotorisasi tindakan sensitif.
+Halaman informasi tidak memuat keputusan, identitas, atau data anak/guardian.
 
 Setiap revisi teks atau perubahan aktif/nonaktif menaikkan `revision` dan
 memerlukan `expectedRevision`; keputusan Parent baru selalu disimpan terhadap

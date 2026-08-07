@@ -16,6 +16,10 @@ describe("translations", () => {
     for (const locale of supportedLocales) expect(translate(locale, "consent.title")).not.toBe("consent.title");
   });
 
+  it("includes the Consent V1 information page in every supported locale", () => {
+    for (const locale of supportedLocales) expect(translate(locale, "consent.informationLimitDescription")).not.toBe("consent.informationLimitDescription");
+  });
+
   it("collapses the goal picker label when the name only repeats the domain", () => {
     const t = (key: TranslationKey) => translate("id", key);
     expect(goalPickerLabel(t, "KEMANDIRIAN", "Kemandirian")).toBe("Kemandirian");
