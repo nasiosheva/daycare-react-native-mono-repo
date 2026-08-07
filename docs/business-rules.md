@@ -1836,6 +1836,15 @@ check-out ditolak kecuali dilakukan oleh Staff Admin aktif dengan alasan wajib.
 QR attendance bukan kredensial penjemput dan batas finansial tidak dipakai untuk
 menolak check-out.
 
+**Availability rule implemented:** kartu, halaman, deep link, dan seluruh
+endpoint `PickupAuthorization` hanya tersedia bila anak berada pada cabang yang
+memiliki sedikitnya satu `EducationOffering` berstatus `PUBLISHED` dengan
+capability `DAYCARE_OPERATIONS`. Capability agregat tenant atau offering Daycare
+di cabang lain tidak cukup. Server memeriksa cabang anak pada setiap baca,
+create, activate, revoke, dan verifikasi check-out; UI memakai `UiAccessContext`
+yang sama untuk menyembunyikan entry point. Seluruh akses tersebut juga
+memerlukan membership aktif; tidak ada read-only historis untuk penjemputan.
+
 **Fondasi kontak darurat saat ini:** `EmergencyContact` adalah resource terpisah
 dari `GuardianLink` dan `PickupAuthorization`, berisi nama, hubungan, nomor
 telepon, pembuat, dan audit. Parent terkait dapat membuat/menghapus kontak yang
