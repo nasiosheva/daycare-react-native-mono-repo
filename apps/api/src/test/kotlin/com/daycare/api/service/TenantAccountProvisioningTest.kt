@@ -245,14 +245,78 @@ class TenantAccountProvisioningTest {
         val branchFilters = mock(BranchListFilterService::class.java)
         val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts, branchFilters)
 
-        val response = service.createTenantUser(jwt, organizationId, CreateTenantUserRequest("Admin Baru", "admin-baru@tenant.test", "123123", Role.STAFF_ADMIN, username = "admin-baru"))
+        val response = service.createTenantUser(jwt, organizationId, CreateTenantUserRequest("Admin Baru", "admin-baru@tenant.test", "123123", Role.STAFF_ADMIN, username = "admin-baru", branchId = UUID.randomUUID(), canManageChildPrograms = true, canManageDevelopmentCategories = true))
 
         assertEquals(Role.STAFF_ADMIN, response.role)
         assertEquals("ACTIVE", response.status)
         assertEquals("admin-baru", response.username)
         assertEquals("admin-baru@tenant.test", response.email)
+        assertEquals(null, response.branchId)
+        assertEquals(false, response.canManageChildPrograms)
+        assertEquals(false, response.canManageDevelopmentCategories)
         verify(tenantAccounts).create("Admin Baru", "admin-baru@tenant.test", "123123", "admin-baru")
         assertThrows(IllegalArgumentException::class.java) { service.createTenantUser(jwt, organizationId, CreateTenantUserRequest("Parent", "parent@tenant.test", "123123", Role.PARENT)) }
+    }
+
+    @Test
+    fun `Staff account requires an active branch in the current tenant and stores its permissions`() {
+        val access = mock(AccessService::class.java)
+        val branches = mock(BranchRepository::class.java)
+        val children = mock(ChildRepository::class.java)
+        val invitations = mock(InvitationRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val deviceTokens = mock(DeviceTokenRepository::class.java)
+        val notifications = mock(NotificationRepository::class.java)
+        val tenantAccounts = mock(TenantUserAccountService::class.java)
+        val branchFilters = mock(BranchListFilterService::class.java)
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val branch = Branch(organizationId = organizationId, name = "Cabang Aktif")
+        val user = UserProfile(displayName = "Guru Baru", email = "guru@tenant.test")
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(), emptySet(), emptySet()))
+        `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
+        `when`(tenantAccounts.create("Guru Baru", "guru@tenant.test", "123123", null)).thenReturn(user)
+        `when`(memberships.save(any(Membership::class.java))).thenAnswer { it.arguments[0] }
+        val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts, branchFilters)
+
+        val response = service.createTenantUser(jwt, organizationId, CreateTenantUserRequest("Guru Baru", "guru@tenant.test", "123123", Role.STAFF, branchId = branch.id, canManageChildPrograms = true, canManageDevelopmentCategories = true))
+
+        assertEquals(branch.id, response.branchId)
+        assertTrue(response.canManageChildPrograms)
+        assertTrue(response.canManageDevelopmentCategories)
+        val membershipCaptor = ArgumentCaptor.forClass(Membership::class.java)
+        verify(memberships).save(membershipCaptor.capture())
+        assertEquals(Role.STAFF, membershipCaptor.value.role)
+        assertEquals(branch.id, membershipCaptor.value.branchId)
+        assertTrue(membershipCaptor.value.canManageChildPrograms)
+        assertTrue(membershipCaptor.value.canManageDevelopmentCategories)
+    }
+
+    @Test
+    fun `Staff account rejects an inactive or foreign branch before creating credentials`() {
+        val access = mock(AccessService::class.java)
+        val branches = mock(BranchRepository::class.java)
+        val children = mock(ChildRepository::class.java)
+        val invitations = mock(InvitationRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val deviceTokens = mock(DeviceTokenRepository::class.java)
+        val notifications = mock(NotificationRepository::class.java)
+        val tenantAccounts = mock(TenantUserAccountService::class.java)
+        val branchFilters = mock(BranchListFilterService::class.java)
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val unavailableBranch = Branch(organizationId = UUID.randomUUID(), name = "Cabang Tenant Lain", active = false)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(), emptySet(), emptySet()))
+        `when`(branches.findById(unavailableBranch.id)).thenReturn(Optional.of(unavailableBranch))
+        val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts, branchFilters)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            service.createTenantUser(jwt, organizationId, CreateTenantUserRequest("Guru Baru", "guru@tenant.test", "123123", Role.STAFF, branchId = unavailableBranch.id))
+        }
+
+        verify(memberships, never()).save(any(Membership::class.java))
     }
 
     @Test

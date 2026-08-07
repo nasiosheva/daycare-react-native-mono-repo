@@ -31,19 +31,21 @@ Form edit di menu ini sengaja hanya untuk role `STAFF`. Mengubah role dapat meng
 ### Daftar dan filter
 
 1. Screen memuat `GET /api/v1/tenant-users` dengan header `X-Organization-Id` tenant aktif. Respons dapat mencakup membership `ACTIVE` maupun `INACTIVE`, serta undangan Parent `PENDING`.
-2. Tab cabang menambahkan filter `branchId` pada request. Filter hanya mempersempit data yang sudah diizinkan.
-3. Akun `STAFF_ADMIN` tetap tampil ketika cabang tertentu dipilih karena Staff Admin bersifat tenant-wide dan tidak memiliki cabang penempatan.
-4. Setiap kartu menampilkan nama, username bila ada, role, status, dan untuk `STAFF`: nama cabang serta status dua permission.
-5. Loading menggunakan shimmer. Kegagalan memuat daftar ditampilkan inline bersama tombol coba lagi.
+2. Tombol **Filter cabang** membuka Bottom Sheet. Saat dibuka, pilihan draft diinisialisasi dari filter yang sedang diterapkan; memilih **Semua cabang** atau satu cabang hanya mengubah draft.
+3. Menutup atau membatalkan sheet membuang draft. Daftar dan request tidak berubah sampai pengguna menekan **OK**; hanya tindakan itu yang menambahkan atau menghapus `branchId` pada request. Filter hanya mempersempit data yang sudah diizinkan.
+4. Akun `STAFF_ADMIN` tetap tampil ketika cabang tertentu diterapkan karena Staff Admin bersifat tenant-wide dan tidak memiliki cabang penempatan.
+5. Setiap kartu menampilkan nama, username bila ada, role, status, dan untuk `STAFF`: nama cabang serta status dua permission.
+6. Loading menggunakan shimmer. Kegagalan memuat daftar ditampilkan inline bersama tombol coba lagi.
 
 ### Buat akun Staff Admin atau Staff
 
 1. `STAFF_ADMIN` aktif menekan floating action **Buat akun staf**.
 2. Bottom sheet meminta nama tampilan, email, password, role, dan username opsional.
 3. Bila role adalah `STAFF`, pengguna juga wajib memilih satu cabang aktif dan dapat mengaktifkan dua switch permission.
-4. Submit mengirim `POST /api/v1/tenant-users`.
-5. Bila sukses, daftar diinvalidate/refetch dan sheet ditutup. Konfirmasi sukses dapat tampil terpisah.
-6. Semua kesalahan validasi maupun respons API ditampilkan inline di dalam sheet. Mengubah input yang relevan menghapus pesan error lama.
+4. Bila tidak ada cabang aktif, form memberi tahu bahwa cabang wajib tersedia dan aksi buat akun `STAFF` dinonaktifkan. Membuat `STAFF_ADMIN` tetap tersedia karena role tersebut tidak memiliki cabang penempatan.
+5. Submit mengirim `POST /api/v1/tenant-users`.
+6. Bila sukses, daftar diinvalidate/refetch dan sheet ditutup. Konfirmasi sukses dapat tampil terpisah.
+7. Semua kesalahan validasi maupun respons API ditampilkan inline di dalam sheet. Mengubah input yang relevan menghapus pesan error lama.
 
 ### Edit akun Staff
 
