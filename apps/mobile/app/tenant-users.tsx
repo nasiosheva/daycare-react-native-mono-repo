@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Alert, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, ToggleSwitch, colors, PasswordInput, radius, spacing } from "@daycare/ui";
@@ -22,6 +22,8 @@ export default function TenantUsersScreen() {
   const canManage = membership?.active !== false;
   const queryClient = useQueryClient();
   const [filterBranchId, setFilterBranchId] = useState<string>();
+  const [draftFilterBranchId, setDraftFilterBranchId] = useState<string>();
+  const [branchFilterVisible, setBranchFilterVisible] = useState(false);
   const tenantUsers = useQuery({ queryKey: ["tenant-users", organizationId, filterBranchId], queryFn: () => api.tenantUsers({ branchId: filterBranchId }), enabled: membership?.role === "STAFF_ADMIN" });
   const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: membership?.role === "STAFF_ADMIN" });
   const createTenantUser = useMutation({ mutationFn: api.createTenantUser.bind(api), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tenant-users", organizationId] }) });
@@ -49,6 +51,7 @@ export default function TenantUsersScreen() {
   const [editCanManageDevelopmentCategories, setEditCanManageDevelopmentCategories] = useState(false);
   const [editFormError, setEditFormError] = useState<string | null>(null);
   const [sheet, setSheet] = useState<"staff" | "parent" | "edit" | null>(null);
+  const activeBranches = branches.data?.filter((branch) => branch.active) ?? [];
   if (!profile) return null;
   if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
 
@@ -63,6 +66,7 @@ export default function TenantUsersScreen() {
       setUsername("");
       setStaffEmail("");
       setPassword("");
+      setStaffRole("STAFF");
       setStaffBranchId(undefined);
       setCanManageChildPrograms(false);
       setCanManageDevelopmentCategories(false);
@@ -102,6 +106,14 @@ export default function TenantUsersScreen() {
     setEditingStaff(null);
     setEditFormError(null);
   };
+  const openBranchFilter = () => {
+    setDraftFilterBranchId(filterBranchId);
+    setBranchFilterVisible(true);
+  };
+  const applyBranchFilter = () => {
+    setFilterBranchId(draftFilterBranchId);
+    setBranchFilterVisible(false);
+  };
   const submitStaffEdit = async () => {
     if (!editingStaff?.userId) return;
     if (!editDisplayName.trim() || !editEmail.trim() || !editBranchId) return setEditFormError(t("tenantUsers.staffAccountUpdateRequired"));
@@ -128,10 +140,7 @@ export default function TenantUsersScreen() {
     {membership?.active === false && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
     {canManage && <Button variant="secondary" onPress={() => router.push("/staff-passwords")}>{t("tenantUsers.managePasswords")}</Button>}
     {canManage && <Button variant="secondary" onPress={() => setSheet("parent")}>{t("tenantUsers.parentInvitation")}</Button>}
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
-      <BranchTab label={t("branchFilter.allBranches")} selected={!filterBranchId} onPress={() => setFilterBranchId(undefined)} />
-      {branches.data?.map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
-    </ScrollView>
+    <Button variant="secondary" onPress={openBranchFilter}>{t(filterBranchId ? "branchFilter.active" : "branchFilter.title")}</Button>
     <AppText variant="heading">{t("tenantUsers.accounts")}</AppText>
     {tenantUsers.isFetching && <ShimmerList variant="row" />}
     {tenantUsers.isError && <View style={styles.feedback}><AppText accessibilityRole="alert" tone="danger">{t("common.error")}</AppText><Button variant="secondary" onPress={() => tenantUsers.refetch()}>{t("common.retry")}</Button></View>}
@@ -147,14 +156,21 @@ export default function TenantUsersScreen() {
         <Button variant="danger" loading={deactivateTenantUser.isPending} onPress={() => void deactivate(item.userId!)}>{t("tenantUsers.deactivate")}</Button>
       </View>}
     </View>)}
-    <BottomSheet visible={sheet === "staff"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("tenantUsers.createStaffAccount")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("tenantUsers.createStaffAccount"), loading: createTenantUser.isPending, onPress: () => void submitStaffAccount() }}>
+    <BottomSheet visible={branchFilterVisible} onClose={() => setBranchFilterVisible(false)} closeAccessibilityLabel={t("common.close")} title={t("branchFilter.title")} negativeAction={{ label: t("common.cancel"), onPress: () => setBranchFilterVisible(false) }} positiveAction={{ label: t("common.ok"), onPress: applyBranchFilter }}>
+      <AppText variant="label">{t("branchFilter.branch")}</AppText>
+      <View style={styles.options}>
+        <Button variant={!draftFilterBranchId ? "primary" : "secondary"} onPress={() => setDraftFilterBranchId(undefined)}>{t("branchFilter.allBranches")}</Button>
+        {branches.data?.map((branch) => <Button key={branch.id} variant={draftFilterBranchId === branch.id ? "primary" : "secondary"} onPress={() => setDraftFilterBranchId(branch.id)}>{branch.name}</Button>)}
+      </View>
+    </BottomSheet>
+    <BottomSheet visible={sheet === "staff"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("tenantUsers.createStaffAccount")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("tenantUsers.createStaffAccount"), disabled: staffRole === "STAFF" && activeBranches.length === 0, loading: createTenantUser.isPending, onPress: () => void submitStaffAccount() }}>
       {staffFormError && <AppText accessibilityRole="alert" tone="danger">{staffFormError}</AppText>}
       <TextInput style={styles.input} autoCapitalize="words" placeholder={t("tenantUsers.displayName")} value={displayName} onChangeText={(value) => { setDisplayName(capitalizeWords(value)); setStaffFormError(null); }} />
       <TextInput style={styles.input} autoCapitalize="none" placeholder={t("tenantUsers.username")} value={username} onChangeText={(value) => { setUsername(value); setStaffFormError(null); }} />
       <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder={t("tenantUsers.email")} value={staffEmail} onChangeText={(value) => { setStaffEmail(value); setStaffFormError(null); }} />
       <PasswordInput placeholder={t("tenantUsers.password")} value={password} onChangeText={(value) => { setPassword(value); setStaffFormError(null); }} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
       <View style={styles.options}>{staffRoles.map((item) => <Button key={item} variant={item === staffRole ? "primary" : "secondary"} onPress={() => { setStaffRole(item); setStaffFormError(null); }}>{t(roleKey(item))}</Button>)}</View>
-      {staffRole === "STAFF" && <><AppText variant="label">{t("tenantUsers.branch")}</AppText><View style={styles.options}>{branches.data?.filter((branch) => branch.active).map((branch) => <Button key={branch.id} variant={branch.id === staffBranchId ? "primary" : "secondary"} onPress={() => { setStaffBranchId(branch.id); setStaffFormError(null); }}>{branch.name}</Button>)}</View><ToggleSwitch label={t("tenantUsers.programPermission")} description={t("tenantUsers.programPermissionDescription")} value={canManageChildPrograms} onValueChange={setCanManageChildPrograms} accessibilityLabel={t("tenantUsers.programPermission")} /><ToggleSwitch label={t("tenantUsers.developmentCategoryPermission")} description={t("tenantUsers.developmentCategoryPermissionDescription")} value={canManageDevelopmentCategories} onValueChange={setCanManageDevelopmentCategories} accessibilityLabel={t("tenantUsers.developmentCategoryPermission")} /></>}
+      {staffRole === "STAFF" && <><AppText variant="label">{t("tenantUsers.branch")}</AppText>{activeBranches.length === 0 ? <AppText accessibilityRole="alert" tone="danger">{t("tenantUsers.branchRequired")}</AppText> : <View style={styles.options}>{activeBranches.map((branch) => <Button key={branch.id} variant={branch.id === staffBranchId ? "primary" : "secondary"} onPress={() => { setStaffBranchId(branch.id); setStaffFormError(null); }}>{branch.name}</Button>)}</View>}<ToggleSwitch label={t("tenantUsers.programPermission")} description={t("tenantUsers.programPermissionDescription")} value={canManageChildPrograms} onValueChange={setCanManageChildPrograms} accessibilityLabel={t("tenantUsers.programPermission")} /><ToggleSwitch label={t("tenantUsers.developmentCategoryPermission")} description={t("tenantUsers.developmentCategoryPermissionDescription")} value={canManageDevelopmentCategories} onValueChange={setCanManageDevelopmentCategories} accessibilityLabel={t("tenantUsers.developmentCategoryPermission")} /></>}
     </BottomSheet>
     <BottomSheet visible={sheet === "edit"} onClose={closeEditStaff} closeAccessibilityLabel={t("common.close")} title={t("tenantUsers.editStaffAccount")} negativeAction={{ label: t("common.cancel"), onPress: closeEditStaff }} positiveAction={{ label: t("tenantUsers.saveStaffAccount"), loading: updateTenantUser.isPending, onPress: () => void submitStaffEdit() }}>
       {editFormError && <AppText accessibilityRole="alert" tone="danger">{editFormError}</AppText>}
@@ -173,23 +189,10 @@ export default function TenantUsersScreen() {
   </AppScreen>;
 }
 
-function BranchTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}>
-    <AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText>
-  </Pressable>;
-}
-
 const styles = StyleSheet.create({
   form: { gap: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface },
   feedback: { gap: spacing.sm },
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   user: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint },
-  tabsScroll: { flexGrow: 0, flexShrink: 0 },
-  tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" },
-  activeTab: { borderBottomColor: colors.primary },
-  tabText: { color: colors.muted },
-  activeTabText: { color: colors.primary },
-  pressedTab: { opacity: 0.72 },
 });
