@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ConsentDefinition, ConsentPurpose, CreateConsentDefinitionInput } from "@daycare/api-client";
 import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
@@ -35,7 +36,7 @@ export default function ConsentDefinitionsScreen() {
   const submit = () => { if (!draft.title.trim() || !draft.content.trim()) { setError(t("consent.definitionFailed")); return; } save.mutate(); };
 
   if (!profile || !canManage) return <Redirect href="/home" />;
-  return <AppScreen showBottomNavigation={false} title={t("consent.staffTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton accessibilityLabel={t("consent.add")} onPress={openCreate}>+ {t("consent.add")}</FloatingActionButton>}><View style={styles.content}>
+  return <AppScreen showBottomNavigation={false} title={t("consent.staffTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} headerAction={<Pressable accessibilityRole="button" accessibilityLabel={t("consent.informationAction")} hitSlop={spacing.sm} onPress={() => router.push("/consent-information" as never)} style={({ pressed }) => [styles.informationAction, pressed && styles.informationActionPressed]}><Ionicons name="information-circle-outline" size={28} color={colors.primary} /></Pressable>} floatingAction={<FloatingActionButton accessibilityLabel={t("consent.add")} onPress={openCreate}>+ {t("consent.add")}</FloatingActionButton>}><View style={styles.content}>
     <AppText tone="muted">{t("consent.staffDescription")}</AppText>
     {error && <AppText tone="danger">{error}</AppText>}
     {definitions.isFetching && <ShimmerList />}
@@ -46,4 +47,4 @@ export default function ConsentDefinitionsScreen() {
   </View></BottomSheet></AppScreen>;
 }
 
-const styles = StyleSheet.create({ content: { gap: spacing.md }, card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, form: { gap: spacing.sm }, purposes: { gap: spacing.xs }, input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, multiline: { minHeight: 120, paddingTop: spacing.sm, textAlignVertical: "top" } });
+const styles = StyleSheet.create({ content: { gap: spacing.md }, card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, form: { gap: spacing.sm }, purposes: { gap: spacing.xs }, input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, multiline: { minHeight: 120, paddingTop: spacing.sm, textAlignVertical: "top" }, informationAction: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.pill }, informationActionPressed: { opacity: 0.76, backgroundColor: colors.surfaceTint } });
