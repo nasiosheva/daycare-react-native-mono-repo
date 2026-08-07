@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { hasInstitutionCapability, type InstitutionCapability } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
+import { hasBranchOfferingCapability } from "./offeringCapabilities";
+
+export { hasBranchOfferingCapability } from "./offeringCapabilities";
 
 export function useUiAccessContext(enabled = true) {
   const { api, organizationId } = useAuth();

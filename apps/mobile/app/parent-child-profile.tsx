@@ -9,6 +9,7 @@ import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { notify } from "@/notify/notify";
+import { hasBranchOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 import { hasInstitutionCapability } from "@daycare/core";
 
 export default function ParentChildProfileScreen() {
@@ -19,8 +20,10 @@ export default function ParentChildProfileScreen() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const hasDaycareOperations = hasInstitutionCapability(membership?.capabilities ?? [], "DAYCARE_OPERATIONS");
+  const access = useUiAccessContext(Boolean(membership));
   const childProfile = useQuery({ queryKey: ["parent-child-profile", organizationId, childId], queryFn: () => api.parentChildProfile(childId!), enabled: Boolean(childId && membership?.role === "PARENT") });
+  const hasDaycareOperations = hasInstitutionCapability(membership?.capabilities ?? [], "DAYCARE_OPERATIONS");
+  const hasDaycarePickupOperations = hasBranchOfferingCapability(access.data, childProfile.data?.child.branchId, "DAYCARE_OPERATIONS");
   const feedback = useMutation({ mutationFn: ({ programId, note }: { programId: string; note: string }) => api.addParentChildProgramFeedback(childId!, programId, note), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["parent-child-profile", organizationId, childId] }) });
   const [feedbackProgramId, setFeedbackProgramId] = useState<string | null>(null);
   const [feedbackNote, setFeedbackNote] = useState("");
@@ -45,7 +48,7 @@ export default function ParentChildProfileScreen() {
     {childProfile.data && <>
       <View style={styles.card}><AppText variant="h5">{childProfile.data.child.fullName}</AppText><AppText tone="muted">{childProfile.data.child.gender === "MALE" ? t("children.genderMale") : childProfile.data.child.gender === "FEMALE" ? t("children.genderFemale") : t("children.genderUnspecified")}</AppText><AppText tone="muted">{childProfile.data.child.dateOfBirth}</AppText>{childProfile.data.child.nisn && <AppText tone="muted">{t("children.nisn")}: {childProfile.data.child.nisn}</AppText>}</View>
       <View style={styles.card}><AppText variant="h5">{t("branch.location")}</AppText><AppText variant="label">{childProfile.data.branch.name}</AppText><AppText tone="muted">{childProfile.data.branch.fullAddress ?? t("branch.locationUnavailable")}</AppText>{childProfile.data.branch.googleMapsUrl && <Button variant="secondary" onPress={() => void openMaps()}>{t("branch.openGoogleMaps")}</Button>}</View>
-      <View style={styles.card}><AppText variant="h5">{t("pickup.title")}</AppText><Button variant="secondary" onPress={() => router.push({ pathname: "/pickup-authorizations", params: { childId } } as never)}>{t("pickup.manage")}</Button></View>
+      {hasDaycarePickupOperations && <View style={styles.card}><AppText variant="h5">{t("pickup.title")}</AppText><Button variant="secondary" onPress={() => router.push({ pathname: "/pickup-authorizations", params: { childId } } as never)}>{t("pickup.manage")}</Button></View>}
       <View style={styles.card}><AppText variant="h5">{t("emergencyContacts.title")}</AppText><Button variant="secondary" onPress={() => router.push({ pathname: "/emergency-contacts", params: { childId } } as never)}>{t("emergencyContacts.manage")}</Button></View>
       {hasDaycareOperations && <View style={styles.card}><AppText variant="h5">{t("consent.title")}</AppText><Button variant="secondary" onPress={() => router.push({ pathname: "/child-consents", params: { childId } } as never)}>{t("consent.title")}</Button></View>}
       <View style={styles.card}><AppText variant="h5">{t("children.classroom")}</AppText>{childProfile.data.placement ? <><AppText variant="label">{childProfile.data.placement.classroomName}</AppText><AppText tone="muted">{childProfile.data.placement.learningLevelName ?? t("common.noData")}</AppText></> : <AppText tone="muted">{t("common.noData")}</AppText>}</View>
