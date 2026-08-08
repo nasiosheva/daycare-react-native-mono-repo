@@ -30,6 +30,7 @@ import com.daycare.api.domain.TenantSubscriptionPlan
 import com.daycare.api.domain.TenantSubscriptionStatus
 import com.daycare.api.domain.EducationEnrollmentMode
 import com.daycare.api.domain.EducationOfferingStatus
+import com.daycare.api.domain.EmergencyContactStatus
 import com.daycare.api.domain.PickupAuthorizationStatus
 import com.daycare.api.domain.PickupVerificationMethod
 import com.daycare.api.domain.ConsentPurpose
@@ -657,7 +658,12 @@ class EmergencyContact(
     @Column(nullable = false, length = 160) var name: String = "",
     @Column(nullable = false, length = 100) var relationship: String = "",
     @Column(nullable = false, length = 32) var phoneNumber: String = "",
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 40) var status: EmergencyContactStatus = EmergencyContactStatus.ACTIVE,
+    @Column(name = "effective_until") var effectiveUntil: Instant? = null,
     @Column(name = "created_by_user_id", nullable = false) var createdByUserId: UUID = UUID.randomUUID(),
+    @Column(name = "revoked_by_user_id") var revokedByUserId: UUID? = null,
+    @Column(name = "revoked_at") var revokedAt: Instant? = null,
+    @Column(name = "revocation_reason", length = 500) var revocationReason: String? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 

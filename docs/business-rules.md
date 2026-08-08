@@ -1863,16 +1863,22 @@ memerlukan membership aktif; tidak ada read-only historis untuk penjemputan.
 
 **Fondasi kontak darurat saat ini:** `EmergencyContact` adalah resource terpisah
 dari `GuardianLink` dan `PickupAuthorization`, berisi nama, hubungan, nomor
-telepon, pembuat, dan audit. Parent terkait dapat membuat/menghapus kontak yang
-dibuatnya sendiri; Staff Admin dapat membaca dan menghapus kontak dalam child
-scope. Kontak darurat tidak memberi hak masuk akun, hak pickup, atau hak consent.
+telepon, pembuat, dan audit. Kontak juga membawa `status`
+(`ACTIVE`/`EXPIRED`/`REVOKED`) dan `effectiveUntil` opsional: kontak yang masa
+berlakunya lewat dilaporkan `EXPIRED` secara otomatis (dihitung saat dibaca,
+tanpa job terjadwal) tanpa mengubah data tersimpan, dan wali yang membuat kontak
+atau Staff Admin dapat menonaktifkannya secara eksplisit (`REVOKED`) dengan
+alasan wajib—sebagai alternatif tidak-destruktif dari menghapus permanen. Parent
+terkait dapat membuat, menonaktifkan, atau menghapus kontak yang dibuatnya
+sendiri; Staff Admin dapat membaca, menonaktifkan, dan menghapus kontak dalam
+child scope. Kontak darurat tidak memberi hak masuk akun, hak pickup, atau hak
+consent.
 
 **Target yang belum dibangun:** grant eksplisit `MANAGE_PICKUP`/`PICKUP_VERIFY`,
-status/masa berlaku kontak darurat, idempotency key/correlation ID, serta witness
-atau second approver yang dikendalikan policy offering. Hingga grant tersedia,
-Parent terkait menggantikan `MANAGE_PICKUP` dan child scope Staff menggantikan
-`PICKUP_VERIFY` untuk V1; ini tidak boleh diperluas ke child lain atau tenant
-lain.
+idempotency key/correlation ID, serta witness atau second approver yang
+dikendalikan policy offering. Hingga grant tersedia, Parent terkait menggantikan
+`MANAGE_PICKUP` dan child scope Staff menggantikan `PICKUP_VERIFY` untuk V1; ini
+tidak boleh diperluas ke child lain atau tenant lain.
 
 - `GuardianLink`, `EmergencyContact`, dan `PickupAuthorization` adalah entity
   berbeda. Satu orang dapat direferensikan oleh lebih dari satu entity, tetapi

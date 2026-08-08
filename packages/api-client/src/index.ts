@@ -100,8 +100,9 @@ export type PickupAuthorizationStatus = "PENDING_VERIFICATION" | "ACTIVE" | "SUS
 export type PickupVerificationMethod = "PHOTO_ID" | "KNOWN_TO_GUARDIAN" | "OTHER";
 export type PickupAuthorization = { id: string; childId: string; pickupPersonName: string; relationship: string; verificationMethod: PickupVerificationMethod; status: PickupAuthorizationStatus; effectiveFrom: string; effectiveUntil?: string | null; createdAt: string; canRevoke: boolean };
 export type CreatePickupAuthorizationInput = { pickupPersonName: string; relationship: string; verificationMethod: PickupVerificationMethod; effectiveFrom?: string; effectiveUntil?: string };
-export type EmergencyContact = { id: string; childId: string; name: string; relationship: string; phoneNumber: string; canRemove: boolean };
-export type CreateEmergencyContactInput = { name: string; relationship: string; phoneNumber: string };
+export type EmergencyContactStatus = "ACTIVE" | "EXPIRED" | "REVOKED";
+export type EmergencyContact = { id: string; childId: string; name: string; relationship: string; phoneNumber: string; status: EmergencyContactStatus; effectiveUntil?: string | null; canRemove: boolean; canRevoke: boolean };
+export type CreateEmergencyContactInput = { name: string; relationship: string; phoneNumber: string; effectiveUntil?: string };
 export type ConsentPurpose = "MEDIA_MARKETING" | "HEALTH_EMERGENCY" | "MEDICATION" | "OUTING" | "PICKUP";
 export type ConsentStatus = "PENDING" | "GRANTED" | "DECLINED" | "WITHDRAWN" | "EXPIRED" | "SUPERSEDED";
 export type ConsentDefinition = { id: string; purpose: ConsentPurpose; title: string; content: string; revision: number; active: boolean };
@@ -481,6 +482,7 @@ export class ApiClient {
   async emergencyContacts(childId: string): Promise<EmergencyContact[]> { return this.request(`/children/${childId}/emergency-contacts`); }
   async createEmergencyContact(childId: string, input: CreateEmergencyContactInput): Promise<EmergencyContact> { return this.request(`/children/${childId}/emergency-contacts`, { method: "POST", body: JSON.stringify(input) }); }
   async removeEmergencyContact(childId: string, contactId: string): Promise<void> { await this.request<void>(`/children/${childId}/emergency-contacts/${contactId}`, { method: "DELETE" }); }
+  async revokeEmergencyContact(childId: string, contactId: string, reason: string): Promise<EmergencyContact> { return this.request(`/children/${childId}/emergency-contacts/${contactId}/revoke`, { method: "POST", body: JSON.stringify({ reason }) }); }
   async consentDefinitions(): Promise<ConsentDefinition[]> { return this.request("/consent-definitions"); }
   async managedConsentDefinitions(): Promise<ConsentDefinition[]> { return this.request("/consent-definitions/manage"); }
   async createConsentDefinition(input: CreateConsentDefinitionInput): Promise<ConsentDefinition> { return this.request("/consent-definitions", { method: "POST", body: JSON.stringify(input) }); }
