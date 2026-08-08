@@ -21,6 +21,7 @@ enum class EmergencyContactStatus { ACTIVE, EXPIRED, REVOKED }
 enum class PickupVerificationMethod { PHOTO_ID, KNOWN_TO_GUARDIAN, OTHER }
 enum class ConsentPurpose { MEDIA_MARKETING, HEALTH_EMERGENCY, MEDICATION, OUTING, PICKUP }
 enum class ConsentStatus { PENDING, GRANTED, DECLINED, WITHDRAWN, EXPIRED, SUPERSEDED }
+enum class ConsentDefinitionScope { TENANT, BRANCH, OFFERING }
 enum class ChildAbsencePurpose { SICK, OUT_OF_TOWN, FAMILY_EVENT, EMERGENCY, OTHER }
 enum class ChildAbsenceRequestStatus { PENDING, APPROVED, REJECTED, CANCELLED }
 enum class IncidentSeverity { MINOR, MODERATE, SERIOUS }

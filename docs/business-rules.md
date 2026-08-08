@@ -1946,11 +1946,22 @@ memakai `ConsentRecord` V1 sebagai allowlist; tujuan consent di UI hanya
 menjelaskan jenis policy yang kelak akan dipasangkan. Dengan demikian tidak ada
 putusan Parent yang secara keliru terlihat sebagai izin operasional atau klinis.
 
-**Target yang belum dibangun:** `GuardianAuthority`, scope cabang/offering,
-evidence, resolver konflik antar-guardian, idempotency/correlation key formal,
-serta `HEALTH_EMERGENCY_OVERRIDE`. Sebelum seluruh target ini dibangun dan
-diterapkan pada endpoint tindakan, status consent tidak boleh dipakai untuk
-mengizinkan atau menolak tindakan sensitif.
+**Implementasi tambahan saat ini:** `ConsentDefinition` membawa `scope`
+eksplisit (`TENANT`/`BRANCH`/`OFFERING`, wajib diisi sesuai mode saat dibuat,
+diverifikasi merujuk branch/offering milik tenant yang sama) dan `effectiveUntil`
+opsional; keduanya immutable setelah dibuat, sama seperti `purpose`. Parent
+hanya melihat definisi yang cocok dengan cabang anaknya untuk scope
+`BRANCH`/`OFFERING`. Consent yang `GRANTED` dilaporkan `EXPIRED` secara otomatis
+begitu `effectiveUntil` lewat (dihitung saat dibaca, tanpa mengubah status
+tersimpan), dan revisi atau reaktivasi definisi menandai record `GRANTED`/
+`DECLINED` pada revision lama sebagai `SUPERSEDED`.
+
+**Target yang belum dibangun:** `GuardianAuthority` (termasuk validasi bahwa
+tindakan aktual terjadi dalam scope definition), evidence, resolver konflik
+antar-guardian, idempotency/correlation key formal, serta
+`HEALTH_EMERGENCY_OVERRIDE`. Sebelum seluruh target ini dibangun dan diterapkan
+pada endpoint tindakan, status consent tidak boleh dipakai untuk mengizinkan
+atau menolak tindakan sensitif.
 
 - Kontrak V1 memakai `GET /consent-definitions/manage`, `POST
   /consent-definitions`, `PUT /consent-definitions/{definitionId}`, dan `POST
@@ -1967,11 +1978,12 @@ mengizinkan atau menolak tindakan sensitif.
 
 - `ConsentDefinition` bersifat tenant-scoped dan membawa revision serta scope
   eksplisit `TENANT`, `BRANCH`, atau `OFFERING`; scope cabang/offering wajib
-  diisi bila mode tersebut dipilih. `ConsentRecord` menyimpan child, purpose,
-  `definitionRevision` dan text snapshot, guardian yang berwenang, status,
-  periode efektif, evidence, actor, serta audit. Server memvalidasi bahwa
-  tindakan dan `GuardianAuthority` terjadi dalam scope definition; `null` tidak
-  boleh diam-diam berarti tenant-wide.
+  diisi bila mode tersebut dipilih dan `null` tidak diam-diam berarti
+  tenant-wide. `ConsentRecord` menyimpan child, purpose, `definitionRevision`
+  dan text snapshot, guardian yang berwenang, status, waktu keputusan/penarikan,
+  serta audit. Evidence, periode efektif per-record, dan actor formal masih
+  target; validasi bahwa **tindakan** (bukan sekadar visibility definisi)
+  terjadi dalam scope masih menunggu `GuardianAuthority`.
 - Purpose minimum adalah media/foto, tindakan medis darurat, pemberian obat,
   perjalanan/kegiatan luar, dan penjemputan. Consent media marketing tidak
   sama dengan izin foto bukti insiden atau media operasional internal.

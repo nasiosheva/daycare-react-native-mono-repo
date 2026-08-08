@@ -35,6 +35,7 @@ import com.daycare.api.domain.PickupAuthorizationStatus
 import com.daycare.api.domain.PickupVerificationMethod
 import com.daycare.api.domain.ConsentPurpose
 import com.daycare.api.domain.ConsentStatus
+import com.daycare.api.domain.ConsentDefinitionScope
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -670,7 +671,7 @@ class EmergencyContact(
 )
 
 @Entity @Table(name = "consent_definitions")
-class ConsentDefinition(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Enumerated(EnumType.STRING) @Column(nullable = false) var purpose: ConsentPurpose = ConsentPurpose.MEDIA_MARKETING, @Column(nullable = false, length = 160) var title: String = "", @Column(nullable = false, length = 4000) var content: String = "", @Column(nullable = false) var revision: Int = 1, @Column(nullable = false) var active: Boolean = true, @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now())
+class ConsentDefinition(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Enumerated(EnumType.STRING) @Column(nullable = false) var purpose: ConsentPurpose = ConsentPurpose.MEDIA_MARKETING, @Column(nullable = false, length = 160) var title: String = "", @Column(nullable = false, length = 4000) var content: String = "", @Column(nullable = false) var revision: Int = 1, @Column(nullable = false) var active: Boolean = true, @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) var scope: ConsentDefinitionScope = ConsentDefinitionScope.TENANT, @Column(name = "branch_id") var branchId: UUID? = null, @Column(name = "offering_id") var offeringId: UUID? = null, @Column(name = "effective_until") var effectiveUntil: Instant? = null, @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now())
 
 @Entity @Table(name = "consent_records")
 class ConsentRecord(@Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(), @Column(name = "definition_id", nullable = false) var definitionId: UUID = UUID.randomUUID(), @Enumerated(EnumType.STRING) @Column(nullable = false) var status: ConsentStatus = ConsentStatus.PENDING, @Column(name = "definition_revision", nullable = false) var definitionRevision: Int = 1, @Column(name = "title_snapshot", nullable = false, length = 160) var titleSnapshot: String = "", @Column(name = "content_snapshot", nullable = false, length = 4000) var contentSnapshot: String = "", @Column(name = "guardian_user_id", nullable = false) var guardianUserId: UUID = UUID.randomUUID(), @Column(name = "decided_at") var decidedAt: Instant? = null, @Column(name = "withdrawn_at") var withdrawnAt: Instant? = null, @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now())
