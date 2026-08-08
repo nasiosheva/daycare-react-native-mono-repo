@@ -14,6 +14,6 @@ export function hasOfferingCapability(context: ReturnType<typeof useUiAccessCont
   return context?.offerings.some((offering) => hasInstitutionCapability(offering.capabilities, capability)) ?? false;
 }
 
-export function hasLegacyLearningAccess(capabilities: readonly InstitutionCapability[] | undefined, context: ReturnType<typeof useUiAccessContext>["data"]) {
-  return hasInstitutionCapability(capabilities ?? [], "DAYCARE_OPERATIONS") || hasOfferingCapability(context, "ACADEMIC_CURRICULUM");
+export function hasLegacyLearningAccess(_capabilities: readonly InstitutionCapability[] | undefined, context: ReturnType<typeof useUiAccessContext>["data"]) {
+  return hasOfferingCapability(context, "DAYCARE_OPERATIONS") || hasOfferingCapability(context, "ACADEMIC_CURRICULUM");
 }

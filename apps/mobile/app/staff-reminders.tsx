@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { hasInstitutionCapability, staffReminderTargets, type StaffReminderTarget } from "@daycare/core";
+import { staffReminderTargets, type StaffReminderTarget } from "@daycare/core";
 import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import type { StaffReminder } from "@daycare/api-client";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -12,6 +12,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import type { TranslationKey } from "@/i18n/translations";
 import { staffReminderQueryKey, useStaffReminders } from "@/reminders/useStaffReminders";
 import { DatePicker } from "@/date-picker/DatePicker";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 const weekdays = [1, 2, 3, 4, 5, 6, 7] as const;
 const weekdayKeys = ["reminders.monday", "reminders.tuesday", "reminders.wednesday", "reminders.thursday", "reminders.friday", "reminders.saturday", "reminders.sunday"] as const;
@@ -22,6 +23,7 @@ export default function StaffRemindersScreen() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const access = useUiAccessContext(Boolean(membership));
   const canManage = membership?.role === "STAFF" && membership.active;
   const reminders = useStaffReminders(membership?.role === "STAFF");
   const refresh = () => void queryClient.invalidateQueries({ queryKey: staffReminderQueryKey(organizationId) });
@@ -36,7 +38,7 @@ export default function StaffRemindersScreen() {
   const [time, setTime] = useState("17:00");
   const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [target, setTarget] = useState<StaffReminderTarget>("HOME");
-  const targets = useMemo(() => staffReminderTargets.filter((item) => item !== "BOOKING_APPROVALS" || hasInstitutionCapability(membership?.capabilities, "DAYCARE_OPERATIONS")), [membership?.capabilities]);
+  const targets = useMemo(() => staffReminderTargets.filter((item) => item !== "BOOKING_APPROVALS" || hasOfferingCapability(access.data, "DAYCARE_OPERATIONS")), [access.data]);
 
   useEffect(() => {
     if (!editingReminder) return;

@@ -43,7 +43,6 @@ class TenantReadinessServiceTest {
     private val access = mock(AccessService::class.java)
     private val platformAccess = mock(PlatformAccessService::class.java)
     private val organizations = mock(OrganizationRepository::class.java)
-    private val organizationTypes = mock(OrganizationTypeAssignmentRepository::class.java)
     private val educationOfferings = mock(EducationOfferingRepository::class.java)
     private val subscriptions = mock(TenantSubscriptionRepository::class.java)
     private val memberships = mock(MembershipRepository::class.java)
@@ -60,7 +59,7 @@ class TenantReadinessServiceTest {
         val tenant = Organization(name = "Usia Emas")
         val branch = Branch(organizationId = tenant.id, name = "Utama")
         defaults(listOf(tenant))
-        `when`(organizationTypes.findAll()).thenReturn(listOf(OrganizationTypeAssignment(organizationId = tenant.id, type = "DAYCARE")))
+        `when`(educationOfferings.findAll()).thenReturn(listOf(EducationOffering(organizationId = tenant.id, branchId = branch.id, institutionType = "DAYCARE", status = EducationOfferingStatus.PUBLISHED)))
         `when`(subscriptions.findAll()).thenReturn(listOf(TenantSubscription(organizationId = tenant.id, status = TenantSubscriptionStatus.ACTIVE)))
         `when`(memberships.findAll()).thenReturn(listOf(Membership(organizationId = tenant.id, role = Role.STAFF_ADMIN, active = true)))
         `when`(branches.findAll()).thenReturn(listOf(branch))
@@ -79,7 +78,7 @@ class TenantReadinessServiceTest {
     }
 
     @Test
-    fun `reports every missing Daycare configuration`() {
+    fun `does not require Daycare configuration before a Daycare offering is published`() {
         val tenant = Organization(name = "Belum Lengkap")
         defaults(listOf(tenant))
 
@@ -91,9 +90,6 @@ class TenantReadinessServiceTest {
                 TenantReadinessIssue.SUBSCRIPTION_NOT_ACTIVE,
                 TenantReadinessIssue.STAFF_ADMIN_REQUIRED,
                 TenantReadinessIssue.ACTIVE_BRANCH_REQUIRED,
-                TenantReadinessIssue.ACTIVE_CLASSROOM_REQUIRED,
-                TenantReadinessIssue.ACTIVE_SERVICE_PLAN_REQUIRED,
-                TenantReadinessIssue.PAYMENT_INSTRUCTION_REQUIRED,
             ),
             response.issues,
         )
@@ -104,7 +100,6 @@ class TenantReadinessServiceTest {
         val tenant = Organization(name = "TK Ceria")
         val branch = Branch(organizationId = tenant.id, name = "Utama")
         defaults(listOf(tenant))
-        `when`(organizationTypes.findAll()).thenReturn(listOf(OrganizationTypeAssignment(organizationId = tenant.id, type = "TK")))
         `when`(subscriptions.findAll()).thenReturn(listOf(TenantSubscription(organizationId = tenant.id, status = TenantSubscriptionStatus.TRIAL)))
         `when`(memberships.findAll()).thenReturn(listOf(Membership(organizationId = tenant.id, role = Role.STAFF_ADMIN, active = true)))
         `when`(branches.findAll()).thenReturn(listOf(branch))
@@ -121,7 +116,6 @@ class TenantReadinessServiceTest {
         val tenant = Organization(name = "SMP Harapan")
         val branch = Branch(organizationId = tenant.id, name = "Utama")
         defaults(listOf(tenant))
-        `when`(organizationTypes.findAll()).thenReturn(listOf(OrganizationTypeAssignment(organizationId = tenant.id, type = "SMP")))
         `when`(subscriptions.findAll()).thenReturn(listOf(TenantSubscription(organizationId = tenant.id, status = TenantSubscriptionStatus.ACTIVE)))
         `when`(memberships.findAll()).thenReturn(listOf(Membership(organizationId = tenant.id, role = Role.STAFF_ADMIN, active = true)))
         `when`(branches.findAll()).thenReturn(listOf(branch))
@@ -137,7 +131,6 @@ class TenantReadinessServiceTest {
         val tenant = Organization(name = "TK Ceria")
         val branch = Branch(organizationId = tenant.id, name = "Utama")
         defaults(listOf(tenant))
-        `when`(organizationTypes.findAll()).thenReturn(listOf(OrganizationTypeAssignment(organizationId = tenant.id, type = "TK")))
         `when`(subscriptions.findAll()).thenReturn(listOf(TenantSubscription(organizationId = tenant.id, status = TenantSubscriptionStatus.ACTIVE)))
         `when`(memberships.findAll()).thenReturn(listOf(Membership(organizationId = tenant.id, role = Role.STAFF_ADMIN, active = true)))
         `when`(branches.findAll()).thenReturn(listOf(branch))
@@ -154,7 +147,10 @@ class TenantReadinessServiceTest {
         val configuredBranch = Branch(organizationId = tenant.id, name = "Utama")
         val missingCapacityBranch = Branch(organizationId = tenant.id, name = "Timur")
         defaults(listOf(tenant))
-        `when`(organizationTypes.findAll()).thenReturn(listOf(OrganizationTypeAssignment(organizationId = tenant.id, type = "DAYCARE")))
+        `when`(educationOfferings.findAll()).thenReturn(listOf(
+            EducationOffering(organizationId = tenant.id, branchId = configuredBranch.id, institutionType = "DAYCARE", status = EducationOfferingStatus.PUBLISHED),
+            EducationOffering(organizationId = tenant.id, branchId = missingCapacityBranch.id, institutionType = "DAYCARE", status = EducationOfferingStatus.PUBLISHED),
+        ))
         `when`(subscriptions.findAll()).thenReturn(listOf(TenantSubscription(organizationId = tenant.id, status = TenantSubscriptionStatus.ACTIVE)))
         `when`(memberships.findAll()).thenReturn(listOf(Membership(organizationId = tenant.id, role = Role.STAFF_ADMIN, active = true)))
         `when`(branches.findAll()).thenReturn(listOf(configuredBranch, missingCapacityBranch))
@@ -174,7 +170,7 @@ class TenantReadinessServiceTest {
         val tenant = Organization(name = "Daycare Jam Belum Diatur")
         val branch = Branch(organizationId = tenant.id, name = "Utama")
         defaults(listOf(tenant))
-        `when`(organizationTypes.findAll()).thenReturn(listOf(OrganizationTypeAssignment(organizationId = tenant.id, type = "DAYCARE")))
+        `when`(educationOfferings.findAll()).thenReturn(listOf(EducationOffering(organizationId = tenant.id, branchId = branch.id, institutionType = "DAYCARE", status = EducationOfferingStatus.PUBLISHED)))
         `when`(subscriptions.findAll()).thenReturn(listOf(TenantSubscription(organizationId = tenant.id, status = TenantSubscriptionStatus.ACTIVE)))
         `when`(memberships.findAll()).thenReturn(listOf(Membership(organizationId = tenant.id, role = Role.STAFF_ADMIN, active = true)))
         `when`(branches.findAll()).thenReturn(listOf(branch))
@@ -190,7 +186,6 @@ class TenantReadinessServiceTest {
 
     private fun defaults(tenantList: List<Organization>) {
         `when`(organizations.findAll()).thenReturn(tenantList)
-        `when`(organizationTypes.findAll()).thenReturn(emptyList())
         `when`(educationOfferings.findAll()).thenReturn(emptyList())
         `when`(subscriptions.findAll()).thenReturn(emptyList())
         `when`(memberships.findAll()).thenReturn(emptyList())
@@ -202,7 +197,7 @@ class TenantReadinessServiceTest {
         `when`(instructions.findAll()).thenReturn(emptyList())
     }
 
-    private fun service() = TenantReadinessService(access, platformAccess, organizations, organizationTypes, educationOfferings, subscriptions, memberships, branches, classrooms, plans, capacities, operatingHours, instructions)
+    private fun service() = TenantReadinessService(access, platformAccess, organizations, educationOfferings, subscriptions, memberships, branches, classrooms, plans, capacities, operatingHours, instructions)
 
     @Test
     fun `Staff Admin sees needs-attention for a tenant missing core setup`() {

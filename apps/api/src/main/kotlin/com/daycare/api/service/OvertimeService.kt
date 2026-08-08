@@ -62,11 +62,12 @@ class OvertimeService(
     private val identityService: IdentityService,
     private val memberships: MembershipRepository,
     private val organizations: OrganizationRepository,
-    private val organizationCapabilities: OrganizationCapabilitiesService,
+    private val publishedOfferingCapabilities: PublishedOfferingCapabilityService,
 ) {
     @Transactional(readOnly = true)
     fun branchHours(jwt: Jwt, organizationId: UUID, branchId: UUID): BranchOperatingHoursResponse {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
+        publishedOfferingCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branchId)
         return response(requireBranch(branchId, organizationId))
     }
 
@@ -74,6 +75,7 @@ class OvertimeService(
     fun updateBranchHours(jwt: Jwt, organizationId: UUID, branchId: UUID, request: UpdateBranchOperatingHoursRequest): BranchOperatingHoursResponse {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
         val branch = requireBranch(branchId, organizationId)
+        publishedOfferingCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branch.id)
         require(request.hours.size == DayOfWeek.entries.size && request.hours.map { it.dayOfWeek }.toSet().size == DayOfWeek.entries.size) { "Every day of week must be configured" }
         request.hours.forEach { hour -> require(!hour.active || (hour.opensAt != null && hour.closesAt != null && hour.closesAt.isAfter(hour.opensAt))) { "Operating hours are not valid" } }
         hours.deleteAllByBranchId(branchId)
@@ -91,7 +93,9 @@ class OvertimeService(
     fun parentHours(jwt: Jwt, organizationId: UUID): List<BranchOperatingHoursResponse> {
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
         val branchIds = guardians.findAllByUserId(scope.user.id).mapNotNull { link -> children.findById(link.childId).orElse(null)?.takeIf { it.organizationId == organizationId }?.branchId }.toSet()
-        return branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId).filter { it.id in branchIds }.map(::response)
+        return branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId)
+            .filter { it.id in branchIds && publishedOfferingCapabilities.hasPublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, it.id) }
+            .map(::response)
     }
 
     @Transactional(readOnly = true)
@@ -102,7 +106,7 @@ class OvertimeService(
             .mapNotNull { link -> children.findById(link.childId).orElse(null) }
             .filter { it.organizationId in parentOrganizationIds }
             .mapNotNull { child ->
-                if (InstitutionCapability.DAYCARE_OPERATIONS !in organizationCapabilities.forOrganization(child.organizationId).capabilities) return@mapNotNull null
+                if (!publishedOfferingCapabilities.hasPublishedCapability(child.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)) return@mapNotNull null
                 val branch = branches.findById(child.branchId).orElse(null) ?: return@mapNotNull null
                 val organization = organizations.findById(child.organizationId).orElse(null) ?: return@mapNotNull null
                 ParentChildOperatingHoursResponse(
@@ -127,6 +131,7 @@ class OvertimeService(
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
         val child = children.findById(request.childId).orElseThrow { IllegalArgumentException("Child was not found") }
         require(child.organizationId == organizationId) { "Child belongs to a different organization" }
+        publishedOfferingCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)
         require(charges.findAllByOrganizationIdAndChildIdAndOperationalDate(organizationId, child.id, request.operationalDate).none { invoices.findById(it.invoiceId).orElseThrow().status != InvoiceStatus.VOID }) { "Overtime charge already exists" }
         return persistCharge(organizationId, child.id, child.branchId, request, null)
     }
@@ -136,6 +141,7 @@ class OvertimeService(
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
         val charge = charges.findById(chargeId).orElseThrow { IllegalArgumentException("Overtime charge was not found") }
         require(charge.organizationId == organizationId) { "Overtime charge belongs to a different organization" }
+        publishedOfferingCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, charge.branchId)
         val invoice = invoices.findById(charge.invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }
         require(invoice.status == InvoiceStatus.PENDING) { "Overtime charge is not awaiting payment" }
         require(request.childId == charge.childId && request.operationalDate == charge.operationalDate) { "Child and operational date cannot change" }
@@ -147,6 +153,7 @@ class OvertimeService(
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
         val charge = charges.findById(chargeId).orElseThrow { IllegalArgumentException("Overtime charge was not found") }
         require(charge.organizationId == organizationId) { "Overtime charge belongs to a different organization" }
+        publishedOfferingCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, charge.branchId)
         val invoice = invoices.findById(charge.invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }
         require(invoice.status == InvoiceStatus.PENDING) { "Overtime charge is not awaiting payment" }
         invoice.status = InvoiceStatus.VOID
@@ -166,7 +173,7 @@ class OvertimeService(
         openAttendance.forEach { record ->
             val branch = branchesById[record.branchId] ?: return@forEach
             if (tiersByBranch[branch.id].orEmpty().isEmpty()) return@forEach
-            if (InstitutionCapability.DAYCARE_OPERATIONS !in organizationCapabilities.forOrganization(branch.organizationId).capabilities) return@forEach
+            if (!publishedOfferingCapabilities.hasPublishedCapability(branch.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branch.id)) return@forEach
             val zone = runCatching { ZoneId.of(branch.timezone) }.getOrElse { ZoneId.of("UTC") }
             val now = ZonedDateTime.now(zone)
             if (now.toLocalDate() != record.operationalDate) return@forEach

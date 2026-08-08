@@ -176,6 +176,7 @@ export default function TenantDetailScreen() {
     <BottomSheet visible={sheet === "edit"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("tenant.edit")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("common.save"), loading: update.isPending, onPress: () => void save() }}>
       <TextInput style={styles.input} placeholder={t("tenant.name")} value={name} onChangeText={setName} />
       <AppText variant="label">{t("tenant.institutionTypes")}</AppText>
+      <AppText variant="caption" tone="muted">{t("tenant.institutionTypesInfo")}</AppText>
       <View style={styles.actions}>{institutionTypes.data?.map((type) => <Button key={type.code} variant={types.includes(type.code) ? "primary" : "secondary"} onPress={() => setTypes((current) => current.includes(type.code) ? current.filter((item) => item !== type.code) : [...current, type.code])}>{type.name}</Button>)}</View>
       <View style={styles.actions}>{tenantSubscriptionPlans.map((item) => <Button key={item} variant={plan === item ? "primary" : "secondary"} onPress={() => setPlan(item)}>{t(tenantSubscriptionPlanKey(item))}</Button>)}</View>
       <TextInput style={styles.input} keyboardType="numeric" placeholder={t("tenant.monthlyFee")} value={monthlyFee} onChangeText={setMonthlyFee} />

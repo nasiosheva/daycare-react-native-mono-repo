@@ -59,6 +59,7 @@ class AttendanceService(
     private val notifications: NotificationService,
     private val bookingEligibility: BookingEligibilityService,
     private val pickupAuthorizations: PickupAuthorizationService,
+    private val publishedOfferingCapabilities: PublishedOfferingCapabilityService,
 ) {
     @Transactional
     fun listChildren(jwt: Jwt, organizationId: UUID, filter: ChildListFilter = ChildListFilter()): List<ChildResponse> {
@@ -128,10 +129,12 @@ class AttendanceService(
             AttendanceAction.CHECK_OUT -> current?.takeIf { it.checkedInAt != null && it.checkedOutAt == null } ?: throw AttendanceConflict("Child must be checked in before check-out")
         }
         if (command.action == AttendanceAction.CHECK_OUT && record.checkedInAt?.let { eventTime.isBefore(it) } == true) throw IllegalArgumentException("Check-out time cannot be before check-in")
-        if (command.action == AttendanceAction.CHECK_IN && InstitutionCapability.DAYCARE_OPERATIONS in scope.capabilities) bookingEligibility.consumeCheckIn(organizationId, child.id, operationalDate)
+        val hasDaycareOffering = InstitutionCapability.DAYCARE_OPERATIONS in scope.capabilities &&
+            hasPublishedDaycareOffering(organizationId, child.branchId)
+        if (command.action == AttendanceAction.CHECK_IN && hasDaycareOffering) bookingEligibility.consumeCheckIn(organizationId, child.id, operationalDate)
         if (command.action == AttendanceAction.CHECK_IN) { record.checkedInAt = eventTime; record.checkInMethod = command.method.name }
         else {
-            val pickup = if (InstitutionCapability.DAYCARE_OPERATIONS in scope.capabilities) pickupAuthorizations.verifyCheckout(scope, child, command.pickupAuthorizationId, command.pickupExceptionReason) else PickupCheckoutVerification(null, null, null, null)
+            val pickup = if (hasDaycareOffering) pickupAuthorizations.verifyCheckout(scope, child, command.pickupAuthorizationId, command.pickupExceptionReason) else PickupCheckoutVerification(null, null, null, null)
             record.checkedOutAt = eventTime
             record.checkOutMethod = command.method.name
             record.pickupAuthorizationId = pickup.authorizationId
@@ -159,7 +162,7 @@ class AttendanceService(
 
     private fun attendanceContext(scope: AccessScope, child: Child, timezone: String, operationalDate: LocalDate, record: AttendanceRecord?): AttendanceContext? {
         if (scope.membership.role !in setOf(Role.STAFF, Role.STAFF_ADMIN)) return null
-        if (InstitutionCapability.DAYCARE_OPERATIONS !in scope.capabilities) return AttendanceContext(operationalDate, timezone, AttendancePolicy.NONE, emptySet(), "Kehadiran Daycare tidak tersedia untuk lembaga ini")
+        if (InstitutionCapability.DAYCARE_OPERATIONS !in scope.capabilities || !hasPublishedDaycareOffering(child.organizationId, child.branchId)) return AttendanceContext(operationalDate, timezone, AttendancePolicy.NONE, emptySet(), "Kehadiran Daycare tidak tersedia untuk cabang ini")
         if (record?.checkedOutAt != null) return AttendanceContext(operationalDate, timezone, AttendancePolicy.DAYCARE_BOOKING_REQUIRED, emptySet(), "Kehadiran hari ini sudah ditutup")
         if (record?.checkedInAt != null) return AttendanceContext(operationalDate, timezone, AttendancePolicy.DAYCARE_BOOKING_REQUIRED, setOf(AttendanceAction.CHECK_OUT))
         val eligibility = bookingEligibility.checkInEligibility(child.organizationId, child.id, operationalDate)
@@ -171,6 +174,9 @@ class AttendanceService(
             eligibility.reason,
         )
     }
+
+    private fun hasPublishedDaycareOffering(organizationId: UUID, branchId: UUID) =
+        publishedOfferingCapabilities.hasPublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branchId)
 
     private fun validateFilter(organizationId: UUID, filter: ChildListFilter) {
         filter.branchId?.let { branchId ->

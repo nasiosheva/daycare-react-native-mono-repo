@@ -40,13 +40,13 @@ class OvertimeServiceTest {
     private val tiers = mock(BranchOvertimeRateTierRepository::class.java)
     private val attendance = mock(AttendanceRepository::class.java)
     private val notifications = mock(NotificationService::class.java)
-    private val organizationCapabilities = mock(OrganizationCapabilitiesService::class.java)
+    private val publishedOfferings = mock(PublishedOfferingCapabilityService::class.java)
 
     private fun service() = OvertimeService(
         mock(AccessService::class.java), branches, children, guardians, mock(InvoiceRepository::class.java),
         hours, tiers, mock(OvertimeChargeRepository::class.java), mock(OvertimeChargeTierSnapshotRepository::class.java),
         attendance, notifications, mock(IdentityService::class.java), mock(MembershipRepository::class.java),
-        mock(OrganizationRepository::class.java), organizationCapabilities,
+        mock(OrganizationRepository::class.java), publishedOfferings,
     )
 
     @Test
@@ -64,7 +64,7 @@ class OvertimeServiceTest {
         `when`(tiers.findAllByBranchIdIn(setOf(branch.id))).thenReturn(listOf(BranchOvertimeRateTier(branchId = branch.id, durationMinutes = 15, amount = BigDecimal("10000"))))
         `when`(guardians.findAllByChildIdIn(setOf(child.id))).thenReturn(listOf(guardianLink))
         `when`(children.findById(child.id)).thenReturn(Optional.of(child))
-        `when`(organizationCapabilities.forOrganization(organizationId)).thenReturn(OrganizationCapabilities(setOf("DAYCARE"), setOf(InstitutionCapability.DAYCARE_OPERATIONS)))
+        `when`(publishedOfferings.hasPublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branch.id)).thenReturn(true)
 
         service().sendOvertimeAlerts()
 
@@ -86,7 +86,7 @@ class OvertimeServiceTest {
         `when`(branches.findAllById(setOf(branch.id))).thenReturn(listOf(branch))
         `when`(hours.findAllByBranchIdIn(setOf(branch.id))).thenReturn(listOf(BranchOperatingHour(branchId = branch.id, dayOfWeek = now.dayOfWeek, active = true, closesAt = now.toLocalTime().plusHours(2))))
         `when`(tiers.findAllByBranchIdIn(setOf(branch.id))).thenReturn(listOf(BranchOvertimeRateTier(branchId = branch.id, durationMinutes = 15, amount = BigDecimal("10000"))))
-        `when`(organizationCapabilities.forOrganization(organizationId)).thenReturn(OrganizationCapabilities(setOf("DAYCARE"), setOf(InstitutionCapability.DAYCARE_OPERATIONS)))
+        `when`(publishedOfferings.hasPublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branch.id)).thenReturn(true)
 
         service().sendOvertimeAlerts()
 

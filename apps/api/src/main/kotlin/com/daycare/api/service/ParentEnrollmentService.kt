@@ -87,7 +87,6 @@ class ParentEnrollmentService(
     private val access: AccessService,
     private val organizations: OrganizationRepository,
     private val subscriptions: TenantSubscriptionRepository,
-    private val organizationCapabilities: OrganizationCapabilitiesService,
     private val branches: BranchRepository,
     private val plans: ServicePlanRepository,
     private val children: ChildRepository,
@@ -102,6 +101,7 @@ class ParentEnrollmentService(
     private val branchFilters: BranchListFilterService,
     private val paymentInstructions: TenantPaymentInstructionService,
     private val familyProfileVisibility: ParentFamilyProfileVisibilityService,
+    private val publishedOfferingCapabilities: PublishedOfferingCapabilityService,
 ) {
     @Transactional
     fun catalog(jwt: Jwt): List<ParentTenantCatalogResponse> {
@@ -109,11 +109,12 @@ class ParentEnrollmentService(
         return organizations.findAll().mapNotNull { organization ->
             val subscription = subscriptions.findByOrganizationId(organization.id)
             val operational = subscription?.status in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL)
-            if (!operational || InstitutionCapability.DAYCARE_OPERATIONS !in organizationCapabilities.forOrganization(organization.id).capabilities) null
-            else ParentTenantCatalogResponse(
+            val daycareBranches = branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organization.id)
+                .filter { publishedOfferingCapabilities.hasPublishedCapability(organization.id, InstitutionCapability.DAYCARE_OPERATIONS, it.id) }
+            if (!operational || daycareBranches.isEmpty()) null else ParentTenantCatalogResponse(
                 organization.id,
                 organization.name,
-                branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organization.id).map { branch -> ParentTenantBranchResponse(branch.id, branch.name, billingBranchCapacity(organization.id, branch.id)) },
+                daycareBranches.map { branch -> ParentTenantBranchResponse(branch.id, branch.name, billingBranchCapacity(organization.id, branch.id)) },
                 plans.findAllByOrganizationIdAndActiveTrue(organization.id).map { plan -> ParentTenantPlanResponse(plan.id, plan.name, plan.type, plan.price, plan.creditCount, plan.bookingRequiresApproval, plan.dailyCapacity) },
             )
         }
@@ -123,9 +124,9 @@ class ParentEnrollmentService(
     fun checkout(jwt: Jwt, request: ParentEnrollmentCheckoutRequest): List<ParentEnrollmentResponse> {
         val parent = identity.sync(jwt)
         require(memberships.findAllByUserIdAndOrganizationId(parent.id, request.organizationId).none { it.role == Role.PARENT && it.active }) { ParentEnrollmentError.ALREADY_ACTIVE }
-        requireCatalogTenant(request.organizationId)
         val branch = branches.findById(request.branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
         require(branch.organizationId == request.organizationId && branch.active) { "Branch is not available for this organization" }
+        requireCatalogTenant(request.organizationId, branch.id)
         require(request.bookingDates.isEmpty()) { ParentEnrollmentError.BOOKINGS_NOT_ALLOWED }
         val snapshot = billing.quoteEnrollment(request.organizationId, request.planId, request.promoCode)
         val created = request.children.map { childInput ->
@@ -160,6 +161,7 @@ class ParentEnrollmentService(
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
         val enrollment = enrollments.findById(enrollmentId).orElseThrow { IllegalArgumentException(ParentEnrollmentError.NOT_FOUND) }
         require(enrollment.organizationId == organizationId && enrollment.status == ParentEnrollmentStatus.PENDING_APPROVAL) { ParentEnrollmentError.CANNOT_APPROVE }
+        publishedOfferingCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, enrollment.branchId)
         val child = children.findById(enrollment.childId).orElseThrow { IllegalArgumentException("Child was not found") }
         if (request.approved) {
             require(paymentInstructions.hasActiveInstruction(organizationId)) { ParentEnrollmentError.PAYMENT_INSTRUCTION_REQUIRED }
@@ -224,10 +226,10 @@ class ParentEnrollmentService(
         }
     }
 
-    private fun requireCatalogTenant(organizationId: UUID) {
+    private fun requireCatalogTenant(organizationId: UUID, branchId: UUID) {
         val subscription = subscriptions.findByOrganizationId(organizationId)
         require(subscription?.status in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL)) { "Tenant is not available" }
-        require(InstitutionCapability.DAYCARE_OPERATIONS in organizationCapabilities.forOrganization(organizationId).capabilities) { "Tenant does not support daycare operations" }
+        require(publishedOfferingCapabilities.hasPublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branchId)) { "Daycare is not available for this branch" }
     }
 
     private fun billingBranchCapacity(organizationId: UUID, branchId: UUID): Int? = billing.branchCapacityForCatalog(organizationId, branchId)

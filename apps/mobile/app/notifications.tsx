@@ -12,10 +12,12 @@ import { getDeviceInstallationId } from "@/device/installationId";
 import { notificationMuteDurationKeys, notificationMuteDurations, notificationPreferenceQueryKey } from "@/notifications/mutePreferences";
 import { browserNotificationMutedUntil, muteBrowserNotifications, requestBrowserNotificationPermission, unmuteBrowserNotifications } from "../src/notifications/browserNotifications";
 import { canOpenNotificationRoute, notificationRouteWithOrganizationId } from "@/navigation/notificationRouteAccess";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 export default function NotificationsScreen() {
   const router = useRouter();
   const { api, organizationId, profile } = useAuth();
+  const access = useUiAccessContext(Boolean(profile && organizationId));
   const { t, formatDateTime } = useI18n();
   const client = useQueryClient();
   const [settingsVisible, setSettingsVisible] = useState(false);
@@ -34,7 +36,7 @@ export default function NotificationsScreen() {
   const updatePreference = useMutation({ mutationFn: async (muteDuration: PushNotificationMuteDuration | null) => api.updateDeviceNotificationPreference({ installationId: await getDeviceInstallationId(), muteDuration }), onSuccess: () => { void client.invalidateQueries({ queryKey: notificationPreferenceQueryKey(organizationId) }); setSettingsVisible(false); } });
 
   const openAction = (actionPath?: string | null) => {
-    if (!actionPath || !canOpenNotificationRoute(profile, organizationId, actionPath)) return;
+    if (!actionPath || !canOpenNotificationRoute(profile, organizationId, actionPath, hasOfferingCapability(access.data, "DAYCARE_OPERATIONS"))) return;
     router.push(notificationRouteWithOrganizationId(actionPath, organizationId) as never);
   };
   const open = async (id: string, actionPath?: string | null) => {

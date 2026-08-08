@@ -5,6 +5,7 @@ import type { InstitutionCapability, Role } from "@daycare/core";
 import { AppText, colors, spacing } from "@daycare/ui";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { TranslationKey } from "@/i18n/translations";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 type NavigationItem = { href: Extract<Href, string>; labelKey: TranslationKey; icon: IoniconName; requiredCapability?: InstitutionCapability };
@@ -42,12 +43,13 @@ const navigationByRole: Record<NavigationRole, NavigationItem[]> = {
 
 export const bottomNavigationPaths = new Set<string>(Object.values(navigationByRole).flat().map((item) => item.href));
 
-export function RoleBottomNavigation({ role, capabilities = [] }: { role: NavigationRole; capabilities?: readonly InstitutionCapability[] }) {
+export function RoleBottomNavigation({ role }: { role: NavigationRole }) {
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useI18n();
+  const access = useUiAccessContext(role !== "ADMIN" && role !== "PARENT_ONBOARDING");
   return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
-    {navigationByRole[role].filter((item) => !item.requiredCapability || capabilities.includes(item.requiredCapability)).map((item) => {
+    {navigationByRole[role].filter((item) => !item.requiredCapability || hasOfferingCapability(access.data, item.requiredCapability)).map((item) => {
       const selected = pathname === item.href;
       const iconName = (selected ? item.icon : `${item.icon}-outline`) as IoniconName;
       return <Pressable

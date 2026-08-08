@@ -10,7 +10,6 @@ import { useChildren } from "@/attendance/useAttendance";
 import { useBookings, useEntitlements, useInvoices } from "@/booking/useBooking";
 import { createStaffAdminSummary } from "@/home/staffAdminSummary";
 import { AppScreen } from "@/navigation/AppScreen";
-import { hasInstitutionCapability } from "@daycare/core";
 import { useI18n } from "@/i18n/I18nProvider";
 import { invoiceSourceKey, roleKey, tenantPaymentStatusKey, tenantReadinessIssueKey, tenantSubscriptionPlanKey } from "@/i18n/translations";
 import { useStaffDailyTasks } from "@/home/useStaffDailyTasks";
@@ -26,6 +25,7 @@ export default function HomeScreen() {
   const { user, profile, organizationId, loading, profileError, requiresOrganizationSelection } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const offeringAccess = useUiAccessContext(Boolean(profile && organizationId));
   const activeStaffMembership = membership?.role === "STAFF" && membership.active;
   const staffChildren = useChildren(activeStaffMembership);
   const staffDailyTasks = useStaffDailyTasks(staffChildren.data ?? [], activeStaffMembership);
@@ -41,7 +41,7 @@ export default function HomeScreen() {
   if (isInactiveStaffMembership(membership)) {
     return <InactiveStaffHome displayName={profile.displayName} organizationName={membership.organizationName} role={membership.role} />;
   }
-  const hasDaycareOperations = hasInstitutionCapability(membership.capabilities, "DAYCARE_OPERATIONS");
+  const hasDaycareOperations = hasOfferingCapability(offeringAccess.data, "DAYCARE_OPERATIONS");
   const isStaffAdmin = membership.role === "STAFF_ADMIN";
   const isStaff = membership.role === "STAFF";
   if (isStaffAdmin) return <StaffAdminHome displayName={profile.displayName} organizationName={membership.organizationName} hasDaycareOperations={hasDaycareOperations} />;

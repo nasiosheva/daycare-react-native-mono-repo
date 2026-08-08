@@ -10,7 +10,6 @@ import { useEntitlements, useInvoices } from "@/booking/useBooking";
 import { createStaffAdminSummary } from "@/home/staffAdminSummary";
 import { useI18n } from "@/i18n/I18nProvider";
 import { tenantReadinessIssueKey } from "@/i18n/translations";
-import { hasInstitutionCapability } from "@daycare/core";
 import { hasLegacyLearningAccess, hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 import { pendingStaffAdminSetupIssues } from "@/tenant-readiness/staffAdminSetupChecklist";
 
@@ -32,12 +31,12 @@ export default function StaffAdminScreen() {
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const readOnly = membership?.active === false;
-  const hasDaycareOperations = hasInstitutionCapability(membership?.capabilities ?? [], "DAYCARE_OPERATIONS");
   const access = useUiAccessContext(Boolean(membership));
+  const hasDaycareOperations = hasOfferingCapability(access.data, "DAYCARE_OPERATIONS");
   const hasLearningAccess = hasLegacyLearningAccess(membership?.capabilities, access.data);
   const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
   const users = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: membership?.role === "STAFF_ADMIN" });
-  const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: membership?.role === "STAFF_ADMIN" && hasDaycareOperations });
+  const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: membership?.role === "STAFF_ADMIN" });
   const invoices = useInvoices();
   const entitlements = useEntitlements();
   const readiness = useQuery({ queryKey: ["organization-readiness", organizationId], queryFn: () => api.organizationReadiness(), enabled: membership?.role === "STAFF_ADMIN" });
@@ -82,6 +81,7 @@ export default function StaffAdminScreen() {
     {hasDaycareOperations && <MenuItem title={t("staffAdmin.plans")} description={t("staffAdmin.plansDescription")} attentionIssues={attentionIssues(readiness.data?.issues, menuReadinessIssues.plans)} onPress={() => router.push("/billing-admin")} />}
     {hasAcademicOffering && <MenuItem title={t("privateTutoring.menu")} description={t("privateTutoring.adminDescription")} onPress={() => router.push("/private-tutoring-admin")} />}
     <MenuItem title={t("staffAdmin.branches")} description={t("staffAdmin.branchesDescription")} attentionIssues={attentionIssues(readiness.data?.issues, menuReadinessIssues.branches)} onPress={() => router.push("/branches" as never)} />
+    <MenuItem title={t("tenant.institutionTypes")} description={t("tenant.institutionTypesInfo")} onPress={() => router.push("/education-offerings" as never)} />
     <MenuItem title={t("childAttendanceReport.menu")} description={t("childAttendanceReport.menuDescription")} onPress={() => router.push("/child-attendance-report" as never)} />
     {hasDaycareOperations && <MenuItem title={t("overtime.chargesTitle")} description={t("overtime.chargesDescription")} onPress={() => router.push("/overtime-charges")} />}
     {hasDaycareOperations && <MenuItem title={t("staffAdmin.approvals")} description={t("staffAdmin.approvalsDescription")} onPress={() => router.push("/booking-approvals")} />}

@@ -10,7 +10,7 @@ import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { consentPurposeKey } from "@/i18n/translations";
-import { hasInstitutionCapability } from "@daycare/core";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 const purposes: ConsentPurpose[] = ["MEDIA_MARKETING", "HEALTH_EMERGENCY", "MEDICATION", "OUTING", "PICKUP"];
 const emptyDraft: CreateConsentDefinitionInput = { purpose: "MEDIA_MARKETING", title: "", content: "" };
@@ -21,7 +21,8 @@ export default function ConsentDefinitionsScreen() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const canManage = membership?.role === "STAFF_ADMIN" && hasInstitutionCapability(membership.capabilities, "DAYCARE_OPERATIONS") && membership.active !== false;
+  const access = useUiAccessContext(Boolean(membership));
+  const canManage = membership?.role === "STAFF_ADMIN" && hasOfferingCapability(access.data, "DAYCARE_OPERATIONS") && membership.active !== false;
   const definitions = useQuery({ queryKey: ["consent-definitions", organizationId, "manage"], queryFn: () => api.managedConsentDefinitions(), enabled: Boolean(canManage) });
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ConsentDefinition | null>(null);
@@ -35,7 +36,8 @@ export default function ConsentDefinitionsScreen() {
   const openEdit = (definition: ConsentDefinition) => { setEditing(definition); setDraft({ purpose: definition.purpose, title: definition.title, content: definition.content }); setError(null); setOpen(true); };
   const submit = () => { if (!draft.title.trim() || !draft.content.trim()) { setError(t("consent.definitionFailed")); return; } save.mutate(); };
 
-  if (!profile || !canManage) return <Redirect href="/home" />;
+  if (!profile || access.isLoading) return null;
+  if (!canManage) return <Redirect href="/home" />;
   return <AppScreen showBottomNavigation={false} title={t("consent.staffTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} headerAction={<Pressable accessibilityRole="button" accessibilityLabel={t("consent.informationAction")} hitSlop={spacing.sm} onPress={() => router.push("/consent-information" as never)} style={({ pressed }) => [styles.informationAction, pressed && styles.informationActionPressed]}><Ionicons name="information-circle-outline" size={28} color={colors.primary} /></Pressable>} floatingAction={<FloatingActionButton accessibilityLabel={t("consent.add")} onPress={openCreate}>+ {t("consent.add")}</FloatingActionButton>}><View style={styles.content}>
     <AppText tone="muted">{t("consent.staffDescription")}</AppText>
     {error && <AppText tone="danger">{error}</AppText>}

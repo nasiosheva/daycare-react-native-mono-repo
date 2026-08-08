@@ -172,6 +172,7 @@ class AttendanceServiceTest {
             mock(NotificationService::class.java),
             mock(BookingEligibilityService::class.java),
             mock(PickupAuthorizationService::class.java),
+            mock(PublishedOfferingCapabilityService::class.java),
         )
     }
 }
