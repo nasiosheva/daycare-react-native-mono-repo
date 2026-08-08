@@ -471,7 +471,7 @@ export class ApiClient {
   async bindChildGuardian(childId: string, identifier: string): Promise<ChildGuardian> { return this.request(`/children/${childId}/guardians`, { method: "POST", body: JSON.stringify({ identifier }) }); }
   async unbindChildGuardian(childId: string, userId: string): Promise<void> { await this.request<void>(`/children/${childId}/guardians/${userId}`, { method: "DELETE" }); }
 
-  async recordAttendance(childId: string, command: { action: AttendanceAction; method: AttendanceMethod; qrToken?: string; note?: string; at?: string; pickupAuthorizationId?: string; pickupExceptionReason?: string }): Promise<Attendance> {
+  async recordAttendance(childId: string, command: { action: AttendanceAction; method: AttendanceMethod; idempotencyKey: string; qrToken?: string; note?: string; at?: string; pickupAuthorizationId?: string; pickupExceptionReason?: string }): Promise<Attendance> {
     return this.request(`/children/${childId}/attendance`, { method: "POST", body: JSON.stringify(command) });
   }
 

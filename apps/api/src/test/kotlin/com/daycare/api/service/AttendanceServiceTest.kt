@@ -23,6 +23,8 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.any
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
+import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.security.oauth2.jwt.Jwt
 import java.util.Optional
@@ -125,9 +127,43 @@ class AttendanceServiceTest {
         `when`(fixtures.attendance.findByChildIdAndOperationalDate(child.id, operationalDate)).thenReturn(null)
         `when`(fixtures.attendance.save(any(AttendanceRecord::class.java))).thenAnswer { it.arguments[0] }
 
-        val response = fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_IN, AttendanceMethod.MANUAL, at = at))
+        val response = fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_IN, AttendanceMethod.MANUAL, idempotencyKey = "check-in-key", at = at))
 
         assertEquals(at, response.checkedInAt)
+    }
+
+    @Test
+    fun `a retried check-out with the same idempotency key replays the original result instead of erroring`() {
+        val fixtures = Fixtures()
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
+        val operationalDate = LocalDate.now(ZoneId.of(fixtures.branch.timezone))
+        val checkedOutAt = Instant.now().minusSeconds(60)
+        val existing = AttendanceRecord(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, childId = child.id, operationalDate = operationalDate, checkedInAt = Instant.now().minusSeconds(600), checkedOutAt = checkedOutAt, checkOutIdempotencyKey = "checkout-key-1")
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF))).thenReturn(fixtures.scope)
+        `when`(fixtures.childScopes.requireStaffManagedChild(fixtures.scope, child.id, fixtures.organizationId)).thenReturn(child)
+        `when`(fixtures.branches.findById(child.branchId)).thenReturn(Optional.of(fixtures.branch))
+        `when`(fixtures.attendance.findByChildIdAndOperationalDate(child.id, operationalDate)).thenReturn(existing)
+
+        val response = fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_OUT, AttendanceMethod.MANUAL, idempotencyKey = "checkout-key-1"))
+
+        assertEquals(checkedOutAt, response.checkedOutAt)
+        verify(fixtures.attendance, never()).save(any(AttendanceRecord::class.java))
+    }
+
+    @Test
+    fun `a second check-out attempt with a different idempotency key is rejected as a conflict`() {
+        val fixtures = Fixtures()
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
+        val operationalDate = LocalDate.now(ZoneId.of(fixtures.branch.timezone))
+        val existing = AttendanceRecord(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, childId = child.id, operationalDate = operationalDate, checkedInAt = Instant.now().minusSeconds(600), checkedOutAt = Instant.now().minusSeconds(60), checkOutIdempotencyKey = "checkout-key-1")
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF))).thenReturn(fixtures.scope)
+        `when`(fixtures.childScopes.requireStaffManagedChild(fixtures.scope, child.id, fixtures.organizationId)).thenReturn(child)
+        `when`(fixtures.branches.findById(child.branchId)).thenReturn(Optional.of(fixtures.branch))
+        `when`(fixtures.attendance.findByChildIdAndOperationalDate(child.id, operationalDate)).thenReturn(existing)
+
+        assertThrows(AttendanceConflict::class.java) {
+            fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_OUT, AttendanceMethod.MANUAL, idempotencyKey = "checkout-key-2"))
+        }
     }
 
     @Test
@@ -139,7 +175,7 @@ class AttendanceServiceTest {
         `when`(fixtures.branches.findById(child.branchId)).thenReturn(Optional.of(fixtures.branch))
 
         assertThrows(IllegalArgumentException::class.java) {
-            fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_IN, AttendanceMethod.MANUAL, at = Instant.now().plusSeconds(3600)))
+            fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_IN, AttendanceMethod.MANUAL, idempotencyKey = "check-in-key", at = Instant.now().plusSeconds(3600)))
         }
     }
 

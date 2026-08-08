@@ -1875,8 +1875,8 @@ child scope. Kontak darurat tidak memberi hak masuk akun, hak pickup, atau hak
 consent.
 
 **Target yang belum dibangun:** grant eksplisit `MANAGE_PICKUP`/`PICKUP_VERIFY`,
-idempotency key/correlation ID, serta witness atau second approver yang
-dikendalikan policy offering. Hingga grant tersedia, Parent terkait menggantikan
+correlation ID formal, serta witness atau second approver yang dikendalikan
+policy offering. Hingga grant tersedia, Parent terkait menggantikan
 `MANAGE_PICKUP` dan child scope Staff menggantikan `PICKUP_VERIFY` untuk V1; ini
 tidak boleh diperluas ke child lain atau tenant lain.
 
@@ -1896,10 +1896,14 @@ tidak boleh diperluas ke child lain atau tenant lain.
   Pencabutan berlaku segera untuk check-out baru.
 - Check-out Daycare adalah transaksi atomik. Server memvalidasi attendance
   masih open, branch dan tanggal operasional, operator memiliki
-  `PICKUP_VERIFY`, authorization aktif pada timestamp cabang, metode verifikasi,
-  dan idempotency key. Record menyimpan snapshot `authorizationId`, identitas
-  terverifikasi secukupnya, metode, operator, waktu, cabang, dan correlation
-  ID; server menolak double check-out.
+  `PICKUP_VERIFY`, authorization aktif pada timestamp cabang, dan metode
+  verifikasi. Request check-in maupun check-out wajib membawa
+  `idempotencyKey`: retry dengan key yang sama mengembalikan hasil semula
+  tanpa efek samping ganda (audit/notifikasi tidak dobel), sedangkan
+  check-out kedua pada attendance yang sama dengan key berbeda ditolak
+  sebagai double check-out. Record menyimpan snapshot `authorizationId`,
+  identitas terverifikasi secukupnya, metode, operator, waktu, dan cabang;
+  correlation ID formal masih target.
 - QR attendance Parent bukan pickup credential. Pickup QR, bila kelak
   diaktifkan, harus one-time, signed, bound ke child + authorization + expiry,
   dan single-use. Pengecualian check-out hanya Staff Admin aktif dengan reason

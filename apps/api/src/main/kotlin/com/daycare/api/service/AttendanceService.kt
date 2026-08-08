@@ -17,6 +17,8 @@ import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.LearningLevelRepository
 import com.daycare.api.persistence.UserProfileRepository
 import com.daycare.api.realtime.RealtimeFlag
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
@@ -122,21 +124,31 @@ class AttendanceService(
         if (LocalDate.ofInstant(eventTime, ZoneId.of(timezone)) != operationalDate) throw IllegalArgumentException("Attendance time must be within today")
         val record = when (command.action) {
             AttendanceAction.CHECK_IN -> {
-                if (current?.checkedInAt != null && current.checkedOutAt == null) throw AttendanceConflict("Child is already checked in")
+                if (current?.checkedInAt != null && current.checkedOutAt == null) {
+                    if (current.checkInIdempotencyKey == command.idempotencyKey) return toResponse(current, command.method)
+                    throw AttendanceConflict("Child is already checked in")
+                }
                 if (current?.checkedOutAt != null) throw AttendanceConflict("Attendance for this operational day is closed")
                 current ?: AttendanceRecord(organizationId = organizationId, branchId = child.branchId, childId = child.id, operationalDate = operationalDate)
             }
-            AttendanceAction.CHECK_OUT -> current?.takeIf { it.checkedInAt != null && it.checkedOutAt == null } ?: throw AttendanceConflict("Child must be checked in before check-out")
+            AttendanceAction.CHECK_OUT -> {
+                if (current?.checkedOutAt != null) {
+                    if (current.checkOutIdempotencyKey == command.idempotencyKey) return toResponse(current, command.method)
+                    throw AttendanceConflict("Attendance for this operational day is closed")
+                }
+                current?.takeIf { it.checkedInAt != null } ?: throw AttendanceConflict("Child must be checked in before check-out")
+            }
         }
         if (command.action == AttendanceAction.CHECK_OUT && record.checkedInAt?.let { eventTime.isBefore(it) } == true) throw IllegalArgumentException("Check-out time cannot be before check-in")
         val hasDaycareOffering = InstitutionCapability.DAYCARE_OPERATIONS in scope.capabilities &&
             hasPublishedDaycareOffering(organizationId, child.branchId)
         if (command.action == AttendanceAction.CHECK_IN && hasDaycareOffering) bookingEligibility.consumeCheckIn(organizationId, child.id, operationalDate)
-        if (command.action == AttendanceAction.CHECK_IN) { record.checkedInAt = eventTime; record.checkInMethod = command.method.name }
+        if (command.action == AttendanceAction.CHECK_IN) { record.checkedInAt = eventTime; record.checkInMethod = command.method.name; record.checkInIdempotencyKey = command.idempotencyKey }
         else {
             val pickup = if (hasDaycareOffering) pickupAuthorizations.verifyCheckout(scope, child, command.pickupAuthorizationId, command.pickupExceptionReason) else PickupCheckoutVerification(null, null, null, null)
             record.checkedOutAt = eventTime
             record.checkOutMethod = command.method.name
+            record.checkOutIdempotencyKey = command.idempotencyKey
             record.pickupAuthorizationId = pickup.authorizationId
             record.pickupPersonName = pickup.pickupPersonName
             record.pickupVerificationMethod = pickup.verificationMethod?.name
@@ -219,4 +231,4 @@ class AttendanceService(
     }
 }
 
-data class AttendanceCommand(val action: AttendanceAction, val method: AttendanceMethod, val qrToken: String? = null, val note: String? = null, val at: Instant? = null, val pickupAuthorizationId: UUID? = null, val pickupExceptionReason: String? = null)
+data class AttendanceCommand(val action: AttendanceAction, val method: AttendanceMethod, @field:NotBlank @field:Size(max = 100) val idempotencyKey: String, val qrToken: String? = null, val note: String? = null, val at: Instant? = null, val pickupAuthorizationId: UUID? = null, val pickupExceptionReason: String? = null)

@@ -10,11 +10,15 @@ export function useChildren(filterOrEnabled: ChildListFilter | boolean = {}, ena
   return useQuery({ queryKey: ["children", organizationId, filter], queryFn: () => api.children(filter), enabled: Boolean(organizationId) && queryEnabled });
 }
 
+function createIdempotencyKey(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `attendance-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export function useRecordAttendance() {
   const { api, organizationId } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ childId, action, method, qrToken, at, pickupAuthorizationId, pickupExceptionReason }: { childId: string; action: AttendanceAction; method: AttendanceMethod; qrToken?: string; at?: string; pickupAuthorizationId?: string; pickupExceptionReason?: string }) => api.recordAttendance(childId, { action, method, qrToken, at, pickupAuthorizationId, pickupExceptionReason }),
+    mutationFn: ({ childId, action, method, qrToken, at, pickupAuthorizationId, pickupExceptionReason }: { childId: string; action: AttendanceAction; method: AttendanceMethod; qrToken?: string; at?: string; pickupAuthorizationId?: string; pickupExceptionReason?: string }) => api.recordAttendance(childId, { action, method, idempotencyKey: createIdempotencyKey(), qrToken, at, pickupAuthorizationId, pickupExceptionReason }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["children", organizationId] }),
   });
 }

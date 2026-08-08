@@ -627,6 +627,8 @@ class AttendanceRecord(
     @Column(name = "checkout_verified_by_user_id") var checkoutVerifiedByUserId: UUID? = null,
     @Column(name = "checkout_exception_reason", length = 500) var checkoutExceptionReason: String? = null,
     @Column(name = "overtime_alert_sent_at") var overtimeAlertSentAt: Instant? = null,
+    @Column(name = "check_in_idempotency_key", length = 100) var checkInIdempotencyKey: String? = null,
+    @Column(name = "check_out_idempotency_key", length = 100) var checkOutIdempotencyKey: String? = null,
 )
 
 @Entity @Table(name = "pickup_authorizations")
