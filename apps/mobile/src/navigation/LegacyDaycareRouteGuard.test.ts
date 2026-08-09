@@ -20,9 +20,9 @@ const parentProfile: CurrentUser = {
 };
 
 describe("hasLegacyDaycareRouteAccess", () => {
-  it("requires an active parent membership and the Daycare capability for booking and QR", () => {
-    expect(hasLegacyDaycareRouteAccess(parentProfile, "tenant-daycare", legacyDaycareRoutePolicies.parentBooking)).toBe(true);
-    expect(hasLegacyDaycareRouteAccess(parentProfile, "tenant-daycare", legacyDaycareRoutePolicies.parentQr)).toBe(true);
+  it("requires an active parent membership and a published Daycare offering for booking and QR", () => {
+    expect(hasLegacyDaycareRouteAccess(parentProfile, "tenant-daycare", legacyDaycareRoutePolicies.parentBooking, true)).toBe(true);
+    expect(hasLegacyDaycareRouteAccess(parentProfile, "tenant-daycare", legacyDaycareRoutePolicies.parentQr, true)).toBe(true);
 
     const inactiveProfile: CurrentUser = {
       ...parentProfile,
@@ -33,18 +33,18 @@ describe("hasLegacyDaycareRouteAccess", () => {
       memberships: parentProfile.memberships.map((membership) => ({ ...membership, capabilities: [] })),
     };
 
-    expect(hasLegacyDaycareRouteAccess(inactiveProfile, "tenant-daycare", legacyDaycareRoutePolicies.parentBooking)).toBe(false);
-    expect(hasLegacyDaycareRouteAccess(noDaycareProfile, "tenant-daycare", legacyDaycareRoutePolicies.parentQr)).toBe(false);
+    expect(hasLegacyDaycareRouteAccess(inactiveProfile, "tenant-daycare", legacyDaycareRoutePolicies.parentBooking, true)).toBe(false);
+    expect(hasLegacyDaycareRouteAccess(noDaycareProfile, "tenant-daycare", legacyDaycareRoutePolicies.parentQr, false)).toBe(false);
   });
 
-  it("requires active Staff Admin Daycare capability for legacy financial and booking operations", () => {
+  it("requires an active Staff Admin and a published Daycare offering for legacy financial and booking operations", () => {
     const staffAdminProfile: CurrentUser = {
       ...parentProfile,
       memberships: parentProfile.memberships.map((membership) => ({ ...membership, role: "STAFF_ADMIN" as const })),
     };
 
-    expect(hasLegacyDaycareRouteAccess(staffAdminProfile, "tenant-daycare", legacyDaycareRoutePolicies.staffAdminDaycareOperations)).toBe(true);
-    expect(hasLegacyDaycareRouteAccess({ ...staffAdminProfile, memberships: staffAdminProfile.memberships.map((membership) => ({ ...membership, capabilities: [] })) }, "tenant-daycare", legacyDaycareRoutePolicies.staffAdminDaycareOperations)).toBe(false);
+    expect(hasLegacyDaycareRouteAccess(staffAdminProfile, "tenant-daycare", legacyDaycareRoutePolicies.staffAdminDaycareOperations, true)).toBe(true);
+    expect(hasLegacyDaycareRouteAccess({ ...staffAdminProfile, memberships: staffAdminProfile.memberships.map((membership) => ({ ...membership, capabilities: [] })) }, "tenant-daycare", legacyDaycareRoutePolicies.staffAdminDaycareOperations, false)).toBe(false);
   });
 
   it("preserves active in-scope Staff access to booking approvals", () => {
@@ -53,6 +53,6 @@ describe("hasLegacyDaycareRouteAccess", () => {
       memberships: parentProfile.memberships.map((membership) => ({ ...membership, role: "STAFF" as const })),
     };
 
-    expect(hasLegacyDaycareRouteAccess(staffProfile, "tenant-daycare", legacyDaycareRoutePolicies.bookingApprovals)).toBe(true);
+    expect(hasLegacyDaycareRouteAccess(staffProfile, "tenant-daycare", legacyDaycareRoutePolicies.bookingApprovals, true)).toBe(true);
   });
 });

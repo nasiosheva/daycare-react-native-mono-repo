@@ -10,6 +10,7 @@ import com.daycare.api.service.CreatePickupAuthorizationRequest
 import com.daycare.api.service.RevokePickupAuthorizationRequest
 import com.daycare.api.service.EmergencyContactService
 import com.daycare.api.service.CreateEmergencyContactRequest
+import com.daycare.api.service.RevokeEmergencyContactRequest
 import com.daycare.api.service.ConsentService
 import com.daycare.api.service.ConsentDecisionRequest
 import com.daycare.api.service.CreateConsentDefinitionRequest
@@ -577,6 +578,9 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @DeleteMapping("/children/{childId}/emergency-contacts/{contactId}") @ResponseStatus(HttpStatus.NO_CONTENT)
     fun removeEmergencyContact(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable contactId: UUID) = emergencyContacts.remove(jwt, organizationId, childId, contactId)
+
+    @PostMapping("/children/{childId}/emergency-contacts/{contactId}/revoke")
+    fun revokeEmergencyContact(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable contactId: UUID, @Valid @RequestBody request: RevokeEmergencyContactRequest) = emergencyContacts.revoke(jwt, organizationId, childId, contactId, request)
 
     @GetMapping("/consent-definitions")
     fun consentDefinitions(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = consents.definitions(jwt, organizationId)

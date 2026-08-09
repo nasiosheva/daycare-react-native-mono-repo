@@ -14,7 +14,7 @@ import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate, isIsoDate } from "@/date-picker/date";
 import { notify } from "@/notify/notify";
 import { capitalizeWords } from "@/text/capitalizeWords";
-import { hasLegacyLearningAccess, hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
+import { hasBranchOfferingCapability, hasLegacyLearningAccess, hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 const assignmentRoles = ["STAFF", "NURSE", "MISS"] as const;
 
@@ -63,6 +63,7 @@ export default function ChildDetailScreen() {
   const [staffListOpen, setStaffListOpen] = useState(false);
   const [guardiansOpen, setGuardiansOpen] = useState(false);
   const childBranchId = childProfile.data?.child.branchId;
+  const canManagePickup = canManage && hasBranchOfferingCapability(access.data, childBranchId, "DAYCARE_OPERATIONS");
   const assignableStaff = useMemo(() => staff.data?.filter((user) => user.userId && user.status === "ACTIVE" && (user.role === "STAFF_ADMIN" || (user.role === "STAFF" && user.branchId === childBranchId))) ?? [], [staff.data, childBranchId]);
   const assignmentRoleLabel = (role: (typeof assignmentRoles)[number]) => role === "NURSE" ? t("children.nurse") : role === "MISS" ? t("children.miss") : t("children.staff");
   const currentPlacement = placements.data?.find((placement) => !placement.endedOn) ?? null;
@@ -168,7 +169,7 @@ export default function ChildDetailScreen() {
         <AppText variant="h5">{t("children.guardians")}</AppText>
         <AppText tone={childProfile.data.guardians.length ? "default" : "muted"}>{childProfile.data.guardians.length ? t("children.guardiansSummary", { count: childProfile.data.guardians.length }) : t("children.noGuardians")}</AppText>
       </NavigationCard>}
-      {canManage && <NavigationCard accessibilityLabel={t("pickup.manage")} onPress={() => router.push({ pathname: "/pickup-authorizations", params: { childId } } as never)}><AppText variant="h5">{t("pickup.title")}</AppText><AppText tone="muted">{t("pickup.manage")}</AppText></NavigationCard>}
+      {canManagePickup && <NavigationCard accessibilityLabel={t("pickup.manage")} onPress={() => router.push({ pathname: "/pickup-authorizations", params: { childId } } as never)}><AppText variant="h5">{t("pickup.title")}</AppText><AppText tone="muted">{t("pickup.manage")}</AppText></NavigationCard>}
       {canManage && <NavigationCard accessibilityLabel={t("emergencyContacts.manage")} onPress={() => router.push({ pathname: "/emergency-contacts", params: { childId } } as never)}><AppText variant="h5">{t("emergencyContacts.title")}</AppText><AppText tone="muted">{t("emergencyContacts.manage")}</AppText></NavigationCard>}
     </>}
 

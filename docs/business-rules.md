@@ -8,7 +8,7 @@ Aturan yang ditandai sebagai **target** menyatakan arah produk yang telah disetu
 
 - **Tenant** adalah batas data dan penagihan. Anak, cabang, kelas, tagihan, layanan, booking, perkembangan, dan konfigurasi operasional selalu dimiliki tepat oleh satu tenant.
 - Satu tenant dapat memiliki beberapa cabang aktif, tetapi hanya satu cabang utama. Keanggotaan `STAFF_ADMIN` berlaku untuk seluruh tenant, bukan hanya cabang tertentu. Setiap daftar atau agregasi yang difilter per cabang (mis. jumlah staf aktif per cabang, daftar akun tenant per cabang) wajib tetap menyertakan setiap `STAFF_ADMIN` pada cabang mana pun yang difilter, terlepas dari nilai `branchId` pada membership-nya (biasanya `null`) — mempersempit per cabang tidak boleh menyembunyikan akun yang secara aturan berlaku lintas cabang.
-- **Platform Admin (`ADMIN`)** mengelola lifecycle tenant, langganan, pembayaran tenant, master jenis lembaga, kurikulum global, Program Perkembangan global, serta kategori perkembangan global. Pada setiap jenis lembaga, Platform Admin menetapkan secara terpisah apakah Staff Admin tenant boleh melihat jenis pekerjaan Parent dan/atau rentang penghasilan Parent. Home Admin juga menyediakan dashboard kesiapan tenant yang bersifat informatif: ia melaporkan langganan, Staff Admin, cabang, serta Kelas legacy hanya untuk tenant dengan `DAYCARE_OPERATIONS` atau offering `PUBLISHED` ber-capability `ACADEMIC_CURRICULUM`; Daycare juga memerlukan paket layanan, kapasitas pada setiap cabang aktif, jam operasional pada setiap cabang aktif, serta instruksi pembayaran. Dashboard ini tidak mengubah status tenant atau visibilitas katalog Parent.
+- **Platform Admin (`ADMIN`)** mengelola lifecycle tenant, langganan, pembayaran tenant, master jenis lembaga, kurikulum global, Program Perkembangan global, serta kategori perkembangan global. Pada setiap jenis lembaga, Platform Admin menetapkan secara terpisah apakah Staff Admin tenant boleh melihat jenis pekerjaan Parent dan/atau rentang penghasilan Parent. Home Admin juga menyediakan dashboard kesiapan tenant yang bersifat informatif: ia melaporkan langganan, Staff Admin, cabang, serta Kelas legacy hanya bila ada offering `PUBLISHED` yang memerlukan layanan Daycare atau kurikulum akademik. Untuk Daycare, paket layanan dan instruksi pembayaran diperiksa pada tenant, sedangkan kapasitas serta jam operasional diperiksa hanya pada setiap cabang **aktif** yang memiliki offering `PUBLISHED` ber-capability `DAYCARE_OPERATIONS`; cabang nonaktif atau cabang lain tidak boleh membuat tenant tampak belum siap. Dashboard ini tidak mengubah status tenant atau visibilitas katalog Parent.
 - **Staff Admin (`STAFF_ADMIN`)** mengelola konfigurasi dan operasi tenant: cabang, anak, kelas, pendamping, Goal, layanan, les privat, pembayaran Parent, booking, dan persetujuan enrollment. Home Staff Admin secara read-only menampilkan kesiapan tenant aktif dengan aturan yang sama seperti dashboard Platform Admin; kartu hanya menunjukkan konfigurasi yang belum lengkap dan membuka hub Kelola, tanpa mengubah akses, langganan, atau visibilitas katalog Parent. Hub Kelola menampilkan checklist langkah yang dapat ditindaklanjuti dari respons server; langganan tetap hanya berupa pemberitahuan karena dikelola Platform Admin, dan penambahan anak bukan prasyarat agar lembaga siap menerima pendaftaran.
 - **Staff (`STAFF`)** hanya dapat membaca atau mengubah data anak dalam penugasan langsungnya atau kelas aktif yang ditugaskan kepadanya. Kemampuan tambahan, seperti mengelola Program Pendampingan Anak atau kategori perkembangan, harus diberikan secara eksplisit oleh Staff Admin. Home Staff menyediakan ikon inbox notifikasi dengan badge belum dibaca; inbox beserta pengaturannya tidak lagi dibuka dari Profile.
 - **Parent (`PARENT`)** hanya dapat melihat dan bertindak atas anak yang terhubung sebagai wali pada tenant aktif. Satu Parent dapat memiliki relasi pada beberapa tenant. Pengecualian yang disengaja adalah `ParentOperatingHoursOverview`: read model agregat **read-only** dari server yang hanya memuat anak dan jam operasional pada tenant yang memang memiliki guardian authority aktif, selalu dikelompokkan dengan `organizationId`/nama tenant dan child scope asal. Ia tidak dapat dipakai sebagai sumber query tenant biasa, cache lintas-tenant, deep link mutasi, atau ID yang dapat dikirim ke endpoint operasi; setiap tap ke detail harus membangun ulang context tenant legal terlebih dahulu.
@@ -294,6 +294,22 @@ sudah berjalan.
   lebih dari satu jenis lembaga yang sesuai dengan matriks §12.2.2, tetapi **penawaran aktif** harus
   dikonfigurasi per cabang dan per jenis lembaga. Memilih jenis lembaga pada
   tenant tidak berarti semua cabang otomatis menyelenggarakannya.
+- Platform Admin dapat menambah jenis lembaga pada tenant yang telah ada. Penambahan hanya
+  membuat jenis tersebut tersedia sebagai kandidat offering dan tidak mengaktifkan capability,
+  menu, atau operasi apa pun. Jenis lembaga tidak dapat dihapus dari tenant selama ada satu pun
+  record offering dengan jenis tersebut, termasuk offering yang sudah ditutup atau diarsipkan;
+  riwayat offering tetap mempertahankan identitas jenis lembaganya.
+- Untuk endpoint legacy yang datanya belum membawa `offeringId`, capability agregat tenant tetap
+  dipakai sebagai compatibility guard **tambahan**, tetapi server juga wajib menemukan minimal satu
+  offering `PUBLISHED` dengan capability yang sama. Operasi yang telah membawa cabang/anak wajib
+  memeriksa offering `PUBLISHED` pada cabang sumber daya itu sendiri; contoh saat ini adalah
+  attendance dan pickup Daycare. Compatibility guard ini tidak mengubah target scope kanonis pada
+  §13 dan tidak mengizinkan offering cabang lain memperluas resource anak/cabang yang sudah
+  memiliki scope eksplisit.
+- Katalog enrollment Parent Daycare hanya boleh memuat tenant aktif dan cabang aktif yang masing-masing
+  memiliki offering `PUBLISHED` ber-capability `DAYCARE_OPERATIONS`. Persetujuan enrollment, jam
+  operasional, overtime, serta notifikasi overtime untuk anak/cabang tersebut juga wajib memeriksa
+  offering cabang yang sama; offering Daycare pada cabang lain tidak dapat menjadi pengganti.
 - `DAYCARE_OPERATIONS` tetap khusus bagi layanan penitipan: paket/entitlement,
   booking, check-in/out, jam operasional, penjemputan, dan overtime. Capability
   ini tidak menjadi prasyarat pendidikan usia dini atau sekolah yang tidak menawarkan
@@ -1836,18 +1852,33 @@ check-out ditolak kecuali dilakukan oleh Staff Admin aktif dengan alasan wajib.
 QR attendance bukan kredensial penjemput dan batas finansial tidak dipakai untuk
 menolak check-out.
 
+**Availability rule implemented:** kartu, halaman, deep link, dan seluruh
+endpoint `PickupAuthorization` hanya tersedia bila anak berada pada cabang yang
+memiliki sedikitnya satu `EducationOffering` berstatus `PUBLISHED` dengan
+capability `DAYCARE_OPERATIONS`. Capability agregat tenant atau offering Daycare
+di cabang lain tidak cukup. Server memeriksa cabang anak pada setiap baca,
+create, activate, revoke, dan verifikasi check-out; UI memakai `UiAccessContext`
+yang sama untuk menyembunyikan entry point. Seluruh akses tersebut juga
+memerlukan membership aktif; tidak ada read-only historis untuk penjemputan.
+
 **Fondasi kontak darurat saat ini:** `EmergencyContact` adalah resource terpisah
 dari `GuardianLink` dan `PickupAuthorization`, berisi nama, hubungan, nomor
-telepon, pembuat, dan audit. Parent terkait dapat membuat/menghapus kontak yang
-dibuatnya sendiri; Staff Admin dapat membaca dan menghapus kontak dalam child
-scope. Kontak darurat tidak memberi hak masuk akun, hak pickup, atau hak consent.
+telepon, pembuat, dan audit. Kontak juga membawa `status`
+(`ACTIVE`/`EXPIRED`/`REVOKED`) dan `effectiveUntil` opsional: kontak yang masa
+berlakunya lewat dilaporkan `EXPIRED` secara otomatis (dihitung saat dibaca,
+tanpa job terjadwal) tanpa mengubah data tersimpan, dan wali yang membuat kontak
+atau Staff Admin dapat menonaktifkannya secara eksplisit (`REVOKED`) dengan
+alasan wajib—sebagai alternatif tidak-destruktif dari menghapus permanen. Parent
+terkait dapat membuat, menonaktifkan, atau menghapus kontak yang dibuatnya
+sendiri; Staff Admin dapat membaca, menonaktifkan, dan menghapus kontak dalam
+child scope. Kontak darurat tidak memberi hak masuk akun, hak pickup, atau hak
+consent.
 
 **Target yang belum dibangun:** grant eksplisit `MANAGE_PICKUP`/`PICKUP_VERIFY`,
-status/masa berlaku kontak darurat, idempotency key/correlation ID, serta witness
-atau second approver yang dikendalikan policy offering. Hingga grant tersedia,
-Parent terkait menggantikan `MANAGE_PICKUP` dan child scope Staff menggantikan
-`PICKUP_VERIFY` untuk V1; ini tidak boleh diperluas ke child lain atau tenant
-lain.
+correlation ID formal, serta witness atau second approver yang dikendalikan
+policy offering. Hingga grant tersedia, Parent terkait menggantikan
+`MANAGE_PICKUP` dan child scope Staff menggantikan `PICKUP_VERIFY` untuk V1; ini
+tidak boleh diperluas ke child lain atau tenant lain.
 
 - `GuardianLink`, `EmergencyContact`, dan `PickupAuthorization` adalah entity
   berbeda. Satu orang dapat direferensikan oleh lebih dari satu entity, tetapi
@@ -1865,10 +1896,14 @@ lain.
   Pencabutan berlaku segera untuk check-out baru.
 - Check-out Daycare adalah transaksi atomik. Server memvalidasi attendance
   masih open, branch dan tanggal operasional, operator memiliki
-  `PICKUP_VERIFY`, authorization aktif pada timestamp cabang, metode verifikasi,
-  dan idempotency key. Record menyimpan snapshot `authorizationId`, identitas
-  terverifikasi secukupnya, metode, operator, waktu, cabang, dan correlation
-  ID; server menolak double check-out.
+  `PICKUP_VERIFY`, authorization aktif pada timestamp cabang, dan metode
+  verifikasi. Request check-in maupun check-out wajib membawa
+  `idempotencyKey`: retry dengan key yang sama mengembalikan hasil semula
+  tanpa efek samping ganda (audit/notifikasi tidak dobel), sedangkan
+  check-out kedua pada attendance yang sama dengan key berbeda ditolak
+  sebagai double check-out. Record menyimpan snapshot `authorizationId`,
+  identitas terverifikasi secukupnya, metode, operator, waktu, dan cabang;
+  correlation ID formal masih target.
 - QR attendance Parent bukan pickup credential. Pickup QR, bila kelak
   diaktifkan, harus one-time, signed, bound ke child + authorization + expiry,
   dan single-use. Pengecualian check-out hanya Staff Admin aktif dengan reason
@@ -1911,11 +1946,22 @@ memakai `ConsentRecord` V1 sebagai allowlist; tujuan consent di UI hanya
 menjelaskan jenis policy yang kelak akan dipasangkan. Dengan demikian tidak ada
 putusan Parent yang secara keliru terlihat sebagai izin operasional atau klinis.
 
-**Target yang belum dibangun:** `GuardianAuthority`, scope cabang/offering,
-evidence, resolver konflik antar-guardian, idempotency/correlation key formal,
-serta `HEALTH_EMERGENCY_OVERRIDE`. Sebelum seluruh target ini dibangun dan
-diterapkan pada endpoint tindakan, status consent tidak boleh dipakai untuk
-mengizinkan atau menolak tindakan sensitif.
+**Implementasi tambahan saat ini:** `ConsentDefinition` membawa `scope`
+eksplisit (`TENANT`/`BRANCH`/`OFFERING`, wajib diisi sesuai mode saat dibuat,
+diverifikasi merujuk branch/offering milik tenant yang sama) dan `effectiveUntil`
+opsional; keduanya immutable setelah dibuat, sama seperti `purpose`. Parent
+hanya melihat definisi yang cocok dengan cabang anaknya untuk scope
+`BRANCH`/`OFFERING`. Consent yang `GRANTED` dilaporkan `EXPIRED` secara otomatis
+begitu `effectiveUntil` lewat (dihitung saat dibaca, tanpa mengubah status
+tersimpan), dan revisi atau reaktivasi definisi menandai record `GRANTED`/
+`DECLINED` pada revision lama sebagai `SUPERSEDED`.
+
+**Target yang belum dibangun:** `GuardianAuthority` (termasuk validasi bahwa
+tindakan aktual terjadi dalam scope definition), evidence, resolver konflik
+antar-guardian, idempotency/correlation key formal, serta
+`HEALTH_EMERGENCY_OVERRIDE`. Sebelum seluruh target ini dibangun dan diterapkan
+pada endpoint tindakan, status consent tidak boleh dipakai untuk mengizinkan
+atau menolak tindakan sensitif.
 
 - Kontrak V1 memakai `GET /consent-definitions/manage`, `POST
   /consent-definitions`, `PUT /consent-definitions/{definitionId}`, dan `POST
@@ -1932,11 +1978,12 @@ mengizinkan atau menolak tindakan sensitif.
 
 - `ConsentDefinition` bersifat tenant-scoped dan membawa revision serta scope
   eksplisit `TENANT`, `BRANCH`, atau `OFFERING`; scope cabang/offering wajib
-  diisi bila mode tersebut dipilih. `ConsentRecord` menyimpan child, purpose,
-  `definitionRevision` dan text snapshot, guardian yang berwenang, status,
-  periode efektif, evidence, actor, serta audit. Server memvalidasi bahwa
-  tindakan dan `GuardianAuthority` terjadi dalam scope definition; `null` tidak
-  boleh diam-diam berarti tenant-wide.
+  diisi bila mode tersebut dipilih dan `null` tidak diam-diam berarti
+  tenant-wide. `ConsentRecord` menyimpan child, purpose, `definitionRevision`
+  dan text snapshot, guardian yang berwenang, status, waktu keputusan/penarikan,
+  serta audit. Evidence, periode efektif per-record, dan actor formal masih
+  target; validasi bahwa **tindakan** (bukan sekadar visibility definisi)
+  terjadi dalam scope masih menunggu `GuardianAuthority`.
 - Purpose minimum adalah media/foto, tindakan medis darurat, pemberian obat,
   perjalanan/kegiatan luar, dan penjemputan. Consent media marketing tidak
   sama dengan izin foto bukti insiden atau media operasional internal.

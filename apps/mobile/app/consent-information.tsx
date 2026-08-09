@@ -5,7 +5,7 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
-import { hasInstitutionCapability } from "@daycare/core";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 const informationSections = [
   ["consent.informationCurrentTitle", "consent.informationCurrentDescription"],
@@ -21,9 +21,11 @@ export default function ConsentInformationScreen() {
   const { profile, organizationId } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const canRead = membership?.role === "STAFF_ADMIN" && membership.active !== false && hasInstitutionCapability(membership.capabilities, "DAYCARE_OPERATIONS");
+  const access = useUiAccessContext(Boolean(membership));
+  const canRead = membership?.role === "STAFF_ADMIN" && membership.active !== false && hasOfferingCapability(access.data, "DAYCARE_OPERATIONS");
 
-  if (!profile || !canRead) return <Redirect href="/home" />;
+  if (!profile || access.isLoading) return null;
+  if (!canRead) return <Redirect href="/home" />;
 
   return <AppScreen showBottomNavigation={false} title={t("consent.informationTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.content}>
     <AppText tone="muted">{t("consent.informationIntro")}</AppText>

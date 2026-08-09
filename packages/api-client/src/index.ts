@@ -100,14 +100,16 @@ export type PickupAuthorizationStatus = "PENDING_VERIFICATION" | "ACTIVE" | "SUS
 export type PickupVerificationMethod = "PHOTO_ID" | "KNOWN_TO_GUARDIAN" | "OTHER";
 export type PickupAuthorization = { id: string; childId: string; pickupPersonName: string; relationship: string; verificationMethod: PickupVerificationMethod; status: PickupAuthorizationStatus; effectiveFrom: string; effectiveUntil?: string | null; createdAt: string; canRevoke: boolean };
 export type CreatePickupAuthorizationInput = { pickupPersonName: string; relationship: string; verificationMethod: PickupVerificationMethod; effectiveFrom?: string; effectiveUntil?: string };
-export type EmergencyContact = { id: string; childId: string; name: string; relationship: string; phoneNumber: string; canRemove: boolean };
-export type CreateEmergencyContactInput = { name: string; relationship: string; phoneNumber: string };
+export type EmergencyContactStatus = "ACTIVE" | "EXPIRED" | "REVOKED";
+export type EmergencyContact = { id: string; childId: string; name: string; relationship: string; phoneNumber: string; status: EmergencyContactStatus; effectiveUntil?: string | null; canRemove: boolean; canRevoke: boolean };
+export type CreateEmergencyContactInput = { name: string; relationship: string; phoneNumber: string; effectiveUntil?: string };
 export type ConsentPurpose = "MEDIA_MARKETING" | "HEALTH_EMERGENCY" | "MEDICATION" | "OUTING" | "PICKUP";
 export type ConsentStatus = "PENDING" | "GRANTED" | "DECLINED" | "WITHDRAWN" | "EXPIRED" | "SUPERSEDED";
-export type ConsentDefinition = { id: string; purpose: ConsentPurpose; title: string; content: string; revision: number; active: boolean };
+export type ConsentDefinitionScope = "TENANT" | "BRANCH" | "OFFERING";
+export type ConsentDefinition = { id: string; purpose: ConsentPurpose; title: string; content: string; revision: number; active: boolean; scope: ConsentDefinitionScope; branchId?: string | null; offeringId?: string | null; effectiveUntil?: string | null };
 export type ParentConsent = { definition: ConsentDefinition; status: ConsentStatus; decidedAt?: string | null; withdrawnAt?: string | null };
 export type ConsentRecord = { definitionId: string; status: ConsentStatus; revision: number; decidedAt?: string | null; withdrawnAt?: string | null };
-export type CreateConsentDefinitionInput = { purpose: ConsentPurpose; title: string; content: string };
+export type CreateConsentDefinitionInput = { purpose: ConsentPurpose; title: string; content: string; scope?: ConsentDefinitionScope; branchId?: string; offeringId?: string; effectiveUntil?: string };
 export type ReviseConsentDefinitionInput = { title: string; content: string; expectedRevision: number };
 export type ChildAbsenceRequest = { id: string; childId: string; childName: string; branchId: string; purpose: ChildAbsencePurpose; note?: string | null; startDate: string; endDate: string; status: ChildAbsenceRequestStatus; rejectionReason?: string | null; createdAt: string; decidedAt?: string | null };
 export type CreateChildAbsenceRequestInput = { childId: string; purpose: ChildAbsencePurpose; startDate: string; endDate: string; note?: string };
@@ -470,7 +472,7 @@ export class ApiClient {
   async bindChildGuardian(childId: string, identifier: string): Promise<ChildGuardian> { return this.request(`/children/${childId}/guardians`, { method: "POST", body: JSON.stringify({ identifier }) }); }
   async unbindChildGuardian(childId: string, userId: string): Promise<void> { await this.request<void>(`/children/${childId}/guardians/${userId}`, { method: "DELETE" }); }
 
-  async recordAttendance(childId: string, command: { action: AttendanceAction; method: AttendanceMethod; qrToken?: string; note?: string; at?: string; pickupAuthorizationId?: string; pickupExceptionReason?: string }): Promise<Attendance> {
+  async recordAttendance(childId: string, command: { action: AttendanceAction; method: AttendanceMethod; idempotencyKey: string; qrToken?: string; note?: string; at?: string; pickupAuthorizationId?: string; pickupExceptionReason?: string }): Promise<Attendance> {
     return this.request(`/children/${childId}/attendance`, { method: "POST", body: JSON.stringify(command) });
   }
 
@@ -481,6 +483,7 @@ export class ApiClient {
   async emergencyContacts(childId: string): Promise<EmergencyContact[]> { return this.request(`/children/${childId}/emergency-contacts`); }
   async createEmergencyContact(childId: string, input: CreateEmergencyContactInput): Promise<EmergencyContact> { return this.request(`/children/${childId}/emergency-contacts`, { method: "POST", body: JSON.stringify(input) }); }
   async removeEmergencyContact(childId: string, contactId: string): Promise<void> { await this.request<void>(`/children/${childId}/emergency-contacts/${contactId}`, { method: "DELETE" }); }
+  async revokeEmergencyContact(childId: string, contactId: string, reason: string): Promise<EmergencyContact> { return this.request(`/children/${childId}/emergency-contacts/${contactId}/revoke`, { method: "POST", body: JSON.stringify({ reason }) }); }
   async consentDefinitions(): Promise<ConsentDefinition[]> { return this.request("/consent-definitions"); }
   async managedConsentDefinitions(): Promise<ConsentDefinition[]> { return this.request("/consent-definitions/manage"); }
   async createConsentDefinition(input: CreateConsentDefinitionInput): Promise<ConsentDefinition> { return this.request("/consent-definitions", { method: "POST", body: JSON.stringify(input) }); }

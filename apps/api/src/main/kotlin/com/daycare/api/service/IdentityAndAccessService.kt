@@ -95,6 +95,7 @@ class AccessService(
     private val platformAccess: PlatformAccessService,
     private val subscriptions: TenantSubscriptionRepository,
     private val organizationCapabilities: OrganizationCapabilitiesService,
+    private val publishedOfferingCapabilities: PublishedOfferingCapabilityService,
     private val parentFamilyProfiles: ParentFamilyProfileRepository,
 ) {
     @Transactional
@@ -118,7 +119,10 @@ class AccessService(
             if (subscription.status !in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL)) throw AccessDeniedException("Tenant subscription is not active")
         }
         val capabilities = organizationCapabilities.forOrganization(organizationId)
-        if (requiredCapability != null && requiredCapability !in capabilities.capabilities) throw AccessDeniedException("This feature is not enabled for the institution")
+        if (requiredCapability != null) {
+            if (requiredCapability !in capabilities.capabilities) throw AccessDeniedException("This feature is not enabled for the institution")
+            publishedOfferingCapabilities.requirePublishedCapability(organizationId, requiredCapability)
+        }
         return AccessScope(user, membership, capabilities.types, capabilities.capabilities)
     }
 
@@ -129,6 +133,12 @@ class AccessService(
     fun requireAnyCapability(scope: AccessScope, allowedCapabilities: Set<InstitutionCapability>) {
         if (scope.capabilities.none { it in allowedCapabilities }) throw AccessDeniedException("This feature is not enabled for the institution")
     }
+
+    fun requirePublishedOfferingCapability(organizationId: UUID, capability: InstitutionCapability, branchId: UUID? = null) =
+        publishedOfferingCapabilities.requirePublishedCapability(organizationId, capability, branchId)
+
+    fun hasPublishedOfferingCapability(organizationId: UUID, capability: InstitutionCapability, branchId: UUID? = null) =
+        publishedOfferingCapabilities.hasPublishedCapability(organizationId, capability, branchId)
 
     @Transactional
     fun updatePersonalDetails(jwt: Jwt, gender: Gender, dateOfBirth: LocalDate): CurrentUserResponse {

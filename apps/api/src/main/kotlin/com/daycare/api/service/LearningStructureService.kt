@@ -85,6 +85,11 @@ class LearningStructureService(
     private fun requireLegacyLearningScope(jwt: Jwt, organizationId: UUID, roles: Set<Role>, readOnly: Boolean = false): AccessScope {
         val scope = access.require(jwt, organizationId, roles, readOnly = readOnly)
         access.requireAnyCapability(scope, legacyLearningCapabilities)
+        if (access.hasPublishedOfferingCapability(organizationId, InstitutionCapability.ACADEMIC_CURRICULUM)) {
+            access.requirePublishedOfferingCapability(organizationId, InstitutionCapability.ACADEMIC_CURRICULUM)
+        } else {
+            access.requirePublishedOfferingCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS)
+        }
         return scope
     }
 
@@ -142,7 +147,7 @@ class LearningStructureService(
     @Transactional
     fun createLevel(jwt: Jwt, organizationId: UUID, request: UpsertLearningLevelRequest): LearningLevelResponse {
         val scope = requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
-        if (request.curriculumProgramIds.isNotEmpty()) access.requireAnyCapability(scope, setOf(InstitutionCapability.ACADEMIC_CURRICULUM))
+        if (request.curriculumProgramIds.isNotEmpty()) access.requirePublishedOfferingCapability(organizationId, InstitutionCapability.ACADEMIC_CURRICULUM)
         validateLevel(request)
         validatePrograms(organizationId, request.curriculumProgramIds)
         val level = levels.save(LearningLevel(organizationId = organizationId, name = request.name.trim(), minAgeMonths = request.minAgeMonths, maxAgeMonths = request.maxAgeMonths, displayOrder = request.displayOrder))
@@ -156,7 +161,7 @@ class LearningStructureService(
         validateLevel(request)
         val level = level(levelId, organizationId)
         val currentCurriculumProgramIds = levelPrograms.findAllByLearningLevelId(level.id).map { it.curriculumProgramId }.toSet()
-        if (request.curriculumProgramIds != currentCurriculumProgramIds) access.requireAnyCapability(scope, setOf(InstitutionCapability.ACADEMIC_CURRICULUM))
+        if (request.curriculumProgramIds != currentCurriculumProgramIds) access.requirePublishedOfferingCapability(organizationId, InstitutionCapability.ACADEMIC_CURRICULUM)
         validatePrograms(organizationId, request.curriculumProgramIds, level.id)
         level.name = request.name.trim(); level.minAgeMonths = request.minAgeMonths; level.maxAgeMonths = request.maxAgeMonths; level.displayOrder = request.displayOrder
         replacePrograms(level.id, request.curriculumProgramIds)
@@ -185,7 +190,7 @@ class LearningStructureService(
     @Transactional
     fun createClassroom(jwt: Jwt, organizationId: UUID, request: UpsertClassroomRequest): ClassroomResponse {
         val scope = requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
-        if (request.learningPeriodId != null) access.requireAnyCapability(scope, setOf(InstitutionCapability.ACADEMIC_CURRICULUM))
+        if (request.learningPeriodId != null) access.requirePublishedOfferingCapability(organizationId, InstitutionCapability.ACADEMIC_CURRICULUM)
         validateClassroomReferences(organizationId, request)
         val classroom = classrooms.save(Classroom(organizationId = organizationId, branchId = request.branchId, learningLevelId = request.learningLevelId, academicYearId = request.learningPeriodId, name = request.name.trim(), capacity = request.capacity))
         return classroomResponse(classroom)
@@ -196,7 +201,7 @@ class LearningStructureService(
         val scope = requireLegacyLearningScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         validateClassroomReferences(organizationId, request)
         val classroom = classroom(classroomId, organizationId)
-        if (request.learningPeriodId != classroom.academicYearId) access.requireAnyCapability(scope, setOf(InstitutionCapability.ACADEMIC_CURRICULUM))
+        if (request.learningPeriodId != classroom.academicYearId) access.requirePublishedOfferingCapability(organizationId, InstitutionCapability.ACADEMIC_CURRICULUM)
         classroom.branchId = request.branchId; classroom.learningLevelId = request.learningLevelId; classroom.academicYearId = request.learningPeriodId; classroom.name = request.name.trim(); classroom.capacity = request.capacity
         return classroomResponse(classroom)
     }

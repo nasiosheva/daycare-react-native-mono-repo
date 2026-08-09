@@ -9,7 +9,7 @@ import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { notify } from "@/notify/notify";
-import { hasInstitutionCapability } from "@daycare/core";
+import { hasBranchOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 export default function ParentChildProfileScreen() {
   const router = useRouter();
@@ -19,8 +19,9 @@ export default function ParentChildProfileScreen() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const hasDaycareOperations = hasInstitutionCapability(membership?.capabilities ?? [], "DAYCARE_OPERATIONS");
+  const access = useUiAccessContext(Boolean(membership));
   const childProfile = useQuery({ queryKey: ["parent-child-profile", organizationId, childId], queryFn: () => api.parentChildProfile(childId!), enabled: Boolean(childId && membership?.role === "PARENT") });
+  const hasDaycarePickupOperations = hasBranchOfferingCapability(access.data, childProfile.data?.child.branchId, "DAYCARE_OPERATIONS");
   const feedback = useMutation({ mutationFn: ({ programId, note }: { programId: string; note: string }) => api.addParentChildProgramFeedback(childId!, programId, note), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["parent-child-profile", organizationId, childId] }) });
   const [feedbackProgramId, setFeedbackProgramId] = useState<string | null>(null);
   const [feedbackNote, setFeedbackNote] = useState("");
@@ -45,9 +46,9 @@ export default function ParentChildProfileScreen() {
     {childProfile.data && <>
       <View style={styles.card}><AppText variant="h5">{childProfile.data.child.fullName}</AppText><AppText tone="muted">{childProfile.data.child.gender === "MALE" ? t("children.genderMale") : childProfile.data.child.gender === "FEMALE" ? t("children.genderFemale") : t("children.genderUnspecified")}</AppText><AppText tone="muted">{childProfile.data.child.dateOfBirth}</AppText>{childProfile.data.child.nisn && <AppText tone="muted">{t("children.nisn")}: {childProfile.data.child.nisn}</AppText>}</View>
       <View style={styles.card}><AppText variant="h5">{t("branch.location")}</AppText><AppText variant="label">{childProfile.data.branch.name}</AppText><AppText tone="muted">{childProfile.data.branch.fullAddress ?? t("branch.locationUnavailable")}</AppText>{childProfile.data.branch.googleMapsUrl && <Button variant="secondary" onPress={() => void openMaps()}>{t("branch.openGoogleMaps")}</Button>}</View>
-      <View style={styles.card}><AppText variant="h5">{t("pickup.title")}</AppText><Button variant="secondary" onPress={() => router.push({ pathname: "/pickup-authorizations", params: { childId } } as never)}>{t("pickup.manage")}</Button></View>
+      {hasDaycarePickupOperations && <View style={styles.card}><AppText variant="h5">{t("pickup.title")}</AppText><Button variant="secondary" onPress={() => router.push({ pathname: "/pickup-authorizations", params: { childId } } as never)}>{t("pickup.manage")}</Button></View>}
       <View style={styles.card}><AppText variant="h5">{t("emergencyContacts.title")}</AppText><Button variant="secondary" onPress={() => router.push({ pathname: "/emergency-contacts", params: { childId } } as never)}>{t("emergencyContacts.manage")}</Button></View>
-      {hasDaycareOperations && <View style={styles.card}><AppText variant="h5">{t("consent.title")}</AppText><Button variant="secondary" onPress={() => router.push({ pathname: "/child-consents", params: { childId } } as never)}>{t("consent.title")}</Button></View>}
+      {hasDaycarePickupOperations && <View style={styles.card}><AppText variant="h5">{t("consent.title")}</AppText><Button variant="secondary" onPress={() => router.push({ pathname: "/child-consents", params: { childId } } as never)}>{t("consent.title")}</Button></View>}
       <View style={styles.card}><AppText variant="h5">{t("children.classroom")}</AppText>{childProfile.data.placement ? <><AppText variant="label">{childProfile.data.placement.classroomName}</AppText><AppText tone="muted">{childProfile.data.placement.learningLevelName ?? t("common.noData")}</AppText></> : <AppText tone="muted">{t("common.noData")}</AppText>}</View>
       <View style={styles.card}><AppText variant="h5">{t("children.programs")}</AppText>{childProfile.data.programs.map((program) => <View key={program.id} style={styles.item}><AppText variant="label">{program.name}</AppText><AppText variant="caption" tone="muted">{statusLabel(program.status)}</AppText>{program.parentSummary && <AppText tone="muted">{program.parentSummary}</AppText>}{program.homeGuidance && <><AppText variant="label">{t("children.homeGuidance")}</AppText><AppText tone="muted">{program.homeGuidance}</AppText></>}{program.steps.map((step) => <View key={step.id} style={styles.step}><AppText variant="label">{step.title}</AppText>{step.homeGuidance && <AppText tone="muted">{step.homeGuidance}</AppText>}</View>)}{program.steps.length === 0 && !program.homeGuidance && <AppText tone="muted">{t("children.noSteps")}</AppText>}<Button variant="secondary" onPress={() => setFeedbackProgramId(program.id)}>{t("children.addFeedback")}</Button>{program.feedback.map((item) => <View key={item.id} style={styles.step}><AppText>{item.note}</AppText></View>)}</View>)}{childProfile.data.programs.length === 0 && <AppText tone="muted">{t("children.noPrograms")}</AppText>}</View>
       <View style={styles.card}><AppText variant="h5">{t("children.staffAssignments")}</AppText>{childProfile.data.staffAssignments.map((staff) => <View key={`${staff.displayName}-${staff.assignmentRole}`} style={styles.item}><AppText variant="label">{staff.displayName}</AppText><AppText tone="muted">{staffRole(staff.assignmentRole)}</AppText></View>)}{childProfile.data.staffAssignments.length === 0 && <AppText tone="muted">{t("children.noStaff")}</AppText>}</View>

@@ -2,10 +2,13 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.PickupAuthorizationStatus
 import com.daycare.api.domain.PickupVerificationMethod
+import com.daycare.api.domain.EducationOfferingStatus
+import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AuditLog
 import com.daycare.api.persistence.AuditLogRepository
 import com.daycare.api.persistence.Child
+import com.daycare.api.persistence.EducationOfferingRepository
 import com.daycare.api.persistence.PickupAuthorization
 import com.daycare.api.persistence.PickupAuthorizationRepository
 import jakarta.validation.constraints.NotBlank
@@ -46,11 +49,12 @@ class PickupAuthorizationService(
     private val childScopes: ChildScopeService,
     private val authorizations: PickupAuthorizationRepository,
     private val audits: AuditLogRepository,
+    private val offerings: EducationOfferingRepository,
 ) {
     @Transactional(readOnly = true)
     fun list(jwt: Jwt, organizationId: UUID, childId: UUID): List<PickupAuthorizationResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), readOnly = true)
-        requireVisibleChild(scope, childId, organizationId)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT))
+        requireDaycareOffering(requireVisibleChild(scope, childId, organizationId))
         return authorizations.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId).map { response(it, canRevoke(scope, it)) }
     }
 
@@ -59,6 +63,7 @@ class PickupAuthorizationService(
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT))
         val child = childScopes.requireParentLinkedChild(scope, childId, organizationId)
         access.requireWritable(scope)
+        requireDaycareOffering(child)
         val effectiveFrom = request.effectiveFrom ?: Instant.now()
         require(request.effectiveUntil == null || request.effectiveUntil.isAfter(effectiveFrom)) { "Masa berlaku penjemput tidak valid" }
         val authorization = authorizations.save(PickupAuthorization(
@@ -80,7 +85,7 @@ class PickupAuthorizationService(
     fun activate(jwt: Jwt, organizationId: UUID, childId: UUID, authorizationId: UUID): PickupAuthorizationResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         access.requireWritable(scope)
-        childScopes.requireStaffManagedChild(scope, childId, organizationId)
+        requireDaycareOffering(childScopes.requireStaffManagedChild(scope, childId, organizationId))
         val authorization = requireAuthorization(organizationId, childId, authorizationId)
         require(authorization.status == PickupAuthorizationStatus.PENDING_VERIFICATION) { "Otorisasi penjemput tidak dapat diaktifkan" }
         authorization.status = PickupAuthorizationStatus.ACTIVE
@@ -94,11 +99,11 @@ class PickupAuthorizationService(
     fun revoke(jwt: Jwt, organizationId: UUID, childId: UUID, authorizationId: UUID, request: RevokePickupAuthorizationRequest): PickupAuthorizationResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT))
         access.requireWritable(scope)
+        requireDaycareOffering(requireVisibleChild(scope, childId, organizationId))
         val authorization = requireAuthorization(organizationId, childId, authorizationId)
         if (scope.membership.role == Role.PARENT) {
-            childScopes.requireParentLinkedChild(scope, childId, organizationId)
             if (authorization.createdByUserId != scope.user.id) throw AccessDeniedException("Parent hanya dapat mencabut pengajuan penjemput sendiri")
-        } else childScopes.requireStaffManagedChild(scope, childId, organizationId)
+        }
         require(authorization.status !in setOf(PickupAuthorizationStatus.REVOKED, PickupAuthorizationStatus.EXPIRED)) { "Otorisasi penjemput sudah tidak aktif" }
         authorization.status = PickupAuthorizationStatus.REVOKED
         authorization.revokedByUserId = scope.user.id
@@ -109,6 +114,7 @@ class PickupAuthorizationService(
     }
 
     fun verifyCheckout(scope: AccessScope, child: Child, authorizationId: UUID?, exceptionReason: String?): PickupCheckoutVerification {
+        requireDaycareOffering(child)
         if (authorizationId == null) {
             if (scope.membership.role != Role.STAFF_ADMIN || exceptionReason.isNullOrBlank()) throw AccessDeniedException("Check-out memerlukan otorisasi penjemput aktif")
             return PickupCheckoutVerification(null, null, null, exceptionReason.trim())
@@ -125,6 +131,13 @@ class PickupAuthorizationService(
         Role.PARENT -> childScopes.requireParentLinkedChild(scope, childId, organizationId)
         Role.STAFF, Role.STAFF_ADMIN -> childScopes.requireStaffManagedChild(scope, childId, organizationId)
         Role.ADMIN -> throw AccessDeniedException("Platform administrator tidak memiliki akses penjemputan tenant")
+    }
+
+    private fun requireDaycareOffering(child: Child) {
+        val publishedOfferings = offerings.findAllByOrganizationIdAndBranchIdAndStatus(child.organizationId, child.branchId, EducationOfferingStatus.PUBLISHED)
+        if (publishedOfferings.none { InstitutionCapability.DAYCARE_OPERATIONS.name in it.capabilities.split(',') }) {
+            throw AccessDeniedException("Layanan penjemputan hanya tersedia untuk offering Daycare aktif di cabang anak")
+        }
     }
 
     private fun requireAuthorization(organizationId: UUID, childId: UUID, authorizationId: UUID): PickupAuthorization = authorizations.findById(authorizationId).orElseThrow { IllegalArgumentException("Otorisasi penjemput tidak ditemukan") }.also {

@@ -1,15 +1,19 @@
 package com.daycare.api.service
 
+import com.daycare.api.domain.ConsentDefinitionScope
 import com.daycare.api.domain.ConsentPurpose
 import com.daycare.api.domain.ConsentStatus
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AuditLog
 import com.daycare.api.persistence.AuditLogRepository
+import com.daycare.api.persistence.BranchRepository
 import com.daycare.api.persistence.ConsentDefinition
 import com.daycare.api.persistence.ConsentDefinitionRepository
+import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ConsentRecord
 import com.daycare.api.persistence.ConsentRecordRepository
+import com.daycare.api.persistence.EducationOfferingRepository
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
@@ -27,6 +31,10 @@ data class ConsentDefinitionResponse(
     val content: String,
     val revision: Int,
     val active: Boolean,
+    val scope: ConsentDefinitionScope,
+    val branchId: UUID?,
+    val offeringId: UUID?,
+    val effectiveUntil: Instant?,
 )
 
 data class ParentConsentResponse(
@@ -41,6 +49,10 @@ data class CreateConsentDefinitionRequest(
     @field:NotNull val purpose: ConsentPurpose,
     @field:NotBlank @field:Size(max = 160) val title: String,
     @field:NotBlank @field:Size(max = 4000) val content: String,
+    val scope: ConsentDefinitionScope = ConsentDefinitionScope.TENANT,
+    val branchId: UUID? = null,
+    val offeringId: UUID? = null,
+    val effectiveUntil: Instant? = null,
 )
 data class ReviseConsentDefinitionRequest(
     @field:NotBlank @field:Size(max = 160) val title: String,
@@ -57,6 +69,8 @@ class ConsentService(
     private val definitions: ConsentDefinitionRepository,
     private val records: ConsentRecordRepository,
     private val audits: AuditLogRepository,
+    private val branches: BranchRepository,
+    private val offerings: EducationOfferingRepository,
 ) {
     @Transactional(readOnly = true)
     fun definitions(jwt: Jwt, organizationId: UUID): List<ConsentDefinitionResponse> {
@@ -73,24 +87,32 @@ class ConsentService(
     @Transactional(readOnly = true)
     fun parentConsents(jwt: Jwt, organizationId: UUID, childId: UUID): List<ParentConsentResponse> {
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
-        childScopes.requireParentLinkedChild(scope, childId, organizationId)
+        val child = childScopes.requireParentLinkedChild(scope, childId, organizationId)
         val currentRecords = records.findAllByOrganizationIdAndChildIdAndGuardianUserId(organizationId, childId, scope.user.id)
             .associateBy { Pair(it.definitionId, it.definitionRevision) }
-        return definitions.findAllByOrganizationIdAndActiveTrueOrderByCreatedAtDesc(organizationId).map { definition ->
-            val record = currentRecords[Pair(definition.id, definition.revision)]
-            ParentConsentResponse(definitionResponse(definition), record?.status ?: ConsentStatus.PENDING, record?.decidedAt, record?.withdrawnAt)
-        }
+        return definitions.findAllByOrganizationIdAndActiveTrueOrderByCreatedAtDesc(organizationId)
+            .filter { visibleToChild(it, child) }
+            .map { definition ->
+                val record = currentRecords[Pair(definition.id, definition.revision)]
+                ParentConsentResponse(definitionResponse(definition), effectiveStatus(definition, record), record?.decidedAt, record?.withdrawnAt)
+            }
     }
 
     @Transactional
     fun createDefinition(jwt: Jwt, organizationId: UUID, request: CreateConsentDefinitionRequest): ConsentDefinitionResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
         access.requireWritable(scope)
+        require(request.effectiveUntil == null || request.effectiveUntil.isAfter(Instant.now())) { "Masa berlaku definisi persetujuan tidak valid" }
+        val (branchId, offeringId) = resolveScope(organizationId, request.scope, request.branchId, request.offeringId)
         val definition = definitions.save(ConsentDefinition(
             organizationId = organizationId,
             purpose = request.purpose,
             title = request.title.trim(),
             content = request.content.trim(),
+            scope = request.scope,
+            branchId = branchId,
+            offeringId = offeringId,
+            effectiveUntil = request.effectiveUntil,
         ))
         audit(organizationId, scope.user.id, definition.id, "CREATED")
         return definitionResponse(definition)
@@ -105,6 +127,7 @@ class ConsentService(
         definition.title = request.title.trim()
         definition.content = request.content.trim()
         definition.revision += 1
+        supersedeStaleRecords(definition)
         audit(organizationId, scope.user.id, definition.id, "REVISED")
         return definitionResponse(definition)
     }
@@ -119,6 +142,7 @@ class ConsentService(
         if (definition.active != active) {
             definition.active = active
             definition.revision += 1
+            supersedeStaleRecords(definition)
             audit(organizationId, scope.user.id, definition.id, if (active) "ACTIVATED" else "DEACTIVATED")
         }
         return definitionResponse(definition)
@@ -131,6 +155,8 @@ class ConsentService(
         childScopes.requireParentLinkedChild(scope, childId, organizationId)
         val definition = requireDefinition(organizationId, request.definitionId)
         require(definition.active) { "Definisi persetujuan tidak aktif" }
+        val expiry = definition.effectiveUntil
+        require(expiry == null || expiry.isAfter(Instant.now())) { "Definisi persetujuan sudah melewati masa berlaku" }
         val record = records.findByOrganizationIdAndChildIdAndDefinitionIdAndGuardianUserIdAndDefinitionRevision(
             organizationId, childId, definition.id, scope.user.id, definition.revision,
         ) ?: ConsentRecord(
@@ -177,7 +203,44 @@ class ConsentService(
         require(definition.revision == expectedRevision) { "Definisi persetujuan sudah berubah. Muat ulang data sebelum menyimpan." }
     }
 
-    private fun definitionResponse(value: ConsentDefinition) = ConsentDefinitionResponse(value.id, value.purpose, value.title, value.content, value.revision, value.active)
+    private fun resolveScope(organizationId: UUID, scope: ConsentDefinitionScope, branchId: UUID?, offeringId: UUID?): Pair<UUID?, UUID?> = when (scope) {
+        ConsentDefinitionScope.TENANT -> {
+            require(branchId == null && offeringId == null) { "Scope tenant tidak boleh menyertakan branch atau offering" }
+            null to null
+        }
+        ConsentDefinitionScope.BRANCH -> {
+            val id = branchId ?: throw IllegalArgumentException("Branch wajib diisi untuk scope cabang")
+            val branch = branches.findById(id).orElseThrow { IllegalArgumentException("Branch tidak ditemukan") }
+            require(branch.organizationId == organizationId) { "Branch bukan milik tenant ini" }
+            require(offeringId == null) { "Scope cabang tidak menyertakan offering" }
+            id to null
+        }
+        ConsentDefinitionScope.OFFERING -> {
+            val id = offeringId ?: throw IllegalArgumentException("Offering wajib diisi untuk scope offering")
+            val offering = offerings.findById(id).orElseThrow { IllegalArgumentException("Offering tidak ditemukan") }
+            require(offering.organizationId == organizationId) { "Offering bukan milik tenant ini" }
+            offering.branchId to id
+        }
+    }
+
+    private fun visibleToChild(definition: ConsentDefinition, child: Child): Boolean = when (definition.scope) {
+        ConsentDefinitionScope.TENANT -> true
+        ConsentDefinitionScope.BRANCH, ConsentDefinitionScope.OFFERING -> definition.branchId == child.branchId
+    }
+
+    private fun effectiveStatus(definition: ConsentDefinition, record: ConsentRecord?): ConsentStatus = when {
+        record == null -> ConsentStatus.PENDING
+        record.status == ConsentStatus.GRANTED && definition.effectiveUntil?.isBefore(Instant.now()) == true -> ConsentStatus.EXPIRED
+        else -> record.status
+    }
+
+    private fun supersedeStaleRecords(definition: ConsentDefinition) {
+        records.findAllByOrganizationIdAndDefinitionId(definition.organizationId, definition.id)
+            .filter { it.definitionRevision < definition.revision && (it.status == ConsentStatus.GRANTED || it.status == ConsentStatus.DECLINED) }
+            .forEach { records.save(it.apply { status = ConsentStatus.SUPERSEDED }) }
+    }
+
+    private fun definitionResponse(value: ConsentDefinition) = ConsentDefinitionResponse(value.id, value.purpose, value.title, value.content, value.revision, value.active, value.scope, value.branchId, value.offeringId, value.effectiveUntil)
     private fun recordResponse(value: ConsentRecord) = ConsentRecordResponse(value.definitionId, value.status, value.definitionRevision, value.decidedAt, value.withdrawnAt)
     private fun audit(organizationId: UUID, actorUserId: UUID, entityId: UUID, action: String) = audits.save(AuditLog(organizationId = organizationId, actorUserId = actorUserId, entityType = "CONSENT", entityId = entityId, action = action, source = "CONSENT_V1"))
 }

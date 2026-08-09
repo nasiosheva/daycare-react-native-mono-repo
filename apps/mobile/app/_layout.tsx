@@ -17,6 +17,7 @@ import { InactiveParentRouteBoundary } from "@/navigation/InactiveParentRouteBou
 import { OrganizationContextRouteBoundary } from "@/navigation/OrganizationContextRouteBoundary";
 import { ParentSelfServiceRouteBoundary } from "@/navigation/ParentSelfServiceRouteBoundary";
 import { ProfileContextRouteBoundary } from "@/navigation/ProfileContextRouteBoundary";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 if (Platform.OS !== "web") {
   SplashScreen.setOptions({ duration: 250, fade: true });
@@ -37,6 +38,7 @@ const bottomNavigationScreenNames = ["home", "platform-tenants", "platform-catal
 
 function NotificationRouteHandler() {
   const { organizationId, profile, selectOrganization } = useAuth();
+  const access = useUiAccessContext(Boolean(profile && organizationId));
   const router = useRouter();
   const navigationRef = useNavigationContainerRef();
   const [pendingRoute, setPendingRoute] = useState<{ actionPath: string; organizationId: string | null } | null>(null);
@@ -49,8 +51,9 @@ function NotificationRouteHandler() {
       const actionPath = typeof data.actionPath === "string" ? data.actionPath : null;
       const isSelfServiceRoute = Boolean(actionPath && isSelfServiceNotificationRoute(actionPath));
       const targetOrganizationId = isSelfServiceRoute ? null : notificationOrganizationId ?? organizationId;
-      if (!actionPath || !canOpenNotificationRoute(profile, targetOrganizationId, actionPath)) return;
       if (!isSelfServiceRoute && notificationOrganizationId && !selectOrganization(notificationOrganizationId)) return;
+      const isCurrentOrganization = !targetOrganizationId || targetOrganizationId === organizationId;
+      if (!actionPath || !canOpenNotificationRoute(profile, targetOrganizationId, actionPath, !isCurrentOrganization || hasOfferingCapability(access.data, "DAYCARE_OPERATIONS"))) return;
       openedNotificationIds.current.add(notificationId);
       setPendingRoute({
         actionPath: notificationRouteWithOrganizationId(actionPath, notificationOrganizationId),
@@ -60,17 +63,18 @@ function NotificationRouteHandler() {
     void Notifications.getLastNotificationResponseAsync().then((response) => { if (response) open(response.notification.request.content.data, response.notification.request.identifier); });
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => open(response.notification.request.content.data, response.notification.request.identifier));
     return () => subscription.remove();
-  }, [organizationId, profile, selectOrganization]);
+  }, [access.data, organizationId, profile, selectOrganization]);
   useEffect(() => {
     if (!pendingRoute || !navigationRef.current?.isReady()) return;
     if (pendingRoute.organizationId && pendingRoute.organizationId !== organizationId) return;
-    if (!canOpenNotificationRoute(profile, pendingRoute.organizationId ?? organizationId, pendingRoute.actionPath)) {
+    if (access.isLoading) return;
+    if (!canOpenNotificationRoute(profile, pendingRoute.organizationId ?? organizationId, pendingRoute.actionPath, hasOfferingCapability(access.data, "DAYCARE_OPERATIONS"))) {
       setPendingRoute(null);
       return;
     }
     router.push(pendingRoute.actionPath as never);
     setPendingRoute(null);
-  }, [navigationRef, organizationId, pendingRoute, profile, router]);
+  }, [access.data, navigationRef, organizationId, pendingRoute, profile, router]);
   return null;
 }
 

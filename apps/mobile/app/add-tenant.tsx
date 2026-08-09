@@ -68,6 +68,7 @@ export default function AddTenantScreen() {
       <TextInput style={styles.input} placeholder={t("tenant.name")} value={tenantName} onChangeText={setTenantName} />
       <TextInput style={styles.input} placeholder={t("tenant.branch")} value={branchName} onChangeText={setBranchName} />
       <AppText variant="label">{t("tenant.institutionTypes")}</AppText>
+      <AppText variant="caption" tone="muted">{t("tenant.institutionTypesInfo")}</AppText>
       {institutionTypes.isLoading && <ShimmerList variant="tile" />}
       {!institutionTypes.isLoading && <View style={styles.options}>{institutionTypes.data?.map((type) => <Button key={type.code} variant={selectedInstitutionTypes.includes(type.code) ? "primary" : "secondary"} onPress={() => toggleInstitutionType(type)}>{type.name}</Button>)}</View>}
       {institutionTypes.isError && <Button variant="secondary" onPress={() => institutionTypes.refetch()}>{t("institutionCatalog.reload")}</Button>}

@@ -7,7 +7,7 @@ import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, 
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
-import { hasInstitutionCapability } from "@daycare/core";
+import { hasBranchOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 type Sheet = "branch" | null;
 
@@ -18,7 +18,7 @@ export default function BranchesScreen() {
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canManage = membership?.active !== false;
-  const hasDaycareOperations = hasInstitutionCapability(membership?.capabilities ?? [], "DAYCARE_OPERATIONS");
+  const access = useUiAccessContext(Boolean(membership));
   const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: membership?.role === "STAFF_ADMIN" });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["tenant-branches", organizationId] });
   const create = useMutation({ mutationFn: api.createBranch.bind(api), onSuccess: refresh });
@@ -69,7 +69,7 @@ export default function BranchesScreen() {
       {branches.isError && <Button variant="secondary" onPress={() => branches.refetch()}>{t("common.retry")}</Button>}
       {!branches.isFetching && branches.data?.map((branch) => <View key={branch.id} style={styles.card}>
         <View style={styles.content}><AppText variant="label">{branch.name}{branch.primary ? ` · ${t("tenant.primaryBranch")}` : ""}</AppText><AppText tone="muted">{branch.fullAddress ?? t("branch.locationUnavailable")}</AppText><AppText variant="caption" tone="muted">{branch.timezone}{branch.active ? "" : ` · ${t("tenant.archivedBranch")}`}</AppText></View>
-        {canManage && <View style={styles.actions}><Button variant="secondary" onPress={() => openSheet(branch.id)}>{t("tenant.edit")}</Button>{hasDaycareOperations && branch.active && <Button variant="secondary" onPress={() => { setListOpen(false); router.push({ pathname: "/branch-operating-hours", params: { branchId: branch.id } }); }}>{t("overtime.operatingHours")}</Button>}{branch.active && !branch.primary && <Button variant="secondary" loading={setPrimary.isPending} onPress={() => void setPrimary.mutateAsync(branch.id)}>{t("tenant.makePrimary")}</Button>}{branch.active && !branch.primary && <Button variant="danger" loading={archive.isPending} onPress={() => void archive.mutateAsync(branch.id)}>{t("tenant.archiveBranch")}</Button>}</View>}
+        {canManage && <View style={styles.actions}><Button variant="secondary" onPress={() => openSheet(branch.id)}>{t("tenant.edit")}</Button>{branch.active && hasBranchOfferingCapability(access.data, branch.id, "DAYCARE_OPERATIONS") && <Button variant="secondary" onPress={() => { setListOpen(false); router.push({ pathname: "/branch-operating-hours", params: { branchId: branch.id } }); }}>{t("overtime.operatingHours")}</Button>}{branch.active && !branch.primary && <Button variant="secondary" loading={setPrimary.isPending} onPress={() => void setPrimary.mutateAsync(branch.id)}>{t("tenant.makePrimary")}</Button>}{branch.active && !branch.primary && <Button variant="danger" loading={archive.isPending} onPress={() => void archive.mutateAsync(branch.id)}>{t("tenant.archiveBranch")}</Button>}</View>}
       </View>)}
     </BottomSheet>
     <BottomSheet visible={sheet === "branch"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={branchId ? t("tenant.edit") : t("tenant.addBranch")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("common.save"), loading: create.isPending || update.isPending, onPress: () => void save() }}>

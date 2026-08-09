@@ -1,4 +1,4 @@
-import { hasInstitutionCapability, type CurrentUser, type Role } from "@daycare/core";
+import type { CurrentUser, Role } from "@daycare/core";
 
 type NotificationRoutePolicy = {
   roles?: readonly Role[];
@@ -50,7 +50,7 @@ export function notificationRouteWithOrganizationId(actionPath: string, organiza
   return `${path}?${parameters.join("&")}`;
 }
 
-export function canOpenNotificationRoute(profile: CurrentUser | null, organizationId: string | null, actionPath: string): boolean {
+export function canOpenNotificationRoute(profile: CurrentUser | null, organizationId: string | null, actionPath: string, hasDaycareOffering = false): boolean {
   if (!profile || !actionPath.startsWith("/")) return false;
   if (notificationPath(actionPath) === "/home") return true;
 
@@ -62,5 +62,5 @@ export function canOpenNotificationRoute(profile: CurrentUser | null, organizati
   const membership = profile.memberships.find((item) => item.organizationId === organizationId);
   if (!membership || !policy.roles.includes(membership.role)) return false;
   if (policy.requireActiveMembership && !membership.active) return false;
-  return !policy.requireDaycareCapability || hasInstitutionCapability(membership.capabilities, "DAYCARE_OPERATIONS");
+  return !policy.requireDaycareCapability || hasDaycareOffering;
 }

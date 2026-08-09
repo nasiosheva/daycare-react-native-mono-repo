@@ -25,6 +25,7 @@ import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.UserProfileRepository
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.Membership
+import com.daycare.api.persistence.EducationOfferingRepository
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
@@ -109,6 +110,7 @@ class PlatformAdministrationService(
     private val tenantUserAccounts: TenantUserAccountService,
     private val institutionTypeCatalog: InstitutionTypeCatalogService,
     private val defaultCurriculumActivities: TenantDefaultCurriculumActivitySeeder,
+    private val educationOfferings: EducationOfferingRepository,
 ) {
     @Transactional
     fun tenants(jwt: Jwt, search: String?): List<TenantResponse> {
@@ -192,8 +194,11 @@ class PlatformAdministrationService(
     @Transactional
     fun updateTenant(jwt: Jwt, organizationId: UUID, request: UpdateTenantRequest): TenantResponse {
         platformAccess.requirePlatformAdmin(jwt)
+        require(request.institutionTypes.isNotEmpty()) { "Select at least one institution type" }
         institutionTypeCatalog.requireActiveCodes(request.institutionTypes)
         val organization = requireOrganization(organizationId)
+        val offeredTypes = educationOfferings.findAllByOrganizationIdOrderByCreatedAtAsc(organizationId).map { it.institutionType }.toSet()
+        require(offeredTypes.all { it in request.institutionTypes }) { "An institution type cannot be removed while an offering exists for it" }
         val subscription = subscriptions.findByOrganizationId(organizationId)
         require(subscription?.status != TenantSubscriptionStatus.TRIAL || request.monthlyFee == null) { "Monthly fee must not be set when tenant uses a trial" }
         organization.name = request.tenantName.trim()

@@ -1,4 +1,4 @@
-import { hasInstitutionCapability, type CurrentUser, type Role } from "@daycare/core";
+import type { CurrentUser, Role } from "@daycare/core";
 
 export type LegacyDaycareRoutePolicy = {
   roles: readonly Role[];
@@ -38,10 +38,11 @@ export function hasLegacyDaycareRouteAccess(
   profile: CurrentUser,
   organizationId: string | null,
   policy: LegacyDaycareRoutePolicy,
+  hasDaycareOffering: boolean,
 ) {
   if (!organizationId) return false;
   const membership = profile.memberships.find((item) => item.organizationId === organizationId);
   if (!membership || !policy.roles.includes(membership.role)) return false;
   if (policy.requireActiveMembership && !membership.active) return false;
-  return !policy.requireDaycareCapability || hasInstitutionCapability(membership.capabilities, "DAYCARE_OPERATIONS");
+  return !policy.requireDaycareCapability || hasDaycareOffering;
 }

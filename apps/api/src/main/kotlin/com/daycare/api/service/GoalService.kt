@@ -107,6 +107,7 @@ class GoalService(
     private fun requireAcademicScope(jwt: Jwt, organizationId: UUID, roles: Set<Role>, readOnly: Boolean = false): AccessScope {
         val scope = access.require(jwt, organizationId, roles, readOnly = readOnly)
         access.requireAnyCapability(scope, setOf(InstitutionCapability.ACADEMIC_CURRICULUM))
+        access.requirePublishedOfferingCapability(organizationId, InstitutionCapability.ACADEMIC_CURRICULUM)
         return scope
     }
 
