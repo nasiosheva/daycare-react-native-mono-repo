@@ -49,7 +49,7 @@ data class ParentEnrollmentRetryRequest(val bookingDates: List<LocalDate> = empt
 enum class ParentEnrollmentAccessState { PENDING_APPROVAL, PAYMENT_DUE, PAYMENT_REVIEW, ACTIVE, BILLING_LIMITED, CLOSED }
 enum class ParentEnrollmentAllowedAction { REAPPLY, UPLOAD_PAYMENT_PROOF }
 data class ParentTenantPlanResponse(val id: UUID, val name: String, val type: com.daycare.api.domain.ServicePlanType, val price: java.math.BigDecimal, val creditCount: Int?, val bookingRequiresApproval: Boolean, val dailyCapacity: Int?)
-data class ParentTenantBranchResponse(val id: UUID, val name: String, val dailyCapacity: Int?)
+data class ParentTenantBranchResponse(val id: UUID, val name: String, val dailyCapacity: Int?, val fullAddress: String?, val googleMapsUrl: String?)
 data class ParentTenantCatalogResponse(val organizationId: UUID, val organizationName: String, val branches: List<ParentTenantBranchResponse>, val plans: List<ParentTenantPlanResponse>)
 data class ParentEnrollmentResponse(
     val id: UUID,
@@ -104,9 +104,11 @@ class ParentEnrollmentService(
     private val publishedOfferingCapabilities: PublishedOfferingCapabilityService,
 ) {
     @Transactional
-    fun catalog(jwt: Jwt): List<ParentTenantCatalogResponse> {
+    fun catalog(jwt: Jwt, search: String? = null): List<ParentTenantCatalogResponse> {
         identity.sync(jwt)
-        return organizations.findAll().mapNotNull { organization ->
+        val query = search?.trim()
+        val candidates = if (query.isNullOrEmpty()) organizations.findAll() else organizations.findAllByNameContainingIgnoreCase(query)
+        return candidates.mapNotNull { organization ->
             val subscription = subscriptions.findByOrganizationId(organization.id)
             val operational = subscription?.status in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL)
             val daycareBranches = branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organization.id)
@@ -114,7 +116,7 @@ class ParentEnrollmentService(
             if (!operational || daycareBranches.isEmpty()) null else ParentTenantCatalogResponse(
                 organization.id,
                 organization.name,
-                daycareBranches.map { branch -> ParentTenantBranchResponse(branch.id, branch.name, billingBranchCapacity(organization.id, branch.id)) },
+                daycareBranches.map { branch -> ParentTenantBranchResponse(branch.id, branch.name, billingBranchCapacity(organization.id, branch.id), branch.fullAddress, branch.googleMapsUrl) },
                 plans.findAllByOrganizationIdAndActiveTrue(organization.id).map { plan -> ParentTenantPlanResponse(plan.id, plan.name, plan.type, plan.price, plan.creditCount, plan.bookingRequiresApproval, plan.dailyCapacity) },
             )
         }
