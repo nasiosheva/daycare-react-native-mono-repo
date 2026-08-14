@@ -253,12 +253,12 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
     <AppText variant="heading">{t("home.branchSummary")}</AppText>
     <TextInput style={styles.input} placeholder={t("home.branchSearchPlaceholder")} value={branchSearch} onChangeText={setBranchSearch} />
     {(branches.isFetching || capacities.isFetching || children.isFetching || users.isFetching || pendingBookings.isFetching || pendingEnrollments.isFetching || invoices.isFetching) && <ShimmerList />}
-    {!branches.isFetching && !capacities.isFetching && !children.isFetching && !users.isFetching && !pendingBookings.isFetching && !pendingEnrollments.isFetching && !invoices.isFetching && branchSummaries.map((item) => <View key={item.branch.id} style={styles.branchCard}>
+    {!branches.isFetching && !capacities.isFetching && !children.isFetching && !users.isFetching && !pendingBookings.isFetching && !pendingEnrollments.isFetching && !invoices.isFetching && branchSummaries.map((item) => <Pressable key={item.branch.id} accessibilityRole="button" accessibilityLabel={item.branch.name} onPress={() => router.push("/branches")} style={({ pressed }) => [styles.branchCard, pressed && styles.branchCardPressed]}>
       <AppText variant="heading">{item.branch.name}</AppText>
       <AppText tone="muted">{item.capacity != null ? t("home.branchChildrenWithCapacity", { count: item.childrenCount, capacity: item.capacity }) : t("home.branchChildrenNoCapacity", { count: item.childrenCount })}</AppText>
       <AppText tone="muted">{t("home.branchStaffSummary", { count: item.staffCount })}</AppText>
       {hasDaycareOperations && <><AppText tone={item.pendingApprovals > 0 ? "danger" : "muted"}>{t("home.branchApprovalsSummary", { count: item.pendingApprovals })}</AppText><AppText tone={item.pendingInvoices > 0 ? "danger" : "muted"}>{t("home.branchInvoicesSummary", { count: item.pendingInvoices })}</AppText></>}
-    </View>)}
+    </Pressable>)}
     {!branches.isFetching && activeBranches.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
   </View></AppScreen>;
 }
@@ -347,4 +347,5 @@ const styles = StyleSheet.create({
   section: { gap: spacing.sm },
   tenant: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   branchCard: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  branchCardPressed: { opacity: 0.76 },
 });

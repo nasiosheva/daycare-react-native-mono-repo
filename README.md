@@ -174,18 +174,18 @@ cp .env.prod.example .env.prod
 
 | Environment | Android | iOS | Web |
 | --- | --- | --- | --- |
-| Local stack | `./run-android-local.sh` | `./run-ios-local.sh` | `./run-web-local.sh` |
+| Local stack | `./scripts/run-android-local.sh` | `./scripts/run-ios-local.sh` | `./scripts/run-web-local.sh` |
 | Local API | `./scripts/run-backend-local.sh` | `./scripts/run-backend-local.sh` | `./scripts/run-backend-local.sh` |
-| Development | `./run-android-dev.sh` | `./run-ios-dev.sh` | `./run-web-dev.sh` |
-| Production services | `./run-android-prod.sh` | `./run-ios-prod.sh` | `./run-web-prod.sh` |
+| Development | `./scripts/run-android-dev.sh` | `./scripts/run-ios-dev.sh` | `./scripts/run-web-dev.sh` |
+| Production services | `./scripts/run-android-prod.sh` | `./scripts/run-ios-prod.sh` | `./scripts/run-web-prod.sh` |
 
-`./run-android-local.sh` synchronizes the generated Android project with the Expo native configuration when needed, restores `android/local.properties` from `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or the standard macOS SDK location, then creates or refreshes and installs the Android development build before starting Metro. It can therefore be used as the one-command local Android client launcher, including after an Android application-package or native-plugin change. Before a clean Android prebuild, every Android launcher temporarily preserves the ignored `MYAPP_RELEASE_*` entries and their referenced release keystore, then restores them only into the regenerated local project. The other Android launchers start an installed Expo development build using the selected service environment, and rebuild it automatically when the native configuration changes. iOS launchers only build and run on the physical iPhone identified by `IOS_DEVICE_UDID`; simulators are intentionally unsupported. The `prod` scripts point at production services but do not create a signed store/release build and do not deploy the API.
+`./scripts/run-android-local.sh` synchronizes the generated Android project with the Expo native configuration when needed, restores `android/local.properties` from `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or the standard macOS SDK location, then creates or refreshes and installs the Android development build before starting Metro. It can therefore be used as the one-command local Android client launcher, including after an Android application-package or native-plugin change. Before a clean Android prebuild, every Android launcher temporarily preserves the ignored `MYAPP_RELEASE_*` entries and their referenced release keystore, then restores them only into the regenerated local project. The other Android launchers start an installed Expo development build using the selected service environment, and rebuild it automatically when the native configuration changes. iOS launchers only build and run on the physical iPhone identified by `IOS_DEVICE_UDID`; simulators are intentionally unsupported. The `prod` scripts point at production services but do not create a signed store/release build and do not deploy the API.
 
 Android and iOS begin with a native splash screen configured from `apps/mobile/app.json`, then retain the full Usia Emas branded splash layout while authentication state restores. `BrandedSplash` composes that full-screen design from a gradient, SVG rays, the separate emblem asset, and text; it is not a screen-sized bitmap. Android 12 and newer necessarily show only the system-provided background and centered icon before React starts, because that is the Android platform launch-screen contract. Web intentionally does not use this native splash behavior. The launcher fingerprints the complete mobile asset directory, so changing a splash, icon, or other bundled asset automatically triggers Expo prebuild and synchronizes the generated native projects.
 
 Run `./scripts/run-backend-local.sh` in its own terminal before starting a local Web, Android, or iOS launcher. It sources `.env`, validates local backend configuration, reuses PostgreSQL at `${POSTGRES_HOST:-localhost}:${POSTGRES_PORT:-5432}` or starts the optional Docker Compose PostgreSQL service, stops an existing API process only when that process is identified as owned by this repository, then starts a fresh API with Spring profile `local` in the foreground. It never kills an unrelated process that happens to use port 8080. This activates the local-only Platform Admin seeder when `LOCAL_AUTH_ENABLED=true` and `LOCAL_SEED_ENABLED=true`, and resets the configured local-admin password on startup. Stop the backend with Ctrl+C in that terminal.
 
-`./run-web-local.sh`, `./run-android-local.sh`, and `./run-ios-local.sh` no longer start, stop, or replace the API process; they verify that `http://localhost:8080/api/v3/api-docs` is ready and explain how to start it when unavailable. `./run-web-local.sh` always starts Expo Web with `http://localhost:8080/api/v1`, independent of a LAN URL in `.env`. For a connected Android device, `./run-android-local.sh` uses `adb reverse`, starts Metro on `localhost`, and explicitly opens the development client with the localhost URL. Its mobile API URL is also `http://localhost:8080/api/v1`, so the API and bundle do not depend on Wi-Fi routing. It immediately prints the latest 200 API request/response and Android runtime-error records, then continues streaming new logs; this logger stops with the launcher. API diagnostics are active only for the Android local launcher and report method, URL, status or network/timeout outcome, and duration. They never print bearer tokens, request bodies, passwords, OTPs, or uploaded media.
+`./scripts/run-web-local.sh`, `./scripts/run-android-local.sh`, and `./scripts/run-ios-local.sh` no longer start, stop, or replace the API process; they verify that `http://localhost:8080/api/v3/api-docs` is ready and explain how to start it when unavailable. `./scripts/run-web-local.sh` always starts Expo Web with `http://localhost:8080/api/v1`, independent of a LAN URL in `.env`. For a connected Android device, `./scripts/run-android-local.sh` uses `adb reverse`, starts Metro on `localhost`, and explicitly opens the development client with the localhost URL. Its mobile API URL is also `http://localhost:8080/api/v1`, so the API and bundle do not depend on Wi-Fi routing. It immediately prints the latest 200 API request/response and Android runtime-error records, then continues streaming new logs; this logger stops with the launcher. API diagnostics are active only for the Android local launcher and report method, URL, status or network/timeout outcome, and duration. They never print bearer tokens, request bodies, passwords, OTPs, or uploaded media.
 
 Every API request has a 15-second timeout. Login shows a specific unreachable-server or slow-server message, and a signed-in account whose profile cannot be loaded receives explicit **Retry** and **Sign out** actions instead of an indefinite loading state.
 
@@ -200,15 +200,15 @@ The scripts can install project dependencies, but intentionally do not install s
 Use the dedicated root launcher to build a signed APK for direct Android distribution:
 
 ```sh
-./build-android-release-apk.sh
+./scripts/build-android-release-apk.sh
 ```
 
-The launcher loads `.env.prod` and requires `EXPO_PUBLIC_APP_ENV=production`, JDK 21, a local Android SDK, `apps/mobile/google-services.json`, the generated `apps/mobile/android` project, and local release-signing values in `apps/mobile/android/gradle.properties`. It does not create, copy, upload, or commit a keystore. A signing-alias rename must preserve the same private-key certificate in that keystore, otherwise installed Android applications cannot receive a compatible update. On success it verifies the APK signature and writes the signed artifact to `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`. Follow the full [Android release APK guide](docs/android-release-apk.md) for one-time signing setup, verification, and troubleshooting. `run-android-prod.sh` remains a development-client launcher for production services and does not create this APK.
+The launcher loads `.env.prod` and requires `EXPO_PUBLIC_APP_ENV=production`, JDK 21, a local Android SDK, `apps/mobile/google-services.json`, the generated `apps/mobile/android` project, and local release-signing values in `apps/mobile/android/gradle.properties`. It does not create, copy, upload, or commit a keystore. A signing-alias rename must preserve the same private-key certificate in that keystore, otherwise installed Android applications cannot receive a compatible update. On success it verifies the APK signature and writes the signed artifact to `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`. Follow the full [Android release APK guide](docs/android-release-apk.md) for one-time signing setup, verification, and troubleshooting. `scripts/run-android-prod.sh` remains a development-client launcher for production services and does not create this APK.
 
 For Google Play distribution, build a signed Android App Bundle instead:
 
 ```sh
-./build-android-release-aab.sh
+./scripts/build-android-release-aab.sh
 ```
 
 It writes `apps/mobile/android/app/build/outputs/bundle/release/app-release.aab` and verifies the bundle signature with `jarsigner`. Google Play generates architecture-specific APKs from this AAB, so do not use the APK-only ABI reduction as a substitute for Play delivery.
@@ -220,13 +220,13 @@ Native Firebase and Google sign-in require a development build; Expo Go is not s
 - `apps/mobile/google-services.json` for Android. This client configuration is version-controlled; it must never be confused with a Firebase service-account credential.
 - `apps/mobile/GoogleService-Info.plist` for iOS. Unlike the Android client configuration, this local iOS configuration remains ignored and must be provided to each iOS build environment.
 
-Each downloaded Firebase platform configuration must belong to the current Android application ID or iOS bundle ID; validate this before replacing an ignored local configuration file. Register the Android SHA-1/SHA-256, iOS bundle ID (`com.children.platform`), authorized web domains, Firebase SMS region policy, and Google OAuth clients in Firebase. `./run-android-local.sh` creates and installs the local Android development build automatically. To create it manually for a non-local Android launcher, run:
+Each downloaded Firebase platform configuration must belong to the current Android application ID or iOS bundle ID; validate this before replacing an ignored local configuration file. Register the Android SHA-1/SHA-256, iOS bundle ID (`com.children.platform`), authorized web domains, Firebase SMS region policy, and Google OAuth clients in Firebase. `./scripts/run-android-local.sh` creates and installs the local Android development build automatically. To create it manually for a non-local Android launcher, run:
 
 ```sh
 corepack pnpm --filter @daycare/app exec expo run:android
 ```
 
-For iOS, use `./run-ios-dev.sh` after setting `IOS_DEVICE_UDID`; it runs `expo run:ios --device <UDID>` and deliberately rejects simulators. Native email/password, phone, and Google authentication use React Native Firebase; web uses the Firebase JavaScript SDK.
+For iOS, use `./scripts/run-ios-dev.sh` after setting `IOS_DEVICE_UDID`; it runs `expo run:ios --device <UDID>` and deliberately rejects simulators. Native email/password, phone, and Google authentication use React Native Firebase; web uses the Firebase JavaScript SDK.
 
 To identify the connected iPhone UDID, run `xcrun xctrace list devices`, copy the UDID shown for the physical device (not a line marked `Simulator`), and set it as `IOS_DEVICE_UDID` in the matching environment file. The iPhone must be connected, trusted, and enabled for development.
 
@@ -421,7 +421,7 @@ git switch production
 
 Before committing, run `pnpm verify`. Every change requires a documentation review in the same change set: create or update `docs/changes/YYYY-MM-DD/<context>.md` with the change, affected behavior, verification, and any follow-up; update this README for user flow, business rules, API contracts, configuration, operational procedures, or verification changes; and update relevant module documentation when it exists. If no documentation update is materially required, state the reason explicitly in the handoff. Keep environment files, Firebase platform configuration, signing keys, and local build artifacts untracked; `.gitignore` already excludes them.
 
-For a direct Android distribution APK, use `./build-android-release-apk.sh`. It signs with the ignored local release keystore, packages only `arm64-v8a` by default, and enables R8/resource shrinking. Use `ANDROID_RELEASE_ARCHITECTURES=armeabi-v7a,arm64-v8a` only when 32-bit device support is required; see [Android release APK](docs/android-release-apk.md).
+For a direct Android distribution APK, use `./scripts/build-android-release-apk.sh`. It signs with the ignored local release keystore, packages only `arm64-v8a` by default, and enables R8/resource shrinking. Use `ANDROID_RELEASE_ARCHITECTURES=armeabi-v7a,arm64-v8a` only when 32-bit device support is required; see [Android release APK](docs/android-release-apk.md).
 
 ## Current scope
 

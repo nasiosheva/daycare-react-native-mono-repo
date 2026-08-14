@@ -228,7 +228,7 @@ class EducationOfferingController(private val offerings: EducationOfferingServic
 @SecurityRequirement(name = "bearerAuth")
 class ParentEnrollmentController(private val enrollments: ParentEnrollmentService) {
     @GetMapping("/catalog")
-    fun catalog(@AuthenticationPrincipal jwt: Jwt) = enrollments.catalog(jwt)
+    fun catalog(@AuthenticationPrincipal jwt: Jwt, @RequestParam(required = false) search: String?) = enrollments.catalog(jwt, search)
 
     @PostMapping("/checkout") @ResponseStatus(HttpStatus.CREATED)
     fun checkout(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: ParentEnrollmentCheckoutRequest) = enrollments.checkout(jwt, request)

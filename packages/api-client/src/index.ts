@@ -219,7 +219,7 @@ export type UpdateTenantUserInput = { displayName: string; email: string; userna
 export type TenantUser = { id: string; userId: string | null; displayName: string | null; username: string | null; email: string | null; role: Extract<Role, "STAFF_ADMIN" | "STAFF" | "PARENT">; status: "ACTIVE" | "INACTIVE" | "PENDING"; branchId: string | null; canManageChildPrograms: boolean; canManageDevelopmentCategories: boolean };
 export type DevelopmentCategoryOption = { id: string; name: string; active: boolean; system: boolean };
 export type ParentTenantPlan = { id: string; name: string; type: ServicePlanType; price: number; creditCount?: number | null; bookingRequiresApproval: boolean; dailyCapacity?: number | null };
-export type ParentTenantCatalog = { organizationId: string; organizationName: string; branches: Array<{ id: string; name: string; dailyCapacity?: number | null }>; plans: ParentTenantPlan[] };
+export type ParentTenantCatalog = { organizationId: string; organizationName: string; branches: Array<{ id: string; name: string; dailyCapacity?: number | null; fullAddress?: string | null; googleMapsUrl?: string | null }>; plans: ParentTenantPlan[] };
 export type ParentEnrollmentStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "EXPIRED" | "CANCELLED";
 export type ParentEnrollmentAccessState = "PENDING_APPROVAL" | "PAYMENT_DUE" | "PAYMENT_REVIEW" | "ACTIVE" | "BILLING_LIMITED" | "CLOSED";
 export type ParentEnrollmentAllowedAction = "REAPPLY" | "UPLOAD_PAYMENT_PROOF";
@@ -289,7 +289,7 @@ export class ApiClient {
   async setEducationOfferingStatus(offeringId: string, status: EducationOfferingStatus): Promise<EducationOffering> { return this.request(`/education-offerings/${offeringId}/status`, { method: "POST", body: JSON.stringify({ status }) }); }
   async parentFamilyProfile(): Promise<CurrentUser["parentFamilyProfile"]> { return this.request("/parent-family-profile"); }
   async updateParentFamilyProfile(input: ParentFamilyProfileInput): Promise<NonNullable<CurrentUser["parentFamilyProfile"]>> { return this.request("/parent-family-profile", { method: "PUT", body: JSON.stringify(input) }); }
-  async parentEnrollmentCatalog(): Promise<ParentTenantCatalog[]> { return this.request("/parent-enrollment/catalog"); }
+  async parentEnrollmentCatalog(search?: string): Promise<ParentTenantCatalog[]> { const query = search?.trim(); return this.request(`/parent-enrollment/catalog${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
   async parentEnrollments(): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment"); }
   async checkoutParentEnrollment(input: ParentEnrollmentCheckoutInput): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment/checkout", { method: "POST", body: JSON.stringify(input) }); }
   async pendingParentEnrollments(filter: BranchListFilter = {}, search?: string): Promise<ParentEnrollment[]> { return this.request(withBranchAndSearchFilter("/parent-enrollment/pending-approval", filter, search)); }
