@@ -216,6 +216,8 @@ class Branch(
     @Column(nullable = false) var timezone: String = "Asia/Jakarta",
     @Column(name = "full_address", length = 2_000) var fullAddress: String? = null,
     @Column(name = "google_maps_url", length = 2_048) var googleMapsUrl: String? = null,
+    @Column(name = "auto_overtime_billing_enabled", nullable = false) var autoOvertimeBillingEnabled: Boolean = false,
+    @Column(name = "overtime_grace_minutes", nullable = false) var overtimeGraceMinutes: Int = 15,
     @Column(nullable = false) var active: Boolean = true,
     @Column(name = "is_primary", nullable = false) var primary: Boolean = false,
 )

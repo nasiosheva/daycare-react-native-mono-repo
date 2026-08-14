@@ -22,6 +22,8 @@ import com.daycare.api.persistence.OvertimeChargeTierSnapshot
 import com.daycare.api.persistence.OvertimeChargeTierSnapshotRepository
 import com.daycare.api.realtime.RealtimeFlag
 import jakarta.validation.constraints.DecimalMin
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Positive
@@ -29,6 +31,7 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 import java.time.DayOfWeek
 import java.time.Instant
@@ -38,11 +41,14 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.UUID
 
+private const val DEFAULT_OVERTIME_GRACE_MINUTES = 15
+private const val AUTOMATIC_OVERTIME_DUE_DAYS = 2L
+
 data class OperatingHourInput(@field:NotNull val dayOfWeek: DayOfWeek, val active: Boolean, val opensAt: LocalTime? = null, val closesAt: LocalTime? = null)
 data class OvertimeRateTierInput(@field:Positive val durationMinutes: Int, @field:DecimalMin("0.01") val amount: BigDecimal)
-data class BranchOperatingHoursResponse(val branchId: UUID, val branchName: String, val timezone: String, val hours: List<OperatingHourInput>, val tiers: List<OvertimeRateTierInput>)
+data class BranchOperatingHoursResponse(val branchId: UUID, val branchName: String, val timezone: String, val hours: List<OperatingHourInput>, val tiers: List<OvertimeRateTierInput>, val autoOvertimeBillingEnabled: Boolean, val overtimeGraceMinutes: Int)
 data class ParentChildOperatingHoursResponse(val childId: UUID, val childName: String, val organizationId: UUID, val organizationName: String, val branchId: UUID, val branchName: String, val timezone: String, val hours: List<OperatingHourInput>, val tiers: List<OvertimeRateTierInput>)
-data class UpdateBranchOperatingHoursRequest(@field:NotEmpty val hours: List<OperatingHourInput>, val tiers: List<OvertimeRateTierInput>)
+data class UpdateBranchOperatingHoursRequest(@field:NotEmpty val hours: List<OperatingHourInput>, val tiers: List<OvertimeRateTierInput>, val autoOvertimeBillingEnabled: Boolean = false, @field:Min(0) @field:Max(180) val overtimeGraceMinutes: Int = DEFAULT_OVERTIME_GRACE_MINUTES)
 data class CreateOvertimeChargeRequest(@field:NotNull val childId: UUID, @field:NotNull val operationalDate: LocalDate, @field:NotNull val pickedUpAt: LocalTime, @field:NotNull val dueDate: LocalDate)
 data class OvertimeChargeResponse(val id: UUID, val invoiceId: UUID, val branchId: UUID, val childId: UUID, val childName: String, val operationalDate: LocalDate, val pickedUpAt: LocalTime, val closesAt: LocalTime, val overtimeMinutes: Int, val totalAmount: BigDecimal, val dueDate: LocalDate, val status: InvoiceStatus, val tiers: List<OvertimeRateTierInput>)
 
@@ -64,6 +70,8 @@ class OvertimeService(
     private val organizations: OrganizationRepository,
     private val publishedOfferingCapabilities: PublishedOfferingCapabilityService,
 ) {
+    private val logger = LoggerFactory.getLogger(javaClass)
+
     @Transactional(readOnly = true)
     fun branchHours(jwt: Jwt, organizationId: UUID, branchId: UUID): BranchOperatingHoursResponse {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
@@ -78,6 +86,9 @@ class OvertimeService(
         publishedOfferingCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branch.id)
         require(request.hours.size == DayOfWeek.entries.size && request.hours.map { it.dayOfWeek }.toSet().size == DayOfWeek.entries.size) { "Every day of week must be configured" }
         request.hours.forEach { hour -> require(!hour.active || (hour.opensAt != null && hour.closesAt != null && hour.closesAt.isAfter(hour.opensAt))) { "Operating hours are not valid" } }
+        require(!request.autoOvertimeBillingEnabled || request.tiers.isNotEmpty()) { "Automatic overtime billing requires at least one overtime rate tier" }
+        branch.autoOvertimeBillingEnabled = request.autoOvertimeBillingEnabled
+        branch.overtimeGraceMinutes = request.overtimeGraceMinutes
         hours.deleteAllByBranchId(branchId)
         hours.flush()
         hours.saveAll(request.hours.map { hour -> BranchOperatingHour(branchId = branchId, dayOfWeek = hour.dayOfWeek, active = hour.active, opensAt = hour.opensAt, closesAt = hour.closesAt) })
@@ -132,7 +143,7 @@ class OvertimeService(
         val child = children.findById(request.childId).orElseThrow { IllegalArgumentException("Child was not found") }
         require(child.organizationId == organizationId) { "Child belongs to a different organization" }
         publishedOfferingCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)
-        require(charges.findAllByOrganizationIdAndChildIdAndOperationalDate(organizationId, child.id, request.operationalDate).none { invoices.findById(it.invoiceId).orElseThrow().status != InvoiceStatus.VOID }) { "Overtime charge already exists" }
+        require(!hasNonVoidCharge(organizationId, child.id, request.operationalDate)) { "Overtime charge already exists" }
         return persistCharge(organizationId, child.id, child.branchId, request, null)
     }
 
@@ -163,7 +174,7 @@ class OvertimeService(
     @Scheduled(cron = "0 * * * * *")
     @Transactional
     fun sendOvertimeAlerts() {
-        val openAttendance = attendance.findAllByCheckedOutAtIsNullAndOvertimeAlertSentAtIsNull()
+        val openAttendance = attendance.findAllByCheckedOutAtIsNull()
         if (openAttendance.isEmpty()) return
         val branchIds = openAttendance.map { it.branchId }.toSet()
         val branchesById = branches.findAllById(branchIds).associateBy { it.id }
@@ -181,15 +192,39 @@ class OvertimeService(
             if (!now.toLocalTime().isAfter(closesAt)) return@forEach
             val child = children.findById(record.childId).orElse(null) ?: return@forEach
             val childName = listOfNotNull(child.firstName, child.lastName).joinToString(" ")
-            guardiansByChild[record.childId].orEmpty().forEach { link ->
-                notifications.notify(record.organizationId, link.userId, "Anak masih di lokasi", "$childName masih tercatat hadir melewati jam operasional cabang dan dapat dikenakan biaya tambahan.", realtimeFlags = setOf(RealtimeFlag.ATTENDANCE))
+            if (record.overtimeAlertSentAt == null) {
+                guardiansByChild[record.childId].orEmpty().forEach { link ->
+                    notifications.notify(record.organizationId, link.userId, "Anak masih di lokasi", "$childName masih tercatat hadir melewati jam operasional cabang dan dapat dikenakan biaya tambahan.", realtimeFlags = setOf(RealtimeFlag.ATTENDANCE))
+                }
+                record.overtimeAlertSentAt = Instant.now()
+                attendance.save(record)
             }
-            record.overtimeAlertSentAt = Instant.now()
-            attendance.save(record)
+            val closesAtZoned = ZonedDateTime.of(record.operationalDate, closesAt, zone)
+            if (branch.autoOvertimeBillingEnabled && !now.isBefore(closesAtZoned.plusMinutes(branch.overtimeGraceMinutes.toLong()))) {
+                createAutomaticCharge(record, branch, now, guardiansByChild[record.childId].orEmpty())
+            }
         }
     }
 
-    private fun persistCharge(organizationId: UUID, childId: UUID, branchId: UUID, request: CreateOvertimeChargeRequest, existing: OvertimeCharge?): OvertimeChargeResponse {
+    private fun createAutomaticCharge(record: com.daycare.api.persistence.AttendanceRecord, branch: com.daycare.api.persistence.Branch, now: ZonedDateTime, childGuardians: List<com.daycare.api.persistence.GuardianLink>) {
+        if (hasNonVoidCharge(record.organizationId, record.childId, record.operationalDate)) return
+        val payerUserId = childGuardians
+            .asSequence()
+            .map { it.userId }
+            .distinct()
+            .filter { guardianId -> memberships.findAllByUserIdAndOrganizationId(guardianId, record.organizationId).any { it.role == Role.PARENT && it.active } }
+            .toList()
+            .singleOrNull() ?: return
+        val request = CreateOvertimeChargeRequest(record.childId, record.operationalDate, now.toLocalTime(), now.toLocalDate().plusDays(AUTOMATIC_OVERTIME_DUE_DAYS))
+        runCatching { persistCharge(record.organizationId, record.childId, branch.id, request, null, payerUserId) }
+            .onFailure { error -> logger.warn("Automatic overtime charge was not created for attendance {}", record.id, error) }
+    }
+
+    private fun hasNonVoidCharge(organizationId: UUID, childId: UUID, operationalDate: LocalDate) =
+        charges.findAllByOrganizationIdAndChildIdAndOperationalDate(organizationId, childId, operationalDate)
+            .any { invoices.findById(it.invoiceId).orElseThrow().status != InvoiceStatus.VOID }
+
+    private fun persistCharge(organizationId: UUID, childId: UUID, branchId: UUID, request: CreateOvertimeChargeRequest, existing: OvertimeCharge?, payerUserId: UUID? = null): OvertimeChargeResponse {
         require(!request.dueDate.isBefore(LocalDate.now())) { "Invoice due date is not valid" }
         val branch = requireBranch(branchId, organizationId)
         val closing = hours.findAllByBranchIdOrderByDayOfWeekAsc(branch.id).singleOrNull { it.dayOfWeek == request.operationalDate.dayOfWeek && it.active } ?: throw IllegalArgumentException("Branch is not operating on this day")
@@ -199,7 +234,7 @@ class OvertimeService(
         val configured = tiers.findAllByBranchIdOrderByDisplayOrderAsc(branch.id)
         require(configured.isNotEmpty()) { "Overtime rates are not configured" }
         val amount = calculateCappedCumulativeOvertimeAmount(minutes, configured.map { OvertimePricingTier(it.durationMinutes, it.amount) })
-        val parentId = existing?.payerUserId ?: guardians.findAllByChildId(childId).firstOrNull()?.userId ?: throw IllegalArgumentException("Child does not have a linked parent")
+        val parentId = existing?.payerUserId ?: payerUserId ?: guardians.findAllByChildId(childId).firstOrNull()?.userId ?: throw IllegalArgumentException("Child does not have a linked parent")
         val invoice = existing?.let { invoices.findById(it.invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") } } ?: invoices.save(Invoice(organizationId = organizationId, payerUserId = parentId, invoiceNumber = "INV-${UUID.randomUUID().toString().take(8).uppercase()}", subtotalAmount = amount, totalAmount = amount, dueDate = request.dueDate, source = InvoiceSource.OVERTIME, branchId = branchId, childId = childId))
         invoice.subtotalAmount = amount; invoice.totalAmount = amount; invoice.dueDate = request.dueDate; invoice.branchId = branchId; invoice.childId = childId; invoice.description = null
         val charge = existing ?: OvertimeCharge(organizationId = organizationId, branchId = branchId, childId = childId, payerUserId = parentId, invoiceId = invoice.id)
@@ -211,7 +246,8 @@ class OvertimeService(
         return chargeResponse(charge)
     }
 
-    private fun response(branch: com.daycare.api.persistence.Branch) = BranchOperatingHoursResponse(branch.id, branch.name, branch.timezone, hours.findAllByBranchIdOrderByDayOfWeekAsc(branch.id).map { OperatingHourInput(it.dayOfWeek, it.active, it.opensAt, it.closesAt) }, tiers.findAllByBranchIdOrderByDisplayOrderAsc(branch.id).map { OvertimeRateTierInput(it.durationMinutes, it.amount) })
+    private fun response(branch: com.daycare.api.persistence.Branch) = BranchOperatingHoursResponse(branch.id, branch.name, branch.timezone, hours.findAllByBranchIdOrderByDayOfWeekAsc(branch.id).map { OperatingHourInput(it.dayOfWeek, it.active, it.opensAt, it.closesAt) }, tiers.findAllByBranchIdOrderByDisplayOrderAsc(branch.id).map { OvertimeRateTierInput(it.durationMinutes, it.amount) }, branch.autoOvertimeBillingEnabled, branch.overtimeGraceMinutes)
     private fun chargeResponse(charge: OvertimeCharge): OvertimeChargeResponse { val invoice = invoices.findById(charge.invoiceId).orElseThrow(); val child = children.findById(charge.childId).orElseThrow(); return OvertimeChargeResponse(charge.id, invoice.id, charge.branchId, charge.childId, listOfNotNull(child.firstName, child.lastName).joinToString(" "), charge.operationalDate, charge.pickedUpAt, charge.closesAt, charge.overtimeMinutes, charge.totalAmount, invoice.dueDate, invoice.status, snapshots.findAllByOvertimeChargeIdOrderByDisplayOrderAsc(charge.id).map { OvertimeRateTierInput(it.durationMinutes, it.amount) }) }
     private fun requireBranch(branchId: UUID, organizationId: UUID) = branches.findById(branchId).orElseThrow { IllegalArgumentException("Branch was not found") }.also { require(it.organizationId == organizationId) { "Branch belongs to a different organization" } }
+
 }

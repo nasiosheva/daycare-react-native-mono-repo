@@ -73,7 +73,7 @@ Daftar **Anak** Staff Admin menghitung status wali dari relasi yang sudah berada
 - Pada tenant dengan capability `DAYCARE_OPERATIONS`, kehadiran memerlukan booking yang telah dikonfirmasi. PAUD dan TK tetap dapat memakai kehadiran sebagai shared core tanpa prasyarat booking Daycare.
 - Check-in/out dapat dilakukan manual atau melalui QR Parent. Payload QR diverifikasi terhadap child ID dan nama yang ditandatangani server; nama tampilan saja tidak dipercaya.
 - Check-in/out manual meminta konfirmasi eksplisit sebelum disimpan dan boleh menyertakan jam kejadian pilihan Staff (bukan hanya waktu saat submit). Server memvalidasi tiga batasan pada jam tersebut: tidak boleh berada di masa depan, harus jatuh pada hari operasional cabang anak yang sama (dihitung memakai zona waktu cabang, bukan zona waktu server), dan jam check-out tidak boleh lebih awal dari jam check-in yang sudah tercatat.
-- Job terjadwal memeriksa setiap menit anak yang masih check-in (belum check-out) pada cabang yang jam operasionalnya untuk hari itu sudah lewat. Bila cabang tersebut juga memiliki minimal satu blok tarif overtime aktif, setiap wali anak menerima satu notifikasi (inbox, realtime, dan push bila tersedia) yang memberitahukan anak masih tercatat hadir dan berpotensi dikenakan biaya tambahan; notifikasi ini dikirim tepat sekali per hari operasional per anak, bukan diulang setiap menit job berjalan. Ini murni pemberitahuan proaktif, bukan pembuatan charge overtime—charge overtime aktualnya tetap dibuat manual oleh Staff Admin sesuai §13.6.2. Cabang tanpa blok tarif overtime tidak menerima notifikasi ini karena anak yang telat dijemput di sana tidak akan pernah dikenakan biaya tambahan.
+- Job terjadwal memeriksa setiap menit anak yang masih check-in (belum check-out) pada cabang yang jam operasionalnya untuk hari itu sudah lewat. Bila cabang tersebut juga memiliki minimal satu blok tarif overtime aktif, setiap wali anak menerima satu notifikasi (inbox, realtime, dan push bila tersedia) yang memberitahukan anak masih tercatat hadir dan berpotensi dikenakan biaya tambahan; notifikasi ini dikirim tepat sekali per hari operasional per anak, bukan diulang setiap menit job berjalan. Bila cabang mengaktifkan penagihan overtime otomatis sesuai §13.6.2, job yang sama membuat satu invoice overtime `PENDING` setelah masa toleransi berakhir; jika tidak aktif, notifikasi ini tetap murni peringatan dan charge dibuat manual oleh Staff Admin. Cabang tanpa blok tarif overtime tidak menerima notifikasi ini atau charge otomatis karena anak yang telat dijemput di sana tidak akan pernah dikenakan biaya tambahan.
 - Layar QR Parent menampilkan QR anak secara langsung tanpa langkah pilih anak lebih dulu ketika Parent hanya memiliki tepat satu anak yang terlihat pada layar tersebut (baik karena Parent hanya punya satu anak, maupun karena layar dibuka dengan `childId` tertentu). Ketika anak yang terlihat lebih dari satu, Parent tetap memilih anak dari daftar terlebih dahulu sebelum QR ditampilkan pada BottomSheet, seperti semula.
 - Staff Admin dapat mengunduh rekap kehadiran anak per cabang untuk rentang tanggal inklusif dalam PDF atau XLSX dari menu Kelola. Rekap hanya mencakup anak aktif dengan enrollment aktif pada cabang yang dipilih dan memuat total check-in, total check-out, serta check-in yang belum check-out untuk setiap anak. Anak tanpa record kehadiran tetap ditampilkan dengan total nol; total nol tidak boleh diberi label atau diartikan sebagai ketidakhadiran karena bisa tidak ada booking atau hari operasional pada periode tersebut. Staff dan Parent tidak menerima akses ekspor ini. Cabang wajib milik tenant dan rentang tanggal harus valid; Staff Admin yang tidak aktif tetap hanya-baca sesuai aturan tenant.
 - Parent yang sudah terhubung dapat mengajukan anak tidak masuk untuk rentang tanggal hari ini atau masa depan dengan alasan sakit, keluar kota, acara keluarga, keadaan darurat, atau alasan lain yang wajib diberi catatan. Pengajuan yang tanggalnya tumpang tindih dan masih `PENDING` atau sudah `APPROVED` ditolak. Parent hanya dapat membatalkan pengajuan miliknya saat masih `PENDING`; Staff Admin atau Staff dalam scope anak menyetujui atau menolak, dan penolakan wajib memiliki alasan. Pengajuan tidak masuk bersifat informatif: tidak membuat, membatalkan, mengubah, maupun mengembalikan booking atau kredit layanan. Kehadiran aktual tetap dicatat melalui flow kehadiran yang berlaku.
@@ -1028,6 +1028,26 @@ bukan digabung sebagian.
   meningkat ketat, dan nominal positif. Blok pertama dapat dihapus; ketika
   tidak ada blok, UI menampilkan bahwa overtime belum dikonfigurasi dan server
   tidak boleh membuat charge overtime.
+- Staff Admin dapat memilih **Tagihkan overtime otomatis** per cabang. Pilihan
+  ini default-nya nonaktif dan hanya dapat diaktifkan bila cabang memiliki
+  sedikitnya satu blok tarif overtime yang valid. Saat aktif, Staff Admin juga
+  memilih masa toleransi `0` sampai `180` menit setelah jam tutup; defaultnya
+  `15` menit. Sistem hanya membuat satu charge otomatis `PENDING` untuk anak
+  yang masih check-in setelah batas tersebut pada hari operasional cabang.
+  Nilai awal dihitung dari waktu job membuat charge; Staff Admin wajib
+  memperbarui waktu jemput aktual bila kemudian diketahui, atau melakukan void
+  bila charge tidak tepat. Sistem tidak mengubah charge otomatis yang sudah
+  dibayar, sehingga Parent tidak pernah menerima kenaikan tagihan setelah
+  invoice `PAID`.
+- Charge otomatis memakai validasi, tier kumulatif, snapshot tier, notifikasi,
+  dan batas satu charge non-void per anak/tanggal yang sama seperti charge
+  manual. Untuk memastikan penerima tagihan tidak salah, job otomatis hanya
+  berjalan bila anak memiliki tepat satu wali dengan membership `PARENT` aktif
+  pada tenant; tanpa atau dengan lebih dari satu wali aktif, job gagal tertutup
+  dan tidak membuat invoice. Job harus idempotent: tanpa offering Daycare
+  `PUBLISHED` pada cabang anak, jam operasional valid, blok tarif, wali penagih
+  tunggal yang sah, atau invoice yang masih dapat dibuat, ia tidak membuat
+  invoice dan mencatat peringatan operasional untuk Staff Admin.
 - Overtime hanya dihitung setelah close time pada hari cabang aktif. Satu anak
   memiliki paling banyak satu charge overtime non-void per tanggal operasional;
   charge hanya dapat diedit atau di-void selama invoice-nya `PENDING`. Waktu

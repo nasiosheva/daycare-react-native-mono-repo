@@ -122,6 +122,7 @@ interface AttendanceRepository : JpaRepository<AttendanceRecord, UUID> {
     fun findAllByChildIdInAndOperationalDateIn(childIds: List<UUID>, operationalDates: List<LocalDate>): List<AttendanceRecord>
     fun findAllByChildIdInAndOperationalDateBetween(childIds: List<UUID>, startsOn: LocalDate, endsOn: LocalDate): List<AttendanceRecord>
     fun findAllByCheckedOutAtIsNullAndOvertimeAlertSentAtIsNull(): List<AttendanceRecord>
+    fun findAllByCheckedOutAtIsNull(): List<AttendanceRecord>
 }
 interface PickupAuthorizationRepository : JpaRepository<PickupAuthorization, UUID> {
     fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<PickupAuthorization>
