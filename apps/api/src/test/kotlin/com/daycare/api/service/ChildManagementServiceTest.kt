@@ -2,14 +2,22 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.RegistrationRole
+import com.daycare.api.domain.ChildProgramStatus
 import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildProgramParentFeedbackRepository
 import com.daycare.api.persistence.ChildProgram
 import com.daycare.api.persistence.ChildProgramRepository
 import com.daycare.api.persistence.ChildProgramStaffNoteRepository
+import com.daycare.api.persistence.ChildProgramStep
 import com.daycare.api.persistence.ChildProgramStepRepository
 import com.daycare.api.persistence.ChildRepository
+import com.daycare.api.persistence.ChildProgramTemplate
+import com.daycare.api.persistence.ChildProgramTemplateRepository
+import com.daycare.api.persistence.ChildProgramTemplateStep
+import com.daycare.api.persistence.ChildProgramTemplateStepRepository
+import com.daycare.api.persistence.ChildStaffAssignment
 import com.daycare.api.persistence.ChildStaffAssignmentRepository
+import com.daycare.api.realtime.RealtimeFlag
 import com.daycare.api.persistence.GuardianLink
 import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.Membership
@@ -22,16 +30,20 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.any
+import org.mockito.Mockito.argThat
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.oauth2.jwt.Jwt
+import java.time.Instant
 import java.util.Optional
 import java.util.UUID
 
 class ChildManagementServiceTest {
+    private fun anyInstant(): Instant = any(Instant::class.java) ?: Instant.now()
+
     private fun childManagementService(
         access: AccessService,
         children: ChildRepository,
@@ -44,7 +56,10 @@ class ChildManagementServiceTest {
         programSteps: ChildProgramStepRepository = mock(ChildProgramStepRepository::class.java),
         programStaffNotes: ChildProgramStaffNoteRepository = mock(ChildProgramStaffNoteRepository::class.java),
         programParentFeedback: ChildProgramParentFeedbackRepository = mock(ChildProgramParentFeedbackRepository::class.java),
-    ) = ChildManagementService(access, children, programs, programSteps, programStaffNotes, programParentFeedback, assignments, memberships, users, guardianLinks, childScopes)
+        notifications: NotificationService = mock(NotificationService::class.java),
+        templates: ChildProgramTemplateRepository = mock(ChildProgramTemplateRepository::class.java),
+        templateSteps: ChildProgramTemplateStepRepository = mock(ChildProgramTemplateStepRepository::class.java),
+    ) = ChildManagementService(access, children, programs, programSteps, programStaffNotes, programParentFeedback, assignments, memberships, users, guardianLinks, childScopes, notifications, templates, templateSteps)
 
     @Test
     fun `Staff Admin deactivates a child without deleting its record`() {
@@ -110,6 +125,7 @@ class ChildManagementServiceTest {
         val scope = AccessScope(UserProfile(), Membership(role = Role.STAFF, canManageChildPrograms = true), emptySet(), emptySet())
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
         `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
         `when`(programs.save(any(com.daycare.api.persistence.ChildProgram::class.java))).thenAnswer { it.arguments[0] }
         val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
 
@@ -423,5 +439,119 @@ class ChildManagementServiceTest {
         service.unbindGuardian(jwt, organizationId, child.id, parentUserId)
 
         verify(guardianLinks).delete(link)
+    }
+
+    @Test
+    fun `stale incomplete step on an active program notifies assigned staff`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val programSteps = mock(ChildProgramStepRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val notifications = mock(NotificationService::class.java)
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId, firstName = "Alya")
+        val program = ChildProgram(organizationId = organizationId, childId = child.id, name = "Toilet training", status = ChildProgramStatus.ACTIVE)
+        val step = ChildProgramStep(organizationId = organizationId, childProgramId = program.id, title = "Latihan pagi", completed = false)
+        val staffUserId = UUID.randomUUID()
+        `when`(programSteps.findAllByCompletedFalseAndUpdatedAtBetween(anyInstant(), anyInstant())).thenReturn(listOf(step))
+        `when`(programs.findAllById(setOf(program.id))).thenReturn(listOf(program))
+        `when`(children.findAllById(setOf(child.id))).thenReturn(listOf(child))
+        `when`(assignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id))
+            .thenReturn(listOf(ChildStaffAssignment(organizationId = organizationId, childId = child.id, userId = staffUserId, assignmentRole = "STAFF")))
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes, programSteps = programSteps, notifications = notifications)
+
+        service.sendStaleProgramStepReminders()
+
+        verify(notifications).notify(
+            organizationId, staffUserId, "Langkah pendampingan Alya belum selesai",
+            "Toilet training: Latihan pagi sudah 7 hari belum ditandai selesai.",
+            "/child-detail?childId=${child.id}",
+            setOf(RealtimeFlag.CHILD_PROGRAMS),
+        )
+    }
+
+    @Test
+    fun `stale step on a completed program does not notify anyone`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val programSteps = mock(ChildProgramStepRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val notifications = mock(NotificationService::class.java)
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId)
+        val program = ChildProgram(organizationId = organizationId, childId = child.id, name = "Toilet training", status = ChildProgramStatus.COMPLETED)
+        val step = ChildProgramStep(organizationId = organizationId, childProgramId = program.id, title = "Latihan pagi", completed = false)
+        `when`(programSteps.findAllByCompletedFalseAndUpdatedAtBetween(anyInstant(), anyInstant())).thenReturn(listOf(step))
+        `when`(programs.findAllById(setOf(program.id))).thenReturn(listOf(program))
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes, programSteps = programSteps, notifications = notifications)
+
+        service.sendStaleProgramStepReminders()
+
+        org.mockito.Mockito.verifyNoInteractions(notifications)
+    }
+
+    @Test
+    fun `Staff cannot create a child program template`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val templates = mock(ChildProgramTemplateRepository::class.java)
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenThrow(AccessDeniedException("Not authorized"))
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes, templates = templates)
+
+        assertThrows(AccessDeniedException::class.java) {
+            service.createTemplate(jwt, organizationId, UpsertChildProgramTemplateRequest("Toilet training", null))
+        }
+
+        verify(templates, never()).save(any(ChildProgramTemplate::class.java))
+    }
+
+    @Test
+    fun `creating a program from a template copies its steps to the child`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val programSteps = mock(ChildProgramStepRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val templates = mock(ChildProgramTemplateRepository::class.java)
+        val templateSteps = mock(ChildProgramTemplateStepRepository::class.java)
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId)
+        val scope = AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet())
+        val template = ChildProgramTemplate(organizationId = organizationId, name = "Toilet training", description = "")
+        val templateStep = ChildProgramTemplateStep(organizationId = organizationId, childProgramTemplateId = template.id, title = "Latihan pagi", description = "")
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(templates.findById(template.id)).thenReturn(Optional.of(template))
+        `when`(templateSteps.findAllByOrganizationIdAndChildProgramTemplateIdOrderByDisplayOrderAscCreatedAtAsc(organizationId, template.id)).thenReturn(listOf(templateStep))
+        `when`(programs.save(any(ChildProgram::class.java))).thenAnswer { it.arguments[0] }
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes, programSteps = programSteps, templates = templates, templateSteps = templateSteps)
+
+        val response = service.createProgramFromTemplate(jwt, organizationId, child.id, template.id)
+
+        assertEquals("Toilet training", response.name)
+        verify(programSteps).saveAll(argThat<List<ChildProgramStep>> { steps -> steps.size == 1 && steps[0].title == "Latihan pagi" })
     }
 }

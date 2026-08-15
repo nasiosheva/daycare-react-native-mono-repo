@@ -135,11 +135,12 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
     })),
   });
   const hasPrivateTutoring = privateTutoringServices.some((query) => (query.data?.length ?? 0) > 0);
+  const programsSummary = useQuery({ queryKey: ["parent-child-profile", organizationId, "programs-summary"], queryFn: () => api.parentChildProgramsSummary(), enabled: Boolean(organizationId) });
   const summary = createParentHomeSummary(children.data ?? [], entitlements.data ?? [], invoices.data ?? []);
   const childrenUnavailable = children.isFetching || children.isError;
   const servicesUnavailable = hasDaycareOperations && (entitlements.isFetching || entitlements.isError);
   const paymentsUnavailable = invoices.isFetching || invoices.isError;
-  const homeRefresh = useHomeRefresh([["ui-access-context", organizationId], ["children", organizationId], ["entitlements", organizationId], ["invoices", organizationId], ["private-tutoring-services", organizationId]]);
+  const homeRefresh = useHomeRefresh([["ui-access-context", organizationId], ["children", organizationId], ["entitlements", organizationId], ["invoices", organizationId], ["private-tutoring-services", organizationId], ["parent-child-profile", organizationId]]);
 
   return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
     <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.PARENT")}</AppText></View><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
@@ -165,6 +166,10 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
     {hasPrivateTutoring && <NavigationCard accessibilityLabel={t("privateTutoring.menu")} onPress={() => router.push("/private-tutoring")}>
       <AppText variant="h5">{t("privateTutoring.menu")}</AppText>
       <AppText tone="muted">{t("privateTutoring.description")}</AppText>
+    </NavigationCard>}
+    {Boolean(programsSummary.data?.activePrograms) && summary.children[0] && <NavigationCard accessibilityLabel={t("children.programs")} onPress={() => router.push({ pathname: "/parent-child-profile", params: { childId: summary.children[0].child.id } })}>
+      <AppText variant="h5">{t("children.programs")}</AppText>
+      <AppText tone="muted">{t("children.programsSummary", { count: programsSummary.data!.activePrograms })}</AppText>
     </NavigationCard>}
     <SummarySection title={t("home.parentPayments")}>
       {invoices.isFetching && <ShimmerList />}
@@ -228,6 +233,7 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
     pendingInvoices: invoices.data?.filter((invoice) => invoice.branchId === branch.id && invoice.status === "PENDING").length ?? 0,
   }));
   const readiness = useQuery({ queryKey: ["organization-readiness", organizationId], queryFn: () => api.organizationReadiness(), enabled: Boolean(organizationId) });
+  const programsSummary = useQuery({ queryKey: ["child-profile", organizationId, "programs-summary"], queryFn: () => api.childProgramsSummary(), enabled: Boolean(organizationId) });
   const notifications = useQuery({ queryKey: ["notifications", organizationId], queryFn: () => api.notifications(), enabled: Boolean(organizationId) });
   const unreadNotifications = notifications.data ?? [];
   const unreadNotificationsCount = unreadNotificationCount(unreadNotifications);
@@ -237,7 +243,7 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
   const operationalUnavailable = children.isFetching || users.isFetching || children.isError || users.isError;
   const financialUnavailable = pendingBookings.isFetching || invoices.isFetching || entitlements.isFetching || pendingBookings.isError || invoices.isError || entitlements.isError;
   const approvalsUnavailable = hasDaycareOperations && (pendingBookings.isFetching || pendingEnrollments.isFetching || pendingBookings.isError || pendingEnrollments.isError);
-  const homeRefresh = useHomeRefresh([["ui-access-context", organizationId], ["children", organizationId], ["tenant-users", organizationId], ["bookings", organizationId], ["parent-enrollments", organizationId], ["invoices", organizationId], ["entitlements", organizationId], ["tenant-branches", organizationId], ["branch-capacities", organizationId], ["organization-readiness", organizationId], ["notifications", organizationId]]);
+  const homeRefresh = useHomeRefresh([["ui-access-context", organizationId], ["children", organizationId], ["tenant-users", organizationId], ["bookings", organizationId], ["parent-enrollments", organizationId], ["invoices", organizationId], ["entitlements", organizationId], ["tenant-branches", organizationId], ["branch-capacities", organizationId], ["organization-readiness", organizationId], ["notifications", organizationId], ["child-profile", organizationId]]);
 
   return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
     <View style={styles.staffAdminToolbar}>
@@ -268,6 +274,10 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
       <SummaryCard label={t("home.activeSubscriptions")} value={financialUnavailable ? undefined : summary.activeSubscriptions} onPress={() => router.push("/parent-subscriptions")} />
       <SummaryCard label={t("home.remainingCredits")} value={financialUnavailable ? undefined : summary.remainingCredits} onPress={() => router.push("/parent-subscriptions")} />
     </SummarySection>}
+    <SummarySection title={t("children.programs")}>
+      <SummaryCard label={t("home.activePrograms")} value={programsSummary.isFetching || programsSummary.isError ? undefined : programsSummary.data?.activePrograms} onPress={() => router.push("/children")} />
+      <SummaryCard label={t("home.programFeedback")} value={programsSummary.isFetching || programsSummary.isError ? undefined : programsSummary.data?.feedbackCount} onPress={() => router.push("/children")} />
+    </SummarySection>
 
     <AppText variant="heading">{t("home.branchSummary")}</AppText>
     <TextInput style={styles.input} placeholder={t("home.branchSearchPlaceholder")} value={branchSearch} onChangeText={setBranchSearch} />

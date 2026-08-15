@@ -28,6 +28,7 @@ enum class RealtimeFlag {
     STAFF_REMINDERS,
     STAFF_LEAVE_REQUESTS,
     PRIVATE_TUTORING,
+    CHILD_PROGRAMS,
 }
 
 data class RealtimeConnectRequest(

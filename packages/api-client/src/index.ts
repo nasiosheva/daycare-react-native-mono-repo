@@ -82,12 +82,17 @@ export type ChildProgram = { id: string; name: string; description: string; stat
 export type ParentChildProgram = { id: string; name: string; parentSummary?: string | null; status: ChildProgramStatus; homeGuidance?: string | null; steps: ChildProgramStep[]; feedback: ChildProgramParentFeedback[] };
 export type CreateChildProgramInput = { name: string; description?: string; parentVisible?: boolean; parentSummary?: string; homeGuidance?: string };
 export type UpdateChildProgramInput = { name: string; description?: string; status: ChildProgramStatus; parentVisible: boolean; parentSummary?: string; homeGuidance?: string };
+export type ChildProgramTemplateStep = { id: string; title: string; description: string; homeGuidance?: string | null; displayOrder: number };
+export type ChildProgramTemplate = { id: string; name: string; description: string; steps: ChildProgramTemplateStep[] };
+export type ChildProgramTemplateStepInput = { title: string; description?: string; homeGuidance?: string };
+export type UpsertChildProgramTemplateInput = { name: string; description?: string; steps: ChildProgramTemplateStepInput[] };
 export type CreateChildProgramStepInput = { title: string; description?: string; homeGuidance?: string; parentVisible?: boolean; displayOrder?: number };
 export type UpdateChildProgramStepInput = { title: string; description?: string; homeGuidance?: string; parentVisible: boolean; completed: boolean; displayOrder: number };
 export type ChildAssignmentRole = "STAFF" | "NURSE" | "MISS";
 export type ChildStaffAssignment = { id: string; userId: string; displayName: string; email?: string | null; assignmentRole: ChildAssignmentRole };
 export type ChildGuardian = { userId: string; displayName: string; email?: string | null; username?: string | null; validParentAccount: boolean };
 export type ChildProfile = { child: Child; programs: ChildProgram[]; staffAssignments: ChildStaffAssignment[]; guardians: ChildGuardian[] };
+export type ChildProgramSummary = { activePrograms: number; feedbackCount: number };
 export type Attendance = {
   id: string;
   childId: string;
@@ -246,7 +251,7 @@ export type CreateStaffLeaveRequestInput = { type: StaffLeaveRequestType; starts
 export type StaffLeaveRequest = { id: string; requesterUserId: string; requesterName: string; type: StaffLeaveRequestType; startsOn: string; endsOn: string; reason: string; status: StaffLeaveRequestStatus; hasEvidence: boolean; rejectionReason?: string | null; reviewedAt?: string | null; createdAt: string };
 export type StaffLeaveEvidence = { contentType: string; dataBase64: string };
 export type GlobalCurriculumSeedResult = { alreadySeeded: boolean; learningLevelCount: number; developmentProgramCount: number; developmentProgramItemCount: number; curriculumProgramCount: number };
-export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "INCIDENT_REPORTS" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS" | "PRIVATE_TUTORING";
+export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "INCIDENT_REPORTS" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS" | "PRIVATE_TUTORING" | "CHILD_PROGRAMS";
 export type RealtimeEvent<TPayload = unknown> = { type: "EVENT"; id: string; organizationId?: string | null; flags: RealtimeFlag[]; payload?: TPayload | null; occurredAt: string };
 export type RealtimeConnectRequest = { type: "CONNECT"; token: string; organizationId?: string | null };
 
@@ -458,11 +463,18 @@ export class ApiClient {
   async cancelChildAbsenceRequest(requestId: string): Promise<ChildAbsenceRequest> { return this.request(`/child-absence-requests/${requestId}/cancel`, { method: "POST" }); }
   async createChild(input: ChildInput): Promise<Child> { return this.request("/children", { method: "POST", body: JSON.stringify(input) }); }
   async childProfile(childId: string): Promise<ChildProfile> { return this.request(`/children/${childId}`); }
+  async childProgramsSummary(): Promise<ChildProgramSummary> { return this.request("/children/programs-summary"); }
+  async parentChildProgramsSummary(): Promise<ChildProgramSummary> { return this.request("/parent/children/programs-summary"); }
   async updateChild(childId: string, input: UpdateChildInput): Promise<Child> { return this.request(`/children/${childId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async deactivateChild(childId: string): Promise<Child> { return this.request(`/children/${childId}/deactivate`, { method: "POST" }); }
   async addChildProgram(childId: string, input: CreateChildProgramInput): Promise<ChildProgram> { return this.request(`/children/${childId}/programs`, { method: "POST", body: JSON.stringify(input) }); }
   async updateChildProgram(childId: string, programId: string, input: UpdateChildProgramInput): Promise<ChildProgram> { return this.request(`/children/${childId}/programs/${programId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async removeChildProgram(childId: string, programId: string): Promise<void> { await this.request<void>(`/children/${childId}/programs/${programId}`, { method: "DELETE" }); }
+  async childProgramTemplates(): Promise<ChildProgramTemplate[]> { return this.request("/child-program-templates"); }
+  async createChildProgramTemplate(input: UpsertChildProgramTemplateInput): Promise<ChildProgramTemplate> { return this.request("/child-program-templates", { method: "POST", body: JSON.stringify(input) }); }
+  async updateChildProgramTemplate(templateId: string, input: UpsertChildProgramTemplateInput): Promise<ChildProgramTemplate> { return this.request(`/child-program-templates/${templateId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+  async removeChildProgramTemplate(templateId: string): Promise<void> { await this.request<void>(`/child-program-templates/${templateId}`, { method: "DELETE" }); }
+  async createChildProgramFromTemplate(childId: string, templateId: string): Promise<ChildProgram> { return this.request(`/children/${childId}/programs/from-template/${templateId}`, { method: "POST" }); }
   async addChildProgramStep(childId: string, programId: string, input: CreateChildProgramStepInput): Promise<ChildProgramStep> { return this.request(`/children/${childId}/programs/${programId}/steps`, { method: "POST", body: JSON.stringify(input) }); }
   async updateChildProgramStep(childId: string, programId: string, stepId: string, input: UpdateChildProgramStepInput): Promise<ChildProgramStep> { return this.request(`/children/${childId}/programs/${programId}/steps/${stepId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async removeChildProgramStep(childId: string, programId: string, stepId: string): Promise<void> { await this.request<void>(`/children/${childId}/programs/${programId}/steps/${stepId}`, { method: "DELETE" }); }

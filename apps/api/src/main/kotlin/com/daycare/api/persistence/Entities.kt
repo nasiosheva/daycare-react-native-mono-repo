@@ -585,6 +585,30 @@ class ChildProgramParentFeedback(
 )
 
 @Entity
+@Table(name = "child_program_templates")
+class ChildProgramTemplate(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var name: String = "",
+    @Column(nullable = false) var description: String = "",
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity
+@Table(name = "child_program_template_steps")
+class ChildProgramTemplateStep(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "child_program_template_id", nullable = false) var childProgramTemplateId: UUID = UUID.randomUUID(),
+    @Column(nullable = false) var title: String = "",
+    @Column(nullable = false) var description: String = "",
+    @Column(name = "home_guidance", length = 2_000) var homeGuidance: String? = null,
+    @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity
 @Table(name = "child_health_records")
 class ChildHealthRecord(
     @Id var id: UUID = UUID.randomUUID(),

@@ -28,6 +28,8 @@ const notificationRoutePolicies: Record<string, NotificationRoutePolicy> = {
   "/incident-reports": { roles: ["PARENT", "STAFF_ADMIN", "STAFF"], requireActiveMembership: true },
   "/children": { roles: ["STAFF_ADMIN", "STAFF"], requireActiveMembership: true },
   "/development": { roles: ["PARENT", "STAFF_ADMIN", "STAFF"], requireActiveMembership: true },
+  "/parent-child-profile": { roles: ["PARENT"], requireActiveMembership: true },
+  "/child-detail": { roles: ["STAFF_ADMIN", "STAFF"], requireActiveMembership: true },
 };
 
 function notificationPath(actionPath: string): string {
