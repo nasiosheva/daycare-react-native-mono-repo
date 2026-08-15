@@ -79,6 +79,7 @@ import com.daycare.api.service.RenewTenantSubscriptionRequest
 import com.daycare.api.service.ChildManagementService
 import com.daycare.api.service.UpdateChildRequest
 import com.daycare.api.service.CreateChildProgramRequest
+import com.daycare.api.service.UpsertChildProgramTemplateRequest
 import com.daycare.api.service.UpdateChildProgramRequest
 import com.daycare.api.service.CreateChildProgramStepRequest
 import com.daycare.api.service.UpdateChildProgramStepRequest
@@ -507,8 +508,14 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @GetMapping("/staff-leave-requests/{requestId}/evidence")
     fun staffLeaveRequestEvidence(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable requestId: UUID) = staffLeaveRequests.evidence(jwt, organizationId, requestId)
 
+    @GetMapping("/children/programs-summary")
+    fun childProgramsSummary(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = childManagement.programsSummary(jwt, organizationId)
+
     @GetMapping("/children/{childId}")
     fun childProfile(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childManagement.profile(jwt, organizationId, childId)
+
+    @GetMapping("/parent/children/programs-summary")
+    fun parentChildProgramsSummary(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = childManagement.parentProgramsSummary(jwt, organizationId)
 
     @GetMapping("/parent/children/{childId}/profile")
     fun parentChildProfile(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = parentChildProfiles.profile(jwt, organizationId, childId)
@@ -545,6 +552,21 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PostMapping("/children/{childId}/staff-assignments") @ResponseStatus(HttpStatus.CREATED)
     fun assignChildStaff(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: AssignChildStaffRequest) = childManagement.assignStaff(jwt, organizationId, childId, request)
+
+    @GetMapping("/child-program-templates")
+    fun childProgramTemplates(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = childManagement.listTemplates(jwt, organizationId)
+
+    @PostMapping("/child-program-templates") @ResponseStatus(HttpStatus.CREATED)
+    fun createChildProgramTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertChildProgramTemplateRequest) = childManagement.createTemplate(jwt, organizationId, request)
+
+    @PatchMapping("/child-program-templates/{templateId}")
+    fun updateChildProgramTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID, @Valid @RequestBody request: UpsertChildProgramTemplateRequest) = childManagement.updateTemplate(jwt, organizationId, templateId, request)
+
+    @DeleteMapping("/child-program-templates/{templateId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun removeChildProgramTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID) = childManagement.removeTemplate(jwt, organizationId, templateId)
+
+    @PostMapping("/children/{childId}/programs/from-template/{templateId}") @ResponseStatus(HttpStatus.CREATED)
+    fun createChildProgramFromTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable templateId: UUID) = childManagement.createProgramFromTemplate(jwt, organizationId, childId, templateId)
 
     @DeleteMapping("/children/{childId}/staff-assignments/{assignmentId}") @ResponseStatus(HttpStatus.NO_CONTENT)
     fun unassignChildStaff(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable assignmentId: UUID) = childManagement.unassignStaff(jwt, organizationId, childId, assignmentId)

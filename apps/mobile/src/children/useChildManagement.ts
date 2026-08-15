@@ -1,7 +1,38 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ChildInput } from "@daycare/core";
-import type { ChildAssignmentRole, CreateChildProgramInput, CreateChildProgramStepInput, UpdateChildInput, UpdateChildProgramInput, UpdateChildProgramStepInput } from "@daycare/api-client";
+import type { ChildAssignmentRole, CreateChildProgramInput, CreateChildProgramStepInput, UpdateChildInput, UpdateChildProgramInput, UpdateChildProgramStepInput, UpsertChildProgramTemplateInput } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
+
+export function useChildProgramTemplates(enabled = true) {
+  const { api, organizationId } = useAuth();
+  return useQuery({ queryKey: ["child-program-templates", organizationId], queryFn: () => api.childProgramTemplates(), enabled: enabled && Boolean(organizationId) });
+}
+
+function useTemplateMutation<TVariables, TResult>(mutationFn: (variables: TVariables) => Promise<TResult>) {
+  const { organizationId } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["child-program-templates", organizationId] }) });
+}
+
+export function useCreateChildProgramTemplate() {
+  const { api } = useAuth();
+  return useTemplateMutation<UpsertChildProgramTemplateInput, Awaited<ReturnType<typeof api.createChildProgramTemplate>>>((input) => api.createChildProgramTemplate(input));
+}
+
+export function useUpdateChildProgramTemplate(templateId: string) {
+  const { api } = useAuth();
+  return useTemplateMutation<UpsertChildProgramTemplateInput, Awaited<ReturnType<typeof api.updateChildProgramTemplate>>>((input) => api.updateChildProgramTemplate(templateId, input));
+}
+
+export function useRemoveChildProgramTemplate() {
+  const { api } = useAuth();
+  return useTemplateMutation<string, Awaited<ReturnType<typeof api.removeChildProgramTemplate>>>((templateId) => api.removeChildProgramTemplate(templateId));
+}
+
+export function useCreateChildProgramFromTemplate(childId: string) {
+  const { api } = useAuth();
+  return useChildMutation<string, Awaited<ReturnType<typeof api.createChildProgramFromTemplate>>>((templateId) => api.createChildProgramFromTemplate(childId, templateId));
+}
 
 export function useChildProfile(childId: string | null) {
   const { api, organizationId } = useAuth();

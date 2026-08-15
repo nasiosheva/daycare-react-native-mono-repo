@@ -49,8 +49,9 @@ export default function ChildHealthScreen() {
 
   return <AppScreen showBottomNavigation={false} title={t("health.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {record.isFetching && <ShimmerList variant="row" />}
-    {!record.isFetching && !canEdit && !record.data && <AppText tone="muted">{t("health.empty")}</AppText>}
-    {!record.isFetching && (canEdit || record.data) && <View style={styles.form}>
+    {record.isError && <View style={styles.feedback}><AppText accessibilityRole="alert" tone="danger">{t("health.loadFailed")}</AppText><Button variant="secondary" onPress={() => record.refetch()}>{t("common.retry")}</Button></View>}
+    {!record.isFetching && !record.isError && !canEdit && !record.data && <AppText tone="muted">{t("health.empty")}</AppText>}
+    {!record.isFetching && !record.isError && (canEdit || record.data) && <View style={styles.form}>
       {record.data?.updatedAt && <AppText variant="caption" tone="muted">{t("health.lastUpdated", { date: formatDateTime(record.data.updatedAt) })}</AppText>}
       <AppText variant="label">{t("health.bloodType")}</AppText>
       {canEdit ? <TextInput style={styles.input} value={bloodType} onChangeText={setBloodType} /> : <AppText tone={bloodType ? "default" : "muted"}>{bloodType || t("common.noData")}</AppText>}
@@ -71,4 +72,5 @@ const styles = StyleSheet.create({
   form: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   multiline: { minHeight: 80, paddingTop: spacing.sm, textAlignVertical: "top" },
+  feedback: { gap: spacing.sm },
 });

@@ -13,6 +13,10 @@ import com.daycare.api.persistence.ChildProgramStaffNote
 import com.daycare.api.persistence.ChildProgramStaffNoteRepository
 import com.daycare.api.persistence.ChildProgramStep
 import com.daycare.api.persistence.ChildProgramStepRepository
+import com.daycare.api.persistence.ChildProgramTemplate
+import com.daycare.api.persistence.ChildProgramTemplateRepository
+import com.daycare.api.persistence.ChildProgramTemplateStep
+import com.daycare.api.persistence.ChildProgramTemplateStepRepository
 import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.ChildStaffAssignment
 import com.daycare.api.persistence.ChildStaffAssignmentRepository
@@ -21,14 +25,21 @@ import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.Membership
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.UserProfileRepository
+import com.daycare.api.persistence.Child
+import com.daycare.api.realtime.RealtimeFlag
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
+
+private const val STALE_PROGRAM_STEP_DAYS = 7L
 
 data class UpdateChildRequest(@field:NotBlank @field:Size(max = 100) val firstName: String, @field:Size(max = 100) val lastName: String?, @field:Size(max = 20) val nisn: String?, val gender: Gender, val dateOfBirth: LocalDate)
 data class CreateChildProgramRequest(
@@ -92,6 +103,11 @@ data class ParentChildProgramResponse(
 data class ChildStaffAssignmentResponse(val id: UUID, val userId: UUID, val displayName: String, val email: String?, val assignmentRole: String)
 data class ChildGuardianResponse(val userId: UUID, val displayName: String, val email: String?, val username: String?, val validParentAccount: Boolean)
 data class ChildProfileResponse(val child: ChildResponse, val programs: List<ChildProgramResponse>, val staffAssignments: List<ChildStaffAssignmentResponse>, val guardians: List<ChildGuardianResponse>)
+data class ChildProgramSummaryResponse(val activePrograms: Int, val feedbackCount: Int)
+data class ChildProgramTemplateStepInput(@field:NotBlank @field:Size(max = 200) val title: String, @field:Size(max = 2_000) val description: String?, @field:Size(max = 2_000) val homeGuidance: String?)
+data class UpsertChildProgramTemplateRequest(@field:NotBlank @field:Size(max = 120) val name: String, @field:Size(max = 2_000) val description: String?, val steps: List<ChildProgramTemplateStepInput> = emptyList())
+data class ChildProgramTemplateStepResponse(val id: UUID, val title: String, val description: String, val homeGuidance: String?, val displayOrder: Int)
+data class ChildProgramTemplateResponse(val id: UUID, val name: String, val description: String, val steps: List<ChildProgramTemplateStepResponse>)
 
 @Service
 class ChildManagementService(
@@ -106,7 +122,28 @@ class ChildManagementService(
     private val users: UserProfileRepository,
     private val guardianLinks: GuardianLinkRepository,
     private val childScopes: ChildScopeService,
+    private val notifications: NotificationService,
+    private val templates: ChildProgramTemplateRepository,
+    private val templateSteps: ChildProgramTemplateStepRepository,
 ) {
+    @Transactional(readOnly = true)
+    fun programsSummary(jwt: Jwt, organizationId: UUID): ChildProgramSummaryResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
+        return ChildProgramSummaryResponse(
+            programs.countByOrganizationIdAndStatus(organizationId, ChildProgramStatus.ACTIVE).toInt(),
+            programParentFeedback.countByOrganizationId(organizationId).toInt(),
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun parentProgramsSummary(jwt: Jwt, organizationId: UUID): ChildProgramSummaryResponse {
+        val scope = access.require(jwt, organizationId, setOf(Role.PARENT), readOnly = true)
+        val myChildIds = guardianLinks.findAllByUserId(scope.user.id).map { it.childId }.toSet()
+        val orgChildIds = children.findAllByOrganizationId(organizationId).map { it.id }.filter { it in myChildIds }
+        val activePrograms = if (orgChildIds.isEmpty()) 0L else programs.countByOrganizationIdAndChildIdInAndStatusAndParentVisibleTrue(organizationId, orgChildIds, ChildProgramStatus.ACTIVE)
+        return ChildProgramSummaryResponse(activePrograms.toInt(), 0)
+    }
+
     @Transactional(readOnly = true)
     fun profile(jwt: Jwt, organizationId: UUID, childId: UUID): ChildProfileResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
@@ -162,6 +199,7 @@ class ChildManagementService(
     @Transactional
     fun addProgram(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreateChildProgramRequest): ChildProgramResponse {
         requireProgramManagement(jwt, organizationId, childId)
+        val child = child(childId, organizationId)
         val saved = programs.save(ChildProgram(
             organizationId = organizationId,
             childId = childId,
@@ -171,6 +209,7 @@ class ChildManagementService(
             parentSummary = request.parentSummary?.trim()?.ifBlank { null },
             homeGuidance = request.homeGuidance?.trim()?.ifBlank { null },
         ))
+        if (saved.parentVisible) notifyGuardiansOfProgram(child, "Program pendampingan ${child.fullName()}", saved.name)
         return programResponse(saved)
     }
 
@@ -178,6 +217,7 @@ class ChildManagementService(
     fun updateProgram(jwt: Jwt, organizationId: UUID, childId: UUID, programId: UUID, request: UpdateChildProgramRequest): ChildProgramResponse {
         requireProgramManagement(jwt, organizationId, childId)
         val program = program(programId, organizationId, childId)
+        val newlyShared = request.parentVisible && !program.parentVisible
         program.name = request.name.trim()
         program.description = request.description?.trim().orEmpty()
         program.status = request.status
@@ -185,6 +225,7 @@ class ChildManagementService(
         program.parentSummary = request.parentSummary?.trim()?.ifBlank { null }
         program.homeGuidance = request.homeGuidance?.trim()?.ifBlank { null }
         program.updatedAt = java.time.Instant.now()
+        if (newlyShared) { val child = child(childId, organizationId); notifyGuardiansOfProgram(child, "Program pendampingan ${child.fullName()}", program.name) }
         return programResponse(program)
     }
 
@@ -201,7 +242,7 @@ class ChildManagementService(
         requireProgramManagement(jwt, organizationId, childId)
         val program = program(programId, organizationId, childId)
         require(!request.parentVisible || program.parentVisible) { "Child program must be shared with Parent first" }
-        return stepResponse(programSteps.save(ChildProgramStep(
+        val saved = programSteps.save(ChildProgramStep(
             organizationId = organizationId,
             childProgramId = program.id,
             title = request.title.trim(),
@@ -209,7 +250,9 @@ class ChildManagementService(
             homeGuidance = request.homeGuidance?.trim()?.ifBlank { null },
             parentVisible = request.parentVisible,
             displayOrder = request.displayOrder.coerceAtLeast(0),
-        )))
+        ))
+        if (saved.parentVisible) { val child = child(childId, organizationId); notifyGuardiansOfProgram(child, "Langkah pendampingan ${child.fullName()}", saved.title) }
+        return stepResponse(saved)
     }
 
     @Transactional
@@ -218,6 +261,7 @@ class ChildManagementService(
         val program = program(programId, organizationId, childId)
         require(!request.parentVisible || program.parentVisible) { "Child program must be shared with Parent first" }
         val step = step(stepId, organizationId, program.id)
+        val newlyShared = request.parentVisible && !step.parentVisible
         step.title = request.title.trim()
         step.description = request.description?.trim().orEmpty()
         step.homeGuidance = request.homeGuidance?.trim()?.ifBlank { null }
@@ -225,6 +269,7 @@ class ChildManagementService(
         step.completed = request.completed
         step.displayOrder = request.displayOrder.coerceAtLeast(0)
         step.updatedAt = java.time.Instant.now()
+        if (newlyShared) { val child = child(childId, organizationId); notifyGuardiansOfProgram(child, "Langkah pendampingan ${child.fullName()}", step.title) }
         return stepResponse(step)
     }
 
@@ -253,7 +298,52 @@ class ChildManagementService(
         val program = program(programId, organizationId, childId)
         require(program.parentVisible) { "Child program is not shared with Parent" }
         val feedback = programParentFeedback.save(ChildProgramParentFeedback(organizationId = organizationId, childProgramId = program.id, parentUserId = scope.user.id, note = request.note.trim()))
+        val child = child(childId, organizationId)
+        notifyProgramStaff(child, "Umpan balik program ${child.fullName()}", "${program.name}: ${feedback.note}")
         return parentFeedbackResponse(feedback, includeParentName = false)
+    }
+
+    @Transactional(readOnly = true)
+    fun listTemplates(jwt: Jwt, organizationId: UUID): List<ChildProgramTemplateResponse> {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)
+        return templates.findAllByOrganizationIdOrderByNameAsc(organizationId).map(::templateResponse)
+    }
+
+    @Transactional
+    fun createTemplate(jwt: Jwt, organizationId: UUID, request: UpsertChildProgramTemplateRequest): ChildProgramTemplateResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val saved = templates.save(ChildProgramTemplate(organizationId = organizationId, name = request.name.trim(), description = request.description?.trim().orEmpty()))
+        saveTemplateSteps(organizationId, saved.id, request.steps)
+        return templateResponse(saved)
+    }
+
+    @Transactional
+    fun updateTemplate(jwt: Jwt, organizationId: UUID, templateId: UUID, request: UpsertChildProgramTemplateRequest): ChildProgramTemplateResponse {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val template = template(templateId, organizationId)
+        template.name = request.name.trim()
+        template.description = request.description?.trim().orEmpty()
+        template.updatedAt = Instant.now()
+        saveTemplateSteps(organizationId, template.id, request.steps)
+        return templateResponse(template)
+    }
+
+    @Transactional
+    fun removeTemplate(jwt: Jwt, organizationId: UUID, templateId: UUID) {
+        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val template = template(templateId, organizationId)
+        templateSteps.deleteAllByChildProgramTemplateId(template.id)
+        templates.delete(template)
+    }
+
+    @Transactional
+    fun createProgramFromTemplate(jwt: Jwt, organizationId: UUID, childId: UUID, templateId: UUID): ChildProgramResponse {
+        requireProgramManagement(jwt, organizationId, childId)
+        val template = template(templateId, organizationId)
+        val steps = templateSteps.findAllByOrganizationIdAndChildProgramTemplateIdOrderByDisplayOrderAscCreatedAtAsc(organizationId, template.id)
+        val saved = programs.save(ChildProgram(organizationId = organizationId, childId = childId, name = template.name, description = template.description))
+        programSteps.saveAll(steps.map { step -> ChildProgramStep(organizationId = organizationId, childProgramId = saved.id, title = step.title, description = step.description, homeGuidance = step.homeGuidance, displayOrder = step.displayOrder) })
+        return programResponse(saved)
     }
 
     @Transactional
@@ -295,6 +385,16 @@ class ChildManagementService(
     private fun child(childId: UUID, organizationId: UUID) = children.findById(childId).orElseThrow { IllegalArgumentException("Child was not found") }.also { require(it.organizationId == organizationId) { "Child belongs to a different organization" }; require(it.active) { "Child is inactive" } }
     private fun program(programId: UUID, organizationId: UUID, childId: UUID) = programs.findById(programId).orElseThrow { IllegalArgumentException("Child program was not found") }.also { require(it.organizationId == organizationId && it.childId == childId) { "Child program belongs to a different child" } }
     private fun step(stepId: UUID, organizationId: UUID, programId: UUID) = programSteps.findById(stepId).orElseThrow { IllegalArgumentException("Child program step was not found") }.also { require(it.organizationId == organizationId && it.childProgramId == programId) { "Child program step belongs to a different program" } }
+    private fun template(templateId: UUID, organizationId: UUID) = templates.findById(templateId).orElseThrow { IllegalArgumentException("Child program template was not found") }.also { require(it.organizationId == organizationId) { "Child program template belongs to a different organization" } }
+    private fun saveTemplateSteps(organizationId: UUID, templateId: UUID, steps: List<ChildProgramTemplateStepInput>) {
+        templateSteps.deleteAllByChildProgramTemplateId(templateId)
+        templateSteps.saveAll(steps.mapIndexed { index, step -> ChildProgramTemplateStep(organizationId = organizationId, childProgramTemplateId = templateId, title = step.title.trim(), description = step.description?.trim().orEmpty(), homeGuidance = step.homeGuidance?.trim()?.ifBlank { null }, displayOrder = index) })
+    }
+    private fun templateResponse(template: ChildProgramTemplate) = ChildProgramTemplateResponse(
+        template.id, template.name, template.description,
+        templateSteps.findAllByOrganizationIdAndChildProgramTemplateIdOrderByDisplayOrderAscCreatedAtAsc(template.organizationId, template.id)
+            .map { ChildProgramTemplateStepResponse(it.id, it.title, it.description, it.homeGuidance, it.displayOrder) },
+    )
     private fun requireProgramManagement(jwt: Jwt, organizationId: UUID, childId: UUID): AccessScope {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
         if (scope.membership.role == Role.STAFF) {
@@ -322,4 +422,36 @@ class ChildManagementService(
     private fun parentFeedbackResponse(feedback: ChildProgramParentFeedback, includeParentName: Boolean) = ChildProgramParentFeedbackResponse(feedback.id, feedback.note, if (includeParentName) users.findById(feedback.parentUserId).map { it.displayName }.orElse("Unknown") else null, feedback.createdAt)
     private fun assignmentResponses(organizationId: UUID, childId: UUID) = assignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId).mapNotNull { assignment -> users.findById(assignment.userId).map { user -> ChildStaffAssignmentResponse(assignment.id, user.id, user.displayName, user.email, assignment.assignmentRole) }.orElse(null) }
     private fun guardianResponses(childId: UUID) = guardianLinks.findAllByChildId(childId).mapNotNull { link -> users.findById(link.userId).map { user -> ChildGuardianResponse(user.id, user.displayName, user.email, user.username, user.registrationRole == RegistrationRole.PARENT) }.orElse(null) }
+    private fun Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")
+    private fun notifyGuardiansOfProgram(child: Child, title: String, body: String) {
+        guardianLinks.findAllByChildId(child.id).map { it.userId }.distinct()
+            .forEach { userId -> notifications.notify(child.organizationId, userId, title, body, "/parent-child-profile?childId=${child.id}", setOf(RealtimeFlag.CHILD_PROGRAMS)) }
+    }
+    @Scheduled(cron = "0 0 20 * * *", zone = "Asia/Jakarta")
+    @Transactional
+    fun sendStaleProgramStepReminders() {
+        val now = Instant.now()
+        val windowStart = now.minus(Duration.ofDays(STALE_PROGRAM_STEP_DAYS + 1))
+        val windowEnd = now.minus(Duration.ofDays(STALE_PROGRAM_STEP_DAYS))
+        val staleSteps = programSteps.findAllByCompletedFalseAndUpdatedAtBetween(windowStart, windowEnd)
+        if (staleSteps.isEmpty()) return
+        val programsById = programs.findAllById(staleSteps.map { it.childProgramId }.toSet()).associateBy { it.id }
+        val stepsByProgram = staleSteps.filter { programsById[it.childProgramId]?.status == ChildProgramStatus.ACTIVE }.groupBy { it.childProgramId }
+        if (stepsByProgram.isEmpty()) return
+        val childrenById = children.findAllById(stepsByProgram.keys.mapNotNull { programsById[it]?.childId }.toSet()).associateBy { it.id }
+        stepsByProgram.forEach { (programId, steps) ->
+            val program = programsById[programId] ?: return@forEach
+            val child = childrenById[program.childId]?.takeIf { it.active } ?: return@forEach
+            val title = "Langkah pendampingan ${child.fullName()} belum selesai"
+            val body = "${program.name}: ${steps.joinToString(", ") { it.title }} sudah $STALE_PROGRAM_STEP_DAYS hari belum ditandai selesai."
+            notifyProgramStaff(child, title, body)
+        }
+    }
+
+    private fun notifyProgramStaff(child: Child, title: String, body: String) {
+        val staffAdminIds = memberships.findAllByOrganizationId(child.organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.map { it.userId }
+        val assignedStaffIds = assignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(child.organizationId, child.id).map { it.userId }
+        (staffAdminIds + assignedStaffIds).distinct()
+            .forEach { userId -> notifications.notify(child.organizationId, userId, title, body, "/child-detail?childId=${child.id}", setOf(RealtimeFlag.CHILD_PROGRAMS)) }
+    }
 }

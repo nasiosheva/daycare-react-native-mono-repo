@@ -7,7 +7,7 @@ import type { ChildGender } from "@daycare/core";
 import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
-import { useAddChildProgram, useAssignChildStaff, useBindChildGuardian, useChildProfile, useDeactivateChild, useRemoveChildProgram, useUnassignChildStaff, useUnbindChildGuardian, useUpdateChild } from "@/children/useChildManagement";
+import { useAddChildProgram, useAssignChildStaff, useBindChildGuardian, useChildProfile, useChildProgramTemplates, useCreateChildProgramFromTemplate, useDeactivateChild, useRemoveChildProgram, useUnassignChildStaff, useUnbindChildGuardian, useUpdateChild } from "@/children/useChildManagement";
 import { GenderPicker } from "@/children/GenderPicker";
 import { useI18n } from "@/i18n/I18nProvider";
 import { DatePicker } from "@/date-picker/DatePicker";
@@ -36,6 +36,8 @@ export default function ChildDetailScreen() {
   const deactivateChild = useDeactivateChild(childId ?? "");
   const addProgram = useAddChildProgram(childId ?? "");
   const removeProgram = useRemoveChildProgram(childId ?? "");
+  const programTemplates = useChildProgramTemplates(canManagePrograms);
+  const createProgramFromTemplate = useCreateChildProgramFromTemplate(childId ?? "");
   const assignStaff = useAssignChildStaff(childId ?? "");
   const unassignStaff = useUnassignChildStaff(childId ?? "");
   const bindGuardian = useBindChildGuardian(childId ?? "");
@@ -104,6 +106,10 @@ export default function ChildDetailScreen() {
   const saveProgram = async () => {
     if (!childId || !programName.trim()) return;
     try { await addProgram.mutateAsync({ name: programName.trim(), description: programDescription.trim() || undefined }); setProgramName(""); setProgramDescription(""); setSheet(null); }
+    catch (error) { notify(t("children.programFailed"), errorMessage(error)); }
+  };
+  const applyProgramTemplate = async (templateId: string) => {
+    try { await createProgramFromTemplate.mutateAsync(templateId); setSheet(null); }
     catch (error) { notify(t("children.programFailed"), errorMessage(error)); }
   };
   const saveAssignment = async () => {
@@ -182,7 +188,10 @@ export default function ChildDetailScreen() {
     </BottomSheet>
 
     <BottomSheet visible={programsOpen} onClose={() => setProgramsOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("children.programs")}>
-      <Button variant="secondary" onPress={() => { setProgramsOpen(false); setSheet("program"); }}>{t("children.addProgram")}</Button>
+      <View style={styles.options}>
+        <Button variant="secondary" onPress={() => { setProgramsOpen(false); setSheet("program"); }}>{t("children.addProgram")}</Button>
+        {canManage && <Button variant="secondary" onPress={() => { setProgramsOpen(false); router.push("/child-program-templates"); }}>{t("children.manageTemplates")}</Button>}
+      </View>
       {childProfile.isFetching && <ShimmerList variant="row" />}
       {!childProfile.isFetching && childProfile.data?.programs.map((program) => <View key={program.id} style={styles.item}><View style={styles.itemContent}><AppText variant="label">{program.name}</AppText><AppText variant="bodySmall" tone="muted">{t(`children.programStatus.${program.status}`)} · {program.steps.length} {t("children.steps")}</AppText>{program.description && <AppText variant="bodySmall" tone="muted">{program.description}</AppText>}</View><View style={styles.actions}><Button variant="secondary" onPress={() => { setProgramsOpen(false); router.push({ pathname: "/child-program-detail", params: { childId: childId!, programId: program.id } }); }}>{t("children.programManage")}</Button>{program.steps.length === 0 && program.staffNotes.length === 0 && program.parentFeedback.length === 0 && <Button variant="danger" loading={removeProgram.isPending} onPress={() => void removeChildProgram(program.id)}>{t("children.remove")}</Button>}</View></View>)}
       {!childProfile.isFetching && childProfile.data?.programs.length === 0 && <AppText tone="muted">{t("children.noPrograms")}</AppText>}
@@ -225,10 +234,16 @@ export default function ChildDetailScreen() {
       {currentPlacement && <AppText variant="caption" tone="muted">{t("learning.placeChildWarning")}</AppText>}
     </BottomSheet>
     <BottomSheet visible={sheet === "program"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("children.addProgram")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("children.addProgram"), loading: addProgram.isPending, disabled: !programName.trim(), onPress: () => void saveProgram() }}>
+      {Boolean(programTemplates.data?.length) && <View style={styles.itemContent}>
+        <AppText variant="label">{t("children.useTemplate")}</AppText>
+        <View style={styles.options}>{programTemplates.data?.map((template) => <Button key={template.id} variant="secondary" loading={createProgramFromTemplate.isPending} onPress={() => void applyProgramTemplate(template.id)}>{template.name}</Button>)}</View>
+      </View>}
+      <AppText variant="label">{t("children.orManualEntry")}</AppText>
       <TextInput style={styles.input} placeholder={t("children.programName")} value={programName} onChangeText={setProgramName} />
       <TextInput style={styles.input} placeholder={t("children.programDescription")} value={programDescription} onChangeText={setProgramDescription} />
     </BottomSheet>
     <BottomSheet visible={sheet === "staff"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("children.assign")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("children.assign"), loading: assignStaff.isPending, disabled: !staffUserId, onPress: () => void saveAssignment() }}>
+      <AppText variant="caption" tone="muted">{t("children.assignmentGrantsScope")}</AppText>
       {staff.isFetching && <ShimmerList variant="row" />}
       {staff.isError && <View style={styles.errorState}><AppText tone="muted">{t("common.error")}</AppText><Button variant="secondary" onPress={() => void staff.refetch()}>{t("common.retry")}</Button></View>}
       <View style={styles.options}>{assignableStaff.map((user) => <Button key={user.id} variant={staffUserId === user.userId ? "primary" : "secondary"} onPress={() => setStaffUserId(user.userId)}>{user.displayName ?? user.email ?? t("children.selectStaff")}</Button>)}</View>

@@ -16,6 +16,7 @@ import { useImagePicker, type PickedImage } from "@/image-picker";
 import { useAudioRecording, useAudioPlayback } from "@/audio";
 import { encodeLocalFileBase64 } from "@/development/encodeLocalFile";
 import { checkInAudioPlaybackUri } from "@/development/checkInAudioUri";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 export default function DevelopmentScreen() {
   const router = useRouter();
@@ -24,6 +25,8 @@ export default function DevelopmentScreen() {
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
+  const access = useUiAccessContext(Boolean(membership));
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
   const hasFixedChild = typeof routeChildId === "string";
   const [filterVisible, setFilterVisible] = useState(false);
   const [childFilter, setChildFilter] = useState<ChildListFilter>({});
@@ -53,10 +56,7 @@ export default function DevelopmentScreen() {
     if (!developmentCategories.data.some((item) => item.id === category && item.active)) setCategory(developmentCategories.data.find((item) => item.active)?.id ?? "OBSERVATION");
   }, [category, developmentCategories.data]);
 
-  const selectChild = (nextChildId: string) => {
-    setChildId(nextChildId);
-    router.setParams({ childId: nextChildId });
-  };
+  const selectChild = (nextChildId: string) => setChildId(nextChildId);
 
   const submit = async () => {
     setEntryError(null);
@@ -108,7 +108,7 @@ export default function DevelopmentScreen() {
       {children.data?.map((child) => <Button key={child.id} variant={child.id === childId ? "primary" : "secondary"} onPress={() => selectChild(child.id)}>{child.fullName}</Button>)}
     </View>}
     {hasFixedChild && !children.isLoading && !selectedChild && <AppText tone="muted">{t("children.empty")}</AppText>}
-    {selectedChild && <Button variant="secondary" onPress={() => router.push({ pathname: "/goals", params: { childId: selectedChild.id } })}>{t("goals.title")}</Button>}
+    {selectedChild && hasAcademicOffering && <Button variant="secondary" onPress={() => router.push({ pathname: "/goals", params: { childId: selectedChild.id } })}>{t("goals.title")}</Button>}
     {selectedChild && <Button variant="secondary" onPress={() => router.push({ pathname: "/child-health", params: { childId: selectedChild.id } })}>{t("health.title")}</Button>}
     {selectedChild && <Button variant="secondary" onPress={() => router.push({ pathname: "/incident-reports", params: { childId: selectedChild.id } })}>{t("incident.title")}</Button>}
     {canManageCategories && <Button variant="secondary" onPress={() => router.push("/development-categories")}>{t("development.categories")}</Button>}
@@ -146,6 +146,7 @@ function DevelopmentHistory({ entries }: { entries: ReturnType<typeof useDevelop
   const groups = groupDevelopmentEntries(entries.data ?? []);
   const [photoEntry, setPhotoEntry] = useState<{ id: string; childId: string; title: string } | null>(null);
   const photo = useDevelopmentEntryPhoto(photoEntry?.childId ?? null, photoEntry?.id ?? null);
+  const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
   return <View style={styles.section}>
     <AppText variant="heading">{t("development.history")}</AppText>
     {entries.isFetching && <ShimmerList />}
@@ -156,7 +157,7 @@ function DevelopmentHistory({ entries }: { entries: ReturnType<typeof useDevelop
         <AppText variant="label">{entry.title}</AppText>
         <AppText>{entry.content}</AppText>
         {entry.hasPhoto && <DevelopmentPhotoThumbnail childId={entry.childId} entryId={entry.id} title={entry.title} onPress={() => setPhotoEntry({ id: entry.id, childId: entry.childId, title: entry.title })} />}
-        {entry.media.length > 0 && <View style={styles.selector}>{entry.media.map((item) => <DevelopmentMediaItem key={item.id} childId={entry.childId} entryId={entry.id} media={item} title={entry.title} />)}</View>}
+        {entry.media.length > 0 && <View style={styles.selector}>{entry.media.map((item) => <DevelopmentMediaItem key={item.id} childId={entry.childId} entryId={entry.id} media={item} title={entry.title} activeAudioId={activeAudioId} onAudioActivate={setActiveAudioId} />)}</View>}
         <AppText variant="caption" tone="muted">{formatDateTime(entry.recordedAt)} · {entry.recordedBy}</AppText>
       </View>)}
     </View>)}
@@ -169,9 +170,10 @@ function DevelopmentHistory({ entries }: { entries: ReturnType<typeof useDevelop
   </View>;
 }
 
-function DevelopmentMediaItem({ childId, entryId, media, title }: { childId: string; entryId: string; media: DevelopmentEntryMedia; title: string }) {
+function DevelopmentMediaItem({ childId, entryId, media, title, activeAudioId, onAudioActivate }: { childId: string; entryId: string; media: DevelopmentEntryMedia; title: string; activeAudioId: string | null; onAudioActivate: (mediaId: string) => void }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const content = useDevelopmentEntryMedia(childId, entryId, expanded ? media.id : null);
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const playback = useAudioPlayback(audioUri);
@@ -181,10 +183,19 @@ function DevelopmentMediaItem({ childId, entryId, media, title }: { childId: str
     void checkInAudioPlaybackUri(content.data.dataBase64).then(setAudioUri);
   }, [content.data, media.kind]);
 
+  useEffect(() => {
+    if (activeAudioId !== media.id && playback.status === "playing") playback.pause();
+  }, [activeAudioId, media.id, playback]);
+
   if (media.kind === "AUDIO") {
     if (!expanded) return <Button variant="secondary" onPress={() => setExpanded(true)}>{t("goals.playAudio")}</Button>;
     if (content.isFetching || !audioUri) return <View accessibilityLabel={t("development.photoLoading")} style={styles.thumbnailPlaceholder} />;
-    return <Button variant="secondary" onPress={() => playback.status === "playing" ? playback.pause() : playback.play()}>{t(playback.status === "playing" ? "goals.pauseAudio" : "goals.playAudio")}</Button>;
+    const togglePlayback = () => {
+      if (playback.status === "playing") { playback.pause(); return; }
+      onAudioActivate(media.id);
+      playback.play();
+    };
+    return <Button variant="secondary" onPress={togglePlayback}>{t(playback.status === "playing" ? "goals.pauseAudio" : "goals.playAudio")}</Button>;
   }
 
   if (!expanded) return <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={() => setExpanded(true)} style={({ pressed }) => [styles.thumbnailPressable, pressed && styles.thumbnailPressed]}>
@@ -192,7 +203,15 @@ function DevelopmentMediaItem({ childId, entryId, media, title }: { childId: str
   </Pressable>;
   if (content.isFetching) return <View accessibilityLabel={t("development.photoLoading")} style={styles.thumbnailPlaceholder} />;
   if (!content.data) return null;
-  return <Image accessibilityLabel={title} source={{ uri: `data:${content.data.contentType};base64,${content.data.dataBase64}` }} style={styles.thumbnail} resizeMode="cover" />;
+  const photoUri = `data:${content.data.contentType};base64,${content.data.dataBase64}`;
+  return <>
+    <Pressable accessibilityRole="button" accessibilityLabel={t("development.viewPhoto")} onPress={() => setViewerOpen(true)} style={({ pressed }) => [styles.thumbnailPressable, pressed && styles.thumbnailPressed]}>
+      <Image accessibilityLabel={title} source={{ uri: photoUri }} style={styles.thumbnail} resizeMode="cover" />
+    </Pressable>
+    <BottomSheet visible={viewerOpen} onClose={() => setViewerOpen(false)} closeAccessibilityLabel={t("common.close")} title={title}>
+      <Image accessibilityLabel={title} source={{ uri: photoUri }} style={styles.historyPhotoPreview} resizeMode="contain" />
+    </BottomSheet>
+  </>;
 }
 
 function DevelopmentPhotoThumbnail({ childId, entryId, title, onPress }: { childId: string; entryId: string; title: string; onPress: () => void }) {
