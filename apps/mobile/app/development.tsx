@@ -53,10 +53,7 @@ export default function DevelopmentScreen() {
     if (!developmentCategories.data.some((item) => item.id === category && item.active)) setCategory(developmentCategories.data.find((item) => item.active)?.id ?? "OBSERVATION");
   }, [category, developmentCategories.data]);
 
-  const selectChild = (nextChildId: string) => {
-    setChildId(nextChildId);
-    router.setParams({ childId: nextChildId });
-  };
+  const selectChild = (nextChildId: string) => setChildId(nextChildId);
 
   const submit = async () => {
     setEntryError(null);
