@@ -50,7 +50,7 @@ export default function BranchesScreen() {
     setSheet("branch");
   };
   const save = async () => {
-    if (!name.trim() || !timezone.trim() || !fullAddress.trim()) return Alert.alert(t("tenant.branchFailed"));
+    if (!name.trim() || !timezone.trim() || !fullAddress.trim()) return Alert.alert(t("tenant.branchFailed"), t("tenant.branchRequired"));
     try {
       const input = { name: name.trim(), timezone: timezone.trim(), fullAddress: fullAddress.trim(), googleMapsUrl: googleMapsUrl.trim() || undefined };
       if (branchId) await update.mutateAsync({ branchId, input });
