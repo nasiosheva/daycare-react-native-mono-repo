@@ -15,6 +15,7 @@ import { pendingStaffAdminSetupIssues } from "@/tenant-readiness/staffAdminSetup
 
 const menuReadinessIssues = {
   staff: ["STAFF_ADMIN_REQUIRED"],
+  offerings: ["PUBLISHED_OFFERING_REQUIRED"],
   paymentInstructions: ["PAYMENT_INSTRUCTION_REQUIRED"],
   plans: ["ACTIVE_SERVICE_PLAN_REQUIRED", "BRANCH_CAPACITY_REQUIRED"],
   branches: ["ACTIVE_BRANCH_REQUIRED", "OPERATING_HOURS_REQUIRED"],
@@ -49,6 +50,7 @@ export default function StaffAdminScreen() {
   const openSetupIssue = (issue: TenantReadinessIssue) => {
     switch (issue) {
       case "ACTIVE_BRANCH_REQUIRED": router.push("/branches" as never); break;
+      case "PUBLISHED_OFFERING_REQUIRED": router.push("/education-offerings" as never); break;
       case "OPERATING_HOURS_REQUIRED":
         if (activeBranchId) router.push({ pathname: "/branch-operating-hours", params: { branchId: activeBranchId } });
         else router.push("/branches" as never);
@@ -81,7 +83,7 @@ export default function StaffAdminScreen() {
     {hasDaycareOperations && <MenuItem title={t("staffAdmin.plans")} description={t("staffAdmin.plansDescription")} attentionIssues={attentionIssues(readiness.data?.issues, menuReadinessIssues.plans)} onPress={() => router.push("/billing-admin")} />}
     {hasAcademicOffering && <MenuItem title={t("privateTutoring.menu")} description={t("privateTutoring.adminDescription")} onPress={() => router.push("/private-tutoring-admin")} />}
     <MenuItem title={t("staffAdmin.branches")} description={t("staffAdmin.branchesDescription")} attentionIssues={attentionIssues(readiness.data?.issues, menuReadinessIssues.branches)} onPress={() => router.push("/branches" as never)} />
-    <MenuItem title={t("tenant.institutionTypes")} description={t("tenant.institutionTypesInfo")} onPress={() => router.push("/education-offerings" as never)} />
+    <MenuItem title={t("tenant.institutionTypes")} description={t("tenant.institutionTypesInfo")} attentionIssues={attentionIssues(readiness.data?.issues, menuReadinessIssues.offerings)} onPress={() => router.push("/education-offerings" as never)} />
     <MenuItem title={t("childAttendanceReport.menu")} description={t("childAttendanceReport.menuDescription")} onPress={() => router.push("/child-attendance-report" as never)} />
     {hasDaycareOperations && <MenuItem title={t("overtime.chargesTitle")} description={t("overtime.chargesDescription")} onPress={() => router.push("/overtime-charges")} />}
     {hasDaycareOperations && <MenuItem title={t("staffAdmin.approvals")} description={t("staffAdmin.approvalsDescription")} onPress={() => router.push("/booking-approvals")} />}

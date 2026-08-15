@@ -29,6 +29,7 @@ enum class TenantReadinessIssue {
     SUBSCRIPTION_NOT_ACTIVE,
     STAFF_ADMIN_REQUIRED,
     ACTIVE_BRANCH_REQUIRED,
+    PUBLISHED_OFFERING_REQUIRED,
     ACTIVE_CLASSROOM_REQUIRED,
     ACTIVE_SERVICE_PLAN_REQUIRED,
     BRANCH_CAPACITY_REQUIRED,
@@ -81,14 +82,15 @@ class TenantReadinessService(
         val tenantReadiness = organizations.findAll().map { organization ->
             val organizationId = organization.id
             val activeBranchIds = branchesByOrganization[organizationId].orEmpty().filter { it.active }.map { it.id }.toSet()
-            val publishedOfferings = offeringsByOrganization[organizationId].orEmpty()
-            val publishedDaycareBranchIds = publishedDaycareBranchIds(publishedOfferings).intersect(activeBranchIds)
+            val offerings = offeringsByOrganization[organizationId].orEmpty()
+            val publishedDaycareBranchIds = publishedDaycareBranchIds(offerings).intersect(activeBranchIds)
             val issues = evaluateIssues(
                 subscriptionActive = subscriptionsByOrganization[organizationId]?.status in ACTIVE_SUBSCRIPTION_STATUSES,
                 hasActiveStaffAdmin = membershipsByOrganization[organizationId].orEmpty().any { it.role == Role.STAFF_ADMIN && it.active },
                 activeBranchIds = activeBranchIds,
+                hasPublishedOffering = offerings.any { it.status == EducationOfferingStatus.PUBLISHED },
                 hasActiveClassroom = classroomsByOrganization[organizationId].orEmpty().any { it.active },
-                requiresLegacyClassroom = publishedDaycareBranchIds.isNotEmpty() || hasPublishedAcademicOffering(publishedOfferings),
+                requiresLegacyClassroom = publishedDaycareBranchIds.isNotEmpty() || hasPublishedAcademicOffering(offerings),
                 hasActiveServicePlan = plansByOrganization[organizationId].orEmpty().any { it.active },
                 daycareBranchIds = publishedDaycareBranchIds,
                 capacityBranchIds = capacitiesByOrganization[organizationId].orEmpty().map { it.branchId }.toSet(),
@@ -110,14 +112,15 @@ class TenantReadinessService(
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
         val organization = organizations.findById(organizationId).orElseThrow { IllegalArgumentException("Organization was not found") }
         val activeBranchIds = branches.findAllByOrganizationId(organizationId).filter { it.active }.map { it.id }.toSet()
-        val publishedOfferings = educationOfferings.findAllByOrganizationIdOrderByCreatedAtAsc(organizationId)
-        val publishedDaycareBranchIds = publishedDaycareBranchIds(publishedOfferings).intersect(activeBranchIds)
+        val offerings = educationOfferings.findAllByOrganizationIdOrderByCreatedAtAsc(organizationId)
+        val publishedDaycareBranchIds = publishedDaycareBranchIds(offerings).intersect(activeBranchIds)
         val issues = evaluateIssues(
             subscriptionActive = subscriptions.findByOrganizationId(organizationId)?.status in ACTIVE_SUBSCRIPTION_STATUSES,
             hasActiveStaffAdmin = memberships.findAllByOrganizationId(organizationId).any { it.role == Role.STAFF_ADMIN && it.active },
             activeBranchIds = activeBranchIds,
+            hasPublishedOffering = offerings.any { it.status == EducationOfferingStatus.PUBLISHED },
             hasActiveClassroom = classrooms.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId).isNotEmpty(),
-            requiresLegacyClassroom = publishedDaycareBranchIds.isNotEmpty() || hasPublishedAcademicOffering(publishedOfferings),
+            requiresLegacyClassroom = publishedDaycareBranchIds.isNotEmpty() || hasPublishedAcademicOffering(offerings),
             hasActiveServicePlan = plans.findAllByOrganizationIdAndActiveTrue(organizationId).isNotEmpty(),
             daycareBranchIds = publishedDaycareBranchIds,
             capacityBranchIds = branchCapacities.findAllByOrganizationId(organizationId).map { it.branchId }.toSet(),
@@ -131,6 +134,7 @@ class TenantReadinessService(
         subscriptionActive: Boolean,
         hasActiveStaffAdmin: Boolean,
         activeBranchIds: Set<UUID>,
+        hasPublishedOffering: Boolean,
         hasActiveClassroom: Boolean,
         requiresLegacyClassroom: Boolean,
         hasActiveServicePlan: Boolean,
@@ -142,6 +146,7 @@ class TenantReadinessService(
         if (!subscriptionActive) add(TenantReadinessIssue.SUBSCRIPTION_NOT_ACTIVE)
         if (!hasActiveStaffAdmin) add(TenantReadinessIssue.STAFF_ADMIN_REQUIRED)
         if (activeBranchIds.isEmpty()) add(TenantReadinessIssue.ACTIVE_BRANCH_REQUIRED)
+        if (!hasPublishedOffering) add(TenantReadinessIssue.PUBLISHED_OFFERING_REQUIRED)
         if (requiresLegacyClassroom && !hasActiveClassroom) add(TenantReadinessIssue.ACTIVE_CLASSROOM_REQUIRED)
         if (daycareBranchIds.isNotEmpty()) {
             if (!hasActiveServicePlan) add(TenantReadinessIssue.ACTIVE_SERVICE_PLAN_REQUIRED)

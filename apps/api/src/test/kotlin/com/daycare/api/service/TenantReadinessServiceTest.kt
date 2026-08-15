@@ -78,7 +78,7 @@ class TenantReadinessServiceTest {
     }
 
     @Test
-    fun `does not require Daycare configuration before a Daycare offering is published`() {
+    fun `requires a published offering before tenant configuration can be ready`() {
         val tenant = Organization(name = "Belum Lengkap")
         defaults(listOf(tenant))
 
@@ -90,13 +90,14 @@ class TenantReadinessServiceTest {
                 TenantReadinessIssue.SUBSCRIPTION_NOT_ACTIVE,
                 TenantReadinessIssue.STAFF_ADMIN_REQUIRED,
                 TenantReadinessIssue.ACTIVE_BRANCH_REQUIRED,
+                TenantReadinessIssue.PUBLISHED_OFFERING_REQUIRED,
             ),
             response.issues,
         )
     }
 
     @Test
-    fun `does not require Daycare configuration for an academic tenant`() {
+    fun `requires a published offering for an academic tenant`() {
         val tenant = Organization(name = "TK Ceria")
         val branch = Branch(organizationId = tenant.id, name = "Utama")
         defaults(listOf(tenant))
@@ -107,12 +108,12 @@ class TenantReadinessServiceTest {
 
         val response = service().readiness(jwt).tenants.single()
 
-        assertEquals(TenantReadinessStatus.READY, response.status)
-        assertTrue(response.issues.isEmpty())
+        assertEquals(TenantReadinessStatus.NEEDS_ATTENTION, response.status)
+        assertEquals(setOf(TenantReadinessIssue.PUBLISHED_OFFERING_REQUIRED), response.issues)
     }
 
     @Test
-    fun `does not require a legacy class for a catalog-only tenant`() {
+    fun `requires a published offering for a catalog-only tenant`() {
         val tenant = Organization(name = "SMP Harapan")
         val branch = Branch(organizationId = tenant.id, name = "Utama")
         defaults(listOf(tenant))
@@ -122,8 +123,8 @@ class TenantReadinessServiceTest {
 
         val response = service().readiness(jwt).tenants.single()
 
-        assertEquals(TenantReadinessStatus.READY, response.status)
-        assertTrue(response.issues.isEmpty())
+        assertEquals(TenantReadinessStatus.NEEDS_ATTENTION, response.status)
+        assertEquals(setOf(TenantReadinessIssue.PUBLISHED_OFFERING_REQUIRED), response.issues)
     }
 
     @Test
@@ -210,6 +211,7 @@ class TenantReadinessServiceTest {
         assertTrue(response.issues.contains(TenantReadinessIssue.SUBSCRIPTION_NOT_ACTIVE))
         assertTrue(response.issues.contains(TenantReadinessIssue.STAFF_ADMIN_REQUIRED))
         assertTrue(response.issues.contains(TenantReadinessIssue.ACTIVE_BRANCH_REQUIRED))
+        assertTrue(response.issues.contains(TenantReadinessIssue.PUBLISHED_OFFERING_REQUIRED))
         assertFalse(response.issues.contains(TenantReadinessIssue.ACTIVE_CLASSROOM_REQUIRED))
         // No DAYCARE_OPERATIONS capability, so daycare-only setup must not be demanded.
         assertFalse(response.issues.contains(TenantReadinessIssue.ACTIVE_SERVICE_PLAN_REQUIRED))
@@ -224,6 +226,7 @@ class TenantReadinessServiceTest {
         `when`(subscriptions.findByOrganizationId(organizationId)).thenReturn(TenantSubscription(organizationId = organizationId, status = TenantSubscriptionStatus.ACTIVE))
         `when`(memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(Membership(organizationId = organizationId, role = Role.STAFF_ADMIN, active = true)))
         `when`(branches.findAllByOrganizationId(organizationId)).thenReturn(listOf(branch))
+        `when`(educationOfferings.findAllByOrganizationIdOrderByCreatedAtAsc(organizationId)).thenReturn(listOf(EducationOffering(organizationId = organizationId, branchId = branch.id, institutionType = "TK", status = EducationOfferingStatus.PUBLISHED)))
         `when`(classrooms.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId)).thenReturn(listOf(Classroom(organizationId = organizationId, branchId = branch.id, name = "Matahari", active = true)))
         `when`(operatingHours.findAllByBranchIdOrderByDayOfWeekAsc(branch.id)).thenReturn(operatingHoursFor(branch.id))
 

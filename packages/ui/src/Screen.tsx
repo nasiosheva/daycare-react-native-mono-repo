@@ -1,14 +1,14 @@
 import { useEffect, useState, type PropsWithChildren, type ReactNode } from "react";
-import { SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
+import { Platform, RefreshControl, SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { backgroundGradient, colors, shadows, spacing } from "./theme";
 import { AppText } from "./AppText";
 import { appBrandName } from "./brand";
 import { subscribeInlineFeedback, type InlineFeedback } from "./InlineFeedback";
 
-export type ScreenProps = PropsWithChildren<{ title?: string; header?: ReactNode; headerAction?: ReactNode; footer?: ReactNode; floatingAction?: ReactNode; showAppBar?: boolean }>;
+export type ScreenProps = PropsWithChildren<{ title?: string; header?: ReactNode; headerAction?: ReactNode; footer?: ReactNode; floatingAction?: ReactNode; showAppBar?: boolean; refreshing?: boolean; onRefresh?: () => void }>;
 
-export function Screen({ children, title, header, headerAction, footer, floatingAction, showAppBar }: ScreenProps) {
+export function Screen({ children, title, header, headerAction, footer, floatingAction, showAppBar, refreshing = false, onRefresh }: ScreenProps) {
   const shouldShowAppBar = showAppBar ?? Boolean(title || header);
   const [feedback, setFeedback] = useState<InlineFeedback>();
 
@@ -26,7 +26,11 @@ export function Screen({ children, title, header, headerAction, footer, floating
         <AppText variant="heading" numberOfLines={1} style={styles.title}>{title ?? appBrandName}</AppText>
         {headerAction && <View style={styles.headerAction}>{headerAction}</View>}
       </View>}
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        refreshControl={onRefresh && Platform.OS !== "web" ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} /> : undefined}
+      >
         {feedback && <View accessibilityRole="alert" style={styles.feedback}>
           <AppText variant="label">{feedback.title}</AppText>
           {feedback.message && <AppText variant="caption">{feedback.message}</AppText>}

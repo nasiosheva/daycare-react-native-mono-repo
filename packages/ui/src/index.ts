@@ -6,6 +6,7 @@ export * from "./BottomSheet";
 export * from "./Button";
 export * from "./FloatingActionButton";
 export * from "./InlineFeedback";
+export * from "./MultiStepFormWizard";
 export * from "./NavigationCard";
 export * from "./PasswordInput";
 export * from "./PinEntryScreen";

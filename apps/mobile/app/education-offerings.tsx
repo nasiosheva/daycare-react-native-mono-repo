@@ -23,7 +23,11 @@ export default function EducationOfferingsScreen() {
   const offerings = useQuery({ queryKey: ["education-offerings", organizationId], queryFn: () => api.educationOfferings(), enabled: membership?.role === "STAFF_ADMIN" });
   const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: membership?.role === "STAFF_ADMIN" });
   const [open, setOpen] = useState(false); const [branchId, setBranchId] = useState(""); const [institutionType, setInstitutionType] = useState<InstitutionType | "">(""); const [error, setError] = useState<string | null>(null);
-  const refresh = () => Promise.all([client.invalidateQueries({ queryKey: ["education-offerings", organizationId] }), client.invalidateQueries({ queryKey: ["ui-access-context", organizationId] })]);
+  const refresh = () => Promise.all([
+    client.invalidateQueries({ queryKey: ["education-offerings", organizationId] }),
+    client.invalidateQueries({ queryKey: ["ui-access-context", organizationId] }),
+    client.invalidateQueries({ queryKey: ["organization-readiness", organizationId] }),
+  ]);
   const create = useMutation({ mutationFn: () => api.createEducationOffering({ branchId, institutionType: institutionType as InstitutionType, enrollmentMode: institutionType === "DAYCARE" ? "DAYCARE_SERVICE" : "SCHOOL_ADMISSION" }), onSuccess: () => { void refresh(); close(); }, onError: (value) => setError(value instanceof Error ? value.message : t("tenant.saveFailed")) });
   const changeStatus = useMutation({ mutationFn: ({ offering, status }: { offering: EducationOffering; status: EducationOfferingStatus }) => api.setEducationOfferingStatus(offering.id, status), onSuccess: refresh, onError: (value) => setError(value instanceof Error ? value.message : t("tenant.saveFailed")) });
   const close = () => { setOpen(false); setBranchId(""); setInstitutionType(""); setError(null); };
