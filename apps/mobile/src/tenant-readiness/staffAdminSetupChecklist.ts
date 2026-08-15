@@ -2,6 +2,7 @@ import type { TenantReadinessIssue } from "@daycare/api-client";
 
 const staffAdminSetupIssueOrder = [
   "ACTIVE_BRANCH_REQUIRED",
+  "PUBLISHED_OFFERING_REQUIRED",
   "OPERATING_HOURS_REQUIRED",
   "ACTIVE_CLASSROOM_REQUIRED",
   "ACTIVE_SERVICE_PLAN_REQUIRED",

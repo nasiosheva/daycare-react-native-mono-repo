@@ -20,6 +20,24 @@ describe("translations", () => {
     for (const locale of supportedLocales) expect(translate(locale, "consent.informationLimitDescription")).not.toBe("consent.informationLimitDescription");
   });
 
+  it("includes the Parent enrollment wizard in every supported locale", () => {
+    for (const locale of supportedLocales) {
+      expect(translate(locale, "parentEnrollment.stepBranch")).not.toBe("parentEnrollment.stepBranch");
+      expect(translate(locale, "parentEnrollment.pendingApprovalNotice")).not.toBe("parentEnrollment.pendingApprovalNotice");
+    }
+  });
+
+  it("includes the tenant creation wizard in every supported locale", () => {
+    for (const locale of supportedLocales) {
+      expect(translate(locale, "tenantCreation.stepInstitution")).not.toBe("tenantCreation.stepInstitution");
+      expect(translate(locale, "tenantCreation.create")).not.toBe("tenantCreation.create");
+    }
+  });
+
+  it("includes the published-offering readiness issue in every supported locale", () => {
+    for (const locale of supportedLocales) expect(translate(locale, "tenantReadiness.issuePublishedOffering")).not.toBe("tenantReadiness.issuePublishedOffering");
+  });
+
   it("collapses the goal picker label when the name only repeats the domain", () => {
     const t = (key: TranslationKey) => translate("id", key);
     expect(goalPickerLabel(t, "KEMANDIRIAN", "Kemandirian")).toBe("Kemandirian");

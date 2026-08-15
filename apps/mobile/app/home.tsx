@@ -2,8 +2,8 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { useEffect, useState, type ReactNode } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useQueries, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { AppText, Button, FloatingActionButton, ShimmerList, colors, NavigationCard, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren } from "@/attendance/useAttendance";
@@ -49,6 +49,21 @@ export default function HomeScreen() {
   return <ParentHome displayName={profile.displayName} organizationName={membership.organizationName} hasDaycareOperations={hasDaycareOperations} />;
 }
 
+function useHomeRefresh(queryKeys: readonly QueryKey[]) {
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await Promise.all(queryKeys.map((queryKey) => queryClient.refetchQueries({ queryKey, type: "active" })));
+    } finally {
+      setRefreshing(false);
+    }
+  }, [queryClient, queryKeys, refreshing]);
+  return { refreshing, onRefresh };
+}
+
 function ProfileLoadFailure({ error }: { error: Error }) {
   const { refreshProfile, signOut } = useAuth();
   const { t } = useI18n();
@@ -87,7 +102,8 @@ function StaffHome({ displayName, organizationName, managedChildren, tasksByChil
   const unreadNotificationsCount = unreadNotificationCount(notifications.data ?? []);
   const unreadNotificationBadgeLabel = unreadNotificationBadge(unreadNotificationsCount);
   const unreadNotificationsLabel = unreadNotificationBadgeLabel ? t("notifications.unreadCount", { count: unreadNotificationsCount }) : t("notifications.title");
-  return <AppScreen><View style={styles.content}>
+  const homeRefresh = useHomeRefresh([["children", organizationId], ["development-entries", organizationId], ["child-goals", organizationId], ["notifications", organizationId]]);
+  return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
     <View style={styles.staffToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.STAFF")}</AppText></View><Pressable accessibilityRole="button" accessibilityLabel={unreadNotificationsLabel} hitSlop={spacing.sm} onPress={() => router.push("/notifications")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="notifications-outline" size={28} color={colors.primary} />{unreadNotificationBadgeLabel && <View pointerEvents="none" style={styles.notificationBadge}><AppText variant="caption" style={styles.notificationBadgeText}>{unreadNotificationBadgeLabel}</AppText></View>}</Pressable><Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable></View>
     <AppText variant="heading">{t("home.managedChildren")}</AppText>
     {managedChildren.isFetching && <ShimmerList variant="tile" />}
@@ -123,8 +139,9 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
   const childrenUnavailable = children.isFetching || children.isError;
   const servicesUnavailable = hasDaycareOperations && (entitlements.isFetching || entitlements.isError);
   const paymentsUnavailable = invoices.isFetching || invoices.isError;
+  const homeRefresh = useHomeRefresh([["ui-access-context", organizationId], ["children", organizationId], ["entitlements", organizationId], ["invoices", organizationId], ["private-tutoring-services", organizationId]]);
 
-  return <AppScreen><View style={styles.content}>
+  return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
     <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.PARENT")}</AppText></View><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
     <SummarySection title={t("home.parentChildren")}>
       {children.isFetching && <ShimmerList />}
@@ -169,7 +186,8 @@ function ParentOnboardingHome({ displayName }: { displayName: string }) {
   const { t, formatCurrency } = useI18n();
   const enrollments = useQuery({ queryKey: parentEnrollmentQueryKey(user?.uid), queryFn: () => api.parentEnrollments(), enabled: Boolean(user) });
   const next = enrollments.data?.find((item) => item.status === "APPROVED" && item.invoiceStatus === "PENDING") ?? enrollments.data?.find((item) => item.status === "PENDING_APPROVAL");
-  return <AppScreen><View style={styles.content}>
+  const homeRefresh = useHomeRefresh([parentEnrollmentQueryKey(user?.uid)]);
+  return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
     <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{t("parentEnrollment.onboardingSubtitle")}</AppText></View><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
     {next?.status === "PENDING_APPROVAL" && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText tone="muted">{t("parentEnrollment.pendingApproval")}</AppText><Button variant="secondary" onPress={() => router.push("/parent-enrollment")}>{t("parentEnrollment.viewApplication")}</Button></View>}
     {next?.invoiceStatus === "PENDING" && next.invoiceId && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText>{next.planName} · {formatCurrency(next.totalAmount)}</AppText><AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText><Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: next.invoiceId!, organizationId: next.organizationId } })}>{t("parentEnrollment.pay")}</Button></View>}
@@ -219,8 +237,9 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
   const operationalUnavailable = children.isFetching || users.isFetching || children.isError || users.isError;
   const financialUnavailable = pendingBookings.isFetching || invoices.isFetching || entitlements.isFetching || pendingBookings.isError || invoices.isError || entitlements.isError;
   const approvalsUnavailable = hasDaycareOperations && (pendingBookings.isFetching || pendingEnrollments.isFetching || pendingBookings.isError || pendingEnrollments.isError);
+  const homeRefresh = useHomeRefresh([["ui-access-context", organizationId], ["children", organizationId], ["tenant-users", organizationId], ["bookings", organizationId], ["parent-enrollments", organizationId], ["invoices", organizationId], ["entitlements", organizationId], ["tenant-branches", organizationId], ["branch-capacities", organizationId], ["organization-readiness", organizationId], ["notifications", organizationId]]);
 
-  return <AppScreen><View style={styles.content}>
+  return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
     <View style={styles.staffAdminToolbar}>
       <View style={styles.staffAdminHeading}>
         <AppText variant="title">{t("home.greeting", { name: displayName })}</AppText>
@@ -285,8 +304,9 @@ function PlatformAdminHome() {
   const readiness = useQuery({ queryKey: ["platform-tenant-readiness"], queryFn: () => api.tenantReadiness() });
   const activeTenants = tenants.data?.filter((tenant) => tenant.subscriptionStatus === "ACTIVE") ?? [];
   const pendingTenants = tenants.data?.filter((tenant) => tenant.subscriptionStatus === "PENDING_PAYMENT") ?? [];
+  const homeRefresh = useHomeRefresh([["platform-tenants"], ["platform-tenant-readiness"]]);
 
-  return <AppScreen floatingAction={<FloatingActionButton accessibilityLabel={t("home.addTenant")} onPress={() => router.push("/add-tenant")}>+ {t("home.addTenant")}</FloatingActionButton>}><View style={styles.content}>
+  return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()} floatingAction={<FloatingActionButton accessibilityLabel={t("home.addTenant")} onPress={() => router.push("/add-tenant")}>+ {t("home.addTenant")}</FloatingActionButton>}><View style={styles.content}>
     <View style={styles.staffAdminToolbar}>
       <View style={styles.staffAdminHeading}>
         <AppText variant="title">{t("home.platformAdmin")}</AppText>

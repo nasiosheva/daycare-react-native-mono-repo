@@ -2,16 +2,15 @@ import { describe, expect, it } from "vitest";
 import { pendingStaffAdminSetupIssues } from "./staffAdminSetupChecklist";
 
 describe("pendingStaffAdminSetupIssues", () => {
-  it("keeps only Staff-Admin-actionable setup issues in operational order", () => {
+  it("keeps the published-offering prerequisite actionable before downstream setup", () => {
     expect(pendingStaffAdminSetupIssues([
-      "SUBSCRIPTION_NOT_ACTIVE",
-      "PAYMENT_INSTRUCTION_REQUIRED",
+      "ACTIVE_SERVICE_PLAN_REQUIRED",
+      "PUBLISHED_OFFERING_REQUIRED",
       "OPERATING_HOURS_REQUIRED",
-      "ACTIVE_BRANCH_REQUIRED",
     ])).toEqual([
-      "ACTIVE_BRANCH_REQUIRED",
+      "PUBLISHED_OFFERING_REQUIRED",
       "OPERATING_HOURS_REQUIRED",
-      "PAYMENT_INSTRUCTION_REQUIRED",
+      "ACTIVE_SERVICE_PLAN_REQUIRED",
     ]);
   });
 });
