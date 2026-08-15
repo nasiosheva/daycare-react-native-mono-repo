@@ -16,6 +16,7 @@ import { useImagePicker, type PickedImage } from "@/image-picker";
 import { useAudioRecording, useAudioPlayback } from "@/audio";
 import { encodeLocalFileBase64 } from "@/development/encodeLocalFile";
 import { checkInAudioPlaybackUri } from "@/development/checkInAudioUri";
+import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
 export default function DevelopmentScreen() {
   const router = useRouter();
@@ -24,6 +25,8 @@ export default function DevelopmentScreen() {
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
+  const access = useUiAccessContext(Boolean(membership));
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
   const hasFixedChild = typeof routeChildId === "string";
   const [filterVisible, setFilterVisible] = useState(false);
   const [childFilter, setChildFilter] = useState<ChildListFilter>({});
@@ -105,7 +108,7 @@ export default function DevelopmentScreen() {
       {children.data?.map((child) => <Button key={child.id} variant={child.id === childId ? "primary" : "secondary"} onPress={() => selectChild(child.id)}>{child.fullName}</Button>)}
     </View>}
     {hasFixedChild && !children.isLoading && !selectedChild && <AppText tone="muted">{t("children.empty")}</AppText>}
-    {selectedChild && <Button variant="secondary" onPress={() => router.push({ pathname: "/goals", params: { childId: selectedChild.id } })}>{t("goals.title")}</Button>}
+    {selectedChild && hasAcademicOffering && <Button variant="secondary" onPress={() => router.push({ pathname: "/goals", params: { childId: selectedChild.id } })}>{t("goals.title")}</Button>}
     {selectedChild && <Button variant="secondary" onPress={() => router.push({ pathname: "/child-health", params: { childId: selectedChild.id } })}>{t("health.title")}</Button>}
     {selectedChild && <Button variant="secondary" onPress={() => router.push({ pathname: "/incident-reports", params: { childId: selectedChild.id } })}>{t("incident.title")}</Button>}
     {canManageCategories && <Button variant="secondary" onPress={() => router.push("/development-categories")}>{t("development.categories")}</Button>}
