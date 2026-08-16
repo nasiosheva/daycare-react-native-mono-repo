@@ -4,7 +4,7 @@ import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useQueries, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
-import { AppText, Button, FloatingActionButton, ShimmerList, colors, NavigationCard, radius, spacing } from "@daycare/ui";
+import { AppText, Button, FloatingActionButton, ShimmerList, colors, NavigationCard, radius, shadows, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren } from "@/attendance/useAttendance";
 import { useBookings, useEntitlements, useInvoices } from "@/booking/useBooking";
@@ -147,39 +147,74 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
     <SummarySection title={t("home.parentChildren")}>
       {children.isFetching && <ShimmerList />}
       {children.isError && <Button variant="secondary" onPress={() => children.refetch()}>{t("common.retry")}</Button>}
-      {!childrenUnavailable && summary.children.map(({ child, activeEntitlements }) => <View key={child.id} style={styles.parentCard}>
-        <AppText variant="heading">{child.fullName}</AppText>
-        <AppText tone="muted">{t(child.todayCheckedOutAt ? "attendance.statusCheckedOut" : child.todayCheckedInAt ? "attendance.statusCheckedIn" : "attendance.statusNotYet")}</AppText>
-        {hasDaycareOperations && (servicesUnavailable ? <AppText variant="caption" tone="muted">{t("home.parentSummaryLoading")}</AppText> : <>{activeEntitlements.length === 0 && <AppText variant="caption" tone="muted">{t("home.parentNoActiveServices")}</AppText>}{activeEntitlements.map((entitlement) => <View key={entitlement.id} style={styles.parentService}>
-          <AppText variant="label">{entitlement.planName}</AppText>
-          <AppText variant="caption" tone="muted">{entitlement.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: entitlement.remainingCredits })} · {t("booking.validUntil", { date: formatDate(entitlement.validUntil) })}</AppText>
-        </View>)}</>)}
-        <View style={styles.parentActions}>
-          <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-child-profile", params: { childId: child.id } })}>{t("children.parentProfile")}</Button>
-          <Button variant="secondary" onPress={() => router.push({ pathname: "/development", params: { childId: child.id } })}>{t("development.title")}</Button>
-          {hasDaycareOperations && <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-qr", params: { childId: child.id } })}>{t("qr.title")}</Button>}
-          <Button variant="secondary" onPress={() => router.push({ pathname: "/absence-requests", params: { childId: child.id } })}>{t("absence.menu")}</Button>
-        </View>
-      </View>)}
+      {!childrenUnavailable && summary.children.map(({ child, activeEntitlements }) => {
+        const isCheckedIn = Boolean(child.todayCheckedInAt) && !child.todayCheckedOutAt;
+        const statusKey = child.todayCheckedOutAt ? "attendance.statusCheckedOut" : child.todayCheckedInAt ? "attendance.statusCheckedIn" : "attendance.statusNotYet";
+        return <View key={child.id} style={styles.childCard}>
+          <View style={styles.childCardHeader}>
+            <View style={styles.avatar}><AppText variant="h6" style={styles.avatarText}>{child.fullName.trim().charAt(0).toUpperCase() || "?"}</AppText></View>
+            <View style={styles.childCardHeading}>
+              <AppText variant="h5">{child.fullName}</AppText>
+              <View style={[styles.statusPill, isCheckedIn ? styles.statusPillActive : styles.statusPillNeutral]}>
+                <Ionicons name={isCheckedIn ? "checkmark-circle" : child.todayCheckedOutAt ? "home-outline" : "time-outline"} size={12} color={colors.text} />
+                <AppText variant="caption">{t(statusKey)}</AppText>
+              </View>
+            </View>
+          </View>
+          {hasDaycareOperations && (servicesUnavailable ? <AppText variant="caption" tone="muted">{t("home.parentSummaryLoading")}</AppText> : <View style={styles.entitlementsRow}>
+            {activeEntitlements.length === 0 && <AppText variant="caption" tone="muted">{t("home.parentNoActiveServices")}</AppText>}
+            {activeEntitlements.map((entitlement) => <View key={entitlement.id} style={styles.entitlementPill}>
+              <Ionicons name="ribbon-outline" size={14} color={colors.primary} />
+              <View>
+                <AppText variant="caption" style={styles.entitlementPlanText}>{entitlement.planName}</AppText>
+                <AppText variant="caption" tone="muted">{entitlement.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: entitlement.remainingCredits })} · {t("booking.validUntil", { date: formatDate(entitlement.validUntil) })}</AppText>
+              </View>
+            </View>)}
+          </View>)}
+          <View style={styles.parentActions}>
+            <Button variant="secondary" leadingIcon={<Ionicons name="person-outline" size={16} color={colors.primary} />} onPress={() => router.push({ pathname: "/parent-child-profile", params: { childId: child.id } })}>{t("children.parentProfile")}</Button>
+            <Button variant="secondary" leadingIcon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />} onPress={() => router.push({ pathname: "/development", params: { childId: child.id } })}>{t("development.title")}</Button>
+            {hasDaycareOperations && <Button variant="secondary" leadingIcon={<Ionicons name="qr-code-outline" size={16} color={colors.primary} />} onPress={() => router.push({ pathname: "/parent-qr", params: { childId: child.id } })}>{t("qr.title")}</Button>}
+            <Button variant="secondary" leadingIcon={<Ionicons name="calendar-outline" size={16} color={colors.primary} />} onPress={() => router.push({ pathname: "/absence-requests", params: { childId: child.id } })}>{t("absence.menu")}</Button>
+          </View>
+        </View>;
+      })}
       {!childrenUnavailable && summary.children.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
     </SummarySection>
     {hasPrivateTutoring && <NavigationCard accessibilityLabel={t("privateTutoring.menu")} onPress={() => router.push("/private-tutoring")}>
-      <AppText variant="h5">{t("privateTutoring.menu")}</AppText>
+      <View style={styles.navigationCardRow}><Ionicons name="school-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("privateTutoring.menu")}</AppText></View>
       <AppText tone="muted">{t("privateTutoring.description")}</AppText>
     </NavigationCard>}
     {Boolean(programsSummary.data?.activePrograms) && summary.children[0] && <NavigationCard accessibilityLabel={t("children.programs")} onPress={() => router.push({ pathname: "/parent-child-profile", params: { childId: summary.children[0].child.id } })}>
-      <AppText variant="h5">{t("children.programs")}</AppText>
+      <View style={styles.navigationCardRow}><Ionicons name="heart-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("children.programs")}</AppText></View>
       <AppText tone="muted">{t("children.programsSummary", { count: programsSummary.data!.activePrograms })}</AppText>
     </NavigationCard>}
     <SummarySection title={t("home.parentPayments")}>
       {invoices.isFetching && <ShimmerList />}
       {invoices.isError && <Button variant="secondary" onPress={() => invoices.refetch()}>{t("common.retry")}</Button>}
-      {!paymentsUnavailable && summary.actionableInvoices.map((invoice) => <View key={invoice.id} style={styles.parentCard}>
-        <AppText variant="heading">{invoice.invoiceNumber}</AppText>
-        <AppText>{invoice.description ?? t(invoiceSourceKey(invoice.source))} · {formatCurrency(invoice.totalAmount)}</AppText><AppText tone="muted">{invoice.childName}</AppText>
-        <AppText tone="muted">{t(`status.${invoice.status}` as Parameters<typeof t>[0])} · {t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>
-        {invoice.status === "PENDING" ? <Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: invoice.id, ...(organizationId ? { organizationId } : {}) } })}>{t("parentEnrollment.pay")}</Button> : <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
-      </View>)}
+      {!paymentsUnavailable && summary.actionableInvoices.map((invoice) => {
+        const isPending = invoice.status === "PENDING";
+        return <View key={invoice.id} style={styles.invoiceCard}>
+          <View style={styles.invoiceHeader}>
+            <View style={styles.childCardHeading}>
+              <AppText variant="heading">{invoice.invoiceNumber}</AppText>
+              <AppText tone="muted" variant="caption">{invoice.childName}</AppText>
+            </View>
+            <View style={[styles.statusPill, isPending ? styles.statusPillPending : styles.statusPillNeutral]}>
+              <AppText variant="caption" style={isPending ? styles.statusPillPendingText : undefined}>{t(`status.${invoice.status}` as Parameters<typeof t>[0])}</AppText>
+            </View>
+          </View>
+          <View style={styles.invoiceRow}>
+            <AppText tone="muted">{invoice.description ?? t(invoiceSourceKey(invoice.source))}</AppText>
+            <AppText variant="label" style={styles.invoiceAmount}>{formatCurrency(invoice.totalAmount)}</AppText>
+          </View>
+          <View style={styles.invoiceRow}>
+            <Ionicons name="calendar-outline" size={14} color={colors.muted} />
+            <AppText tone="muted" variant="caption">{t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>
+          </View>
+          {isPending ? <Button leadingIcon={<Ionicons name="card-outline" size={16} color={colors.onPrimary} />} onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: invoice.id, ...(organizationId ? { organizationId } : {}) } })}>{t("parentEnrollment.pay")}</Button> : <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
+        </View>;
+      })}
       {!paymentsUnavailable && summary.actionableInvoices.length === 0 && <AppText tone="muted">{t("home.noActionablePayments")}</AppText>}
     </SummarySection>
   </View></AppScreen>;
@@ -372,10 +407,27 @@ const styles = StyleSheet.create({
   summaryCard: { flexGrow: 1, minWidth: 150, gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTint },
   summaryCardPressed: { opacity: 0.76 },
   parentCard: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  parentService: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   parentActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   section: { gap: spacing.sm },
   tenant: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   branchCard: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   branchCardPressed: { opacity: 0.76 },
+  childCard: { gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, ...shadows.sm },
+  childCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  avatar: { width: 44, height: 44, borderRadius: radius.pill, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  avatarText: { color: colors.onPrimary },
+  childCardHeading: { flex: 1, gap: spacing.xs },
+  statusPill: { flexDirection: "row", alignSelf: "flex-start", alignItems: "center", gap: spacing.xs / 2, paddingVertical: spacing.xs / 2, paddingHorizontal: spacing.sm, borderRadius: radius.pill },
+  statusPillActive: { backgroundColor: colors.accentSoft },
+  statusPillNeutral: { backgroundColor: colors.disabled },
+  statusPillPending: { backgroundColor: colors.dangerSoft },
+  statusPillPendingText: { color: colors.danger },
+  entitlementsRow: { gap: spacing.sm },
+  entitlementPill: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.accentSoft },
+  entitlementPlanText: { fontWeight: "700" },
+  navigationCardRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  invoiceCard: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, ...shadows.sm },
+  invoiceHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.sm },
+  invoiceRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
+  invoiceAmount: { color: colors.primary },
 });
