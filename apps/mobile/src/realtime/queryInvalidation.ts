@@ -9,6 +9,7 @@ const queryKeysByFlag: Record<RealtimeFlag, readonly string[]> = {
   ATTENDANCE: ["attendance", "attendance-qr", "children"],
   ABSENCE_REQUESTS: ["child-absence-requests"],
   INCIDENT_REPORTS: ["child-incident-reports"],
+  HEALTH: ["child-health-record"],
   DEVELOPMENT: ["development-entries"],
   DEVELOPMENT_CATEGORIES: ["development-categories"],
   BOOKINGS: ["bookings"],
