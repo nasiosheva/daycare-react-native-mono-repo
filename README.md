@@ -306,6 +306,7 @@ For local logout verification, start the API with `./scripts/run-backend-local.s
 | List parent service entitlements and use remaining credits | `GET /api/v1/service-entitlements`, `POST /api/v1/service-entitlements/{id}/bookings` |
 | Discover available tenants and read a Parent's enrollment applications | `GET /api/v1/parent-enrollment/catalog`, `GET /api/v1/parent-enrollment` |
 | Submit, retry, or cancel a Parent enrollment | `POST /api/v1/parent-enrollment/checkout`, `POST /api/v1/parent-enrollment/{enrollmentId}/retry`, `POST /api/v1/parent-enrollment/{enrollmentId}/cancel` |
+| Request moving an active child to a different tenant | `POST /api/v1/parent-enrollment/transfer` |
 | List and decide Parent enrollment applications before payment | `GET /api/v1/parent-enrollment/pending-approval`, `POST /api/v1/parent-enrollment/{enrollmentId}/approval` |
 | List or manage a tenant's Parent transfer instructions | `GET /api/v1/payment-instructions`, `GET /api/v1/payment-instructions/manage`, `POST /api/v1/payment-instructions`, `PATCH` / `DELETE /api/v1/payment-instructions/{instructionId}` |
 | List bookings or pending branch approvals | `GET /api/v1/bookings`, `GET /api/v1/bookings/pending-approval` |

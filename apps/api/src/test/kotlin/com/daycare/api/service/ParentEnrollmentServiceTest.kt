@@ -30,6 +30,7 @@ import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.UserProfileRepository
 import com.daycare.api.realtime.RealtimeFlag
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentCaptor
 import org.mockito.Mockito.any
@@ -217,6 +218,157 @@ class ParentEnrollmentServiceTest {
         assertEquals("Data belum lengkap", response.rejectionReason)
         assertEquals(false, child.active)
         verify(notifications).notify(organizationId, parent.id, "Pengajuan ditolak", "Ajukan kembali saat data pendaftaran sudah siap.", "/parent-enrollment", setOf(RealtimeFlag.PARENT_ENROLLMENTS))
+    }
+
+    @Test
+    fun `transferCheckout creates a pending child at the destination copied from the origin`() {
+        val identity = mock(IdentityService::class.java)
+        val access = mock(AccessService::class.java)
+        val organizations = mock(OrganizationRepository::class.java)
+        val subscriptions = mock(TenantSubscriptionRepository::class.java)
+        val publishedOfferings = mock(PublishedOfferingCapabilityService::class.java)
+        val branches = mock(BranchRepository::class.java)
+        val plans = mock(ServicePlanRepository::class.java)
+        val children = mock(ChildRepository::class.java)
+        val enrollments = mock(ParentEnrollmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val guardians = mock(GuardianLinkRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val entitlements = mock(ServiceEntitlementRepository::class.java)
+        val invoices = mock(InvoiceRepository::class.java)
+        val billing = mock(BillingService::class.java)
+        val notifications = mock(NotificationService::class.java)
+        val branchFilters = mock(BranchListFilterService::class.java)
+        val paymentInstructions = mock(TenantPaymentInstructionService::class.java)
+        val familyProfileVisibility = mock(ParentFamilyProfileVisibilityService::class.java)
+        val originOrganizationId = UUID.randomUUID()
+        val destinationOrganizationId = UUID.randomUUID()
+        val destinationBranch = Branch(organizationId = destinationOrganizationId, name = "Cabang Baru")
+        val parent = UserProfile()
+        val planId = UUID.randomUUID()
+        val originChild = Child(organizationId = originOrganizationId, firstName = "Alya", lastName = "Putri", gender = Gender.FEMALE, dateOfBirth = LocalDate.of(2022, 1, 1), enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        val newChild = Child(organizationId = destinationOrganizationId, branchId = destinationBranch.id, firstName = "Alya", lastName = "Putri", gender = Gender.FEMALE, dateOfBirth = originChild.dateOfBirth, enrollmentStatus = ChildEnrollmentStatus.PENDING)
+        val jwt = mock(Jwt::class.java)
+        `when`(identity.sync(jwt)).thenReturn(parent)
+        `when`(children.findById(originChild.id)).thenReturn(Optional.of(originChild))
+        `when`(guardians.existsByChildIdAndUserId(originChild.id, parent.id)).thenReturn(true)
+        `when`(enrollments.existsByTransferredFromChildIdAndStatus(originChild.id, ParentEnrollmentStatus.PENDING_APPROVAL)).thenReturn(false)
+        `when`(memberships.findAllByUserIdAndOrganizationId(parent.id, destinationOrganizationId)).thenReturn(emptyList())
+        `when`(branches.findById(destinationBranch.id)).thenReturn(Optional.of(destinationBranch))
+        `when`(subscriptions.findByOrganizationId(destinationOrganizationId)).thenReturn(TenantSubscription(organizationId = destinationOrganizationId, status = TenantSubscriptionStatus.ACTIVE))
+        `when`(publishedOfferings.hasPublishedCapability(destinationOrganizationId, InstitutionCapability.DAYCARE_OPERATIONS, destinationBranch.id)).thenReturn(true)
+        `when`(billing.quoteEnrollment(destinationOrganizationId, planId, null)).thenReturn(snapshot(planId))
+        `when`(children.save(any(Child::class.java))).thenReturn(newChild)
+        `when`(enrollments.save(any(ParentEnrollment::class.java))).thenAnswer { it.arguments[0] }
+        `when`(children.findById(newChild.id)).thenReturn(Optional.of(newChild))
+        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters, paymentInstructions, familyProfileVisibility, publishedOfferings)
+
+        val response = service.transferCheckout(jwt, ParentChildTransferRequest(originChild.id, destinationOrganizationId, destinationBranch.id, planId))
+
+        assertEquals("Alya Putri", response.childName)
+        assertEquals(ParentEnrollmentStatus.PENDING_APPROVAL, response.status)
+        val childCaptor = ArgumentCaptor.forClass(Child::class.java)
+        verify(children).save(childCaptor.capture())
+        assertEquals(destinationOrganizationId, childCaptor.value.organizationId)
+        assertEquals(Gender.FEMALE, childCaptor.value.gender)
+        assertEquals(ChildEnrollmentStatus.PENDING, childCaptor.value.enrollmentStatus)
+        val enrollmentCaptor = ArgumentCaptor.forClass(ParentEnrollment::class.java)
+        verify(enrollments).save(enrollmentCaptor.capture())
+        assertEquals(originChild.id, enrollmentCaptor.value.transferredFromChildId)
+    }
+
+    @Test
+    fun `transferCheckout rejects a child already enrolled at the destination tenant`() {
+        val identity = mock(IdentityService::class.java)
+        val access = mock(AccessService::class.java)
+        val organizations = mock(OrganizationRepository::class.java)
+        val subscriptions = mock(TenantSubscriptionRepository::class.java)
+        val publishedOfferings = mock(PublishedOfferingCapabilityService::class.java)
+        val branches = mock(BranchRepository::class.java)
+        val plans = mock(ServicePlanRepository::class.java)
+        val children = mock(ChildRepository::class.java)
+        val enrollments = mock(ParentEnrollmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val guardians = mock(GuardianLinkRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val entitlements = mock(ServiceEntitlementRepository::class.java)
+        val invoices = mock(InvoiceRepository::class.java)
+        val billing = mock(BillingService::class.java)
+        val notifications = mock(NotificationService::class.java)
+        val branchFilters = mock(BranchListFilterService::class.java)
+        val paymentInstructions = mock(TenantPaymentInstructionService::class.java)
+        val familyProfileVisibility = mock(ParentFamilyProfileVisibilityService::class.java)
+        val organizationId = UUID.randomUUID()
+        val parent = UserProfile()
+        val originChild = Child(organizationId = organizationId, firstName = "Alya", enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        val jwt = mock(Jwt::class.java)
+        `when`(identity.sync(jwt)).thenReturn(parent)
+        `when`(children.findById(originChild.id)).thenReturn(Optional.of(originChild))
+        `when`(guardians.existsByChildIdAndUserId(originChild.id, parent.id)).thenReturn(true)
+        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters, paymentInstructions, familyProfileVisibility, publishedOfferings)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            service.transferCheckout(jwt, ParentChildTransferRequest(originChild.id, organizationId, UUID.randomUUID(), UUID.randomUUID()))
+        }
+
+        verify(children, org.mockito.Mockito.never()).save(any(Child::class.java))
+    }
+
+    @Test
+    fun `approving a transfer marks the origin child inactive and transferred`() {
+        val identity = mock(IdentityService::class.java)
+        val access = mock(AccessService::class.java)
+        val organizations = mock(OrganizationRepository::class.java)
+        val subscriptions = mock(TenantSubscriptionRepository::class.java)
+        val publishedOfferings = mock(PublishedOfferingCapabilityService::class.java)
+        val branches = mock(BranchRepository::class.java)
+        val plans = mock(ServicePlanRepository::class.java)
+        val children = mock(ChildRepository::class.java)
+        val enrollments = mock(ParentEnrollmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val guardians = mock(GuardianLinkRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val entitlements = mock(ServiceEntitlementRepository::class.java)
+        val invoices = mock(InvoiceRepository::class.java)
+        val billing = mock(BillingService::class.java)
+        val notifications = mock(NotificationService::class.java)
+        val branchFilters = mock(BranchListFilterService::class.java)
+        val paymentInstructions = mock(TenantPaymentInstructionService::class.java)
+        val familyProfileVisibility = mock(ParentFamilyProfileVisibilityService::class.java)
+        val destinationOrganizationId = UUID.randomUUID()
+        val originOrganizationId = UUID.randomUUID()
+        val parent = UserProfile(displayName = "Parent")
+        val staffAdmin = UserProfile(displayName = "Staff Admin")
+        val scope = AccessScope(staffAdmin, Membership(userId = staffAdmin.id, organizationId = destinationOrganizationId, role = Role.STAFF_ADMIN), setOf(InstitutionTypeCodes.DAYCARE), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        val originChild = Child(organizationId = originOrganizationId, firstName = "Alya", enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        val newChild = Child(organizationId = destinationOrganizationId, firstName = "Alya", enrollmentStatus = ChildEnrollmentStatus.PENDING)
+        val invoice = Invoice(organizationId = destinationOrganizationId, payerUserId = parent.id, invoiceNumber = "INV-TRANSFER", totalAmount = java.math.BigDecimal("150000"))
+        val entitlementId = UUID.randomUUID()
+        val enrollment = ParentEnrollment(userId = parent.id, organizationId = destinationOrganizationId, branchId = newChild.branchId, childId = newChild.id, selectedPlanId = UUID.randomUUID(), selectedPlanName = "Paket Bulanan", selectedPlanType = ServicePlanType.MONTHLY, selectedSubtotalAmount = invoice.totalAmount, selectedTotalAmount = invoice.totalAmount, transferredFromChildId = originChild.id)
+        val purchase = PurchaseServiceResponse(
+            EntitlementResponse(entitlementId, newChild.branchId, newChild.id, newChild.firstName, parent.displayName, parent.email, enrollment.selectedPlanName, ServicePlanType.MONTHLY, EntitlementStatus.PENDING_PAYMENT, null, null, LocalDate.now()),
+            InvoiceResponse(invoice.id, invoice.invoiceNumber, invoice.source, invoice.description, newChild.branchId, newChild.id, newChild.firstName, parent.displayName, parent.email, invoice.subtotalAmount, invoice.discountAmount, invoice.discountName, invoice.discountCode, invoice.totalAmount, invoice.status, invoice.dueDate, invoice.createdAt, null),
+            emptyList(),
+        )
+        val jwt = mock(Jwt::class.java)
+        `when`(access.require(jwt, destinationOrganizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(scope)
+        `when`(enrollments.findById(enrollment.id)).thenReturn(Optional.of(enrollment))
+        `when`(children.findById(newChild.id)).thenReturn(Optional.of(newChild))
+        `when`(children.findById(originChild.id)).thenReturn(Optional.of(originChild))
+        `when`(paymentInstructions.hasActiveInstruction(destinationOrganizationId)).thenReturn(true)
+        `when`(users.findById(parent.id)).thenReturn(Optional.of(parent))
+        val snapshot = EnrollmentPlanSnapshot(enrollment.selectedPlanId, enrollment.selectedPlanName, enrollment.selectedPlanType, enrollment.selectedSubtotalAmount, enrollment.selectedDiscountAmount, enrollment.selectedDiscountName, enrollment.selectedDiscountCode, enrollment.selectedTotalAmount, enrollment.selectedCreditCount, enrollment.selectedUnusedCreditPolicy, enrollment.selectedCarryForwardDays, enrollment.selectedBookingRequiresApproval)
+        `when`(billing.purchaseApprovedEnrollment(parent, destinationOrganizationId, newChild, snapshot)).thenReturn(purchase)
+        `when`(memberships.findAllByUserIdAndOrganizationId(parent.id, destinationOrganizationId)).thenReturn(emptyList())
+        `when`(guardians.existsByChildIdAndUserId(newChild.id, parent.id)).thenReturn(false)
+        `when`(invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        val service = ParentEnrollmentService(identity, access, organizations, subscriptions, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters, paymentInstructions, familyProfileVisibility, publishedOfferings)
+
+        service.decide(jwt, destinationOrganizationId, enrollment.id, ParentEnrollmentApprovalRequest(approved = true))
+
+        assertEquals(ChildEnrollmentStatus.ACTIVE, newChild.enrollmentStatus)
+        assertEquals(ChildEnrollmentStatus.TRANSFERRED, originChild.enrollmentStatus)
+        assertEquals(false, originChild.active)
     }
 
     private fun snapshot(planId: UUID) = EnrollmentPlanSnapshot(planId, "Paket", com.daycare.api.domain.ServicePlanType.MONTHLY, java.math.BigDecimal.ONE, java.math.BigDecimal.ZERO, null, null, java.math.BigDecimal.ONE, null, null, null, true)

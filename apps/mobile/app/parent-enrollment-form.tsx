@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Linking, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppText, BackButton, Button, MultiStepFormWizard, ShimmerList, colors, radius, spacing, type MultiStepFormWizardStep } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -21,15 +21,20 @@ import {
   type EnrollmentChildDraft,
 } from "@/parent-enrollment/form";
 
-type EnrollmentStep = 0 | 1 | 2;
+type EnrollmentStep = number;
 
 export default function ParentEnrollmentFormScreen() {
   const router = useRouter();
+  const { transferChildId: rawTransferChildId, transferChildName: rawTransferChildName } = useLocalSearchParams<{ transferChildId?: string; transferChildName?: string }>();
+  const transferChildId = typeof rawTransferChildId === "string" ? rawTransferChildId : null;
+  const transferChildName = typeof rawTransferChildName === "string" ? rawTransferChildName : null;
+  const isTransfer = Boolean(transferChildId);
   const { api, profile, user } = useAuth();
   const { t, formatCurrency } = useI18n();
   const client = useQueryClient();
   const today = useMemo(() => formatIsoDate(new Date()), []);
   const [step, setStep] = useState<EnrollmentStep>(0);
+  const planStep = isTransfer ? 1 : 2;
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [tenantId, setTenantId] = useState<string>();
@@ -59,11 +64,9 @@ export default function ParentEnrollmentFormScreen() {
   const plan = tenant?.plans.find((item) => item.id === planId);
   const childErrors = useMemo(() => children.map((child) => enrollmentChildDraftErrors(child, today)), [children, today]);
   const childrenComplete = useMemo(() => isEnrollmentChildrenStepComplete(children, today), [children, today]);
-  const wizardSteps: MultiStepFormWizardStep[] = [
-    { id: "branch", label: t("parentEnrollment.stepBranch") },
-    { id: "children", label: t("parentEnrollment.stepChildren") },
-    { id: "plan", label: t("parentEnrollment.stepPlan") },
-  ];
+  const wizardSteps: MultiStepFormWizardStep[] = isTransfer
+    ? [{ id: "branch", label: t("parentEnrollment.stepBranch") }, { id: "plan", label: t("parentEnrollment.stepPlan") }]
+    : [{ id: "branch", label: t("parentEnrollment.stepBranch") }, { id: "children", label: t("parentEnrollment.stepChildren") }, { id: "plan", label: t("parentEnrollment.stepPlan") }];
 
   useEffect(() => {
     if (step > 0 && (!tenant || !branch)) {
@@ -76,7 +79,9 @@ export default function ParentEnrollmentFormScreen() {
 
   const checkout = useMutation({
     mutationFn: () => {
-      if (!tenant || !branch || !plan || !childrenComplete) throw new Error(t("parentEnrollment.formIncomplete"));
+      if (!tenant || !branch || !plan) throw new Error(t("parentEnrollment.formIncomplete"));
+      if (isTransfer) return api.transferChildEnrollment({ childId: transferChildId!, organizationId: tenant.organizationId, branchId: branch.id, planId: plan.id }).then((result) => [result]);
+      if (!childrenComplete) throw new Error(t("parentEnrollment.formIncomplete"));
       return api.checkoutParentEnrollment({
         organizationId: tenant.organizationId,
         branchId: branch.id,
@@ -127,12 +132,12 @@ export default function ParentEnrollmentFormScreen() {
 
   return <AppScreen
     showBottomNavigation={false}
-    title={t("parentEnrollment.newTenant")}
+    title={isTransfer ? t("parentEnrollment.transferTitle") : t("parentEnrollment.newTenant")}
     header={<BackButton accessibilityLabel={t("common.back")} onPress={goBack} />}
   >
     <View style={styles.hero}>
-      <AppText variant="title">{t("parentEnrollment.newTenant")}</AppText>
-      <AppText tone="muted">{t("parentEnrollment.wizardDescription")}</AppText>
+      <AppText variant="title">{isTransfer ? t("parentEnrollment.transferFormTitle", { name: transferChildName ?? "" }) : t("parentEnrollment.newTenant")}</AppText>
+      <AppText tone="muted">{isTransfer ? t("parentEnrollment.transferWizardDescription") : t("parentEnrollment.wizardDescription")}</AppText>
     </View>
 
     <MultiStepFormWizard
@@ -197,7 +202,7 @@ export default function ParentEnrollmentFormScreen() {
       })}
       </View>}
 
-      {step === 1 && tenant && branch && <View style={styles.section}>
+      {step === 1 && !isTransfer && tenant && branch && <View style={styles.section}>
       <SelectedBranchSummary organizationName={tenant.organizationName} branchName={branch.name} address={branch.fullAddress} />
       <View style={styles.sectionHeading}>
         <AppText variant="heading">{t("parentEnrollment.stepChildren")}</AppText>
@@ -260,7 +265,8 @@ export default function ParentEnrollmentFormScreen() {
       </View>
       </View>}
 
-      {step === 2 && tenant && branch && <View style={styles.section}>
+      {step === planStep && tenant && branch && <View style={styles.section}>
+      {isTransfer && <SelectedBranchSummary organizationName={tenant.organizationName} branchName={branch.name} address={branch.fullAddress} />}
       <View style={styles.sectionHeading}>
         <AppText variant="heading">{t("parentEnrollment.stepPlan")}</AppText>
         <AppText tone="muted">{t("parentEnrollment.planDescription")}</AppText>
@@ -295,14 +301,16 @@ export default function ParentEnrollmentFormScreen() {
         </View>
         <ReviewRow label={t("parentEnrollment.reviewInstitution")} value={tenant.organizationName} />
         <ReviewRow label={t("parentEnrollment.reviewBranch")} value={branch.name} />
-        <View style={styles.reviewGroup}>
-          <AppText variant="caption" tone="muted">{t("parentEnrollment.childrenCount", { count: children.length })}</AppText>
-          {children.map((child, index) => <AppText key={`${child.firstName}-${index}`} variant="label">{index + 1}. {child.firstName.trim()} {child.lastName?.trim()}</AppText>)}
-        </View>
+        {isTransfer
+          ? <ReviewRow label={t("parentEnrollment.reviewChild")} value={transferChildName ?? ""} />
+          : <View style={styles.reviewGroup}>
+            <AppText variant="caption" tone="muted">{t("parentEnrollment.childrenCount", { count: children.length })}</AppText>
+            {children.map((child, index) => <AppText key={`${child.firstName}-${index}`} variant="label">{index + 1}. {child.firstName.trim()} {child.lastName?.trim()}</AppText>)}
+          </View>}
         <ReviewRow label={t("parentEnrollment.reviewPlan")} value={`${plan.name} · ${formatCurrency(plan.price)}`} />
         <View style={styles.noticeCard}>
           <AppText variant="label">{t("parentEnrollment.pendingApprovalTitle")}</AppText>
-          <AppText tone="muted">{t("parentEnrollment.pendingApprovalNotice")}</AppText>
+          <AppText tone="muted">{t(isTransfer ? "parentEnrollment.transferPendingApprovalNotice" : "parentEnrollment.pendingApprovalNotice")}</AppText>
         </View>
       </View>}
 

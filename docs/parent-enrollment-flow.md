@@ -14,6 +14,13 @@ This flow lets a globally registered `PARENT` apply to a tenant before making a 
 6. The Parent selects **Bayar** to read the tenant's active transfer instructions, transfers the amount, then uploads a single JPEG or PNG payment proof.
 7. A Staff Admin verifies the proof. The invoice becomes paid and the entitlement becomes active; only then can the Parent use package-dependent services such as booking.
 
+## Tenant transfer
+
+A Parent with an active child at one tenant can request to move that child to a different tenant from the child's profile screen. This reuses the same enrollment wizard and Staff Admin approval mechanism as a brand-new application, with two differences:
+
+- The child step is skipped: name, gender, and date of birth are copied from the existing (origin) child instead of typed in. The destination tenant/branch must differ from the origin, the origin child must be active, and only one pending transfer per child is allowed at a time.
+- History (attendance, development, health, incidents, Program Pendampingan) never moves with the child — it stays at the origin tenant per the retention rules the rest of this app follows (archive, never hard-delete). The origin child is only marked inactive and `TRANSFERRED` when the destination tenant's Staff Admin **approves** the request, not when the Parent submits it; a rejected or still-pending transfer leaves the origin child untouched and fully active. The origin tenant has no separate approval step of its own.
+
 ## Staff Admin requirements
 
 Before approving any Parent enrollment, Staff Admin must configure at least one active payment instruction. Instructions are tenant-scoped and can contain a bank account or e-wallet name, account holder, account number, optional note, active state, and display order.

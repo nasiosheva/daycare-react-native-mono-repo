@@ -45,6 +45,7 @@ data class ParentEnrollmentCheckoutRequest(
     @field:Size(min = 1, max = 10) @field:Valid val children: List<ParentEnrollmentChildInput>,
 )
 data class ParentEnrollmentApprovalRequest(val approved: Boolean, @field:Size(max = 500) val rejectionReason: String? = null)
+data class ParentChildTransferRequest(val childId: UUID, val organizationId: UUID, val branchId: UUID, val planId: UUID, val promoCode: String? = null)
 data class ParentEnrollmentRetryRequest(val bookingDates: List<LocalDate> = emptyList())
 enum class ParentEnrollmentAccessState { PENDING_APPROVAL, PAYMENT_DUE, PAYMENT_REVIEW, ACTIVE, BILLING_LIMITED, CLOSED }
 enum class ParentEnrollmentAllowedAction { REAPPLY, UPLOAD_PAYMENT_PROOF }
@@ -68,6 +69,8 @@ data class ParentEnrollmentResponse(
     val accessState: ParentEnrollmentAccessState,
     val allowedActions: Set<ParentEnrollmentAllowedAction>,
     val parentFamilyProfile: ParentFamilyProfileForTenantResponse? = null,
+    val transferredFromChildId: UUID? = null,
+    val transferredFromOrganizationName: String? = null,
 )
 
 object ParentEnrollmentError {
@@ -141,6 +144,26 @@ class ParentEnrollmentService(
         return created
     }
 
+    @Transactional
+    fun transferCheckout(jwt: Jwt, request: ParentChildTransferRequest): ParentEnrollmentResponse {
+        val parent = identity.sync(jwt)
+        val originChild = children.findById(request.childId).orElseThrow { IllegalArgumentException("Child was not found") }
+        require(guardians.existsByChildIdAndUserId(originChild.id, parent.id)) { "You are not a guardian of this child" }
+        require(originChild.active && originChild.enrollmentStatus == ChildEnrollmentStatus.ACTIVE) { "Child must be actively enrolled to transfer" }
+        require(originChild.organizationId != request.organizationId) { "Child is already enrolled at this tenant" }
+        require(!enrollments.existsByTransferredFromChildIdAndStatus(originChild.id, ParentEnrollmentStatus.PENDING_APPROVAL)) { "A transfer for this child is already pending" }
+        require(memberships.findAllByUserIdAndOrganizationId(parent.id, request.organizationId).none { it.role == Role.PARENT && it.active }) { ParentEnrollmentError.ALREADY_ACTIVE }
+        val branch = branches.findById(request.branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
+        require(branch.organizationId == request.organizationId && branch.active) { "Branch is not available for this organization" }
+        requireCatalogTenant(request.organizationId, branch.id)
+        val snapshot = billing.quoteEnrollment(request.organizationId, request.planId, request.promoCode)
+        val child = children.save(Child(organizationId = request.organizationId, branchId = branch.id, firstName = originChild.firstName, lastName = originChild.lastName, gender = originChild.gender, dateOfBirth = originChild.dateOfBirth, enrollmentStatus = ChildEnrollmentStatus.PENDING))
+        val enrollment = enrollments.save(ParentEnrollment(userId = parent.id, organizationId = request.organizationId, branchId = branch.id, childId = child.id, selectedPlanId = snapshot.planId, selectedPlanName = snapshot.planName, selectedPlanType = snapshot.planType, selectedSubtotalAmount = snapshot.subtotalAmount, selectedDiscountAmount = snapshot.discountAmount, selectedDiscountName = snapshot.discountName, selectedDiscountCode = snapshot.discountCode, selectedTotalAmount = snapshot.totalAmount, selectedCreditCount = snapshot.creditCount, selectedUnusedCreditPolicy = snapshot.unusedCreditPolicy, selectedCarryForwardDays = snapshot.carryForwardDays, selectedBookingRequiresApproval = snapshot.bookingRequiresApproval, transferredFromChildId = originChild.id))
+        val result = response(enrollment)
+        notifyStaffAdmins(request.organizationId, "Pengajuan pindahan Parent baru", "Pengajuan pindahan ${result.childName} menunggu persetujuan.", "/booking-approvals")
+        return result
+    }
+
     @Transactional(readOnly = true)
     fun mine(jwt: Jwt): List<ParentEnrollmentResponse> {
         val user = identity.sync(jwt)
@@ -177,6 +200,11 @@ class ParentEnrollmentService(
             if (!guardians.existsByChildIdAndUserId(child.id, enrollment.userId)) guardians.save(GuardianLink(childId = child.id, userId = enrollment.userId))
             enrollment.status = ParentEnrollmentStatus.APPROVED
             enrollment.approvedAt = Instant.now()
+            enrollment.transferredFromChildId?.let { originId ->
+                val origin = children.findById(originId).orElseThrow { IllegalArgumentException("Original child was not found") }
+                origin.active = false
+                origin.enrollmentStatus = ChildEnrollmentStatus.TRANSFERRED
+            }
             notifications.notify(organizationId, enrollment.userId, "Pengajuan disetujui", "Pengajuan ${child.fullName()} disetujui. Selesaikan pembayaran untuk mengaktifkan paket layanan.", "/home", setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.PROFILE, RealtimeFlag.CHILDREN, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.INVOICES))
         } else {
             enrollment.status = ParentEnrollmentStatus.REJECTED
@@ -242,7 +270,8 @@ class ParentEnrollmentService(
         val child = children.findById(enrollment.childId).orElseThrow { IllegalArgumentException("Child was not found") }
         val invoice = enrollment.invoiceId?.let { invoices.findById(it).orElseThrow { IllegalArgumentException("Invoice was not found") } }
         val access = accessState(enrollment.status, invoice?.status)
-        return ParentEnrollmentResponse(enrollment.id, enrollment.organizationId, enrollment.branchId, child.id, child.fullName(), enrollment.invoiceId, enrollment.entitlementId, enrollment.status, invoice?.status, enrollment.selectedPlanName, enrollment.selectedTotalAmount, enrollment.rejectionReason, enrollment.createdAt, access.first, access.second, if (includeParentFamilyProfile) familyProfileVisibility.forTenant(enrollment.organizationId, enrollment.userId) else null)
+        val transferredFromOrganizationName = enrollment.transferredFromChildId?.let { originId -> children.findById(originId).orElse(null)?.let { origin -> organizations.findById(origin.organizationId).orElse(null)?.name } }
+        return ParentEnrollmentResponse(enrollment.id, enrollment.organizationId, enrollment.branchId, child.id, child.fullName(), enrollment.invoiceId, enrollment.entitlementId, enrollment.status, invoice?.status, enrollment.selectedPlanName, enrollment.selectedTotalAmount, enrollment.rejectionReason, enrollment.createdAt, access.first, access.second, if (includeParentFamilyProfile) familyProfileVisibility.forTenant(enrollment.organizationId, enrollment.userId) else null, enrollment.transferredFromChildId, transferredFromOrganizationName)
     }
 
     private fun accessState(status: ParentEnrollmentStatus, invoiceStatus: InvoiceStatus?): Pair<ParentEnrollmentAccessState, Set<ParentEnrollmentAllowedAction>> = when {
