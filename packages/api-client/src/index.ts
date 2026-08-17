@@ -92,7 +92,7 @@ export type ChildAssignmentRole = "STAFF" | "NURSE" | "MISS";
 export type ChildStaffAssignment = { id: string; userId: string; displayName: string; email?: string | null; assignmentRole: ChildAssignmentRole };
 export type ChildGuardian = { userId: string; displayName: string; email?: string | null; username?: string | null; validParentAccount: boolean };
 export type ChildProfile = { child: Child; programs: ChildProgram[]; staffAssignments: ChildStaffAssignment[]; guardians: ChildGuardian[] };
-export type ChildProgramSummary = { activePrograms: number; feedbackCount: number };
+export type ChildProgramSummary = { activePrograms: number; feedbackCount: number; childIds: string[] };
 export type Attendance = {
   id: string;
   childId: string;

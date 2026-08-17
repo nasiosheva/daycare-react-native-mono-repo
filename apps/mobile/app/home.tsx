@@ -181,11 +181,15 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
       })}
       {!childrenUnavailable && summary.children.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
     </SummarySection>
+    <NavigationCard accessibilityLabel={t("parentEnrollment.newTenant")} onPress={() => router.push("/parent-enrollment-form")}>
+      <View style={styles.navigationCardRow}><Ionicons name="add-circle-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("parentEnrollment.newTenant")}</AppText></View>
+      <AppText tone="muted">{t("parentEnrollment.startDescription")}</AppText>
+    </NavigationCard>
     {hasPrivateTutoring && <NavigationCard accessibilityLabel={t("privateTutoring.menu")} onPress={() => router.push("/private-tutoring")}>
       <View style={styles.navigationCardRow}><Ionicons name="school-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("privateTutoring.menu")}</AppText></View>
       <AppText tone="muted">{t("privateTutoring.description")}</AppText>
     </NavigationCard>}
-    {Boolean(programsSummary.data?.activePrograms) && summary.children[0] && <NavigationCard accessibilityLabel={t("children.programs")} onPress={() => router.push({ pathname: "/parent-child-profile", params: { childId: summary.children[0].child.id } })}>
+    {Boolean(programsSummary.data?.activePrograms) && programsSummary.data!.childIds[0] && <NavigationCard accessibilityLabel={t("children.programs")} onPress={() => router.push({ pathname: "/parent-child-profile", params: { childId: programsSummary.data!.childIds[0] } })}>
       <View style={styles.navigationCardRow}><Ionicons name="heart-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("children.programs")}</AppText></View>
       <AppText tone="muted">{t("children.programsSummary", { count: programsSummary.data!.activePrograms })}</AppText>
     </NavigationCard>}
