@@ -45,6 +45,7 @@ export default function ParentEnrollmentScreen() {
       {enrollments.isFetching && <ShimmerList />}
       {!enrollments.isFetching && enrollments.data?.map((item) => <View key={item.id} style={styles.card}>
         <AppText variant="heading">{item.childName}</AppText>
+        {item.transferredFromOrganizationName && <AppText variant="caption" tone="muted">{t("parentEnrollment.transferBadge", { organization: item.transferredFromOrganizationName })}</AppText>}
         <AppText>{item.planName} · {formatCurrency(item.totalAmount)}</AppText>
         <EnrollmentAction enrollment={item} onApply={() => router.push("/parent-enrollment-form")} onPay={() => item.invoiceId && router.push({ pathname: "/parent-payment", params: { invoiceId: item.invoiceId, organizationId: item.organizationId } })} t={t} />
       </View>)}

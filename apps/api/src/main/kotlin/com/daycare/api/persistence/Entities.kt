@@ -514,6 +514,7 @@ class ParentEnrollment(
     @Column(name = "rejection_reason") var rejectionReason: String? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
     @Column(name = "approved_at") var approvedAt: Instant? = null,
+    @Column(name = "transferred_from_child_id") var transferredFromChildId: UUID? = null,
 )
 
 @Entity @Table(name = "tenant_payment_instructions")

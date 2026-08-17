@@ -92,7 +92,7 @@ export type ChildAssignmentRole = "STAFF" | "NURSE" | "MISS";
 export type ChildStaffAssignment = { id: string; userId: string; displayName: string; email?: string | null; assignmentRole: ChildAssignmentRole };
 export type ChildGuardian = { userId: string; displayName: string; email?: string | null; username?: string | null; validParentAccount: boolean };
 export type ChildProfile = { child: Child; programs: ChildProgram[]; staffAssignments: ChildStaffAssignment[]; guardians: ChildGuardian[] };
-export type ChildProgramSummary = { activePrograms: number; feedbackCount: number };
+export type ChildProgramSummary = { activePrograms: number; feedbackCount: number; childIds: string[] };
 export type Attendance = {
   id: string;
   childId: string;
@@ -228,7 +228,8 @@ export type ParentTenantCatalog = { organizationId: string; organizationName: st
 export type ParentEnrollmentStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "EXPIRED" | "CANCELLED";
 export type ParentEnrollmentAccessState = "PENDING_APPROVAL" | "PAYMENT_DUE" | "PAYMENT_REVIEW" | "ACTIVE" | "BILLING_LIMITED" | "CLOSED";
 export type ParentEnrollmentAllowedAction = "REAPPLY" | "UPLOAD_PAYMENT_PROOF";
-export type ParentEnrollment = { id: string; organizationId: string; branchId: string; childId: string; childName: string; invoiceId?: string | null; entitlementId?: string | null; status: ParentEnrollmentStatus; invoiceStatus?: InvoiceStatus | null; planName: string; totalAmount: number; rejectionReason?: string | null; createdAt: string; accessState: ParentEnrollmentAccessState; allowedActions: ParentEnrollmentAllowedAction[]; parentFamilyProfile?: ParentFamilyProfileForTenant | null };
+export type ParentEnrollment = { id: string; organizationId: string; branchId: string; childId: string; childName: string; invoiceId?: string | null; entitlementId?: string | null; status: ParentEnrollmentStatus; invoiceStatus?: InvoiceStatus | null; planName: string; totalAmount: number; rejectionReason?: string | null; createdAt: string; accessState: ParentEnrollmentAccessState; allowedActions: ParentEnrollmentAllowedAction[]; parentFamilyProfile?: ParentFamilyProfileForTenant | null; transferredFromChildId?: string | null; transferredFromOrganizationName?: string | null };
+export type ParentChildTransferInput = { childId: string; organizationId: string; branchId: string; planId: string; promoCode?: string };
 export type ParentChildProfile = { child: Child; branch: { id: string; name: string; fullAddress?: string | null; googleMapsUrl?: string | null }; placement?: { classroomName: string; learningLevelName?: string | null } | null; programs: ParentChildProgram[]; staffAssignments: Array<{ displayName: string; assignmentRole: ChildAssignmentRole }> };
 export type ParentEnrollmentCheckoutInput = { organizationId: string; branchId: string; planId: string; bookingDates: string[]; promoCode?: string; children: Array<{ firstName: string; lastName?: string; gender: ChildGender; dateOfBirth: string }> };
 export type PrivateTutorType = "STAFF" | "EXTERNAL";
@@ -297,6 +298,7 @@ export class ApiClient {
   async parentEnrollmentCatalog(search?: string): Promise<ParentTenantCatalog[]> { const query = search?.trim(); return this.request(`/parent-enrollment/catalog${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
   async parentEnrollments(): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment"); }
   async checkoutParentEnrollment(input: ParentEnrollmentCheckoutInput): Promise<ParentEnrollment[]> { return this.request("/parent-enrollment/checkout", { method: "POST", body: JSON.stringify(input) }); }
+  async transferChildEnrollment(input: ParentChildTransferInput): Promise<ParentEnrollment> { return this.request("/parent-enrollment/transfer", { method: "POST", body: JSON.stringify(input) }); }
   async pendingParentEnrollments(filter: BranchListFilter = {}, search?: string): Promise<ParentEnrollment[]> { return this.request(withBranchAndSearchFilter("/parent-enrollment/pending-approval", filter, search)); }
   async approveParentEnrollment(enrollmentId: string, approved: boolean, rejectionReason?: string): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/approval`, { method: "POST", body: JSON.stringify({ approved, rejectionReason }) }); }
   async retryParentEnrollment(enrollmentId: string, bookingDates: string[]): Promise<ParentEnrollment> { return this.request(`/parent-enrollment/${enrollmentId}/retry`, { method: "POST", body: JSON.stringify({ bookingDates }) }); }

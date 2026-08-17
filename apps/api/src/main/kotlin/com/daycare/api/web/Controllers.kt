@@ -93,6 +93,7 @@ import com.daycare.api.service.LocalAuthenticationService
 import com.daycare.api.service.AccessTokenRevocationService
 import com.daycare.api.service.ParentEnrollmentService
 import com.daycare.api.service.ParentEnrollmentCheckoutRequest
+import com.daycare.api.service.ParentChildTransferRequest
 import com.daycare.api.service.ParentEnrollmentApprovalRequest
 import com.daycare.api.service.ParentEnrollmentRetryRequest
 import com.daycare.api.service.TenantPaymentInstructionService
@@ -233,6 +234,9 @@ class ParentEnrollmentController(private val enrollments: ParentEnrollmentServic
 
     @PostMapping("/checkout") @ResponseStatus(HttpStatus.CREATED)
     fun checkout(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: ParentEnrollmentCheckoutRequest) = enrollments.checkout(jwt, request)
+
+    @PostMapping("/transfer") @ResponseStatus(HttpStatus.CREATED)
+    fun transfer(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: ParentChildTransferRequest) = enrollments.transferCheckout(jwt, request)
 
     @GetMapping
     fun mine(@AuthenticationPrincipal jwt: Jwt) = enrollments.mine(jwt)

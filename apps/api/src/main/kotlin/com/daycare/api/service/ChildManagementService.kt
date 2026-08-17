@@ -103,7 +103,7 @@ data class ParentChildProgramResponse(
 data class ChildStaffAssignmentResponse(val id: UUID, val userId: UUID, val displayName: String, val email: String?, val assignmentRole: String)
 data class ChildGuardianResponse(val userId: UUID, val displayName: String, val email: String?, val username: String?, val validParentAccount: Boolean)
 data class ChildProfileResponse(val child: ChildResponse, val programs: List<ChildProgramResponse>, val staffAssignments: List<ChildStaffAssignmentResponse>, val guardians: List<ChildGuardianResponse>)
-data class ChildProgramSummaryResponse(val activePrograms: Int, val feedbackCount: Int)
+data class ChildProgramSummaryResponse(val activePrograms: Int, val feedbackCount: Int, val childIds: List<UUID> = emptyList())
 data class ChildProgramTemplateStepInput(@field:NotBlank @field:Size(max = 200) val title: String, @field:Size(max = 2_000) val description: String?, @field:Size(max = 2_000) val homeGuidance: String?)
 data class UpsertChildProgramTemplateRequest(@field:NotBlank @field:Size(max = 120) val name: String, @field:Size(max = 2_000) val description: String?, val steps: List<ChildProgramTemplateStepInput> = emptyList())
 data class ChildProgramTemplateStepResponse(val id: UUID, val title: String, val description: String, val homeGuidance: String?, val displayOrder: Int)
@@ -140,8 +140,9 @@ class ChildManagementService(
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT), readOnly = true)
         val myChildIds = guardianLinks.findAllByUserId(scope.user.id).map { it.childId }.toSet()
         val orgChildIds = children.findAllByOrganizationId(organizationId).map { it.id }.filter { it in myChildIds }
-        val activePrograms = if (orgChildIds.isEmpty()) 0L else programs.countByOrganizationIdAndChildIdInAndStatusAndParentVisibleTrue(organizationId, orgChildIds, ChildProgramStatus.ACTIVE)
-        return ChildProgramSummaryResponse(activePrograms.toInt(), 0)
+        if (orgChildIds.isEmpty()) return ChildProgramSummaryResponse(0, 0)
+        val activePrograms = programs.findAllByOrganizationIdAndChildIdInAndStatusAndParentVisibleTrue(organizationId, orgChildIds, ChildProgramStatus.ACTIVE)
+        return ChildProgramSummaryResponse(activePrograms.size, 0, activePrograms.map { it.childId }.distinct())
     }
 
     @Transactional(readOnly = true)
