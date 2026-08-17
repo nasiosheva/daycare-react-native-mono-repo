@@ -82,6 +82,9 @@ object ParentEnrollmentError {
     const val PARENT_NOT_FOUND = "parent_enrollment.parent_not_found"
     const val CANNOT_RETRY = "parent_enrollment.cannot_retry"
     const val CANNOT_CANCEL = "parent_enrollment.cannot_cancel"
+    const val TRANSFER_NOT_ACTIVE = "parent_enrollment.transfer_not_active"
+    const val TRANSFER_SAME_TENANT = "parent_enrollment.transfer_same_tenant"
+    const val TRANSFER_ALREADY_PENDING = "parent_enrollment.transfer_already_pending"
 }
 
 @Service
@@ -148,10 +151,10 @@ class ParentEnrollmentService(
     fun transferCheckout(jwt: Jwt, request: ParentChildTransferRequest): ParentEnrollmentResponse {
         val parent = identity.sync(jwt)
         val originChild = children.findById(request.childId).orElseThrow { IllegalArgumentException("Child was not found") }
-        require(guardians.existsByChildIdAndUserId(originChild.id, parent.id)) { "You are not a guardian of this child" }
-        require(originChild.active && originChild.enrollmentStatus == ChildEnrollmentStatus.ACTIVE) { "Child must be actively enrolled to transfer" }
-        require(originChild.organizationId != request.organizationId) { "Child is already enrolled at this tenant" }
-        require(!enrollments.existsByTransferredFromChildIdAndStatus(originChild.id, ParentEnrollmentStatus.PENDING_APPROVAL)) { "A transfer for this child is already pending" }
+        require(guardians.existsByChildIdAndUserId(originChild.id, parent.id)) { "You cannot access this child" }
+        require(originChild.active && originChild.enrollmentStatus == ChildEnrollmentStatus.ACTIVE) { ParentEnrollmentError.TRANSFER_NOT_ACTIVE }
+        require(originChild.organizationId != request.organizationId) { ParentEnrollmentError.TRANSFER_SAME_TENANT }
+        require(!enrollments.existsByTransferredFromChildIdAndStatus(originChild.id, ParentEnrollmentStatus.PENDING_APPROVAL)) { ParentEnrollmentError.TRANSFER_ALREADY_PENDING }
         require(memberships.findAllByUserIdAndOrganizationId(parent.id, request.organizationId).none { it.role == Role.PARENT && it.active }) { ParentEnrollmentError.ALREADY_ACTIVE }
         val branch = branches.findById(request.branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
         require(branch.organizationId == request.organizationId && branch.active) { "Branch is not available for this organization" }
@@ -201,7 +204,7 @@ class ParentEnrollmentService(
             enrollment.status = ParentEnrollmentStatus.APPROVED
             enrollment.approvedAt = Instant.now()
             enrollment.transferredFromChildId?.let { originId ->
-                val origin = children.findById(originId).orElseThrow { IllegalArgumentException("Original child was not found") }
+                val origin = children.findById(originId).orElseThrow { IllegalArgumentException("Child was not found") }
                 origin.active = false
                 origin.enrollmentStatus = ChildEnrollmentStatus.TRANSFERRED
             }
