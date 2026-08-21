@@ -96,15 +96,11 @@ function InactiveStaffHome({ displayName, organizationName, role }: { displayNam
 
 function StaffHome({ displayName, organizationName, managedChildren, tasksByChildId }: { displayName: string; organizationName: string; managedChildren: ReturnType<typeof useChildren>; tasksByChildId: ReturnType<typeof useStaffDailyTasks> }) {
   const router = useRouter();
-  const { api, organizationId } = useAuth();
+  const { organizationId } = useAuth();
   const { t } = useI18n();
-  const notifications = useQuery({ queryKey: ["notifications", organizationId], queryFn: () => api.notifications(), enabled: Boolean(organizationId) });
-  const unreadNotificationsCount = unreadNotificationCount(notifications.data ?? []);
-  const unreadNotificationBadgeLabel = unreadNotificationBadge(unreadNotificationsCount);
-  const unreadNotificationsLabel = unreadNotificationBadgeLabel ? t("notifications.unreadCount", { count: unreadNotificationsCount }) : t("notifications.title");
   const homeRefresh = useHomeRefresh([["children", organizationId], ["development-entries", organizationId], ["child-goals", organizationId], ["notifications", organizationId]]);
   return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
-    <View style={styles.staffToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.STAFF")}</AppText></View><Pressable accessibilityRole="button" accessibilityLabel={unreadNotificationsLabel} hitSlop={spacing.sm} onPress={() => router.push("/notifications")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="notifications-outline" size={28} color={colors.primary} />{unreadNotificationBadgeLabel && <View pointerEvents="none" style={styles.notificationBadge}><AppText variant="caption" style={styles.notificationBadgeText}>{unreadNotificationBadgeLabel}</AppText></View>}</Pressable><Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable></View>
+    <View style={styles.staffToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.STAFF")}</AppText></View><NotificationBellButton /><Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable></View>
     <AppText variant="heading">{t("home.managedChildren")}</AppText>
     {managedChildren.isFetching && <ShimmerList variant="tile" />}
     {!managedChildren.isFetching && managedChildren.data?.map((child) => {
@@ -143,7 +139,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
   const homeRefresh = useHomeRefresh([["ui-access-context", organizationId], ["children", organizationId], ["entitlements", organizationId], ["invoices", organizationId], ["private-tutoring-services", organizationId], ["parent-child-profile", organizationId]]);
 
   return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
-    <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.PARENT")}</AppText></View><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
+    <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.PARENT")}</AppText></View><NotificationBellButton /><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
     <SummarySection title={t("home.parentChildren")}>
       {children.isFetching && <ShimmerList />}
       {children.isError && <Button variant="secondary" onPress={() => children.refetch()}>{t("common.retry")}</Button>}
@@ -273,11 +269,6 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
   }));
   const readiness = useQuery({ queryKey: ["organization-readiness", organizationId], queryFn: () => api.organizationReadiness(), enabled: Boolean(organizationId) });
   const programsSummary = useQuery({ queryKey: ["child-profile", organizationId, "programs-summary"], queryFn: () => api.childProgramsSummary(), enabled: Boolean(organizationId) });
-  const notifications = useQuery({ queryKey: ["notifications", organizationId], queryFn: () => api.notifications(), enabled: Boolean(organizationId) });
-  const unreadNotifications = notifications.data ?? [];
-  const unreadNotificationsCount = unreadNotificationCount(unreadNotifications);
-  const unreadNotificationBadgeLabel = unreadNotificationBadge(unreadNotificationsCount);
-  const unreadNotificationsLabel = unreadNotificationBadgeLabel ? t("notifications.unreadCount", { count: unreadNotificationsCount }) : t("notifications.title");
   const summary = createStaffAdminSummary({ children: children.data ?? [], users: users.data ?? [], pendingBookings: pendingBookings.data ?? [], pendingEnrollments: pendingEnrollments.data ?? [], invoices: invoices.data ?? [], entitlements: entitlements.data ?? [] });
   const operationalUnavailable = children.isFetching || users.isFetching || children.isError || users.isError;
   const financialUnavailable = pendingBookings.isFetching || invoices.isFetching || entitlements.isFetching || pendingBookings.isError || invoices.isError || entitlements.isError;
@@ -290,10 +281,7 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
         <AppText variant="title">{t("home.greeting", { name: displayName })}</AppText>
         <AppText tone="muted">{organizationName} · {t("role.STAFF_ADMIN")}</AppText>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel={unreadNotificationsLabel} hitSlop={spacing.sm} onPress={() => router.push("/notifications")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}>
-        <Ionicons name="notifications-outline" size={28} color={colors.primary} />
-        {unreadNotificationBadgeLabel && <View pointerEvents="none" style={styles.notificationBadge}><AppText variant="caption" style={styles.notificationBadgeText}>{unreadNotificationBadgeLabel}</AppText></View>}
-      </Pressable>
+      <NotificationBellButton />
       <Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}>
         <Ionicons name="person-circle-outline" size={32} color={colors.primary} />
       </Pressable>
@@ -343,6 +331,20 @@ function SummaryCard({ label, value, onPress }: { label: string; value?: number;
 
 function ProfileToolbarButton({ label, onPress }: { label: string; onPress: () => void }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={spacing.sm} onPress={onPress} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable>;
+}
+
+function NotificationBellButton() {
+  const router = useRouter();
+  const { api, organizationId } = useAuth();
+  const { t } = useI18n();
+  const notifications = useQuery({ queryKey: ["notifications", organizationId], queryFn: () => api.notifications(), enabled: Boolean(organizationId) });
+  const unreadNotificationsCount = unreadNotificationCount(notifications.data ?? []);
+  const unreadNotificationBadgeLabel = unreadNotificationBadge(unreadNotificationsCount);
+  const unreadNotificationsLabel = unreadNotificationBadgeLabel ? t("notifications.unreadCount", { count: unreadNotificationsCount }) : t("notifications.title");
+  return <Pressable accessibilityRole="button" accessibilityLabel={unreadNotificationsLabel} hitSlop={spacing.sm} onPress={() => router.push("/notifications")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}>
+    <Ionicons name="notifications-outline" size={28} color={colors.primary} />
+    {unreadNotificationBadgeLabel && <View pointerEvents="none" style={styles.notificationBadge}><AppText variant="caption" style={styles.notificationBadgeText}>{unreadNotificationBadgeLabel}</AppText></View>}
+  </Pressable>;
 }
 
 function PlatformAdminHome() {

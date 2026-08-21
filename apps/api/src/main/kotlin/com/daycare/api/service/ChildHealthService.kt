@@ -3,8 +3,11 @@ package com.daycare.api.service
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AuditLog
 import com.daycare.api.persistence.AuditLogRepository
+import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildHealthRecord
 import com.daycare.api.persistence.ChildHealthRecordRepository
+import com.daycare.api.persistence.GuardianLinkRepository
+import com.daycare.api.realtime.RealtimeFlag
 import jakarta.validation.constraints.Size
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
@@ -36,6 +39,8 @@ class ChildHealthService(
     private val childScopes: ChildScopeService,
     private val records: ChildHealthRecordRepository,
     private val audits: AuditLogRepository,
+    private val guardians: GuardianLinkRepository,
+    private val notifications: NotificationService,
 ) {
     @Transactional(readOnly = true)
     fun get(jwt: Jwt, organizationId: UUID, childId: UUID): ChildHealthRecordResponse? {
@@ -48,7 +53,7 @@ class ChildHealthService(
     fun upsert(jwt: Jwt, organizationId: UUID, childId: UUID, request: UpsertChildHealthRecordRequest): ChildHealthRecordResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
         access.requireWritable(scope)
-        childScopes.requireStaffManagedChild(scope, childId, organizationId)
+        val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         val record = records.findByOrganizationIdAndChildId(organizationId, childId) ?: ChildHealthRecord(organizationId = organizationId, childId = childId)
         record.bloodType = request.bloodType?.trim()?.ifBlank { null }
         record.allergies = request.allergies?.trim()?.ifBlank { null }
@@ -59,8 +64,17 @@ class ChildHealthService(
         record.updatedAt = Instant.now()
         val saved = records.save(record)
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "CHILD_HEALTH_RECORD", entityId = saved.id, action = "UPSERTED", source = "STAFF_NOTE"))
+        notifyGuardians(child)
         return response(saved)
     }
 
     private fun response(record: ChildHealthRecord) = ChildHealthRecordResponse(record.childId, record.bloodType, record.allergies, record.medicalConditions, record.medications, record.emergencyInstructions, record.updatedByUserId, record.updatedAt)
+    private fun Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")
+
+    private fun notifyGuardians(child: Child) {
+        val childName = child.fullName()
+        guardians.findAllByChildId(child.id).map { it.userId }.distinct().forEach { userId ->
+            notifications.notify(child.organizationId, userId, "Catatan kesehatan $childName diperbarui", "Staf telah memperbarui informasi kesehatan $childName.", "/child-health?childId=${child.id}", setOf(RealtimeFlag.HEALTH))
+        }
+    }
 }
