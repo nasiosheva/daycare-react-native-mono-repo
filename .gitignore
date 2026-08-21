@@ -37,6 +37,9 @@ local.properties
 apps/api/build/
 apps/api/.gradle/
 apps/api/.kotlin/
+backend-launcher/build/
+backend-launcher/app/build/
+backend-launcher/.gradle/
 apps/api/bin/
 # Track the API Gradle Wrapper so local and CI API builds use Gradle 8.14.2.
 
