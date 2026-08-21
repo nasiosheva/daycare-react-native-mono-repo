@@ -43,3 +43,5 @@ Main priority: follow the existing baseline code. If the baseline pattern is cle
 Before creating a pull request, all frontend and backend tests must pass. Run `pnpm typecheck` and `pnpm test` from the repository root (covers `apps/mobile` and any other workspace with a `typecheck`/`test` script) and `./gradlew test` in `apps/api` (export `JAVA_HOME` to a JDK 21 install first). If any of these fail to run, fail to compile, or report a failing test, fix the failure before opening the PR; do not open a PR with a known-failing or non-compiling test suite on either side.
 
 Never commit directly on the `production` branch, even for small or low-risk changes. Before running `git commit`, check the current branch; if it is `production`, create and switch to a new branch first and commit there instead. All changes reach `production` only through a reviewed pull request.
+
+Do not add a "Generated with Claude Code" watermark, 🤖 emoji, or any similar tool-attribution footer to pull request titles or descriptions. Commit message trailers such as `Co-Authored-By` are unaffected by this rule.
