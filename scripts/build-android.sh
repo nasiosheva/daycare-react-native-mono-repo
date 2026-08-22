@@ -1,31 +1,130 @@
 #!/usr/bin/env sh
-
+# Interactive Android build launcher, covering both build types:
+#   - Debug: no release signing required, produces an installable APK signed
+#     with the auto-generated debug keystore. Intended for sharing a quick
+#     installable build with someone who cannot run a full dev-client
+#     session, not for distribution.
+#   - Release: requires local release signing (see docs/android-release-apk.md),
+#     produces a signed APK (direct distribution) or AAB (Google Play).
+#
+# Build type and environment are independent choices — a debug build can
+# target the prod environment's API, and a release build can target the
+# local or dev environment's API, for whatever combination is actually
+# useful to test. EXPO_PUBLIC_APP_ENV=production is only required when the
+# selected environment is prod (i.e. .env.prod itself), regardless of build
+# type.
+#
+# Runs fully interactively with no arguments. Also accepts positional
+# arguments (<debug|release> [apk|aab] <local|dev|prod>) so run-android.sh
+# can drive a release build without re-prompting; the format argument is
+# required only when the build type is release.
 set -eu
 
-if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 <apk|aab>" >&2
-  echo "Use a launcher instead, for example: ./build-android-release-apk.sh" >&2
+usage() {
+  echo "Usage: $0 [<debug|release> [apk|aab] <local|dev|prod>]" >&2
+  echo "With no arguments, the build type, format, and environment are selected interactively." >&2
   exit 1
-fi
+}
 
-format=$1
-case "$format" in
-  apk|aab) ;;
-  *) echo "Unsupported release format: $format" >&2; exit 1 ;;
+prompt_build_type() {
+  echo "Select a build type:" >&2
+  echo "  1) Debug" >&2
+  echo "  2) Release" >&2
+  printf 'Build type [1-2]: ' >&2
+  read -r selection </dev/tty
+  case "$selection" in
+    1) build_type=debug ;;
+    2) build_type=release ;;
+    *)
+      echo "Invalid selection: $selection" >&2
+      exit 1
+      ;;
+  esac
+}
+
+prompt_format() {
+  echo "Select a release format:" >&2
+  echo "  1) APK" >&2
+  echo "  2) AAB" >&2
+  printf 'Format [1-2]: ' >&2
+  read -r selection </dev/tty
+  case "$selection" in
+    1) format=apk ;;
+    2) format=aab ;;
+    *)
+      echo "Invalid selection: $selection" >&2
+      exit 1
+      ;;
+  esac
+}
+
+prompt_environment() {
+  echo "Select an environment:" >&2
+  echo "  1) local" >&2
+  echo "  2) dev" >&2
+  echo "  3) prod" >&2
+  printf 'Environment [1-3]: ' >&2
+  read -r selection </dev/tty
+  case "$selection" in
+    1) chosen_environment=local ;;
+    2) chosen_environment=dev ;;
+    3) chosen_environment=prod ;;
+    *)
+      echo "Invalid selection: $selection" >&2
+      exit 1
+      ;;
+  esac
+}
+
+case "$#" in
+  0)
+    prompt_build_type
+    if [ "$build_type" = "release" ]; then prompt_format; else format=apk; fi
+    prompt_environment
+    ;;
+  2)
+    [ "$1" = "debug" ] || usage
+    build_type=$1
+    format=apk
+    case "$2" in local|dev|prod) chosen_environment=$2 ;; *) usage ;; esac
+    ;;
+  3)
+    case "$1" in debug|release) build_type=$1 ;; *) usage ;; esac
+    case "$2" in apk|aab) format=$2 ;; *) usage ;; esac
+    case "$3" in local|dev|prod) chosen_environment=$3 ;; *) usage ;; esac
+    [ "$build_type" = "debug" ] && [ "$format" = "aab" ] && usage
+    ;;
+  *)
+    usage
+    ;;
 esac
 
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 mobile_root="$repository_root/apps/mobile"
 android_root="$mobile_root/android"
-environment_file="$repository_root/.env.prod"
-environment_template="$repository_root/.env.prod.example"
 gradle_properties="$android_root/gradle.properties"
+
+case "$chosen_environment" in
+  local)
+    environment_file="$repository_root/.env"
+    environment_template="$repository_root/.env.example"
+    ;;
+  dev|prod)
+    environment_file="$repository_root/.env.$chosen_environment"
+    environment_template="$repository_root/.env.$chosen_environment.example"
+    ;;
+esac
 
 if [ "$format" = "apk" ]; then
   release_architectures=${ANDROID_RELEASE_ARCHITECTURES:-arm64-v8a}
-  gradle_task=":app:assembleRelease"
-  artifact_path="$android_root/app/build/outputs/apk/release/app-release.apk"
   artifact_label="APK"
+  if [ "$build_type" = "release" ]; then
+    gradle_task=":app:assembleRelease"
+    artifact_path="$android_root/app/build/outputs/apk/release/app-release.apk"
+  else
+    gradle_task=":app:assembleDebug"
+    artifact_path="$android_root/app/build/outputs/apk/debug/app-debug.apk"
+  fi
 else
   release_architectures=${ANDROID_RELEASE_ARCHITECTURES:-armeabi-v7a,arm64-v8a,x86,x86_64}
   gradle_task=":app:bundleRelease"
@@ -53,14 +152,14 @@ ensure_java_21() {
   fi
 
   java_version=$(java -version 2>&1 | awk -F '"' '/version/ { print $2; exit }' | cut -d. -f1)
-  [ "$java_version" = "21" ] || fail "JDK 21 is required to build the Android release $artifact_label."
+  [ "$java_version" = "21" ] || fail "JDK 21 is required to build the Android $artifact_label."
 }
 
 ensure_environment() {
   if [ ! -f "$environment_file" ]; then
     [ -f "$environment_template" ] || fail "Missing $environment_file and its template $environment_template."
     cp "$environment_template" "$environment_file"
-    fail "Created $environment_file. Fill its production values, then run this script again."
+    fail "Created $environment_file. Fill its values, then run this script again."
   fi
 
   set -a
@@ -68,12 +167,14 @@ ensure_environment() {
   . "$environment_file"
   set +a
 
-  [ "${EXPO_PUBLIC_APP_ENV:-}" = "production" ] || fail "EXPO_PUBLIC_APP_ENV must be production in $environment_file."
+  if [ "$chosen_environment" = "prod" ]; then
+    [ "${EXPO_PUBLIC_APP_ENV:-}" = "production" ] || fail "EXPO_PUBLIC_APP_ENV must be production in $environment_file."
+  fi
 
   for variable in EXPO_PUBLIC_API_URL EXPO_PUBLIC_FIREBASE_API_KEY EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN EXPO_PUBLIC_FIREBASE_PROJECT_ID EXPO_PUBLIC_FIREBASE_APP_ID; do
     eval "value=\${$variable-}"
     case "$value" in
-      ""|*example.com*|*your-*|replace-this-*) fail "Missing or placeholder production value: $variable in $environment_file." ;;
+      ""|*example.com*|*your-*|replace-this-*) fail "Missing or placeholder value: $variable in $environment_file." ;;
     esac
   done
 }
@@ -158,33 +259,43 @@ require_command node
 require_command corepack
 require_command java
 
-[ -d "$android_root" ] || fail "Missing generated Android project at $android_root. Run ./run-android-local.sh once after cloning or after native configuration changes, then configure release signing again."
+[ -d "$android_root" ] || fail "Missing generated Android project at $android_root. Run ./run-android.sh once after cloning or after native configuration changes, then run this build again."
 [ -x "$android_root/gradlew" ] || fail "Missing executable Gradle wrapper at $android_root/gradlew."
 [ -f "$android_root/app/build.gradle" ] || fail "Missing Android app Gradle configuration at $android_root/app/build.gradle."
 [ -f "$mobile_root/google-services.json" ] || fail "Missing $mobile_root/google-services.json."
 ensure_java_21
 ensure_environment
 ensure_android_sdk
-require_release_signing
-require_release_architectures
-create_release_signing_init_script
+
+if [ "$build_type" = "release" ]; then
+  require_release_signing
+  require_release_architectures
+  create_release_signing_init_script
+fi
 
 if [ ! -f "$repository_root/node_modules/.modules.yaml" ]; then
   echo "Installing locked workspace dependencies..."
   (cd "$repository_root" && corepack pnpm install --frozen-lockfile)
 fi
 
-echo "Building signed Android release $artifact_label for: $release_architectures"
+echo "Building $build_type Android $artifact_label against the $chosen_environment environment${release_architectures:+ for: $release_architectures}"
 (
   cd "$android_root"
-  export NODE_ENV=production
-  ./gradlew "$gradle_task" --no-daemon \
-    --init-script "$release_signing_init_script" \
-    "-PreactNativeArchitectures=$release_architectures" \
-    -Pandroid.enableProguardInReleaseBuilds=true \
-    -Pandroid.enableShrinkResourcesInReleaseBuilds=true
+  if [ "$build_type" = "release" ]; then
+    export NODE_ENV=production
+    ./gradlew "$gradle_task" --no-daemon \
+      --init-script "$release_signing_init_script" \
+      "-PreactNativeArchitectures=$release_architectures" \
+      -Pandroid.enableProguardInReleaseBuilds=true \
+      -Pandroid.enableShrinkResourcesInReleaseBuilds=true
+  else
+    export NODE_ENV=development
+    ./gradlew "$gradle_task" --no-daemon
+  fi
 )
 
 [ -s "$artifact_path" ] || fail "Gradle completed without producing $artifact_path."
-verify_release_signature
-echo "Signed release $artifact_label: $artifact_path"
+if [ "$build_type" = "release" ]; then
+  verify_release_signature
+fi
+echo "$build_type Android $artifact_label: $artifact_path"

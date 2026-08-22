@@ -1,16 +1,17 @@
 # Android release APK and AAB
 
-This guide describes how to create a locally signed Android APK for direct distribution or Android App Bundle (AAB) for Google Play. Both are separate from `scripts/run-android-prod.sh`, which starts an Expo development client against production services and does not create a distributable artifact.
+This guide describes how to create a locally signed Android APK for direct distribution or Android App Bundle (AAB) for Google Play, using the Release build type of `./scripts/build-android.sh`. This is separate from `scripts/run-android.sh`'s Debug build type, which starts an Expo development client against whichever environment is selected and does not create a distributable artifact — see the main [README](../README.md) for that path, and for `build-android.sh`'s Debug build type (an installable, unsigned-for-distribution APK that needs no release signing setup).
 
 ## Scope and output
 
-- APK entry point: `./scripts/build-android-release-apk.sh`; Gradle task: `:app:assembleRelease`; output: `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`.
-- AAB entry point: `./scripts/build-android-release-aab.sh`; Gradle task: `:app:bundleRelease`; output: `apps/mobile/android/app/build/outputs/bundle/release/app-release.aab`.
+- Single entry point: `./scripts/build-android.sh`; select Release when prompted, then whether to build an APK or an AAB.
+- APK: Gradle task `:app:assembleRelease`; output: `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`.
+- AAB: Gradle task `:app:bundleRelease`; output: `apps/mobile/android/app/build/outputs/bundle/release/app-release.aab`.
 - Both formats use `NODE_ENV=production`, R8 minification, and Android resource shrinking.
 - The direct-distribution APK targets `arm64-v8a` by default, so it does not package emulator libraries or 32-bit libraries that most current Android devices do not use.
 - The AAB includes the configured native ABI variants by default; Google Play uses it to serve device-specific splits.
 - The launcher does not start Metro, an emulator, a device, the local API, or any production service.
-- The APK launcher validates the final APK with Android SDK `apksigner`; the AAB launcher validates the bundle with JDK `jarsigner`.
+- For an APK it validates the final artifact with Android SDK `apksigner`; for an AAB it validates the bundle with JDK `jarsigner`.
 
 ## One-time local setup
 
@@ -65,25 +66,25 @@ Android launchers preserve these four local properties and the referenced app-re
 From the repository root, run:
 
 ```sh
-./scripts/build-android-release-apk.sh
+./scripts/build-android.sh
 ```
 
-The launcher checks the environment configuration, Android SDK, Firebase file, Gradle wrapper, signing properties, and keystore before invoking Gradle. It applies the ignored signing properties to the generated Android release variant only for that build, so a release APK never falls back to the debug keystore. If workspace dependencies are absent, it performs a locked `pnpm install` first.
+Select Release, then APK, then the environment (typically `prod`) when prompted. The launcher checks the environment configuration, Android SDK, Firebase file, Gradle wrapper, signing properties, and keystore before invoking Gradle. It applies the ignored signing properties to the generated Android release variant only for that build, so a release APK never falls back to the debug keystore. If workspace dependencies are absent, it performs a locked `pnpm install` first.
 
-On success, the terminal prints the absolute APK path. Install it on a connected device manually, or upload that APK to the intended internal distribution channel. The APK and all local signing/configuration files remain ignored by Git.
+On success, the terminal prints the absolute APK path. Install it on a connected device manually (or run `./scripts/run-android.sh` and select Release to build and install it in one step), or upload that APK to the intended internal distribution channel. The APK and all local signing/configuration files remain ignored by Git.
 
 To produce a compatibility APK that also supports 32-bit Android devices, opt in explicitly:
 
 ```sh
-ANDROID_RELEASE_ARCHITECTURES=armeabi-v7a,arm64-v8a ./scripts/build-android-release-apk.sh
+ANDROID_RELEASE_ARCHITECTURES=armeabi-v7a,arm64-v8a ./scripts/build-android.sh
 ```
 
 The supported values are `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64`. Do not include emulator ABIs (`x86`, `x86_64`) in a direct-production APK unless that APK is specifically for an emulator or test device; every selected ABI adds native libraries to the download.
 
-For Google Play, create an AAB instead:
+For Google Play, run the same launcher and select Release, then AAB instead:
 
 ```sh
-./scripts/build-android-release-aab.sh
+./scripts/build-android.sh
 ```
 
 The AAB is not directly installable on a device. Upload it to Google Play Console, which generates optimized APK splits for each device architecture.
