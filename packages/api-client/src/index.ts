@@ -456,14 +456,14 @@ export class ApiClient {
   async childPlacementOptions(childId: string): Promise<Classroom[]> { return this.request(`/children/${childId}/placement-options`); }
   async placeChild(childId: string, input: { classroomId: string; startsOn?: string }): Promise<ChildPlacement> { return this.request(`/children/${childId}/placements`, { method: "POST", body: JSON.stringify(input) }); }
 
-  async children(filter: ChildListFilter = {}): Promise<Child[]> {
+  async children(filter: ChildListFilter = {}, organizationId?: string): Promise<Child[]> {
     const params = new URLSearchParams();
     if (filter.branchId) params.set("branchId", filter.branchId);
     if (filter.learningLevelId) params.set("learningLevelId", filter.learningLevelId);
     if (filter.classroomId) params.set("classroomId", filter.classroomId);
     if (filter.guardianStatus) params.set("guardianStatus", filter.guardianStatus);
     const query = params.toString();
-    return this.request(`/children${query ? `?${query}` : ""}`);
+    return this.request(`/children${query ? `?${query}` : ""}`, organizationId ? { headers: { "X-Organization-Id": organizationId } } : undefined);
   }
   async childAbsenceRequests(input: { childId?: string; branchId?: string } = {}): Promise<ChildAbsenceRequest[]> { const params = new URLSearchParams(); if (input.childId) params.set("childId", input.childId); if (input.branchId) params.set("branchId", input.branchId); return this.request(`/child-absence-requests${params.size ? `?${params.toString()}` : ""}`); }
   async createChildAbsenceRequest(input: CreateChildAbsenceRequestInput): Promise<ChildAbsenceRequest> { return this.request("/child-absence-requests", { method: "POST", body: JSON.stringify(input) }); }

@@ -1,13 +1,13 @@
 import type { Child, Invoice, ServiceEntitlement } from "@daycare/api-client";
 
-export type ParentChildSummary = { child: Child; activeEntitlements: ServiceEntitlement[] };
+export type ParentChildSummary<TChild extends Child = Child> = { child: TChild; activeEntitlements: ServiceEntitlement[] };
 
-export function createParentHomeSummary(children: Child[], entitlements: ServiceEntitlement[], invoices: Invoice[]) {
+export function createParentHomeSummary<TChild extends Child>(children: TChild[], entitlements: ServiceEntitlement[], invoices: Invoice[]) {
   const activeEntitlementsByChildId = new Map<string, ServiceEntitlement[]>();
   entitlements.filter((entitlement) => entitlement.status === "ACTIVE").forEach((entitlement) => {
     activeEntitlementsByChildId.set(entitlement.childId, [...(activeEntitlementsByChildId.get(entitlement.childId) ?? []), entitlement]);
   });
-  const childrenWithServices: ParentChildSummary[] = children.map((child) => ({
+  const childrenWithServices: ParentChildSummary<TChild>[] = children.map((child) => ({
     child,
     activeEntitlements: (activeEntitlementsByChildId.get(child.id) ?? []).sort((left, right) => left.validUntil.localeCompare(right.validUntil)),
   }));

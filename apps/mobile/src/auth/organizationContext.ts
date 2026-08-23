@@ -5,9 +5,15 @@ export function selectedOrganizationId(profile: CurrentUser, currentOrganization
   const memberships = profile.memberships;
   if (memberships.length === 0) return null;
   if (memberships.length === 1) return memberships[0].organizationId;
-  return currentOrganizationId && memberships.some((membership) => membership.organizationId === currentOrganizationId)
-    ? currentOrganizationId
-    : null;
+  if (currentOrganizationId && memberships.some((membership) => membership.organizationId === currentOrganizationId)) {
+    return currentOrganizationId;
+  }
+  // A Parent with children at several tenants sees all of them on Home at once (no explicit
+  // tenant choice needed) — default to one so Home can render instead of forcing context-selection.
+  if (memberships.every((membership) => membership.role === "PARENT")) {
+    return (memberships.find((membership) => membership.active) ?? memberships[0]).organizationId;
+  }
+  return null;
 }
 
 export function hasOrganizationMembership(profile: CurrentUser | null, organizationId: string): boolean {
