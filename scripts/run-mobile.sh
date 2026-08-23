@@ -4,7 +4,7 @@ set -eu
 
 if [ "$#" -ne 2 ]; then
   echo "Usage: $0 <android|ios|web> <local|dev|prod>" >&2
-  echo "Use a launcher instead, for example: ./run-ios-dev.sh" >&2
+  echo "Use a launcher instead, for example: ./run-ios.sh" >&2
   exit 1
 fi
 
@@ -154,21 +154,20 @@ require_environment_values() {
   fi
 }
 
-require_ios_physical_device() {
+require_ios_device() {
   eval "ios_device_udid=\${IOS_DEVICE_UDID-}"
   if [ -z "$ios_device_udid" ]; then
-    echo "IOS_DEVICE_UDID is required in $environment_file. Connect an iPhone, then set its UDID before running this launcher." >&2
+    echo "IOS_DEVICE_UDID is required in $environment_file. Use ./run-ios.sh to select a booted Simulator interactively, or set it manually before running this launcher directly." >&2
     exit 1
   fi
 
   if [ ! -f "$repository_root/apps/mobile/GoogleService-Info.plist" ]; then
-    echo "Missing apps/mobile/GoogleService-Info.plist. Add the Firebase iOS configuration before building on a physical device." >&2
+    echo "Missing apps/mobile/GoogleService-Info.plist. Add the Firebase iOS configuration before building." >&2
     exit 1
   fi
 
-  device_line=$(xcrun xctrace list devices 2>/dev/null | awk -v udid="$ios_device_udid" 'index($0, "(" udid ")") && $0 !~ /Simulator/ { print; exit }')
-  if [ -z "$device_line" ]; then
-    echo "No connected physical iPhone found with IOS_DEVICE_UDID=$ios_device_udid. Connect and trust the device; simulators are not supported by this launcher." >&2
+  if ! xcrun simctl list devices booted 2>/dev/null | grep -qF "($ios_device_udid)"; then
+    echo "No booted Simulator found with IOS_DEVICE_UDID=$ios_device_udid. Use ./run-ios.sh to select one interactively. Physical iPhones are not supported by this launcher." >&2
     exit 1
   fi
 }
@@ -188,7 +187,7 @@ ensure_platform_tools() {
         echo "Xcode command-line tools are required for iOS. Install Xcode, run xcode-select --install, then run this launcher again." >&2
         exit 1
       fi
-      require_ios_physical_device
+      require_ios_device
       ;;
   esac
 }
@@ -480,6 +479,12 @@ run_client() {
       fi
       ;;
     ios)
+      if [ "$environment" = "local" ] && [ "${IOS_TARGET_IS_SIMULATOR:-false}" = "true" ]; then
+        # A Simulator shares the host Mac's network stack, so localhost always
+        # reaches the local API directly — unlike a physical iPhone, which
+        # needs the host's LAN address from the environment file as-is.
+        export EXPO_PUBLIC_API_URL="http://localhost:8080/api/v1"
+      fi
       corepack pnpm --filter @daycare/app exec expo run:ios --device "$ios_device_udid"
       ;;
     web)
@@ -501,9 +506,19 @@ ensure_corepack
 ensure_workspace_dependencies
 ensure_environment_file
 
+# A caller such as run-ios.sh may have already exported IOS_DEVICE_UDID after
+# interactively selecting a connected iPhone or booted simulator; preserve
+# that selection instead of letting the environment file's own (possibly
+# stale or blank) IOS_DEVICE_UDID line silently override it.
+preselected_ios_device_udid=${IOS_DEVICE_UDID-}
+
 set -a
 . "$environment_file"
 set +a
+
+if [ -n "$preselected_ios_device_udid" ]; then
+  IOS_DEVICE_UDID="$preselected_ios_device_udid"
+fi
 
 require_environment_values
 
