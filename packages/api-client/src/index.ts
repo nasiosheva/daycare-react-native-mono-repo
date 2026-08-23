@@ -612,7 +612,16 @@ export class ApiClient {
     const response = await this.authorizedFetch(path, init);
     if (!response.ok) throw await this.responseError(response);
     if (response.status === 204) return undefined as T;
-    return response.json() as Promise<T>;
+    try {
+      return await response.json();
+    } catch (error) {
+      // A controller returning a null body (e.g. "no record yet") sends a
+      // genuinely empty 200 response, not the JSON literal "null" —
+      // response.json() throws a SyntaxError on empty input. Treat that as
+      // no value rather than a request failure.
+      if (error instanceof SyntaxError) return undefined as T;
+      throw error;
+    }
   }
 
   private async requestFile(path: string): Promise<DownloadedReport> {
