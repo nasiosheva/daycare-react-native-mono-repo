@@ -1,4 +1,4 @@
-import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildAbsencePurpose, ChildAbsenceRequestStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, EducationEnrollmentMode, EducationOfferingStatus, GoalDomain, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, ParentFamilyProfileInput, ParentIncomeRange, ParentOccupation, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffLeaveRequestStatus, StaffLeaveRequestType, StaffReminderTarget, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
+import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildAbsencePurpose, ChildAbsenceRequestStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, EducationEnrollmentMode, EducationOfferingStatus, GoalDomain, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, ParentFamilyProfileInput, ParentIncomeRange, ParentOccupation, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffLeaveRequestStatus, StaffLeaveRequestType, StaffReminderTarget, TenantFeedbackCategory, TenantFeedbackStatus, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -250,9 +250,11 @@ export type UpsertStaffReminderInput = Omit<StaffReminder, "id" | "active" | "ru
 export type StaffLeaveEvidenceInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
 export type CreateStaffLeaveRequestInput = { type: StaffLeaveRequestType; startsOn: string; endsOn: string; reason: string; evidence?: StaffLeaveEvidenceInput };
 export type StaffLeaveRequest = { id: string; requesterUserId: string; requesterName: string; type: StaffLeaveRequestType; startsOn: string; endsOn: string; reason: string; status: StaffLeaveRequestStatus; hasEvidence: boolean; rejectionReason?: string | null; reviewedAt?: string | null; createdAt: string };
+export type TenantFeedback = { id: string; submittedByName: string; category: TenantFeedbackCategory; message: string; status: TenantFeedbackStatus; createdAt: string; updatedAt: string };
+export type CreateTenantFeedbackInput = { category: TenantFeedbackCategory; message: string };
 export type StaffLeaveEvidence = { contentType: string; dataBase64: string };
 export type GlobalCurriculumSeedResult = { alreadySeeded: boolean; learningLevelCount: number; developmentProgramCount: number; developmentProgramItemCount: number; curriculumProgramCount: number };
-export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "INCIDENT_REPORTS" | "HEALTH" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS" | "PRIVATE_TUTORING" | "CHILD_PROGRAMS";
+export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "INCIDENT_REPORTS" | "HEALTH" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS" | "PRIVATE_TUTORING" | "CHILD_PROGRAMS" | "TENANT_FEEDBACK";
 export type RealtimeEvent<TPayload = unknown> = { type: "EVENT"; id: string; organizationId?: string | null; flags: RealtimeFlag[]; payload?: TPayload | null; occurredAt: string };
 export type RealtimeConnectRequest = { type: "CONNECT"; token: string; organizationId?: string | null };
 
@@ -395,6 +397,10 @@ export class ApiClient {
   async cancelStaffLeaveRequest(requestId: string): Promise<StaffLeaveRequest> { return this.request(`/staff-leave-requests/${requestId}/cancel`, { method: "POST" }); }
   async pendingStaffLeaveRequests(): Promise<StaffLeaveRequest[]> { return this.request("/staff-leave-requests/pending-approval"); }
   async decideStaffLeaveRequest(requestId: string, input: { approved: boolean; rejectionReason?: string }): Promise<StaffLeaveRequest> { return this.request(`/staff-leave-requests/${requestId}/approval`, { method: "POST", body: JSON.stringify(input) }); }
+  async createTenantFeedback(input: CreateTenantFeedbackInput): Promise<TenantFeedback> { return this.request("/tenant-feedback", { method: "POST", body: JSON.stringify(input) }); }
+  async myTenantFeedback(): Promise<TenantFeedback[]> { return this.request("/tenant-feedback/mine"); }
+  async tenantFeedbackInbox(): Promise<TenantFeedback[]> { return this.request("/tenant-feedback"); }
+  async updateTenantFeedbackStatus(feedbackId: string, status: TenantFeedbackStatus): Promise<TenantFeedback> { return this.request(`/tenant-feedback/${feedbackId}/status`, { method: "POST", body: JSON.stringify({ status }) }); }
   async staffLeaveRequestEvidence(requestId: string): Promise<StaffLeaveEvidence> { return this.request(`/staff-leave-requests/${requestId}/evidence`); }
   async academicYears(): Promise<AcademicYear[]> { return this.request("/academic-years"); }
   async createAcademicYear(input: CreateAcademicYearInput): Promise<AcademicYear> { return this.request("/academic-years", { method: "POST", body: JSON.stringify(input) }); }

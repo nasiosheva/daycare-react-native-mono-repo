@@ -166,6 +166,10 @@ interface StaffLeaveRequestRepository : JpaRepository<StaffLeaveRequest, UUID> {
     fun findAllByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId: UUID, status: com.daycare.api.domain.StaffLeaveRequestStatus): List<StaffLeaveRequest>
     fun findAllByOrganizationIdAndRequesterUserIdAndStatusIn(organizationId: UUID, requesterUserId: UUID, statuses: Collection<com.daycare.api.domain.StaffLeaveRequestStatus>): List<StaffLeaveRequest>
 }
+interface TenantFeedbackRepository : JpaRepository<TenantFeedback, UUID> {
+    fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<TenantFeedback>
+    fun findAllByOrganizationIdAndSubmittedByUserIdOrderByCreatedAtDesc(organizationId: UUID, submittedByUserId: UUID): List<TenantFeedback>
+}
 interface DevelopmentEntryRepository : JpaRepository<DevelopmentEntry, UUID> { fun findAllByOrganizationIdAndChildIdOrderByRecordedAtDesc(organizationId: UUID, childId: UUID): List<DevelopmentEntry>; fun existsByOrganizationIdAndCategory(organizationId: UUID, category: String): Boolean; fun existsByCategory(category: String): Boolean }
 interface DevelopmentEntryMediaRepository : JpaRepository<DevelopmentEntryMedia, UUID> {
     fun findAllByDevelopmentEntryIdOrderByDisplayOrderAsc(developmentEntryId: UUID): List<DevelopmentEntryMedia>

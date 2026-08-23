@@ -89,6 +89,7 @@ export default function StaffAdminScreen() {
     {hasDaycareOperations && <MenuItem title={t("staffAdmin.approvals")} description={t("staffAdmin.approvalsDescription")} onPress={() => router.push("/booking-approvals")} />}
     {hasDaycareOperations && <MenuItem title={t("consent.staffTitle")} description={t("consent.staffDescription")} onPress={() => router.push("/consent-definitions" as never)} />}
     <MenuItem title={t("staffLeave.approvalsTitle")} description={t("staffLeave.approvalsDescription")} onPress={() => router.push("/staff-leave-approvals")} />
+    <MenuItem title={t("tenantFeedback.inboxTitle")} description={t("tenantFeedback.inboxDescription")} onPress={() => router.push("/tenant-feedback-inbox" as never)} />
     <MenuItem title={t("absence.menu")} description={t("absence.menuDescription")} onPress={() => router.push("/absence-requests")} />
     <MenuItem title={t("nav.profile")} description={t("profile.staffMenuDescription")} onPress={() => router.push("/profile")} />
   </AppScreen>;

@@ -189,6 +189,10 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
       <View style={styles.navigationCardRow}><Ionicons name="heart-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("children.programs")}</AppText></View>
       <AppText tone="muted">{t("children.programsSummary", { count: programsSummary.data!.activePrograms })}</AppText>
     </NavigationCard>}
+    <NavigationCard accessibilityLabel={t("tenantFeedback.title")} onPress={() => router.push("/tenant-feedback" as never)}>
+      <View style={styles.navigationCardRow}><Ionicons name="chatbox-ellipses-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("tenantFeedback.title")}</AppText></View>
+      <AppText tone="muted">{t("tenantFeedback.description")}</AppText>
+    </NavigationCard>
     <SummarySection title={t("home.parentPayments")}>
       {invoices.isFetching && <ShimmerList />}
       {invoices.isError && <Button variant="secondary" onPress={() => invoices.refetch()}>{t("common.retry")}</Button>}

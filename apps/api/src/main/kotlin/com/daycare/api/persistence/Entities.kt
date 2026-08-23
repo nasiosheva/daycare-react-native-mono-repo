@@ -17,6 +17,8 @@ import com.daycare.api.domain.ChildGoalStatus
 import com.daycare.api.domain.ChildGoalOutcome
 import com.daycare.api.domain.StaffLeaveRequestStatus
 import com.daycare.api.domain.StaffLeaveRequestType
+import com.daycare.api.domain.TenantFeedbackCategory
+import com.daycare.api.domain.TenantFeedbackStatus
 import com.daycare.api.domain.ParentEnrollmentStatus
 import com.daycare.api.domain.ParentIncomeRange
 import com.daycare.api.domain.ParentOccupation
@@ -810,6 +812,18 @@ class StaffLeaveRequest(
     @Column(name = "rejection_reason", length = 2_000) var rejectionReason: String? = null,
     @Column(name = "reviewed_at") var reviewedAt: Instant? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "tenant_feedback")
+class TenantFeedback(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "submitted_by_user_id", nullable = false) var submittedByUserId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) var category: TenantFeedbackCategory = TenantFeedbackCategory.OTHER,
+    @Column(nullable = false, length = 2_000) var message: String = "",
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) var status: TenantFeedbackStatus = TenantFeedbackStatus.NEW,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
 )
 
 @Entity @Table(name = "development_entries")
