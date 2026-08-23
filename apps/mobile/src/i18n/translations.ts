@@ -489,6 +489,44 @@ const tenantFeedbackTranslations = {
   },
 } as const;
 
+const paymentHistoryTranslations = {
+  id: {
+    "paymentHistory.title": "Riwayat Pembayaran",
+    "paymentHistory.description": "Lihat semua invoice, termasuk yang sudah lunas, untuk anak-anak Anda di semua tenant.",
+    "paymentHistory.empty": "Belum ada riwayat pembayaran.",
+  },
+  en: {
+    "paymentHistory.title": "Payment History",
+    "paymentHistory.description": "View every invoice, including paid ones, for your children across every tenant.",
+    "paymentHistory.empty": "No payment history yet.",
+  },
+  zh: {
+    "paymentHistory.title": "付款记录",
+    "paymentHistory.description": "查看您孩子在所有机构的全部账单，包括已支付的。",
+    "paymentHistory.empty": "暂无付款记录。",
+  },
+  fr: {
+    "paymentHistory.title": "Historique des paiements",
+    "paymentHistory.description": "Consultez toutes les factures, y compris celles déjà payées, pour vos enfants dans tous les établissements.",
+    "paymentHistory.empty": "Aucun historique de paiement pour le moment.",
+  },
+  pt: {
+    "paymentHistory.title": "Histórico de pagamentos",
+    "paymentHistory.description": "Veja todas as faturas, incluindo as já pagas, dos seus filhos em todas as instituições.",
+    "paymentHistory.empty": "Ainda não há histórico de pagamentos.",
+  },
+  es: {
+    "paymentHistory.title": "Historial de pagos",
+    "paymentHistory.description": "Vea todas las facturas, incluidas las ya pagadas, de sus hijos en todas las instituciones.",
+    "paymentHistory.empty": "Aún no hay historial de pagos.",
+  },
+  ru: {
+    "paymentHistory.title": "История платежей",
+    "paymentHistory.description": "Просмотрите все счета, включая уже оплаченные, для ваших детей во всех учреждениях.",
+    "paymentHistory.empty": "Истории платежей пока нет.",
+  },
+} as const;
+
 const parentFamilyTranslations = {
   id: {
     "parentFamily.cardTitle": "Informasi keluarga",
@@ -561,7 +599,7 @@ const childProgramTranslations = {
   en: { "children.parentSummary": "Parent summary (optional)" },
 } as const;
 
-const id = { ...goalSearchTranslations.id, ...goalDailyRecordTranslations.id, ...goalCheckInTranslations.id, ...goalConclusionCorrectionTranslations.id, ...classroomFormTranslations.id, ...privateTutoringTranslations.id, ...privateTutoringFormInfoTranslations.id, ...branchLocationTranslations.id, ...learningLevelUiTranslations.id, ...childPlacementTranslations.id, ...tenantReadinessTranslations.id, ...absenceTranslations.id, ...staffLeaveTranslations.id, ...staffLeaveStatusTranslations.id, ...tenantFeedbackTranslations.id, ...parentFamilyTranslations.id, ...childProgramTranslations.id,
+const id = { ...goalSearchTranslations.id, ...goalDailyRecordTranslations.id, ...goalCheckInTranslations.id, ...goalConclusionCorrectionTranslations.id, ...classroomFormTranslations.id, ...privateTutoringTranslations.id, ...privateTutoringFormInfoTranslations.id, ...branchLocationTranslations.id, ...learningLevelUiTranslations.id, ...childPlacementTranslations.id, ...tenantReadinessTranslations.id, ...absenceTranslations.id, ...staffLeaveTranslations.id, ...staffLeaveStatusTranslations.id, ...tenantFeedbackTranslations.id, ...paymentHistoryTranslations.id, ...parentFamilyTranslations.id, ...childProgramTranslations.id,
   "invoice.source.SERVICE": "Tagihan layanan", "invoice.source.OVERTIME": "Tagihan overtime",
   "common.back": "Kembali", "common.retry": "Coba lagi", "common.cancel": "Batal", "common.close": "Tutup", "common.clear": "Hapus tanggal", "common.edit": "Ubah", "common.delete": "Hapus", "common.save": "Simpan", "common.loading": "Memuat...", "common.error": "Terjadi kesalahan", "common.ok": "OK", "common.language": "Bahasa", "common.indonesian": "Bahasa Indonesia", "common.english": "English", "common.noData": "Belum ada data.", "common.noResults": "Tidak ada hasil yang cocok.",
   "paymentProof.title": "Bukti pembayaran", "paymentProof.description": "Unggah atau foto bukti transfer. Staff Admin akan memverifikasinya.", "paymentProof.upload": "Unggah gambar", "paymentProof.camera": "Ambil foto", "paymentProof.note": "Catatan pembayaran (opsional)", "paymentProof.submit": "Kirim bukti", "paymentProof.imageRequired": "Pilih bukti pembayaran terlebih dahulu.", "paymentProof.submitted": "Bukti pembayaran dikirim", "paymentProof.awaitingReview": "Bukti pembayaran sedang menunggu verifikasi.", "paymentProof.rejected": "Bukti pembayaran ditolak: {reason}", "paymentProof.failed": "Gagal mengirim bukti pembayaran", "paymentProof.review": "Tinjau bukti", "paymentProof.verify": "Terima pembayaran", "paymentProof.reject": "Tolak bukti", "paymentProof.rejectReason": "Alasan penolakan", "paymentProof.reviewed": "Bukti pembayaran telah diperbarui", "paymentProof.view": "Lihat bukti pembayaran", "paymentProof.none": "Belum ada bukti pembayaran untuk invoice ini.", "paymentProof.download": "Unduh gambar", "paymentProof.downloadFailed": "Gagal mengunduh bukti pembayaran", "status.PAYMENT_SUBMITTED": "Menunggu verifikasi",
@@ -625,7 +663,7 @@ const id = { ...goalSearchTranslations.id, ...goalDailyRecordTranslations.id, ..
   "nav.operatingHours": "Jam operasional", "overtime.operatingHours": "Jam operasional dan overtime", "overtime.operatingHoursDescription": "Atur hari aktif, jam tutup cabang, dan tarif overtime berjenjang.", "overtime.applyTemplate": "Gunakan template {timeRange}", "overtime.active": "Aktif", "overtime.inactive": "Tutup", "overtime.opensAt": "Buka", "overtime.closesAt": "Tutup", "overtime.rateTiers": "Tarif overtime", "overtime.rateTiersDescription": "Tarif ditagihkan kumulatif saat jemput melewati setiap blok waktu. Durasi di atas blok terakhir memakai total blok terakhir.", "overtime.tier": "Blok {number}", "overtime.durationMinutes": "Durasi (menit)", "overtime.amount": "Biaya (Rp)", "overtime.addTier": "Tambah blok", "overtime.removeTier": "Hapus blok", "overtime.invalidConfiguration": "Lengkapi tujuh hari dan tarif overtime yang valid.", "overtime.saved": "Jam operasional berhasil disimpan", "overtime.saveFailed": "Gagal menyimpan jam operasional", "overtime.chargesTitle": "Tagihan overtime", "overtime.chargesDescription": "Catat jam jemput aktual setelah jam tutup untuk menerbitkan tagihan Parent.", "overtime.addCharge": "Tambah tagihan", "overtime.editCharge": "Ubah tagihan", "overtime.chargeRequired": "Pilih anak dan lengkapi waktu jemput serta jatuh tempo.", "overtime.chargeSaved": "Tagihan overtime berhasil disimpan", "overtime.chargeFailed": "Gagal menyimpan tagihan overtime", "overtime.chargeVoided": "Tagihan overtime dibatalkan", "overtime.voidCharge": "Batalkan tagihan", "overtime.noCharges": "Belum ada tagihan overtime.", "overtime.child": "Anak", "overtime.operationalDate": "Tanggal operasional", "overtime.pickedUpAt": "Jam jemput aktual", "overtime.paymentDueDate": "Jatuh tempo pembayaran", "overtime.minutes": "{count} menit overtime", "overtime.dueDate": "{status} · jatuh tempo {date}", "overtime.parentTitle": "Jam operasional", "overtime.parentDescription": "Lihat jam operasional dan tarif overtime untuk setiap anak Anda, dikelompokkan per anak dan tenant.", "overtime.branchOperatingHours": "Jam operasional cabang", "overtime.childTenantLabel": "{organization} · {branch}", "overtime.closed": "Tutup", "overtime.parentTier": "Setiap blok {duration} menit: {amount}", "overtime.noParentBranches": "Belum ada jam operasional untuk anak Anda.", "overtime.day.MONDAY": "Senin", "overtime.day.TUESDAY": "Selasa", "overtime.day.WEDNESDAY": "Rabu", "overtime.day.THURSDAY": "Kamis", "overtime.day.FRIDAY": "Jumat", "overtime.day.SATURDAY": "Sabtu", "overtime.day.SUNDAY": "Minggu",
 } as const;
 
-const en: Record<keyof typeof id, string> = { ...goalSearchTranslations.en, ...goalDailyRecordTranslations.en, ...goalCheckInTranslations.en, ...goalConclusionCorrectionTranslations.en, ...classroomFormTranslations.en, ...privateTutoringTranslations.en, ...privateTutoringFormInfoTranslations.en, ...branchLocationTranslations.en, ...learningLevelUiTranslations.en, ...childPlacementTranslations.en, ...tenantReadinessTranslations.en, ...absenceTranslations.en, ...staffLeaveTranslations.en, ...staffLeaveStatusTranslations.en, ...tenantFeedbackTranslations.en, ...parentFamilyTranslations.en, ...childProgramTranslations.en,
+const en: Record<keyof typeof id, string> = { ...goalSearchTranslations.en, ...goalDailyRecordTranslations.en, ...goalCheckInTranslations.en, ...goalConclusionCorrectionTranslations.en, ...classroomFormTranslations.en, ...privateTutoringTranslations.en, ...privateTutoringFormInfoTranslations.en, ...branchLocationTranslations.en, ...learningLevelUiTranslations.en, ...childPlacementTranslations.en, ...tenantReadinessTranslations.en, ...absenceTranslations.en, ...staffLeaveTranslations.en, ...staffLeaveStatusTranslations.en, ...tenantFeedbackTranslations.en, ...paymentHistoryTranslations.en, ...parentFamilyTranslations.en, ...childProgramTranslations.en,
   "overtime.voidCharge": "Cancel invoice",
   "invoice.source.SERVICE": "Service invoice", "invoice.source.OVERTIME": "Overtime invoice",
   "common.back": "Back", "common.retry": "Retry", "common.cancel": "Cancel", "common.close": "Close", "common.clear": "Clear date", "common.edit": "Edit", "common.delete": "Delete", "common.save": "Save", "common.loading": "Loading...", "common.error": "Something went wrong", "common.ok": "OK", "common.language": "Language", "common.indonesian": "Bahasa Indonesia", "common.english": "English", "common.noData": "No data yet.", "common.noResults": "No matching results.",
@@ -1271,11 +1309,11 @@ export type TranslationKey = keyof typeof id | keyof typeof legacyClassroomTrans
 export const translations: Record<AppLocale, Record<TranslationKey, string>> = {
   id: { ...id, ...legacyClassroomTranslations.id, ...institutionPresentationTranslations.id, ...readinessChecklistTranslations.id, ...guardianStatusTranslations.id, ...pickupTranslations.id, ...pickupActionTranslations.id, ...emergencyContactTranslations.id, ...consentTranslations.id, ...consentInformationTranslations.id, ...automaticOvertimeTranslations.id, ...tenantCreationWizardTranslations.id, ...parentEnrollmentWizardTranslations.id },
   en: { ...en, ...legacyClassroomTranslations.en, ...institutionPresentationTranslations.en, ...readinessChecklistTranslations.en, ...guardianStatusTranslations.en, ...pickupTranslations.en, ...pickupActionTranslations.en, ...emergencyContactTranslations.en, ...consentTranslations.en, ...consentInformationTranslations.en, ...automaticOvertimeTranslations.en, ...tenantCreationWizardTranslations.en, ...parentEnrollmentWizardTranslations.en },
-  zh: { ...zh, ...legacyClassroomTranslations.zh, ...institutionPresentationTranslations.zh, ...readinessChecklistTranslations.zh, ...guardianStatusTranslations.zh, ...pickupTranslations.zh, ...pickupActionTranslations.zh, ...emergencyContactTranslations.zh, ...consentTranslations.zh, ...consentInformationTranslations.zh, ...automaticOvertimeTranslations.zh, ...tenantCreationWizardTranslations.zh, ...parentEnrollmentWizardTranslations.zh, ...tenantReadinessIssueTranslations.zh, ...tenantFeedbackTranslations.zh },
-  fr: { ...fr, ...legacyClassroomTranslations.fr, ...institutionPresentationTranslations.fr, ...readinessChecklistTranslations.fr, ...guardianStatusTranslations.fr, ...pickupTranslations.fr, ...pickupActionTranslations.fr, ...emergencyContactTranslations.fr, ...consentTranslations.fr, ...consentInformationTranslations.fr, ...automaticOvertimeTranslations.fr, ...tenantCreationWizardTranslations.fr, ...parentEnrollmentWizardTranslations.fr, ...tenantReadinessIssueTranslations.fr, ...tenantFeedbackTranslations.fr },
-  pt: { ...pt, ...consentTranslations.pt, ...consentInformationTranslations.pt, ...automaticOvertimeTranslations.pt, ...tenantCreationWizardTranslations.pt, ...parentEnrollmentWizardTranslations.pt, ...tenantReadinessIssueTranslations.pt, ...tenantFeedbackTranslations.pt },
-  es: { ...es, ...consentTranslations.es, ...consentInformationTranslations.es, ...automaticOvertimeTranslations.es, ...tenantCreationWizardTranslations.es, ...parentEnrollmentWizardTranslations.es, ...tenantReadinessIssueTranslations.es, ...tenantFeedbackTranslations.es },
-  ru: { ...ru, ...consentTranslations.ru, ...consentInformationTranslations.ru, ...automaticOvertimeTranslations.ru, ...tenantCreationWizardTranslations.ru, ...parentEnrollmentWizardTranslations.ru, ...tenantReadinessIssueTranslations.ru, ...tenantFeedbackTranslations.ru },
+  zh: { ...zh, ...legacyClassroomTranslations.zh, ...institutionPresentationTranslations.zh, ...readinessChecklistTranslations.zh, ...guardianStatusTranslations.zh, ...pickupTranslations.zh, ...pickupActionTranslations.zh, ...emergencyContactTranslations.zh, ...consentTranslations.zh, ...consentInformationTranslations.zh, ...automaticOvertimeTranslations.zh, ...tenantCreationWizardTranslations.zh, ...parentEnrollmentWizardTranslations.zh, ...tenantReadinessIssueTranslations.zh, ...tenantFeedbackTranslations.zh, ...paymentHistoryTranslations.zh },
+  fr: { ...fr, ...legacyClassroomTranslations.fr, ...institutionPresentationTranslations.fr, ...readinessChecklistTranslations.fr, ...guardianStatusTranslations.fr, ...pickupTranslations.fr, ...pickupActionTranslations.fr, ...emergencyContactTranslations.fr, ...consentTranslations.fr, ...consentInformationTranslations.fr, ...automaticOvertimeTranslations.fr, ...tenantCreationWizardTranslations.fr, ...parentEnrollmentWizardTranslations.fr, ...tenantReadinessIssueTranslations.fr, ...tenantFeedbackTranslations.fr, ...paymentHistoryTranslations.fr },
+  pt: { ...pt, ...consentTranslations.pt, ...consentInformationTranslations.pt, ...automaticOvertimeTranslations.pt, ...tenantCreationWizardTranslations.pt, ...parentEnrollmentWizardTranslations.pt, ...tenantReadinessIssueTranslations.pt, ...tenantFeedbackTranslations.pt, ...paymentHistoryTranslations.pt },
+  es: { ...es, ...consentTranslations.es, ...consentInformationTranslations.es, ...automaticOvertimeTranslations.es, ...tenantCreationWizardTranslations.es, ...parentEnrollmentWizardTranslations.es, ...tenantReadinessIssueTranslations.es, ...tenantFeedbackTranslations.es, ...paymentHistoryTranslations.es },
+  ru: { ...ru, ...consentTranslations.ru, ...consentInformationTranslations.ru, ...automaticOvertimeTranslations.ru, ...tenantCreationWizardTranslations.ru, ...parentEnrollmentWizardTranslations.ru, ...tenantReadinessIssueTranslations.ru, ...tenantFeedbackTranslations.ru, ...paymentHistoryTranslations.ru },
 };
 
 export function translate(locale: AppLocale, key: TranslationKey, params: Record<string, string | number> = {}): string {

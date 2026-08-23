@@ -230,6 +230,10 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
       })}
       {!paymentsUnavailable && summary.actionableInvoices.length === 0 && <AppText tone="muted">{t("home.noActionablePayments")}</AppText>}
     </SummarySection>
+    <NavigationCard accessibilityLabel={t("paymentHistory.title")} onPress={() => router.push("/payment-history" as never)}>
+      <View style={styles.navigationCardRow}><Ionicons name="receipt-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("paymentHistory.title")}</AppText></View>
+      <AppText tone="muted">{t("paymentHistory.description")}</AppText>
+    </NavigationCard>
   </View></AppScreen>;
 }
 
