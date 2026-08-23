@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
   tenant: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   branchCard: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   branchCardPressed: { opacity: 0.76 },
-  childCard: { gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, ...shadows.sm },
+  childCard: { flexGrow: 1, minWidth: 300, gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, ...shadows.sm },
   childCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   avatar: { width: 44, height: 44, borderRadius: radius.pill, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
   avatarText: { color: colors.onPrimary },
