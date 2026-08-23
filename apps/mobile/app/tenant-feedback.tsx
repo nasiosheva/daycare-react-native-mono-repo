@@ -16,11 +16,13 @@ const defaultForm = (): FormState => ({ category: "SUGGESTION", message: "" });
 
 export default function TenantFeedbackScreen() {
   const router = useRouter();
-  const { api, profile, organizationId } = useAuth();
+  const { api, profile, organizationId, selectOrganization } = useAuth();
   const { t, formatDateTime } = useI18n();
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canCreate = membership?.role === "PARENT" && membership.active;
+  const parentMemberships = (profile?.memberships ?? []).filter((item) => item.role === "PARENT" && item.active);
+  const showsTenantPicker = parentMemberships.length > 1;
   const [form, setForm] = useState<FormState | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const items = useQuery({ queryKey: ["tenant-feedback-mine", organizationId], queryFn: () => api.myTenantFeedback(), enabled: membership?.role === "PARENT" && Boolean(organizationId) });
@@ -38,6 +40,10 @@ export default function TenantFeedbackScreen() {
   };
 
   return <AppScreen showBottomNavigation={false} title={t("tenantFeedback.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canCreate ? <FloatingActionButton accessibilityLabel={t("tenantFeedback.add")} onPress={() => { setForm(defaultForm()); setFormError(null); }}>+ {t("tenantFeedback.add")}</FloatingActionButton> : undefined}>
+    {showsTenantPicker && <View style={styles.field}>
+      <AppText variant="label">{t("parentEnrollment.tenant")}</AppText>
+      <View style={styles.options}>{parentMemberships.map((item) => <Button key={item.organizationId} variant={item.organizationId === organizationId ? "primary" : "secondary"} onPress={() => selectOrganization(item.organizationId)}>{item.organizationName}</Button>)}</View>
+    </View>}
     <AppText tone="muted">{t("tenantFeedback.description")}</AppText>
     {items.isLoading && <ShimmerList />}
     {items.isError && <Button variant="secondary" onPress={() => items.refetch()}>{t("common.retry")}</Button>}
