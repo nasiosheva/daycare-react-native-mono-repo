@@ -123,6 +123,7 @@ import com.daycare.api.service.CreatePrivateTutoringRequest
 import com.daycare.api.service.DecidePrivateTutoringRequest
 import com.daycare.api.service.ParentChildProfileService
 import com.daycare.api.service.ChildHealthService
+import com.daycare.api.service.CreateChildHealthNoteRequest
 import com.daycare.api.service.UpsertChildHealthRecordRequest
 import com.daycare.api.service.ChildIncidentService
 import com.daycare.api.service.CreateChildIncidentRequest
@@ -667,6 +668,12 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PutMapping("/children/{childId}/health-record")
     fun upsertChildHealthRecord(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: UpsertChildHealthRecordRequest) = childHealth.upsert(jwt, organizationId, childId, request)
+
+    @GetMapping("/children/{childId}/health-notes")
+    fun childHealthNotes(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childHealth.listNotes(jwt, organizationId, childId)
+
+    @PostMapping("/children/{childId}/health-notes") @ResponseStatus(HttpStatus.CREATED)
+    fun createChildHealthNote(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateChildHealthNoteRequest) = childHealth.addNote(jwt, organizationId, childId, request)
 
     @GetMapping("/children/{childId}/incident-reports")
     fun childIncidentReports(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childIncidents.list(jwt, organizationId, childId)

@@ -136,6 +136,8 @@ export type DevelopmentEntryMediaContent = { contentType: string; dataBase64: st
 export type DevelopmentEntryPhoto = { contentType: string; dataBase64: string };
 export type ChildHealthRecord = { childId: string; bloodType?: string | null; allergies?: string | null; medicalConditions?: string | null; medications?: string | null; emergencyInstructions?: string | null; updatedByUserId: string; updatedAt: string };
 export type UpsertChildHealthRecordInput = { bloodType?: string; allergies?: string; medicalConditions?: string; medications?: string; emergencyInstructions?: string };
+export type ChildHealthNote = { id: string; note: string; authorName: string; recordedAt: string };
+export type CreateChildHealthNoteInput = { note: string };
 export type IncidentSeverity = "MINOR" | "MODERATE" | "SERIOUS";
 export type IncidentCategory = "INJURY" | "ILLNESS" | "BEHAVIOR" | "OTHER";
 export type ChildIncidentReport = { id: string; childId: string; severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string | null; occurredAt: string; hasPhoto: boolean; acknowledgedByMe: boolean; createdAt: string };
@@ -535,6 +537,14 @@ export class ApiClient {
 
   async upsertChildHealthRecord(childId: string, input: UpsertChildHealthRecordInput): Promise<ChildHealthRecord> {
     return this.request(`/children/${childId}/health-record`, { method: "PUT", body: JSON.stringify(input) });
+  }
+
+  async childHealthNotes(childId: string): Promise<ChildHealthNote[]> {
+    return this.request(`/children/${childId}/health-notes`);
+  }
+
+  async createChildHealthNote(childId: string, input: CreateChildHealthNoteInput): Promise<ChildHealthNote> {
+    return this.request(`/children/${childId}/health-notes`, { method: "POST", body: JSON.stringify(input) });
   }
 
   async childIncidentReports(childId: string): Promise<ChildIncidentReport[]> {

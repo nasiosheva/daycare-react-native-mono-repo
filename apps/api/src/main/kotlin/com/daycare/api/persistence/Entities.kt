@@ -627,6 +627,17 @@ class ChildHealthRecord(
 )
 
 @Entity
+@Table(name = "child_health_notes")
+class ChildHealthNote(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "author_user_id", nullable = false) var authorUserId: UUID = UUID.randomUUID(),
+    @Column(nullable = false, length = 2_000) var note: String = "",
+    @Column(name = "recorded_at", nullable = false) var recordedAt: Instant = Instant.now(),
+)
+
+@Entity
 @Table(name = "child_staff_assignments", uniqueConstraints = [UniqueConstraint(columnNames = ["child_id", "user_id"])])
 class ChildStaffAssignment(
     @Id var id: UUID = UUID.randomUUID(),
