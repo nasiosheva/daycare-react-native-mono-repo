@@ -178,7 +178,8 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
           <View style={styles.parentActions}>
             <Button variant="secondary" leadingIcon={<Ionicons name="person-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-child-profile", { childId: child.id })}>{t("children.parentProfile")}</Button>
             <Button variant="secondary" leadingIcon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/development", { childId: child.id })}>{t("development.title")}</Button>
-            {hasDaycareOperations && isActiveTenant && <Button variant="secondary" leadingIcon={<Ionicons name="qr-code-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-qr", { childId: child.id })}>{t("qr.title")}</Button>}
+            {/* For a non-active tenant we don't know its daycare capability without switching first; parent-qr's own LegacyDaycareRouteGuard re-checks it after openChild switches context, so it's safe to just try. */}
+            {(isActiveTenant ? hasDaycareOperations : true) && <Button variant="secondary" leadingIcon={<Ionicons name="qr-code-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-qr", { childId: child.id })}>{t("qr.title")}</Button>}
             <Button variant="secondary" leadingIcon={<Ionicons name="calendar-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/absence-requests", { childId: child.id })}>{t("absence.menu")}</Button>
           </View>
         </View>;
