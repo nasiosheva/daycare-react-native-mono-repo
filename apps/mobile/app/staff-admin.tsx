@@ -111,8 +111,8 @@ function SetupChecklist({ issues, ready, onOpen }: { issues: TenantReadinessIssu
   return <View style={ready ? styles.setupReady : styles.setupChecklist}>
     <AppText variant="heading">{t("tenantReadiness.setupTitle")}</AppText>
     <AppText tone="muted">{ready ? t("tenantReadiness.setupReady") : t("tenantReadiness.setupDescription")}</AppText>
-    {issues.map((issue) => <NavigationCard key={issue} accessibilityLabel={t(tenantReadinessIssueKey(issue))} onPress={() => onOpen(issue)} style={styles.setupItem}>
-      <AppText variant="label">{t(tenantReadinessIssueKey(issue))}</AppText>
+    {issues.map((issue) => <NavigationCard key={issue} accessibilityLabel={t(tenantReadinessIssueKey(issue))} onPress={() => onOpen(issue)} style={styles.setupItemAttention}>
+      <AppText variant="label" tone="danger">{t(tenantReadinessIssueKey(issue))}</AppText>
       <AppText variant="caption" tone="muted">{t("tenantReadiness.setupAction")}</AppText>
     </NavigationCard>)}
   </View>;
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
   subscriptionAttention: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.dangerSoft },
   setupChecklist: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint },
   setupReady: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint },
-  setupItem: { backgroundColor: colors.surface },
+  setupItemAttention: { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
   menuAttention: { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
   menuHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   attentionFlag: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.pill, backgroundColor: colors.surface },
