@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ChildIncidentReport, IncidentCategory, IncidentSeverity } from "@daycare/api-client";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -61,8 +61,7 @@ export default function IncidentReportsScreen() {
     catch (error) { setFormError(error instanceof Error ? error.message : t("incident.saveFailed")); }
   };
 
-  return <AppScreen showBottomNavigation={false} title={t("incident.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    {canCreate && <Button onPress={openForm}>{t("incident.add")}</Button>}
+  return <AppScreen showBottomNavigation={false} title={t("incident.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canCreate ? <FloatingActionButton accessibilityLabel={t("incident.add")} onPress={openForm}>+ {t("incident.add")}</FloatingActionButton> : undefined}>
     {reports.isLoading && <ShimmerList />}
     {reports.isError && <Button variant="secondary" onPress={() => reports.refetch()}>{t("common.retry")}</Button>}
     {!reports.isLoading && !reports.isError && reports.data?.map((report) => <View key={report.id} style={styles.card}>
