@@ -113,6 +113,7 @@ interface ChildProgramParentFeedbackRepository : JpaRepository<ChildProgramParen
 interface ChildProgramTemplateRepository : JpaRepository<ChildProgramTemplate, UUID> { fun findAllByOrganizationIdOrderByNameAsc(organizationId: UUID): List<ChildProgramTemplate> }
 interface ChildProgramTemplateStepRepository : JpaRepository<ChildProgramTemplateStep, UUID> { fun findAllByOrganizationIdAndChildProgramTemplateIdOrderByDisplayOrderAscCreatedAtAsc(organizationId: UUID, childProgramTemplateId: UUID): List<ChildProgramTemplateStep>; fun deleteAllByChildProgramTemplateId(childProgramTemplateId: UUID) }
 interface ChildHealthRecordRepository : JpaRepository<ChildHealthRecord, UUID> { fun findByOrganizationIdAndChildId(organizationId: UUID, childId: UUID): ChildHealthRecord? }
+interface ChildHealthNoteRepository : JpaRepository<ChildHealthNote, UUID> { fun findAllByOrganizationIdAndChildIdOrderByRecordedAtDesc(organizationId: UUID, childId: UUID): List<ChildHealthNote> }
 interface ChildStaffAssignmentRepository : JpaRepository<ChildStaffAssignment, UUID> {
     fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildStaffAssignment>
     fun findAllByOrganizationIdAndUserId(organizationId: UUID, userId: UUID): List<ChildStaffAssignment>
@@ -165,6 +166,10 @@ interface StaffLeaveRequestRepository : JpaRepository<StaffLeaveRequest, UUID> {
     fun findAllByOrganizationIdAndRequesterUserIdOrderByCreatedAtDesc(organizationId: UUID, requesterUserId: UUID): List<StaffLeaveRequest>
     fun findAllByOrganizationIdAndStatusOrderByCreatedAtAsc(organizationId: UUID, status: com.daycare.api.domain.StaffLeaveRequestStatus): List<StaffLeaveRequest>
     fun findAllByOrganizationIdAndRequesterUserIdAndStatusIn(organizationId: UUID, requesterUserId: UUID, statuses: Collection<com.daycare.api.domain.StaffLeaveRequestStatus>): List<StaffLeaveRequest>
+}
+interface TenantFeedbackRepository : JpaRepository<TenantFeedback, UUID> {
+    fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<TenantFeedback>
+    fun findAllByOrganizationIdAndSubmittedByUserIdOrderByCreatedAtDesc(organizationId: UUID, submittedByUserId: UUID): List<TenantFeedback>
 }
 interface DevelopmentEntryRepository : JpaRepository<DevelopmentEntry, UUID> { fun findAllByOrganizationIdAndChildIdOrderByRecordedAtDesc(organizationId: UUID, childId: UUID): List<DevelopmentEntry>; fun existsByOrganizationIdAndCategory(organizationId: UUID, category: String): Boolean; fun existsByCategory(category: String): Boolean }
 interface DevelopmentEntryMediaRepository : JpaRepository<DevelopmentEntryMedia, UUID> {

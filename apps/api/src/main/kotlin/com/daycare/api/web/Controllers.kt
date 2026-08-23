@@ -113,6 +113,9 @@ import com.daycare.api.service.OvertimeService
 import com.daycare.api.service.UpdateBranchOperatingHoursRequest
 import com.daycare.api.service.CreateOvertimeChargeRequest
 import com.daycare.api.service.StaffLeaveRequestService
+import com.daycare.api.service.TenantFeedbackService
+import com.daycare.api.service.CreateTenantFeedbackRequest
+import com.daycare.api.service.UpdateTenantFeedbackStatusRequest
 import com.daycare.api.service.PrivateTutoringService
 import com.daycare.api.service.UpsertPrivateTutoringServiceRequest
 import com.daycare.api.service.UpsertPrivateTutorRequest
@@ -120,6 +123,7 @@ import com.daycare.api.service.CreatePrivateTutoringRequest
 import com.daycare.api.service.DecidePrivateTutoringRequest
 import com.daycare.api.service.ParentChildProfileService
 import com.daycare.api.service.ChildHealthService
+import com.daycare.api.service.CreateChildHealthNoteRequest
 import com.daycare.api.service.UpsertChildHealthRecordRequest
 import com.daycare.api.service.ChildIncidentService
 import com.daycare.api.service.CreateChildIncidentRequest
@@ -447,7 +451,7 @@ class PlatformController(
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class InstitutionController(private val attendance: AttendanceService, private val pickupAuthorizations: PickupAuthorizationService, private val emergencyContacts: EmergencyContactService, private val consents: ConsentService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val parentChildProfiles: ParentChildProfileService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService, private val tenantReadiness: TenantReadinessService, private val childHealth: ChildHealthService, private val childIncidents: ChildIncidentService) {
+class InstitutionController(private val attendance: AttendanceService, private val pickupAuthorizations: PickupAuthorizationService, private val emergencyContacts: EmergencyContactService, private val consents: ConsentService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val parentChildProfiles: ParentChildProfileService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService, private val tenantReadiness: TenantReadinessService, private val childHealth: ChildHealthService, private val childIncidents: ChildIncidentService, private val tenantFeedback: TenantFeedbackService) {
     @GetMapping("/tenant-readiness")
     fun tenantReadiness(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = tenantReadiness.organizationReadiness(jwt, organizationId)
 
@@ -511,6 +515,18 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @GetMapping("/staff-leave-requests/{requestId}/evidence")
     fun staffLeaveRequestEvidence(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable requestId: UUID) = staffLeaveRequests.evidence(jwt, organizationId, requestId)
+
+    @PostMapping("/tenant-feedback") @ResponseStatus(HttpStatus.CREATED)
+    fun createTenantFeedback(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: CreateTenantFeedbackRequest) = tenantFeedback.create(jwt, organizationId, request)
+
+    @GetMapping("/tenant-feedback/mine")
+    fun myTenantFeedback(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = tenantFeedback.mine(jwt, organizationId)
+
+    @GetMapping("/tenant-feedback")
+    fun tenantFeedbackInbox(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = tenantFeedback.list(jwt, organizationId)
+
+    @PostMapping("/tenant-feedback/{feedbackId}/status")
+    fun updateTenantFeedbackStatus(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable feedbackId: UUID, @Valid @RequestBody request: UpdateTenantFeedbackStatusRequest) = tenantFeedback.updateStatus(jwt, organizationId, feedbackId, request)
 
     @GetMapping("/children/programs-summary")
     fun childProgramsSummary(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = childManagement.programsSummary(jwt, organizationId)
@@ -652,6 +668,12 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PutMapping("/children/{childId}/health-record")
     fun upsertChildHealthRecord(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: UpsertChildHealthRecordRequest) = childHealth.upsert(jwt, organizationId, childId, request)
+
+    @GetMapping("/children/{childId}/health-notes")
+    fun childHealthNotes(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childHealth.listNotes(jwt, organizationId, childId)
+
+    @PostMapping("/children/{childId}/health-notes") @ResponseStatus(HttpStatus.CREATED)
+    fun createChildHealthNote(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateChildHealthNoteRequest) = childHealth.addNote(jwt, organizationId, childId, request)
 
     @GetMapping("/children/{childId}/incident-reports")
     fun childIncidentReports(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childIncidents.list(jwt, organizationId, childId)

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
@@ -34,8 +34,7 @@ export default function EmergencyContactsScreen() {
   if (!profile) return null;
   if (!childId || !(isParent || membership?.role === "STAFF_ADMIN")) return <Redirect href="/home" />;
   const submit = async () => { if (!name.trim() || !relationship.trim() || !phoneNumber.trim()) return; try { await create.mutateAsync(); } catch (error) { notify(t("auth.tryAgain"), error instanceof Error ? error.message : undefined); } };
-  return <AppScreen showBottomNavigation={false} title={t("emergencyContacts.manage")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.content}>
-    {isParent && <Button onPress={() => setOpen(true)}>{t("emergencyContacts.add")}</Button>}
+  return <AppScreen showBottomNavigation={false} title={t("emergencyContacts.manage")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={isParent ? <FloatingActionButton accessibilityLabel={t("emergencyContacts.add")} onPress={() => setOpen(true)}>+ {t("emergencyContacts.add")}</FloatingActionButton> : undefined}><View style={styles.content}>
     {contacts.isLoading && <ShimmerList variant="tile" />}
     {contacts.data?.map((item) => <View key={item.id} style={styles.card}>
       <AppText variant="heading">{item.name}</AppText>

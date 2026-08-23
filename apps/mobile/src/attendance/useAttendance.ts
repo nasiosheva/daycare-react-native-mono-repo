@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AttendanceAction, AttendanceMethod } from "@daycare/core";
-import type { ChildListFilter } from "@daycare/api-client";
+import type { Child, ChildListFilter } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
 
 export function useChildren(filterOrEnabled: ChildListFilter | boolean = {}, enabled = true) {
@@ -8,6 +8,24 @@ export function useChildren(filterOrEnabled: ChildListFilter | boolean = {}, ena
   const filter = typeof filterOrEnabled === "boolean" ? {} : filterOrEnabled;
   const queryEnabled = typeof filterOrEnabled === "boolean" ? filterOrEnabled : enabled;
   return useQuery({ queryKey: ["children", organizationId, filter], queryFn: () => api.children(filter), enabled: Boolean(organizationId) && queryEnabled });
+}
+
+export type ChildWithTenant = Child & { organizationName: string };
+
+export function useParentChildrenAcrossTenants(memberships: readonly { organizationId: string; organizationName: string }[], enabled: boolean) {
+  const { api } = useAuth();
+  const queries = useQueries({
+    queries: memberships.map((membership) => ({
+      queryKey: ["children", membership.organizationId, {}],
+      queryFn: () => api.children({}, membership.organizationId),
+      enabled,
+    })),
+  });
+  const isFetching = queries.some((query) => query.isFetching);
+  const isError = queries.some((query) => query.isError);
+  const data: ChildWithTenant[] = queries.flatMap((query, index) => (query.data ?? []).map((child) => ({ ...child, organizationName: memberships[index].organizationName })));
+  const refetch = () => queries.forEach((query) => void query.refetch());
+  return { data, isFetching, isError, refetch };
 }
 
 function createIdempotencyKey(): string {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CurrentUser } from "@daycare/core";
 import { hasOrganizationMembership, requiresOrganizationSelection, selectedOrganizationId } from "./organizationContext";
 
-const profile = (organizationIds: string[], isPlatformAdmin = false): CurrentUser => ({
+const profile = (organizationIds: string[], isPlatformAdmin = false, role: "PARENT" | "STAFF" = "PARENT"): CurrentUser => ({
   id: "user",
   displayName: "User",
   gender: "UNSPECIFIED",
@@ -10,7 +10,7 @@ const profile = (organizationIds: string[], isPlatformAdmin = false): CurrentUse
   memberships: organizationIds.map((organizationId) => ({
     organizationId,
     organizationName: organizationId,
-    role: "PARENT",
+    role,
     active: true,
     canManageChildPrograms: false,
     canManageDevelopmentCategories: false,
@@ -25,13 +25,23 @@ describe("organization context selection", () => {
     expect(selectedOrganizationId(profile(["tenant-a"], true), "tenant-a")).toBeNull();
   });
 
-  it("requires an explicit choice for multiple memberships unless the current choice remains valid", () => {
-    const multipleMemberships = profile(["tenant-a", "tenant-b"]);
+  it("auto-selects the first tenant for a Parent with multiple memberships (Home shows all of them at once)", () => {
+    const multipleParentMemberships = profile(["tenant-a", "tenant-b"]);
+    const autoSelected = selectedOrganizationId(multipleParentMemberships, null);
 
-    expect(selectedOrganizationId(multipleMemberships, null)).toBeNull();
-    expect(requiresOrganizationSelection(multipleMemberships, null)).toBe(true);
-    expect(selectedOrganizationId(multipleMemberships, "tenant-b")).toBe("tenant-b");
-    expect(requiresOrganizationSelection(multipleMemberships, "tenant-b")).toBe(false);
+    expect(autoSelected).toBe("tenant-a");
+    expect(requiresOrganizationSelection(multipleParentMemberships, autoSelected)).toBe(false);
+    expect(selectedOrganizationId(multipleParentMemberships, "tenant-b")).toBe("tenant-b");
+    expect(requiresOrganizationSelection(multipleParentMemberships, "tenant-b")).toBe(false);
+  });
+
+  it("requires an explicit choice for multiple non-Parent memberships unless the current choice remains valid", () => {
+    const multipleStaffMemberships = profile(["tenant-a", "tenant-b"], false, "STAFF");
+
+    expect(selectedOrganizationId(multipleStaffMemberships, null)).toBeNull();
+    expect(requiresOrganizationSelection(multipleStaffMemberships, null)).toBe(true);
+    expect(selectedOrganizationId(multipleStaffMemberships, "tenant-b")).toBe("tenant-b");
+    expect(requiresOrganizationSelection(multipleStaffMemberships, "tenant-b")).toBe(false);
   });
 
   it("rejects a tenant that is absent from the current profile", () => {

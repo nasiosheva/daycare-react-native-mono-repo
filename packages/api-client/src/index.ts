@@ -1,4 +1,4 @@
-import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildAbsencePurpose, ChildAbsenceRequestStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, EducationEnrollmentMode, EducationOfferingStatus, GoalDomain, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, ParentFamilyProfileInput, ParentIncomeRange, ParentOccupation, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffLeaveRequestStatus, StaffLeaveRequestType, StaffReminderTarget, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
+import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildAbsencePurpose, ChildAbsenceRequestStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, EducationEnrollmentMode, EducationOfferingStatus, GoalDomain, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, ParentFamilyProfileInput, ParentIncomeRange, ParentOccupation, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffLeaveRequestStatus, StaffLeaveRequestType, StaffReminderTarget, TenantFeedbackCategory, TenantFeedbackStatus, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -136,6 +136,8 @@ export type DevelopmentEntryMediaContent = { contentType: string; dataBase64: st
 export type DevelopmentEntryPhoto = { contentType: string; dataBase64: string };
 export type ChildHealthRecord = { childId: string; bloodType?: string | null; allergies?: string | null; medicalConditions?: string | null; medications?: string | null; emergencyInstructions?: string | null; updatedByUserId: string; updatedAt: string };
 export type UpsertChildHealthRecordInput = { bloodType?: string; allergies?: string; medicalConditions?: string; medications?: string; emergencyInstructions?: string };
+export type ChildHealthNote = { id: string; note: string; authorName: string; recordedAt: string };
+export type CreateChildHealthNoteInput = { note: string };
 export type IncidentSeverity = "MINOR" | "MODERATE" | "SERIOUS";
 export type IncidentCategory = "INJURY" | "ILLNESS" | "BEHAVIOR" | "OTHER";
 export type ChildIncidentReport = { id: string; childId: string; severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string | null; occurredAt: string; hasPhoto: boolean; acknowledgedByMe: boolean; createdAt: string };
@@ -250,9 +252,11 @@ export type UpsertStaffReminderInput = Omit<StaffReminder, "id" | "active" | "ru
 export type StaffLeaveEvidenceInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
 export type CreateStaffLeaveRequestInput = { type: StaffLeaveRequestType; startsOn: string; endsOn: string; reason: string; evidence?: StaffLeaveEvidenceInput };
 export type StaffLeaveRequest = { id: string; requesterUserId: string; requesterName: string; type: StaffLeaveRequestType; startsOn: string; endsOn: string; reason: string; status: StaffLeaveRequestStatus; hasEvidence: boolean; rejectionReason?: string | null; reviewedAt?: string | null; createdAt: string };
+export type TenantFeedback = { id: string; submittedByName: string; category: TenantFeedbackCategory; message: string; status: TenantFeedbackStatus; createdAt: string; updatedAt: string };
+export type CreateTenantFeedbackInput = { category: TenantFeedbackCategory; message: string };
 export type StaffLeaveEvidence = { contentType: string; dataBase64: string };
 export type GlobalCurriculumSeedResult = { alreadySeeded: boolean; learningLevelCount: number; developmentProgramCount: number; developmentProgramItemCount: number; curriculumProgramCount: number };
-export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "INCIDENT_REPORTS" | "HEALTH" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS" | "PRIVATE_TUTORING" | "CHILD_PROGRAMS";
+export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "INCIDENT_REPORTS" | "HEALTH" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS" | "PRIVATE_TUTORING" | "CHILD_PROGRAMS" | "TENANT_FEEDBACK";
 export type RealtimeEvent<TPayload = unknown> = { type: "EVENT"; id: string; organizationId?: string | null; flags: RealtimeFlag[]; payload?: TPayload | null; occurredAt: string };
 export type RealtimeConnectRequest = { type: "CONNECT"; token: string; organizationId?: string | null };
 
@@ -395,6 +399,10 @@ export class ApiClient {
   async cancelStaffLeaveRequest(requestId: string): Promise<StaffLeaveRequest> { return this.request(`/staff-leave-requests/${requestId}/cancel`, { method: "POST" }); }
   async pendingStaffLeaveRequests(): Promise<StaffLeaveRequest[]> { return this.request("/staff-leave-requests/pending-approval"); }
   async decideStaffLeaveRequest(requestId: string, input: { approved: boolean; rejectionReason?: string }): Promise<StaffLeaveRequest> { return this.request(`/staff-leave-requests/${requestId}/approval`, { method: "POST", body: JSON.stringify(input) }); }
+  async createTenantFeedback(input: CreateTenantFeedbackInput): Promise<TenantFeedback> { return this.request("/tenant-feedback", { method: "POST", body: JSON.stringify(input) }); }
+  async myTenantFeedback(): Promise<TenantFeedback[]> { return this.request("/tenant-feedback/mine"); }
+  async tenantFeedbackInbox(): Promise<TenantFeedback[]> { return this.request("/tenant-feedback"); }
+  async updateTenantFeedbackStatus(feedbackId: string, status: TenantFeedbackStatus): Promise<TenantFeedback> { return this.request(`/tenant-feedback/${feedbackId}/status`, { method: "POST", body: JSON.stringify({ status }) }); }
   async staffLeaveRequestEvidence(requestId: string): Promise<StaffLeaveEvidence> { return this.request(`/staff-leave-requests/${requestId}/evidence`); }
   async academicYears(): Promise<AcademicYear[]> { return this.request("/academic-years"); }
   async createAcademicYear(input: CreateAcademicYearInput): Promise<AcademicYear> { return this.request("/academic-years", { method: "POST", body: JSON.stringify(input) }); }
@@ -450,14 +458,14 @@ export class ApiClient {
   async childPlacementOptions(childId: string): Promise<Classroom[]> { return this.request(`/children/${childId}/placement-options`); }
   async placeChild(childId: string, input: { classroomId: string; startsOn?: string }): Promise<ChildPlacement> { return this.request(`/children/${childId}/placements`, { method: "POST", body: JSON.stringify(input) }); }
 
-  async children(filter: ChildListFilter = {}): Promise<Child[]> {
+  async children(filter: ChildListFilter = {}, organizationId?: string): Promise<Child[]> {
     const params = new URLSearchParams();
     if (filter.branchId) params.set("branchId", filter.branchId);
     if (filter.learningLevelId) params.set("learningLevelId", filter.learningLevelId);
     if (filter.classroomId) params.set("classroomId", filter.classroomId);
     if (filter.guardianStatus) params.set("guardianStatus", filter.guardianStatus);
     const query = params.toString();
-    return this.request(`/children${query ? `?${query}` : ""}`);
+    return this.request(`/children${query ? `?${query}` : ""}`, organizationId ? { headers: { "X-Organization-Id": organizationId } } : undefined);
   }
   async childAbsenceRequests(input: { childId?: string; branchId?: string } = {}): Promise<ChildAbsenceRequest[]> { const params = new URLSearchParams(); if (input.childId) params.set("childId", input.childId); if (input.branchId) params.set("branchId", input.branchId); return this.request(`/child-absence-requests${params.size ? `?${params.toString()}` : ""}`); }
   async createChildAbsenceRequest(input: CreateChildAbsenceRequestInput): Promise<ChildAbsenceRequest> { return this.request("/child-absence-requests", { method: "POST", body: JSON.stringify(input) }); }
@@ -531,6 +539,14 @@ export class ApiClient {
     return this.request(`/children/${childId}/health-record`, { method: "PUT", body: JSON.stringify(input) });
   }
 
+  async childHealthNotes(childId: string): Promise<ChildHealthNote[]> {
+    return this.request(`/children/${childId}/health-notes`);
+  }
+
+  async createChildHealthNote(childId: string, input: CreateChildHealthNoteInput): Promise<ChildHealthNote> {
+    return this.request(`/children/${childId}/health-notes`, { method: "POST", body: JSON.stringify(input) });
+  }
+
   async childIncidentReports(childId: string): Promise<ChildIncidentReport[]> {
     return this.request(`/children/${childId}/incident-reports`);
   }
@@ -595,7 +611,7 @@ export class ApiClient {
   async bookings(filter: BranchListFilter = {}): Promise<Booking[]> { return this.request(withBranchFilter("/bookings", filter)); }
   async pendingBookings(filter: BranchListFilter = {}, search?: string): Promise<Booking[]> { return this.request(withBranchAndSearchFilter("/bookings/pending-approval", filter, search)); }
   async approveBooking(bookingId: string, approved: boolean): Promise<Booking> { return this.request(`/bookings/${bookingId}/approval`, { method: "POST", body: JSON.stringify({ approved }) }); }
-  async invoices(filter: BranchListFilter = {}, search?: string): Promise<Invoice[]> { return this.request(withBranchAndSearchFilter("/invoices", filter, search)); }
+  async invoices(filter: BranchListFilter = {}, search?: string, organizationId?: string): Promise<Invoice[]> { return this.request(withBranchAndSearchFilter("/invoices", filter, search), organizationId ? { headers: { "X-Organization-Id": organizationId } } : undefined); }
   async invoice(invoiceId: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}`); }
   async submitPaymentProof(invoiceId: string, input: SubmitPaymentProofInput): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/payment-proof`, { method: "POST", body: JSON.stringify(input) }); }
   async paymentProof(invoiceId: string): Promise<PaymentProofImage> { return this.request(`/invoices/${invoiceId}/payment-proof`); }
@@ -606,7 +622,16 @@ export class ApiClient {
     const response = await this.authorizedFetch(path, init);
     if (!response.ok) throw await this.responseError(response);
     if (response.status === 204) return undefined as T;
-    return response.json() as Promise<T>;
+    try {
+      return await response.json();
+    } catch (error) {
+      // A controller returning a null body (e.g. "no record yet") sends a
+      // genuinely empty 200 response, not the JSON literal "null" —
+      // response.json() throws a SyntaxError on empty input. Treat that as
+      // no value rather than a request failure.
+      if (error instanceof SyntaxError) return undefined as T;
+      throw error;
+    }
   }
 
   private async requestFile(path: string): Promise<DownloadedReport> {

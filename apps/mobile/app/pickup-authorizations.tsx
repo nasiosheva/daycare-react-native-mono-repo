@@ -2,7 +2,7 @@ import { useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
@@ -44,8 +44,7 @@ export default function PickupAuthorizationsScreen() {
     try { await create.mutateAsync(); }
     catch (error) { notify(t("auth.tryAgain"), error instanceof Error ? error.message : undefined); }
   };
-  return <AppScreen showBottomNavigation={false} title={t("pickup.manage")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.content}>
-    {canCreate && <Button onPress={() => setOpen(true)}>{t("pickup.add")}</Button>}
+  return <AppScreen showBottomNavigation={false} title={t("pickup.manage")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canCreate ? <FloatingActionButton accessibilityLabel={t("pickup.add")} onPress={() => setOpen(true)}>+ {t("pickup.add")}</FloatingActionButton> : undefined}><View style={styles.content}>
     {authorizations.isLoading && <ShimmerList variant="tile" />}
     {authorizations.data?.map((item) => <View key={item.id} style={styles.card}><AppText variant="heading">{item.pickupPersonName}</AppText><AppText tone="muted">{item.relationship}</AppText><AppText tone={item.status === "ACTIVE" ? "default" : "muted"}>{t(`pickup.status.${item.status}`)}</AppText>{canManage && item.status === "PENDING_VERIFICATION" && <Button variant="secondary" loading={activate.isPending} onPress={() => void activate.mutateAsync(item.id)}>{t("pickup.activate")}</Button>}{item.canRevoke && <Button variant="danger" onPress={() => { setRevokeId(item.id); setRevokeReason(""); }}>{t("pickup.revoke")}</Button>}</View>)}
     {!authorizations.isLoading && !authorizations.data?.length && <AppText tone="muted">{t("pickup.empty")}</AppText>}

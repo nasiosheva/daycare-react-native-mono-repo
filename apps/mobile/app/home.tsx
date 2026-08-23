@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useQueries, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { AppText, Button, FloatingActionButton, ShimmerList, colors, NavigationCard, radius, shadows, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
-import { useChildren } from "@/attendance/useAttendance";
+import { useChildren, useParentChildrenAcrossTenants } from "@/attendance/useAttendance";
 import { useBookings, useEntitlements, useInvoices } from "@/booking/useBooking";
 import { createStaffAdminSummary } from "@/home/staffAdminSummary";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -116,11 +116,17 @@ function StaffHome({ displayName, organizationName, managedChildren, tasksByChil
 
 function ParentHome({ displayName, organizationName, hasDaycareOperations }: { displayName: string; organizationName: string; hasDaycareOperations: boolean }) {
   const router = useRouter();
-  const { api, organizationId } = useAuth();
+  const { api, organizationId, profile, selectOrganization } = useAuth();
   const { t, formatCurrency, formatDate } = useI18n();
   const access = useUiAccessContext(true);
   const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
-  const children = useChildren(true);
+  const parentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT" && membership.active);
+  const showsTenantLabel = parentMemberships.length > 1;
+  const children = useParentChildrenAcrossTenants(parentMemberships, true);
+  const openChild = (childOrganizationId: string, pathname: string, params: Record<string, string>) => {
+    selectOrganization(childOrganizationId);
+    router.push({ pathname, params } as never);
+  };
   const entitlements = useEntitlements(hasDaycareOperations);
   const invoices = useInvoices(true);
   const privateTutoringServices = useQueries({
@@ -146,18 +152,20 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
       {!childrenUnavailable && summary.children.map(({ child, activeEntitlements }) => {
         const isCheckedIn = Boolean(child.todayCheckedInAt) && !child.todayCheckedOutAt;
         const statusKey = child.todayCheckedOutAt ? "attendance.statusCheckedOut" : child.todayCheckedInAt ? "attendance.statusCheckedIn" : "attendance.statusNotYet";
+        const isActiveTenant = child.organizationId === organizationId;
         return <View key={child.id} style={styles.childCard}>
           <View style={styles.childCardHeader}>
             <View style={styles.avatar}><AppText variant="h6" style={styles.avatarText}>{child.fullName.trim().charAt(0).toUpperCase() || "?"}</AppText></View>
             <View style={styles.childCardHeading}>
               <AppText variant="h5">{child.fullName}</AppText>
+              {showsTenantLabel && <AppText variant="caption" tone="muted">{child.organizationName}</AppText>}
               <View style={[styles.statusPill, isCheckedIn ? styles.statusPillActive : styles.statusPillNeutral]}>
                 <Ionicons name={isCheckedIn ? "checkmark-circle" : child.todayCheckedOutAt ? "home-outline" : "time-outline"} size={12} color={colors.text} />
                 <AppText variant="caption">{t(statusKey)}</AppText>
               </View>
             </View>
           </View>
-          {hasDaycareOperations && (servicesUnavailable ? <AppText variant="caption" tone="muted">{t("home.parentSummaryLoading")}</AppText> : <View style={styles.entitlementsRow}>
+          {hasDaycareOperations && isActiveTenant && (servicesUnavailable ? <AppText variant="caption" tone="muted">{t("home.parentSummaryLoading")}</AppText> : <View style={styles.entitlementsRow}>
             {activeEntitlements.length === 0 && <AppText variant="caption" tone="muted">{t("home.parentNoActiveServices")}</AppText>}
             {activeEntitlements.map((entitlement) => <View key={entitlement.id} style={styles.entitlementPill}>
               <Ionicons name="ribbon-outline" size={14} color={colors.primary} />
@@ -168,10 +176,11 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
             </View>)}
           </View>)}
           <View style={styles.parentActions}>
-            <Button variant="secondary" leadingIcon={<Ionicons name="person-outline" size={16} color={colors.primary} />} onPress={() => router.push({ pathname: "/parent-child-profile", params: { childId: child.id } })}>{t("children.parentProfile")}</Button>
-            <Button variant="secondary" leadingIcon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />} onPress={() => router.push({ pathname: "/development", params: { childId: child.id } })}>{t("development.title")}</Button>
-            {hasDaycareOperations && <Button variant="secondary" leadingIcon={<Ionicons name="qr-code-outline" size={16} color={colors.primary} />} onPress={() => router.push({ pathname: "/parent-qr", params: { childId: child.id } })}>{t("qr.title")}</Button>}
-            <Button variant="secondary" leadingIcon={<Ionicons name="calendar-outline" size={16} color={colors.primary} />} onPress={() => router.push({ pathname: "/absence-requests", params: { childId: child.id } })}>{t("absence.menu")}</Button>
+            <Button variant="secondary" leadingIcon={<Ionicons name="person-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-child-profile", { childId: child.id })}>{t("children.parentProfile")}</Button>
+            <Button variant="secondary" leadingIcon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/development", { childId: child.id })}>{t("development.title")}</Button>
+            {/* For a non-active tenant we don't know its daycare capability without switching first; parent-qr's own LegacyDaycareRouteGuard re-checks it after openChild switches context, so it's safe to just try. */}
+            {(isActiveTenant ? hasDaycareOperations : true) && <Button variant="secondary" leadingIcon={<Ionicons name="qr-code-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-qr", { childId: child.id })}>{t("qr.title")}</Button>}
+            <Button variant="secondary" leadingIcon={<Ionicons name="calendar-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/absence-requests", { childId: child.id })}>{t("absence.menu")}</Button>
           </View>
         </View>;
       })}
@@ -189,6 +198,10 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
       <View style={styles.navigationCardRow}><Ionicons name="heart-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("children.programs")}</AppText></View>
       <AppText tone="muted">{t("children.programsSummary", { count: programsSummary.data!.activePrograms })}</AppText>
     </NavigationCard>}
+    <NavigationCard accessibilityLabel={t("tenantFeedback.title")} onPress={() => router.push("/tenant-feedback" as never)}>
+      <View style={styles.navigationCardRow}><Ionicons name="chatbox-ellipses-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("tenantFeedback.title")}</AppText></View>
+      <AppText tone="muted">{t("tenantFeedback.description")}</AppText>
+    </NavigationCard>
     <SummarySection title={t("home.parentPayments")}>
       {invoices.isFetching && <ShimmerList />}
       {invoices.isError && <Button variant="secondary" onPress={() => invoices.refetch()}>{t("common.retry")}</Button>}
@@ -217,6 +230,10 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
       })}
       {!paymentsUnavailable && summary.actionableInvoices.length === 0 && <AppText tone="muted">{t("home.noActionablePayments")}</AppText>}
     </SummarySection>
+    <NavigationCard accessibilityLabel={t("paymentHistory.title")} onPress={() => router.push("/payment-history" as never)}>
+      <View style={styles.navigationCardRow}><Ionicons name="receipt-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("paymentHistory.title")}</AppText></View>
+      <AppText tone="muted">{t("paymentHistory.description")}</AppText>
+    </NavigationCard>
   </View></AppScreen>;
 }
 
@@ -418,7 +435,7 @@ const styles = StyleSheet.create({
   tenant: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   branchCard: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   branchCardPressed: { opacity: 0.76 },
-  childCard: { gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, ...shadows.sm },
+  childCard: { flexGrow: 1, minWidth: 300, gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, ...shadows.sm },
   childCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   avatar: { width: 44, height: 44, borderRadius: radius.pill, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
   avatarText: { color: colors.onPrimary },
