@@ -5,6 +5,9 @@ set -eu
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 environment_file="$repository_root/.env"
 environment_template="$repository_root/.env.example"
+
+. "$repository_root/scripts/lib/session-log.sh"
+start_session_log "$repository_root" "backend"
 gradle_user_home="$repository_root/.gradle-local"
 api_gradle="$repository_root/apps/api/gradlew"
 
