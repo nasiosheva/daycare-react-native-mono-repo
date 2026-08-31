@@ -10,6 +10,7 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+. "$script_dir/lib/session-log.sh"
 mobile_launcher="$script_dir/run-mobile.sh"
 backend_launcher="$script_dir/run-backend-local.sh"
 backend_pid=""
@@ -119,6 +120,7 @@ ensure_local_backend() {
 }
 
 prompt_environment
+start_session_log "$repository_root" "web-$selected_environment"
 
 if [ "$selected_environment" = "local" ]; then
   ensure_local_backend

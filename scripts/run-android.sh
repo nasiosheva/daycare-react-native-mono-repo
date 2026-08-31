@@ -30,6 +30,7 @@ set -eu
 application_id="com.children.platform"
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+. "$script_dir/lib/session-log.sh"
 environment_file="$repository_root/.env"
 
 prompt_build_type() {
@@ -230,6 +231,8 @@ ensure_adb
 select_android_device
 export ANDROID_SERIAL="$selected_android_serial"
 echo "Using Android device $ANDROID_SERIAL." >&2
+android_session_label=$(printf '%s' "$selected_android_serial" | tr -c 'A-Za-z0-9' '-')
+start_session_log "$repository_root" "android-${android_session_label}-${selected_build_type}-${selected_environment}"
 
 if [ "$selected_environment" = "local" ]; then
   sync_local_api_url

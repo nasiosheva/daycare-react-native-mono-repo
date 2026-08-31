@@ -21,6 +21,7 @@ set -eu
 bundle_id="com.children.platform"
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+. "$script_dir/lib/session-log.sh"
 
 prompt_environment() {
   echo "Select an environment:" >&2
@@ -147,6 +148,8 @@ select_ios_simulator
 export IOS_DEVICE_UDID="$selected_ios_udid"
 export IOS_TARGET_IS_SIMULATOR=true
 echo "Using iOS Simulator $selected_ios_name ($selected_ios_udid)." >&2
+ios_session_label=$(printf '%s' "$selected_ios_name" | tr -c 'A-Za-z0-9' '-')
+start_session_log "$repository_root" "ios-${ios_session_label}-${selected_environment}"
 
 if [ "$selected_environment" = "local" ]; then
   ensure_local_backend
