@@ -1,21 +1,22 @@
 import { useEffect, useState, type PropsWithChildren, type ReactNode } from "react";
-import { Platform, RefreshControl, SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
+import { Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { backgroundGradient, colors, shadows, spacing } from "./theme";
+import { Ionicons } from "@expo/vector-icons";
+import { backgroundGradient, colors, radius, shadows, spacing, toneColors, toneIcons } from "./theme";
 import { AppText } from "./AppText";
 import { appBrandName } from "./brand";
-import { subscribeInlineFeedback, type InlineFeedback } from "./InlineFeedback";
+import { inlineFeedbackDuration, subscribeInlineFeedback, type InlineFeedback } from "./InlineFeedback";
 
-export type ScreenProps = PropsWithChildren<{ title?: string; header?: ReactNode; headerAction?: ReactNode; footer?: ReactNode; floatingAction?: ReactNode; showAppBar?: boolean; refreshing?: boolean; onRefresh?: () => void }>;
+export type ScreenProps = PropsWithChildren<{ title?: string; header?: ReactNode; headerAction?: ReactNode; footer?: ReactNode; floatingAction?: ReactNode; showAppBar?: boolean; refreshing?: boolean; onRefresh?: () => void; feedbackDismissLabel?: string }>;
 
-export function Screen({ children, title, header, headerAction, footer, floatingAction, showAppBar, refreshing = false, onRefresh }: ScreenProps) {
+export function Screen({ children, title, header, headerAction, footer, floatingAction, showAppBar, refreshing = false, onRefresh, feedbackDismissLabel = "Close" }: ScreenProps) {
   const shouldShowAppBar = showAppBar ?? Boolean(title || header);
   const [feedback, setFeedback] = useState<InlineFeedback>();
 
   useEffect(() => subscribeInlineFeedback(setFeedback), []);
   useEffect(() => {
     if (!feedback) return;
-    const timeout = setTimeout(() => setFeedback(undefined), 7000);
+    const timeout = setTimeout(() => setFeedback(undefined), inlineFeedbackDuration(feedback));
     return () => clearTimeout(timeout);
   }, [feedback]);
 
@@ -28,19 +29,37 @@ export function Screen({ children, title, header, headerAction, footer, floating
       </View>}
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, floatingAction ? styles.contentWithFloatingAction : undefined]}
         refreshControl={onRefresh && Platform.OS !== "web" ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} /> : undefined}
       >
-        {feedback && <View accessibilityRole="alert" style={styles.feedback}>
-          <AppText variant="label">{feedback.title}</AppText>
-          {feedback.message && <AppText variant="caption">{feedback.message}</AppText>}
-        </View>}
         {children}
       </ScrollView>
+      {feedback && <FeedbackToast feedback={feedback} topOffset={shouldShowAppBar ? 64 : spacing.sm} dismissLabel={feedbackDismissLabel} onDismiss={() => setFeedback(undefined)} />}
       {floatingAction && <View pointerEvents="box-none" style={[styles.floatingAction, footer ? styles.floatingActionWithFooter : undefined]}>{floatingAction}</View>}
       {footer && <View style={styles.footer}>{footer}</View>}
     </SafeAreaView>
   </LinearGradient>;
+}
+
+/**
+ * Pinned above the scroll content so it stays visible no matter how far the
+ * user has scrolled when a save succeeds or fails.
+ */
+function FeedbackToast({ feedback, topOffset, dismissLabel, onDismiss }: { feedback: InlineFeedback; topOffset: number; dismissLabel: string; onDismiss: () => void }) {
+  const tone = feedback.tone ?? "info";
+  const palette = toneColors[tone];
+  return <View pointerEvents="box-none" style={[styles.toastContainer, { top: topOffset }]}>
+    <View accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.toast, { borderColor: palette.foreground }]}>
+      <Ionicons name={toneIcons[tone]} size={22} color={palette.foreground} />
+      <View style={styles.toastCopy}>
+        <AppText variant="label">{feedback.title}</AppText>
+        {feedback.message && <AppText variant="bodySmall" tone="muted">{feedback.message}</AppText>}
+      </View>
+      <Pressable accessibilityRole="button" accessibilityLabel={dismissLabel} hitSlop={spacing.sm} onPress={onDismiss} style={({ pressed }) => [styles.toastClose, pressed && styles.toastClosePressed]}>
+        <Ionicons name="close" size={18} color={colors.muted} />
+      </Pressable>
+    </View>
+  </View>;
 }
 
 const styles = StyleSheet.create({
@@ -51,8 +70,14 @@ const styles = StyleSheet.create({
   title: { flex: 1 },
   headerAction: { flexShrink: 0 },
   scroll: { flex: 1 },
+  // Leaves room so the floating action button never covers the last item.
+  contentWithFloatingAction: { paddingBottom: 96 },
   content: { flexGrow: 1, padding: spacing.md, gap: spacing.md, width: "100%", maxWidth: 1080, alignSelf: "center" },
-  feedback: { gap: spacing.xs, padding: spacing.md, borderWidth: 1, borderColor: colors.primary, borderRadius: 12, backgroundColor: colors.surfaceTint },
+  toastContainer: { position: "absolute", left: spacing.md, right: spacing.md, zIndex: 10, alignItems: "center" },
+  toast: { width: "100%", maxWidth: 560, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, backgroundColor: colors.surface, ...shadows.md },
+  toastCopy: { flex: 1, gap: spacing.xs / 2 },
+  toastClose: { width: 28, height: 28, alignItems: "center", justifyContent: "center", borderRadius: radius.pill },
+  toastClosePressed: { backgroundColor: colors.surfaceTint },
   floatingAction: { position: "absolute", right: spacing.md, bottom: spacing.md },
   floatingActionWithFooter: { bottom: 76 },
   footer: { backgroundColor: colors.surface, ...shadows.md, shadowOffset: { width: 0, height: -4 } },

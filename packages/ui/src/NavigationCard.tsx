@@ -8,11 +8,12 @@ type NavigationCardProps = {
   onPress: () => void;
   accessibilityLabel: string;
   disabled?: boolean;
+  leading?: ReactNode;
   trailing?: ReactNode;
   style?: StyleProp<ViewStyle>;
 };
 
-export function NavigationCard({ children, onPress, accessibilityLabel, disabled = false, trailing, style }: NavigationCardProps) {
+export function NavigationCard({ children, onPress, accessibilityLabel, disabled = false, leading, trailing, style }: NavigationCardProps) {
   return <Pressable
     accessibilityRole="button"
     accessibilityLabel={accessibilityLabel}
@@ -21,13 +22,13 @@ export function NavigationCard({ children, onPress, accessibilityLabel, disabled
     onPress={onPress}
     style={({ pressed }) => [styles.card, pressed && !disabled && styles.pressed, disabled && styles.disabled, style]}
   >
-    <View style={styles.content}><View style={styles.body}>{children}</View>{trailing ?? <Ionicons name="chevron-forward" size={22} color={colors.primary} />}</View>
+    <View style={styles.content}>{leading}<View style={styles.body}>{children}</View>{trailing ?? <Ionicons name="chevron-forward" size={22} color={colors.primary} />}</View>
   </Pressable>;
 }
 
 const styles = StyleSheet.create({
   card: { padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, ...shadows.sm },
-  content: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  content: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   body: { flex: 1, gap: spacing.xs },
   pressed: { opacity: 0.78, backgroundColor: colors.surfaceTint, transform: [{ scale: 0.98 }] },
   disabled: { opacity: 0.5 },

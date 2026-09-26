@@ -9,11 +9,38 @@ export const colors = {
   accent: "#87CDB5",
   accentSoft: "#E8F7F1",
   text: "#3D3526",
-  muted: "#807766",
+  // Darkened from #807766 so secondary text meets WCAG AA (4.5:1) on white and tinted surfaces.
+  muted: "#6E6655",
   border: "#F0E3C9",
   disabled: "#F5EFE3",
   onPrimary: "#FFFFFF",
+  success: "#276B4D",
+  successSoft: "#E3F4EC",
+  warning: "#8F5A00",
+  warningSoft: "#FFF1D6",
+  info: "#2F6690",
+  infoSoft: "#E4F1FB",
+  overlay: "rgba(61, 38, 50, 0.42)",
 } as const;
+
+export type Tone = "neutral" | "info" | "success" | "warning" | "danger";
+
+/** Foreground / background / icon for status surfaces (banners, badges, toasts). */
+export const toneColors: Record<Tone, { foreground: string; background: string; border: string }> = {
+  neutral: { foreground: colors.text, background: colors.disabled, border: colors.border },
+  info: { foreground: colors.info, background: colors.infoSoft, border: colors.infoSoft },
+  success: { foreground: colors.success, background: colors.successSoft, border: colors.successSoft },
+  warning: { foreground: colors.warning, background: colors.warningSoft, border: colors.warningSoft },
+  danger: { foreground: colors.danger, background: colors.dangerSoft, border: colors.dangerSoft },
+};
+
+export const toneIcons = {
+  neutral: "information-circle",
+  info: "information-circle",
+  success: "checkmark-circle",
+  warning: "warning",
+  danger: "alert-circle",
+} as const satisfies Record<Tone, string>;
 
 export const backgroundGradient = { colors: ["#FEE895", "#FFFDF6", "#C1E8FD"], locations: [0, 0.5, 1] } as const;
 

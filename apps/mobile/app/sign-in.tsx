@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Image, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Image, Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
-import { appBrandName, AppText, Button, colors, PasswordInput, radius, Screen, spacing } from "@daycare/ui";
+import { appBrandName, AppText, Banner, Button, colors, PasswordInput, radius, Screen, spacing, TextField } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { authErrorMessage } from "@/auth/authErrorMessage";
 import { clearRememberedCredentials, loadRememberedCredentials, saveRememberedCredentials } from "@/auth/rememberedCredentialsStorage";
@@ -49,11 +49,10 @@ export default function SignInScreen() {
   return <Screen><View style={styles.container}>
     <Image source={require("../assets/images/login-icon.png")} style={styles.logo} resizeMode="contain" />
     <AppText variant="title">{appBrandName}</AppText>
-    <AppText variant="label">{t("auth.identifier")}</AppText>
-    <TextInput style={styles.input} autoCapitalize="none" keyboardType="default" value={identifier} onChangeText={(value) => { setIdentifier(value); setErrorMessage(null); }} />
+    <TextField label={t("auth.identifier")} leadingIcon="person-outline" autoCapitalize="none" autoComplete="username" textContentType="username" keyboardType="default" returnKeyType="next" value={identifier} onChangeText={(value) => { setIdentifier(value); setErrorMessage(null); }} />
     <AppText variant="label">{t("auth.password")}</AppText>
     <PasswordInput value={password} onChangeText={(value) => { setPassword(value); setErrorMessage(null); }} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
-    {errorMessage && <View style={styles.errorMessage}><AppText tone="danger">{errorMessage}</AppText></View>}
+    {errorMessage && <Banner tone="danger" title={t("auth.signInFailed")} message={errorMessage} />}
     <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: rememberMe }} onPress={() => void updateRememberMe(!rememberMe)} style={({ pressed }) => [styles.rememberRow, pressed && styles.pressed]}>
       <View style={[styles.rememberIndicator, rememberMe && styles.rememberIndicatorActive]}>
         {rememberMe && <AppText variant="caption" style={styles.rememberIndicatorLabel}>✓</AppText>}
@@ -67,9 +66,7 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   container: { width: "100%", maxWidth: 420, alignSelf: "center", flex: 1, justifyContent: "center", gap: spacing.sm, paddingVertical: spacing.lg },
   logo: { width: 96, height: 96, alignSelf: "center", marginBottom: spacing.sm },
-  input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 12, backgroundColor: colors.surface },
-  errorMessage: { padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.dangerSoft },
-  rememberRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  rememberRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.sm },
   rememberIndicator: { width: 22, height: 22, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   rememberIndicatorActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   rememberIndicatorLabel: { color: colors.onPrimary, fontWeight: "700" },
