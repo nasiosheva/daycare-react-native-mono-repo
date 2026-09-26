@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, PasswordInput, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Avatar, BackButton, Banner, BottomSheet, Button, EmptyState, ErrorState, PasswordInput, ShimmerList, TabBar, colors, radius, spacing } from "@daycare/ui";
+import { notify } from "@/notify/notify";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -29,49 +31,37 @@ export default function StaffPasswordsScreen() {
   const selectUser = (userId: string) => setSelectedUserId(userId);
   const submit = async () => {
     if (!selectedUser?.userId) return;
-    if (password.length < 6) return Alert.alert(t("password.minLength"));
+    if (password.length < 6) return notify(t("password.minLength"), undefined, "warning");
     try {
       await changePassword.mutateAsync({ userId: selectedUser.userId, password });
       setPassword("");
-      Alert.alert(t("tenantUsers.passwordChanged"), t("tenantUsers.passwordChangedDescription", { name: selectedUser.displayName ?? selectedUser.email ?? t("tenantUsers.accounts") }));
-    } catch (error) { Alert.alert(t("tenantUsers.passwordChangeFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+      notify(t("tenantUsers.passwordChanged"), t("tenantUsers.passwordChangedDescription", { name: selectedUser.displayName ?? selectedUser.email ?? t("tenantUsers.accounts") }), "success");
+    } catch (error) { notify(t("tenantUsers.passwordChangeFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
 
   return <AppScreen showBottomNavigation={false} title={t("tenantUsers.staffPasswords")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("tenantUsers.staffPasswordSubtitle")}</AppText>
-    {!canManage && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
-      <BranchTab label={t("branchFilter.allBranches")} selected={!filterBranchId} onPress={() => setFilterBranchId(undefined)} />
-      {branches.data?.map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
-    </ScrollView>
+    {!canManage && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
+    <TabBar accessibilityLabel={t("branchFilter.allBranches")} selected={filterBranchId ?? ""} onSelect={(key) => setFilterBranchId(key || undefined)} items={[{ key: "", label: t("branchFilter.allBranches") }, ...(branches.data?.map((branch) => ({ key: branch.id, label: branch.name })) ?? [])]} />
     {users.isFetching && <ShimmerList variant="row" />}
-    {users.isError && <Button variant="secondary" onPress={() => users.refetch()}>{t("common.retry")}</Button>}
+    {users.isError && !users.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void users.refetch()} />}
     {canManage && !users.isFetching && eligibleUsers.map((user) => <View key={user.id} style={styles.user}>
-      <View><AppText variant="label">{user.displayName ?? user.email ?? t("common.noData")}</AppText><AppText tone="muted">{t(roleKey(user.role))} · {user.email}</AppText></View>
-      <Button variant="secondary" onPress={() => selectUser(user.userId!)}>{t("tenantUsers.changePassword")}</Button>
+      <Avatar name={user.displayName ?? user.email ?? "?"} />
+      <View style={styles.grow}><AppText variant="h6">{user.displayName ?? user.email ?? t("common.noData")}</AppText><AppText variant="bodySmall" tone="muted">{t(roleKey(user.role))} · {user.email}</AppText></View>
+      <Button variant="secondary" leadingIcon={<Ionicons name="key-outline" size={18} color={colors.primary} />} onPress={() => selectUser(user.userId!)}>{t("tenantUsers.changePassword")}</Button>
     </View>)}
-    {!users.isFetching && !users.isError && eligibleUsers.length === 0 && <AppText tone="muted">{t("tenantUsers.noStaff")}</AppText>}
+    {!users.isFetching && !users.isError && eligibleUsers.length === 0 && <EmptyState compact title={t("tenantUsers.noStaff")} />}
     <BottomSheet visible={Boolean(selectedUser)} onClose={() => { setSelectedUserId(null); setPassword(""); }} closeAccessibilityLabel={t("common.close")} title={selectedUser?.displayName ?? selectedUser?.email ?? undefined} negativeAction={{ label: t("common.cancel"), onPress: () => { setSelectedUserId(null); setPassword(""); } }} positiveAction={{ label: t("tenantUsers.savePassword"), loading: changePassword.isPending, disabled: !password, onPress: () => void submit() }}>
-      <PasswordInput placeholder={t("password.new")} value={password} onChangeText={setPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
+      <AppText variant="label">{t("password.new")}</AppText>
+      <PasswordInput value={password} onChangeText={setPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
     </BottomSheet>
   </AppScreen>;
 }
 
-function BranchTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}>
-    <AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText>
-  </Pressable>;
-}
 
 const styles = StyleSheet.create({
-  user: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint },
+  grow: { flex: 1, gap: 2 },
+  user: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   form: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  tabsScroll: { flexGrow: 0, flexShrink: 0 },
-  tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" },
-  activeTab: { borderBottomColor: colors.primary },
-  tabText: { color: colors.muted },
-  activeTabText: { color: colors.primary },
-  pressedTab: { opacity: 0.72 },
 });

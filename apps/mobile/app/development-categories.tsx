@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, ErrorState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
@@ -47,10 +47,10 @@ export default function DevelopmentCategoriesScreen() {
     try { await deleteCategory.mutateAsync(deletingCategory.id); closeDeleteSheet(); }
     catch (error) { notify(t("development.deleteCategoryFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
-  return <AppScreen showBottomNavigation={false} title={t("development.categories")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton accessibilityLabel={t("development.addCategory")} onPress={() => setAddVisible(true)}>+ {t("development.addCategory")}</FloatingActionButton>}>
+  return <AppScreen showBottomNavigation={false} title={t("development.categories")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton icon="add" accessibilityLabel={t("development.addCategory")} onPress={() => setAddVisible(true)}>{t("development.addCategory")}</FloatingActionButton>}>
     <AppText tone="muted">{t("development.categoriesSubtitle")}</AppText>
     {categories.isFetching && <ShimmerList />}
-    {categories.isError && <Button variant="secondary" onPress={() => categories.refetch()}>{t("common.retry")}</Button>}
+    {categories.isError && !categories.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void categories.refetch()} />}
     {!categories.isFetching && categories.data?.map((item) => <View key={item.id} style={styles.item}>
       <AppText variant="label">{item.name}</AppText>
       <AppText tone="muted">{item.system ? t("development.categoryBuiltIn") : item.active ? t("development.categoryActive") : t("development.categoryInactive")}</AppText>
@@ -60,8 +60,8 @@ export default function DevelopmentCategoriesScreen() {
         <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("development.deleteCategory")} disabled={deleteCategory.isPending} onPress={() => setDeletingCategory(item)} />
       </View>}
     </View>)}
-    <BottomSheet visible={addVisible} onClose={() => setAddVisible(false)} closeAccessibilityLabel={t("common.close")} title={t("development.addCategory")} negativeAction={{ label: t("common.cancel"), onPress: () => setAddVisible(false) }} positiveAction={{ label: t("common.save"), loading: createCategory.isPending, disabled: !name.trim(), onPress: () => void create() }}><TextInput style={styles.input} value={name} onChangeText={setName} maxLength={120} placeholder={t("development.categoryName")} /></BottomSheet>
-    <BottomSheet visible={Boolean(editingCategory)} onClose={closeEdit} closeAccessibilityLabel={t("common.close")} title={t("development.editCategory")} negativeAction={{ label: t("common.cancel"), onPress: closeEdit }} positiveAction={{ label: t("common.save"), loading: renameCategory.isPending, disabled: !name.trim(), onPress: () => void saveEdit() }}><TextInput style={styles.input} value={name} onChangeText={setName} maxLength={120} placeholder={t("development.categoryName")} /></BottomSheet>
+    <BottomSheet visible={addVisible} onClose={() => setAddVisible(false)} closeAccessibilityLabel={t("common.close")} title={t("development.addCategory")} negativeAction={{ label: t("common.cancel"), onPress: () => setAddVisible(false) }} positiveAction={{ label: t("common.save"), loading: createCategory.isPending, disabled: !name.trim(), onPress: () => void create() }}><TextField label={t("development.categoryName")} value={name} onChangeText={setName} maxLength={120} /></BottomSheet>
+    <BottomSheet visible={Boolean(editingCategory)} onClose={closeEdit} closeAccessibilityLabel={t("common.close")} title={t("development.editCategory")} negativeAction={{ label: t("common.cancel"), onPress: closeEdit }} positiveAction={{ label: t("common.save"), loading: renameCategory.isPending, disabled: !name.trim(), onPress: () => void saveEdit() }}><TextField label={t("development.categoryName")} value={name} onChangeText={setName} maxLength={120} /></BottomSheet>
     <BottomSheet visible={Boolean(deletingCategory)} onClose={closeDeleteSheet} closeAccessibilityLabel={t("common.close")} title={t("development.deleteCategory")} negativeAction={{ label: t("common.cancel"), onPress: closeDeleteSheet }} positiveAction={{ label: t("development.deleteCategory"), variant: "danger", loading: deleteCategory.isPending, onPress: () => void performDelete() }}><AppText tone="muted">{t("development.deleteCategoryConfirm")}</AppText></BottomSheet>
   </AppScreen>;
 }

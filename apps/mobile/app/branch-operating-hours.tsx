@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, BackButton, BottomSheet, Button, ShimmerList, ToggleSwitch, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, SectionHeader, ShimmerList, TextField, ToggleSwitch, colors, radius, spacing } from "@daycare/ui";
+import { notify } from "@/notify/notify";
 import type { BranchOperatingHour, OperatingDay, OvertimeRateTier } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -45,9 +46,9 @@ function BranchOperatingHoursScreenContent() {
   const updateTier = (index: number, update: Partial<OvertimeRateTier>) => setTiers((current) => current.map((tier, tierIndex) => tierIndex === index ? { ...tier, ...update } : tier));
   const applyOperatingHoursTemplate = (template: OperatingHoursTemplate) => setHours(operatingHoursTemplate(template));
   const submit = async () => {
-    if (!valid) return Alert.alert(t("overtime.invalidConfiguration"));
+    if (!valid) return notify(t("overtime.invalidConfiguration"), undefined, "warning");
     try { await save.mutateAsync(); setShowSaveConfirmation(true); }
-    catch (error) { Alert.alert(t("overtime.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    catch (error) { notify(t("overtime.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
 
   return <AppScreen showBottomNavigation={false} title={t("overtime.operatingHours")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
@@ -55,13 +56,13 @@ function BranchOperatingHoursScreenContent() {
     <View style={styles.row}>{operatingHoursTemplates.map((template) => { const timeRange = `${template.opensAt}–${template.closesAt}`; return <Button key={timeRange} variant="secondary" onPress={() => applyOperatingHoursTemplate(template)}>{t("overtime.applyTemplate", { timeRange })}</Button>; })}</View>
     {operatingHours.isLoading && <ShimmerList variant="row" count={7} />}
     {!operatingHours.isLoading && hours.map((hour) => <View key={hour.dayOfWeek} style={styles.card}>
-      <View style={styles.row}><AppText variant="h5">{t(`overtime.day.${hour.dayOfWeek}`)}</AppText><Button variant="secondary" onPress={() => updateHour(hour.dayOfWeek, { active: !hour.active })}>{hour.active ? t("overtime.active") : t("overtime.inactive")}</Button></View>
+      <ToggleSwitch label={t(`overtime.day.${hour.dayOfWeek}`)} description={hour.active ? t("overtime.active") : t("overtime.inactive")} accessibilityLabel={t(`overtime.day.${hour.dayOfWeek}`)} value={hour.active} onValueChange={(active) => updateHour(hour.dayOfWeek, { active })} />
       {hour.active && <View style={styles.row}><View style={styles.field}><AppText variant="caption" tone="muted">{t("overtime.opensAt")}</AppText><DatePicker mode="time" placeholder={t("overtime.opensAt")} value={hour.opensAt ?? ""} onChange={(opensAt) => updateHour(hour.dayOfWeek, { opensAt })} /></View><View style={styles.field}><AppText variant="caption" tone="muted">{t("overtime.closesAt")}</AppText><DatePicker mode="time" placeholder={t("overtime.closesAt")} value={hour.closesAt ?? ""} onChange={(closesAt) => updateHour(hour.dayOfWeek, { closesAt })} /></View></View>}
     </View>)}
-    <AppText variant="heading">{t("overtime.rateTiers")}</AppText><AppText tone="muted">{t("overtime.rateTiersDescription")}</AppText>
-    {tiers.map((tier, index) => <View key={index} style={styles.card}><AppText variant="label">{t("overtime.tier", { number: index + 1 })}</AppText><View style={styles.row}><View style={styles.field}><AppText variant="caption" tone="muted">{t("overtime.durationMinutes")}</AppText><TextInput style={styles.input} keyboardType="number-pad" value={String(tier.durationMinutes)} onChangeText={(value) => updateTier(index, { durationMinutes: Number(value) || 0 })} /></View><View style={styles.field}><AppText variant="caption" tone="muted">{t("overtime.amount")}</AppText><TextInput style={styles.input} keyboardType="decimal-pad" value={String(tier.amount)} onChangeText={(value) => updateTier(index, { amount: Number(value) || 0 })} /><AppText variant="caption" tone="muted">{formatCurrency(tier.amount)}</AppText></View></View><Button variant="danger" onPress={() => setTiers((current) => current.filter((_, tierIndex) => tierIndex !== index))}>{t("overtime.removeTier")}</Button></View>)}
+    <SectionHeader title={t("overtime.rateTiers")} description={t("overtime.rateTiersDescription")} />
+    {tiers.map((tier, index) => <View key={index} style={styles.card}><AppText variant="label">{t("overtime.tier", { number: index + 1 })}</AppText><View style={styles.row}><TextField containerStyle={styles.field} label={t("overtime.durationMinutes")} keyboardType="number-pad" value={String(tier.durationMinutes)} onChangeText={(value) => updateTier(index, { durationMinutes: Number(value) || 0 })} /><TextField containerStyle={styles.field} label={t("overtime.amount")} prefix="Rp" hint={formatCurrency(tier.amount)} keyboardType="decimal-pad" value={String(tier.amount)} onChangeText={(value) => updateTier(index, { amount: Number(value) || 0 })} /></View><Button variant="danger" onPress={() => setTiers((current) => current.filter((_, tierIndex) => tierIndex !== index))}>{t("overtime.removeTier")}</Button></View>)}
     <Button variant="secondary" onPress={() => setTiers((current) => [...current, { durationMinutes: 15, amount: 100000 }])}>{t("overtime.addTier")}</Button>
-    <View style={styles.card}><ToggleSwitch label={t("overtime.autoBilling")} description={t("overtime.autoBillingDescription")} value={autoOvertimeBillingEnabled} onValueChange={setAutoOvertimeBillingEnabled} disabled={tiers.length === 0} accessibilityLabel={t("overtime.autoBilling")} />{autoOvertimeBillingEnabled && <View style={styles.field}><AppText variant="caption" tone="muted">{t("overtime.graceMinutes")}</AppText><TextInput style={styles.input} keyboardType="number-pad" value={String(overtimeGraceMinutes)} onChangeText={(value) => setOvertimeGraceMinutes(Number(value) || 0)} /><AppText variant="caption" tone="muted">{t("overtime.graceMinutesDescription")}</AppText></View>}</View>
+    <View style={styles.card}><ToggleSwitch label={t("overtime.autoBilling")} description={t("overtime.autoBillingDescription")} value={autoOvertimeBillingEnabled} onValueChange={setAutoOvertimeBillingEnabled} disabled={tiers.length === 0} accessibilityLabel={t("overtime.autoBilling")} />{autoOvertimeBillingEnabled && <TextField label={t("overtime.graceMinutes")} hint={t("overtime.graceMinutesDescription")} keyboardType="number-pad" value={String(overtimeGraceMinutes)} onChangeText={(value) => setOvertimeGraceMinutes(Number(value) || 0)} />}</View>
     <Button loading={save.isPending} disabled={!valid || membership.active === false} onPress={() => void submit()}>{t("common.save")}</Button>
     <BottomSheet visible={showSaveConfirmation} onClose={() => setShowSaveConfirmation(false)} closeAccessibilityLabel={t("common.close")} title={t("overtime.saved")} positiveAction={{ label: t("common.ok"), onPress: () => router.back() }}>
       <AppText tone="muted">{t("overtime.saved")}</AppText>

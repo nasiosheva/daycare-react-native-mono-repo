@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { AppText, BackButton, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Banner, Chip, ErrorState, ShimmerList, spacing } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
@@ -39,16 +39,16 @@ export default function ChildAttendanceReportScreen() {
   const canExport = membership?.active === true && Boolean(branchId) && startsOn <= endsOn;
   return <AppScreen showBottomNavigation={false} title={t("childAttendanceReport.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("childAttendanceReport.description")}</AppText>
-    {!membership.active && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
+    {!membership.active && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
     <View style={styles.field}><AppText variant="label">{t("childAttendanceReport.branch")}</AppText>
       {branches.isLoading && <ShimmerList />}
-      {branches.isError && <Button variant="secondary" onPress={() => void branches.refetch()}>{t("common.retry")}</Button>}
-      {!branches.isLoading && !branches.isError && <View style={styles.branchOptions}>{activeBranches.map((branch) => <Button key={branch.id} variant={branchId === branch.id ? "primary" : "secondary"} onPress={() => setBranchId(branch.id)}>{branch.name}</Button>)}</View>}
-      {!branches.isLoading && !branches.isError && activeBranches.length === 0 && <AppText accessibilityRole="alert" tone="danger">{t("childAttendanceReport.noActiveBranches")}</AppText>}
+      {branches.isError && !branches.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void branches.refetch()} />}
+      {!branches.isLoading && !branches.isError && <View style={styles.branchOptions}>{activeBranches.map((branch) => <Chip key={branch.id} label={branch.name} selected={branchId === branch.id} onPress={() => setBranchId(branch.id)} />)}</View>}
+      {!branches.isLoading && !branches.isError && activeBranches.length === 0 && <Banner tone="danger" title={t("childAttendanceReport.noActiveBranches")} />}
     </View>
     <View style={styles.field}><AppText variant="label">{t("childAttendanceReport.startDate")}</AppText><DatePicker placeholder={t("childAttendanceReport.startDate")} value={startsOn} maximumDate={endsOn} onChange={(value) => { setStartsOn(value); if (value > endsOn) setEndsOn(value); }} /></View>
     <View style={styles.field}><AppText variant="label">{t("childAttendanceReport.endDate")}</AppText><DatePicker placeholder={t("childAttendanceReport.endDate")} value={endsOn} minimumDate={startsOn} maximumDate={today} onChange={setEndsOn} /></View>
-    {startsOn > endsOn && <AppText accessibilityRole="alert" tone="danger">{t("childAttendanceReport.invalidPeriod")}</AppText>}
+    {startsOn > endsOn && <Banner tone="danger" title={t("childAttendanceReport.invalidPeriod")} />}
     {membership.active && <DownloadReportActions disabled={!canExport} download={(format) => api.downloadChildAttendanceReport(format, { branchId: branchId!, startsOn, endsOn })} />}
     <AppText variant="caption" tone="muted">{t("childAttendanceReport.note")}</AppText>
   </AppScreen>;

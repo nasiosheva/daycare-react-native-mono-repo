@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, BackButton, BottomSheet, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Badge, BottomSheet, Card, EmptyState, InfoRow, NavigationCard, ShimmerList, TabBar } from "@daycare/ui";
+import { statusTone } from "@/ui/statusTone";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useEntitlements } from "@/booking/useBooking";
@@ -35,10 +36,7 @@ function ParentSubscriptionsScreenContent() {
   if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
 
   return <AppScreen showBottomNavigation={false} title={t("staffAdmin.subscriptionsTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
-      <BranchTab label={t("branchFilter.allBranches")} selected={!filterBranchId} onPress={() => setFilterBranchId(undefined)} />
-      {branches.data?.map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
-    </ScrollView>
+    <TabBar accessibilityLabel={t("branchFilter.allBranches")} selected={filterBranchId ?? ""} onSelect={(key) => setFilterBranchId(key || undefined)} items={[{ key: "", label: t("branchFilter.allBranches") }, ...(branches.data?.map((branch) => ({ key: branch.id, label: branch.name })) ?? [])]} />
     <NavigationCard accessibilityLabel={t("staffAdmin.subscriptionsTitle")} onPress={() => setSheetOpen(true)}>
       <AppText variant="h5">{t("staffAdmin.subscriptionsTitle")}</AppText>
       <AppText variant="bodySmall" tone="muted">{t("staffAdmin.subscriptionsSubtitle")}</AppText>
@@ -46,31 +44,12 @@ function ParentSubscriptionsScreenContent() {
     </NavigationCard>
     <BottomSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("staffAdmin.subscriptionsTitle")}>
       {entitlements.isFetching && <ShimmerList />}
-      {!entitlements.isFetching && entitlements.data?.map((entitlement) => <View key={entitlement.id} style={styles.card}>
-        <AppText variant="h5">{entitlement.childName}</AppText>
-        <AppText tone="muted">{t("staffAdmin.parent")}: {entitlement.parentName ?? entitlement.parentEmail ?? t("common.noData")}</AppText>
-        <AppText>{entitlement.planName} · {t(servicePlanTypeKey(entitlement.type))}</AppText>
-        <AppText variant="bodySmall">{entitlement.totalCredits == null ? t("staffAdmin.monthlyQuota") : t("staffAdmin.quota", { remaining: entitlement.remainingCredits ?? 0, total: entitlement.totalCredits })}</AppText>
-        <AppText variant="caption" tone="muted">{t(`status.${entitlement.status}` as Parameters<typeof t>[0])} · {t("staffAdmin.validUntil", { date: formatDate(entitlement.validUntil) })}</AppText>
-      </View>)}
-      {!entitlements.isFetching && entitlements.data?.length === 0 && <AppText tone="muted">{t("staffAdmin.noSubscriptions")}</AppText>}
+      {!entitlements.isFetching && entitlements.data?.map((entitlement) => <Card key={entitlement.id} title={entitlement.childName} subtitle={`${entitlement.planName} · ${t(servicePlanTypeKey(entitlement.type))}`} trailing={<Badge tone={statusTone(entitlement.status)} label={t(`status.${entitlement.status}` as Parameters<typeof t>[0])} />}>
+        <AppText variant="label">{entitlement.totalCredits == null ? t("staffAdmin.monthlyQuota") : t("staffAdmin.quota", { remaining: entitlement.remainingCredits ?? 0, total: entitlement.totalCredits })}</AppText>
+        <InfoRow icon="person-outline" label={t("staffAdmin.parent")} value={entitlement.parentName ?? entitlement.parentEmail ?? t("common.noData")} />
+        <AppText variant="caption" tone="muted">{t("staffAdmin.validUntil", { date: formatDate(entitlement.validUntil) })}</AppText>
+      </Card>)}
+      {!entitlements.isFetching && entitlements.data?.length === 0 && <EmptyState compact title={t("staffAdmin.noSubscriptions")} />}
     </BottomSheet>
   </AppScreen>;
 }
-
-function BranchTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}>
-    <AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText>
-  </Pressable>;
-}
-
-const styles = StyleSheet.create({
-  card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint },
-  tabsScroll: { flexGrow: 0, flexShrink: 0 },
-  tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" },
-  activeTab: { borderBottomColor: colors.primary },
-  tabText: { color: colors.muted },
-  activeTabText: { color: colors.primary },
-  pressedTab: { opacity: 0.72 },
-});

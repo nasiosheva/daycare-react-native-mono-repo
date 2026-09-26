@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Linking, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Linking, Pressable, StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, Button, MultiStepFormWizard, ShimmerList, colors, radius, spacing, type MultiStepFormWizardStep } from "@daycare/ui";
+import { AppText, BackButton, Badge, Banner, Button, EmptyState, ErrorState, InfoRow, MultiStepFormWizard, SearchField, ShimmerList, TextField, colors, radius, spacing, type MultiStepFormWizardStep } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -151,22 +152,17 @@ export default function ParentEnrollmentFormScreen() {
         <AppText variant="heading">{t("parentEnrollment.stepBranch")}</AppText>
         <AppText tone="muted">{t("parentEnrollment.selectBranchDescription")}</AppText>
       </View>
-      <TextInput
+      <SearchField
         accessibilityLabel={t("parentEnrollment.searchTenant")}
-        style={styles.input}
         autoCapitalize="none"
         placeholder={t("parentEnrollment.searchTenant")}
+        clearAccessibilityLabel={t("common.clearSearch")}
         value={search}
         onChangeText={setSearch}
       />
       {catalog.isLoading && <ShimmerList variant="row" />}
-      {catalog.isError && <View accessibilityRole="alert" style={styles.errorCard}>
-        <AppText tone="danger">{t("parentEnrollment.catalogLoadFailed")}</AppText>
-        <Button variant="secondary" onPress={() => void catalog.refetch()}>{t("common.retry")}</Button>
-      </View>}
-      {!catalog.isLoading && !catalog.isError && availableTenants.length === 0 && <View style={styles.emptyCard}>
-        <AppText tone="muted">{debouncedSearch ? t("common.noResults") : t("common.noData")}</AppText>
-      </View>}
+      {catalog.isError && !catalog.isFetching && <ErrorState compact title={t("parentEnrollment.catalogLoadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void catalog.refetch()} />}
+      {!catalog.isLoading && !catalog.isError && availableTenants.length === 0 && <EmptyState compact icon={debouncedSearch ? "search-outline" : "business-outline"} title={debouncedSearch ? t("common.noResults") : t("common.noData")} description={debouncedSearch ? t("parentEnrollment.searchHint") : undefined} />}
       {!catalog.isLoading && !catalog.isError && availableTenants.map((item) => {
         const missingBranch = item.branches.length === 0;
         const missingPlan = item.plans.length === 0;
@@ -176,7 +172,7 @@ export default function ParentEnrollmentFormScreen() {
         return <View key={item.organizationId} style={styles.tenantGroup}>
           <View style={styles.tenantHeading}>
             <AppText variant="h5">{item.organizationName}</AppText>
-            {!tenantAvailable && <AppText variant="caption" tone="muted">{unavailableReason}</AppText>}
+            {!tenantAvailable && <Badge tone="neutral" icon="information-circle-outline" label={unavailableReason} />}
           </View>
           {tenantAvailable && item.branches.map((branchItem) => {
             const selected = tenantId === item.organizationId && branchId === branchItem.id;
@@ -189,13 +185,14 @@ export default function ParentEnrollmentFormScreen() {
                 style={({ pressed }) => [styles.cardTap, pressed && styles.pressed]}
               >
                 <View style={styles.cardTitleRow}>
+                  <Ionicons name="business-outline" size={20} color={colors.primary} />
                   <AppText variant="label" style={styles.grow}>{branchItem.name}</AppText>
-                  <AppText variant="caption" style={styles.chooseLabel}>{t("parentEnrollment.chooseBranch")}</AppText>
+                  <View style={styles.chooseRow}><AppText variant="caption" style={styles.chooseLabel}>{t("parentEnrollment.chooseBranch")}</AppText><Ionicons name="chevron-forward" size={16} color={colors.primary} /></View>
                 </View>
-                {branchItem.fullAddress && <AppText tone="muted">{branchItem.fullAddress}</AppText>}
-                <AppText variant="caption" tone="muted">{t("parentEnrollment.startingFrom", { price: formatCurrency(startingPrice!) })}</AppText>
+                {branchItem.fullAddress && <AppText variant="bodySmall" tone="muted">{branchItem.fullAddress}</AppText>}
+                <AppText variant="label" style={styles.chooseLabel}>{t("parentEnrollment.startingFrom", { price: formatCurrency(startingPrice!) })}</AppText>
               </Pressable>
-              {branchItem.googleMapsUrl && <Button variant="ghost" onPress={() => void openMaps(branchItem.googleMapsUrl!)}>{t("branch.openGoogleMaps")}</Button>}
+              {branchItem.googleMapsUrl && <Button variant="ghost" leadingIcon={<Ionicons name="map-outline" size={18} color={colors.primary} />} onPress={() => void openMaps(branchItem.googleMapsUrl!)}>{t("branch.openGoogleMaps")}</Button>}
             </View>;
           })}
         </View>;
@@ -215,34 +212,27 @@ export default function ParentEnrollmentFormScreen() {
             <AppText variant="h5" style={styles.grow}>{t("parentEnrollment.childNumber", { number: index + 1 })}</AppText>
             {children.length > 1 && <Button variant="ghost" onPress={() => setChildren((current) => current.filter((_, itemIndex) => itemIndex !== index))}>{t("parentEnrollment.removeChild")}</Button>}
           </View>
-          <View style={styles.field}>
-            <AppText variant="label">{t("parentEnrollment.firstNameLabel")}</AppText>
-            <TextInput
-              accessibilityLabel={t("parentEnrollment.firstNameLabel")}
-              style={[styles.input, errors.firstName && styles.inputError]}
-              autoCapitalize="words"
-              maxLength={100}
-              placeholder={t("children.firstName")}
-              value={child.firstName}
-              onChangeText={(value) => updateChild(index, { firstName: capitalizeWords(value) })}
-            />
-            {errors.firstName && <AppText variant="caption" tone="danger">{t("parentEnrollment.firstNameRequired")}</AppText>}
-          </View>
-          <View style={styles.field}>
-            <AppText variant="label">{t("parentEnrollment.lastNameLabel")}</AppText>
-            <TextInput
-              accessibilityLabel={t("parentEnrollment.lastNameLabel")}
-              style={styles.input}
-              autoCapitalize="words"
-              maxLength={100}
-              placeholder={t("children.lastName")}
-              value={child.lastName ?? ""}
-              onChangeText={(value) => updateChild(index, { lastName: capitalizeWords(value) })}
-            />
-          </View>
+          <TextField
+            label={t("parentEnrollment.firstNameLabel")}
+            required
+            error={errors.firstName ? t("parentEnrollment.firstNameRequired") : undefined}
+            autoCapitalize="words"
+            maxLength={100}
+            placeholder={t("children.firstName")}
+            value={child.firstName}
+            onChangeText={(value) => updateChild(index, { firstName: capitalizeWords(value) })}
+          />
+          <TextField
+            label={t("parentEnrollment.lastNameLabel")}
+            autoCapitalize="words"
+            maxLength={100}
+            placeholder={t("children.lastName")}
+            value={child.lastName ?? ""}
+            onChangeText={(value) => updateChild(index, { lastName: capitalizeWords(value) })}
+          />
           <View style={styles.field}>
             <GenderPicker value={child.gender} onChange={(gender) => updateChild(index, { gender })} />
-            {errors.gender && <AppText variant="caption" tone="danger">{t("parentEnrollment.genderRequired")}</AppText>}
+            {errors.gender && <FieldError message={t("parentEnrollment.genderRequired")} />}
           </View>
           <View style={styles.field}>
             <AppText variant="label">{t("parentEnrollment.birthDateLabel")}</AppText>
@@ -252,12 +242,12 @@ export default function ParentEnrollmentFormScreen() {
               onChange={(dateOfBirth) => updateChild(index, { dateOfBirth })}
               maximumDate={today}
             />
-            {errors.dateOfBirth && <AppText variant="caption" tone="danger">{t(errors.dateOfBirth === "REQUIRED" ? "parentEnrollment.birthDateRequired" : "parentEnrollment.birthDateInvalid")}</AppText>}
+            {errors.dateOfBirth && <FieldError message={t(errors.dateOfBirth === "REQUIRED" ? "parentEnrollment.birthDateRequired" : "parentEnrollment.birthDateInvalid")} />}
           </View>
         </View>;
       })}
       {children.length < MAX_ENROLLMENT_CHILDREN
-        ? <Button variant="secondary" onPress={() => setChildren((current) => [...current, emptyEnrollmentChild()])}>{t("parentEnrollment.addChild")}</Button>
+        ? <Button variant="secondary" leadingIcon={<Ionicons name="person-add-outline" size={18} color={colors.primary} />} onPress={() => setChildren((current) => [...current, emptyEnrollmentChild()])}>{t("parentEnrollment.addChild")}</Button>
         : <AppText variant="caption" tone="muted">{t("parentEnrollment.maxChildren", { count: MAX_ENROLLMENT_CHILDREN })}</AppText>}
       <View style={styles.actions}>
         <Button style={styles.actionButton} variant="secondary" onPress={goBack}>{t("common.back")}</Button>
@@ -299,22 +289,19 @@ export default function ParentEnrollmentFormScreen() {
           <AppText variant="heading">{t("parentEnrollment.reviewTitle")}</AppText>
           <AppText tone="muted">{t("parentEnrollment.reviewDescription")}</AppText>
         </View>
-        <ReviewRow label={t("parentEnrollment.reviewInstitution")} value={tenant.organizationName} />
-        <ReviewRow label={t("parentEnrollment.reviewBranch")} value={branch.name} />
+        <InfoRow icon="business-outline" label={t("parentEnrollment.reviewInstitution")} value={tenant.organizationName} />
+        <InfoRow icon="location-outline" label={t("parentEnrollment.reviewBranch")} value={branch.name} />
         {isTransfer
-          ? <ReviewRow label={t("parentEnrollment.reviewChild")} value={transferChildName ?? ""} />
+          ? <InfoRow icon="happy-outline" label={t("parentEnrollment.reviewChild")} value={transferChildName ?? ""} />
           : <View style={styles.reviewGroup}>
             <AppText variant="caption" tone="muted">{t("parentEnrollment.childrenCount", { count: children.length })}</AppText>
             {children.map((child, index) => <AppText key={`${child.firstName}-${index}`} variant="label">{index + 1}. {child.firstName.trim()} {child.lastName?.trim()}</AppText>)}
           </View>}
-        <ReviewRow label={t("parentEnrollment.reviewPlan")} value={`${plan.name} · ${formatCurrency(plan.price)}`} />
-        <View style={styles.noticeCard}>
-          <AppText variant="label">{t("parentEnrollment.pendingApprovalTitle")}</AppText>
-          <AppText tone="muted">{t(isTransfer ? "parentEnrollment.transferPendingApprovalNotice" : "parentEnrollment.pendingApprovalNotice")}</AppText>
-        </View>
+        <InfoRow icon="pricetags-outline" label={t("parentEnrollment.reviewPlan")} value={`${plan.name} · ${formatCurrency(plan.price)}`} />
+        <Banner tone="info" title={t("parentEnrollment.pendingApprovalTitle")} message={t(isTransfer ? "parentEnrollment.transferPendingApprovalNotice" : "parentEnrollment.pendingApprovalNotice")} />
       </View>}
 
-      {error && <View accessibilityRole="alert" style={styles.errorCard}><AppText tone="danger">{error}</AppText></View>}
+      {error && <Banner tone="danger" title={t("parentEnrollment.failed")} message={error !== t("parentEnrollment.failed") ? error : undefined} />}
       <View style={styles.actions}>
         <Button style={styles.actionButton} variant="secondary" onPress={goBack}>{t("common.back")}</Button>
         <Button style={styles.actionButton} loading={checkout.isPending} disabled={!plan} onPress={() => checkout.mutate()}>{t("parentEnrollment.submitApplication")}</Button>
@@ -332,11 +319,8 @@ function SelectedBranchSummary({ organizationName, branchName, address }: { orga
   </View>;
 }
 
-function ReviewRow({ label, value }: { label: string; value: string }) {
-  return <View style={styles.reviewRow}>
-    <AppText variant="caption" tone="muted">{label}</AppText>
-    <AppText variant="label">{value}</AppText>
-  </View>;
+function FieldError({ message }: { message: string }) {
+  return <View style={styles.fieldError}><Ionicons name="alert-circle" size={14} color={colors.danger} /><AppText variant="caption" tone="danger">{message}</AppText></View>;
 }
 
 const styles = StyleSheet.create({
@@ -344,8 +328,8 @@ const styles = StyleSheet.create({
   section: { gap: spacing.md },
   sectionHeading: { gap: spacing.xs },
   field: { gap: spacing.xs },
-  input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.surface, color: colors.text },
-  inputError: { borderColor: colors.danger },
+  fieldError: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  chooseRow: { flexDirection: "row", alignItems: "center", gap: 2 },
   tenantGroup: { gap: spacing.sm },
   tenantHeading: { gap: spacing.xs, paddingHorizontal: spacing.xs },
   branchCard: { overflow: "hidden", borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
@@ -355,8 +339,6 @@ const styles = StyleSheet.create({
   chooseLabel: { color: colors.primary },
   selectedCard: { borderColor: colors.primary, backgroundColor: colors.surfaceTint },
   pressed: { opacity: 0.76 },
-  emptyCard: { padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface },
-  errorCard: { gap: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: colors.danger, borderRadius: radius.md, backgroundColor: colors.dangerSoft },
   selectionSummary: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.accentSoft },
   childCard: { gap: spacing.md, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface },
   planList: { gap: spacing.sm },
@@ -365,9 +347,7 @@ const styles = StyleSheet.create({
   radioSelected: { borderColor: colors.primary },
   radioDot: { width: 10, height: 10, borderRadius: radius.pill, backgroundColor: colors.primary },
   reviewCard: { gap: spacing.md, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface },
-  reviewRow: { gap: spacing.xs, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
   reviewGroup: { gap: spacing.xs },
-  noticeCard: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.accentSoft },
   actions: { flexDirection: "row", gap: spacing.sm },
   actionButton: { flex: 1 },
 });

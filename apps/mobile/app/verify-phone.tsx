@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
-import { AppText, BackButton, Button, colors, radius, Screen, spacing } from "@daycare/ui";
+import { AppText, BackButton, Button, Screen, spacing, TextField } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -36,21 +36,24 @@ export default function VerifyPhoneScreen() {
   };
   return <Screen title={t("auth.verifyCode")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.container}>
     <AppText tone="muted">{t(codeSent ? "auth.otpDescription" : "auth.phoneDescription")}</AppText>
-    <TextInput
-      style={styles.input}
+    <TextField
+      label={t("auth.phone")}
+      hint={codeSent ? undefined : t("auth.phoneFormatHint")}
+      leadingIcon="call-outline"
       placeholder="+628..."
       keyboardType="phone-pad"
       autoCapitalize="none"
+      autoComplete="tel"
       value={phoneNumber}
       onChangeText={setPhoneNumber}
       editable={!codeSent}
     />
     {!codeSent && <Button loading={sending} disabled={!phoneNumber.trim()} onPress={() => void sendCode()}>{t("auth.sendCode")}</Button>}
     {codeSent && <>
-      <TextInput style={styles.input} value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} placeholder={t("auth.otpCode")} />
+      <TextField label={t("auth.otpCode")} leadingIcon="keypad-outline" value={code} onChangeText={setCode} keyboardType="number-pad" autoComplete="one-time-code" textContentType="oneTimeCode" maxLength={6} />
       <Button loading={loading} disabled={!code.trim()} onPress={() => void submit()}>{t("auth.verifyCode")}</Button>
       <Button variant="secondary" loading={sending} onPress={() => void sendCode()}>{t("auth.resendCode")}</Button>
     </>}
   </View></Screen>;
 }
-const styles = StyleSheet.create({ container: { width: "100%", maxWidth: 420, alignSelf: "center", gap: spacing.md, paddingTop: 72 }, input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 12, backgroundColor: colors.surface } });
+const styles = StyleSheet.create({ container: { width: "100%", maxWidth: 420, alignSelf: "center", gap: spacing.md, paddingTop: 72 } });

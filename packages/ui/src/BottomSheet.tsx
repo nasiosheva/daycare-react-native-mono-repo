@@ -67,7 +67,7 @@ export function BottomSheet({ visible, onClose, title, children, negativeAction,
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(61, 38, 50, 0.42)" },
+  overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
   sheet: { maxHeight: "88%", paddingBottom: spacing.lg, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, backgroundColor: colors.surface },
   dragArea: { alignItems: "center", paddingTop: spacing.sm, paddingBottom: spacing.xs },
   handle: { width: 42, height: 4, borderRadius: radius.pill, backgroundColor: colors.border },

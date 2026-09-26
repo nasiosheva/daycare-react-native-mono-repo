@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Image, StyleSheet, TextInput, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { StaffLeaveRequest } from "@daycare/api-client";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Avatar, BackButton, Badge, Banner, BottomSheet, Button, EmptyState, ErrorState, NavigationCard, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
@@ -37,17 +37,17 @@ export default function StaffLeaveApprovalsScreen() {
 
   return <AppScreen showBottomNavigation={false} title={t("staffLeave.approvalsTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("staffLeave.approvalsDescription")}</AppText>
-    {membership.active === false && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
+    {membership.active === false && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
     {requests.isLoading && <ShimmerList />}
-    {requests.isError && <Button variant="secondary" onPress={() => requests.refetch()}>{t("common.retry")}</Button>}
-    {!requests.isLoading && !requests.isError && requests.data?.map((request) => <NavigationCard key={request.id} accessibilityLabel={t("staffLeave.review")} onPress={() => openRequest(request)}><AppText variant="h5">{request.requesterName}</AppText><AppText>{t(typeKey(request.type))}</AppText><AppText tone="muted">{formatDate(request.startsOn)} – {formatDate(request.endsOn)}</AppText><AppText numberOfLines={2} tone="muted">{request.reason}</AppText></NavigationCard>)}
-    {!requests.isLoading && !requests.isError && requests.data?.length === 0 && <AppText tone="muted">{t("staffLeave.noPending")}</AppText>}
+    {requests.isError && !requests.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void requests.refetch()} />}
+    {!requests.isLoading && !requests.isError && requests.data?.map((request) => <NavigationCard key={request.id} accessibilityLabel={`${t("staffLeave.review")}: ${request.requesterName}`} onPress={() => openRequest(request)} leading={<Avatar name={request.requesterName} />}><AppText variant="h6">{request.requesterName}</AppText><Badge tone="info" icon="airplane-outline" label={t(typeKey(request.type))} /><AppText tone="muted">{formatDate(request.startsOn)} – {formatDate(request.endsOn)}</AppText><AppText numberOfLines={2} tone="muted">{request.reason}</AppText></NavigationCard>)}
+    {!requests.isLoading && !requests.isError && requests.data?.length === 0 && <EmptyState compact title={t("staffLeave.noPending")} />}
 
     <BottomSheet visible={selected !== null} onClose={() => setSelected(null)} closeAccessibilityLabel={t("common.close")} title={t("staffLeave.review")}>
-      {decisionError && <AppText accessibilityRole="alert" tone="danger">{decisionError}</AppText>}
+      {decisionError && <Banner tone="danger" title={decisionError} />}
       {selected && <View style={styles.summary}><AppText variant="heading">{selected.requesterName}</AppText><AppText>{t(typeKey(selected.type))}</AppText><AppText tone="muted">{formatDate(selected.startsOn)} – {formatDate(selected.endsOn)}</AppText><AppText>{selected.reason}</AppText></View>}
-      {selected?.hasEvidence && <View style={styles.field}>{evidence.isLoading && <AppText tone="muted">{t("staffLeave.evidenceLoading")}</AppText>}{evidence.isError && <AppText accessibilityRole="alert" tone="danger">{t("staffLeave.evidenceLoadFailed")}</AppText>}{evidence.data && <Image source={{ uri: `data:${evidence.data.contentType};base64,${evidence.data.dataBase64}` }} style={styles.preview} resizeMode="contain" />}</View>}
-      {membership.active !== false && <><View style={styles.field}><AppText variant="label">{t("staffLeave.rejectReason")}</AppText><TextInput style={styles.input} multiline maxLength={2_000} placeholder={t("staffLeave.rejectReason")} value={rejectionReason} onChangeText={setRejectionReason} /></View><View style={styles.actions}><Button style={styles.action} loading={decide.isPending} onPress={() => void submitDecision(true)}>{t("staffLeave.approve")}</Button><Button style={styles.action} variant="danger" loading={decide.isPending} onPress={() => void submitDecision(false)}>{t("staffLeave.reject")}</Button></View></>}
+      {selected?.hasEvidence && <View style={styles.field}>{evidence.isLoading && <AppText tone="muted">{t("staffLeave.evidenceLoading")}</AppText>}{evidence.isError && <Banner tone="danger" title={t("staffLeave.evidenceLoadFailed")} />}{evidence.data && <Image source={{ uri: `data:${evidence.data.contentType};base64,${evidence.data.dataBase64}` }} style={styles.preview} resizeMode="contain" />}</View>}
+      {membership.active !== false && <><View style={styles.field}><TextField label={t("staffLeave.rejectReason")} multiline maxLength={2_000} value={rejectionReason} onChangeText={setRejectionReason} /></View><View style={styles.actions}><Button style={styles.action} loading={decide.isPending} onPress={() => void submitDecision(true)}>{t("staffLeave.approve")}</Button><Button style={styles.action} variant="danger" loading={decide.isPending} onPress={() => void submitDecision(false)}>{t("staffLeave.reject")}</Button></View></>}
     </BottomSheet>
   </AppScreen>;
 }

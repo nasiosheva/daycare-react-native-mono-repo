@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, EmptyState, NavigationCard, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { notify } from "@/notify/notify";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -32,11 +33,11 @@ export default function AcademicYearsScreen() {
   const close = () => { setVisible(false); setName(""); setStart(""); setEnd(""); };
   const openAdd = () => { setListOpen(false); setVisible(true); };
   const save = async () => {
-    if (!name.trim() || !start || !end) return Alert.alert(t("academic.yearRequired"));
+    if (!name.trim() || !start || !end) return notify(t("academic.yearRequired"), undefined, "warning");
     try {
       await createPeriod.mutateAsync({ name: name.trim(), startsOn: start, endsOn: end });
       close();
-    } catch (error) { Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    } catch (error) { notify(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
 
   return <AppScreen showBottomNavigation={false} title={t("academic.year")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
@@ -53,18 +54,19 @@ export default function AcademicYearsScreen() {
         <AppText variant="label">{period.name}</AppText>
         <AppText tone="muted">{t("academic.range", { start: period.startsOn, end: period.endsOn })}</AppText>
       </View>)}
-      {!periods.isFetching && periods.data?.length === 0 && <AppText tone="muted">{t("academic.noYears")}</AppText>}
+      {!periods.isFetching && periods.data?.length === 0 && <EmptyState compact title={t("academic.noYears")} />}
     </BottomSheet>
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t("academic.addYear")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t("academic.addYear"), loading: createPeriod.isPending, onPress: () => void save() }}>
-      <TextInput style={styles.input} placeholder={t("academic.yearExample")} value={name} onChangeText={setName} />
-      <DatePicker placeholder={t("academic.start")} value={start} onChange={setStart} maximumDate={end || undefined} />
-      <DatePicker placeholder={t("academic.end")} value={end} onChange={setEnd} minimumDate={start || undefined} />
+      <TextField label={t("academic.year")} required placeholder={t("academic.yearExample")} value={name} onChangeText={setName} />
+      <View style={styles.field}><AppText variant="label">{t("academic.start")}</AppText><DatePicker placeholder={t("academic.start")} value={start} onChange={setStart} maximumDate={end || undefined} /></View>
+      <View style={styles.field}><AppText variant="label">{t("academic.end")}</AppText><DatePicker placeholder={t("academic.end")} value={end} onChange={setEnd} minimumDate={start || undefined} /></View>
     </BottomSheet>
   </AppScreen>;
 }
 
 const styles = StyleSheet.create({
+  field: { gap: spacing.xs },
   card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTint },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
 });

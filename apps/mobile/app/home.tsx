@@ -1,10 +1,10 @@
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useQueries, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
-import { AppText, Button, FloatingActionButton, ShimmerList, colors, NavigationCard, radius, shadows, spacing } from "@daycare/ui";
+import { AppText, Badge, Button, EmptyState, ErrorState, FloatingActionButton, MenuItem, MenuSection, NavigationCard, SearchField, SectionHeader, ShimmerList, colors, radius, shadows, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren, useParentChildrenAcrossTenants } from "@/attendance/useAttendance";
 import { useBookings, useEntitlements, useInvoices } from "@/booking/useBooking";
@@ -101,7 +101,7 @@ function StaffHome({ displayName, organizationName, managedChildren, tasksByChil
   const homeRefresh = useHomeRefresh([["children", organizationId], ["development-entries", organizationId], ["child-goals", organizationId], ["notifications", organizationId]]);
   return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
     <View style={styles.staffToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.STAFF")}</AppText></View><NotificationBellButton /><Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable></View>
-    <AppText variant="heading">{t("home.managedChildren")}</AppText>
+    <SectionHeader title={t("home.managedChildren")} />
     {managedChildren.isFetching && <ShimmerList variant="tile" />}
     {!managedChildren.isFetching && managedChildren.data?.map((child) => {
       const tasks = tasksByChildId.get(child.id);
@@ -110,7 +110,8 @@ function StaffHome({ displayName, organizationName, managedChildren, tasksByChil
         {!tasks || tasks.isLoading ? <AppText tone="muted">{t("home.dailyStatusLoading")}</AppText> : tasks.isError ? <AppText tone="danger">{t("home.dailyStatusUnavailable")}</AppText> : <><AppText tone={tasks.developmentRecorded ? "muted" : "danger"}>{t(tasks.developmentRecorded ? "home.dailyDevelopmentDone" : "home.dailyDevelopmentPending")}</AppText>{tasks.activeGoalCount === 0 ? <AppText variant="caption" tone="muted">{t("home.noActiveGoals")}</AppText> : tasks.pendingGoalNames.length > 0 ? <AppText variant="caption" tone="danger">{t("home.dailyGoalsPending", { names: tasks.pendingGoalNames.join(", ") })}</AppText> : <AppText variant="caption" tone="muted">{t("home.dailyGoalsDone")}</AppText>}</>}
       </NavigationCard>;
     })}
-    {!managedChildren.isFetching && managedChildren.data?.length === 0 && <AppText tone="muted">{t("home.noManagedChildren")}</AppText>}
+    {managedChildren.isError && !managedChildren.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void managedChildren.refetch()} />}
+    {!managedChildren.isFetching && managedChildren.data?.length === 0 && <EmptyState icon="happy-outline" title={t("home.noManagedChildren")} description={t("home.noManagedChildrenDescription")} />}
   </View></AppScreen>;
 }
 
@@ -148,7 +149,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
     <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.PARENT")}</AppText></View><NotificationBellButton /><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
     <SummarySection title={t("home.parentChildren")}>
       {children.isFetching && <ShimmerList />}
-      {children.isError && <Button variant="secondary" onPress={() => children.refetch()}>{t("common.retry")}</Button>}
+      {children.isError && !children.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void children.refetch()} />}
       {!childrenUnavailable && summary.children.map(({ child, activeEntitlements }) => {
         const isCheckedIn = Boolean(child.todayCheckedInAt) && !child.todayCheckedOutAt;
         const statusKey = child.todayCheckedOutAt ? "attendance.statusCheckedOut" : child.todayCheckedInAt ? "attendance.statusCheckedIn" : "attendance.statusNotYet";
@@ -159,10 +160,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
             <View style={styles.childCardHeading}>
               <AppText variant="h5">{child.fullName}</AppText>
               {showsTenantLabel && <AppText variant="caption" tone="muted">{child.organizationName}</AppText>}
-              <View style={[styles.statusPill, isCheckedIn ? styles.statusPillActive : styles.statusPillNeutral]}>
-                <Ionicons name={isCheckedIn ? "checkmark-circle" : child.todayCheckedOutAt ? "home-outline" : "time-outline"} size={12} color={colors.text} />
-                <AppText variant="caption">{t(statusKey)}</AppText>
-              </View>
+              <Badge tone={isCheckedIn ? "success" : "neutral"} icon={isCheckedIn ? "checkmark-circle" : child.todayCheckedOutAt ? "home-outline" : "time-outline"} label={t(statusKey)} />
             </View>
           </View>
           {hasDaycareOperations && isActiveTenant && (servicesUnavailable ? <AppText variant="caption" tone="muted">{t("home.parentSummaryLoading")}</AppText> : <View style={styles.entitlementsRow}>
@@ -184,27 +182,11 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
           </View>
         </View>;
       })}
-      {!childrenUnavailable && summary.children.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
+      {!childrenUnavailable && summary.children.length === 0 && <EmptyState icon="happy-outline" title={t("children.empty")} description={t("parentEnrollment.startDescription")} action={{ label: t("parentEnrollment.newTenant"), onPress: () => router.push("/parent-enrollment-form") }} />}
     </SummarySection>
-    <NavigationCard accessibilityLabel={t("parentEnrollment.newTenant")} onPress={() => router.push("/parent-enrollment-form")}>
-      <View style={styles.navigationCardRow}><Ionicons name="add-circle-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("parentEnrollment.newTenant")}</AppText></View>
-      <AppText tone="muted">{t("parentEnrollment.startDescription")}</AppText>
-    </NavigationCard>
-    {hasPrivateTutoring && <NavigationCard accessibilityLabel={t("privateTutoring.menu")} onPress={() => router.push("/private-tutoring")}>
-      <View style={styles.navigationCardRow}><Ionicons name="school-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("privateTutoring.menu")}</AppText></View>
-      <AppText tone="muted">{t("privateTutoring.description")}</AppText>
-    </NavigationCard>}
-    {Boolean(programsSummary.data?.activePrograms) && programsSummary.data!.childIds[0] && <NavigationCard accessibilityLabel={t("children.programs")} onPress={() => router.push({ pathname: "/parent-child-profile", params: { childId: programsSummary.data!.childIds[0] } })}>
-      <View style={styles.navigationCardRow}><Ionicons name="heart-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("children.programs")}</AppText></View>
-      <AppText tone="muted">{t("children.programsSummary", { count: programsSummary.data!.activePrograms })}</AppText>
-    </NavigationCard>}
-    <NavigationCard accessibilityLabel={t("tenantFeedback.title")} onPress={() => router.push("/tenant-feedback" as never)}>
-      <View style={styles.navigationCardRow}><Ionicons name="chatbox-ellipses-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("tenantFeedback.title")}</AppText></View>
-      <AppText tone="muted">{t("tenantFeedback.description")}</AppText>
-    </NavigationCard>
     <SummarySection title={t("home.parentPayments")}>
       {invoices.isFetching && <ShimmerList />}
-      {invoices.isError && <Button variant="secondary" onPress={() => invoices.refetch()}>{t("common.retry")}</Button>}
+      {invoices.isError && !invoices.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void invoices.refetch()} />}
       {!paymentsUnavailable && summary.actionableInvoices.map((invoice) => {
         const isPending = invoice.status === "PENDING";
         return <View key={invoice.id} style={styles.invoiceCard}>
@@ -213,9 +195,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
               <AppText variant="heading">{invoice.invoiceNumber}</AppText>
               <AppText tone="muted" variant="caption">{invoice.childName}</AppText>
             </View>
-            <View style={[styles.statusPill, isPending ? styles.statusPillPending : styles.statusPillNeutral]}>
-              <AppText variant="caption" style={isPending ? styles.statusPillPendingText : undefined}>{t(`status.${invoice.status}` as Parameters<typeof t>[0])}</AppText>
-            </View>
+            <Badge tone={isPending ? "warning" : "info"} label={t(`status.${invoice.status}` as Parameters<typeof t>[0])} />
           </View>
           <View style={styles.invoiceRow}>
             <AppText tone="muted">{invoice.description ?? t(invoiceSourceKey(invoice.source))}</AppText>
@@ -228,12 +208,15 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations }: { d
           {isPending ? <Button leadingIcon={<Ionicons name="card-outline" size={16} color={colors.onPrimary} />} onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: invoice.id, ...(organizationId ? { organizationId } : {}) } })}>{t("parentEnrollment.pay")}</Button> : <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
         </View>;
       })}
-      {!paymentsUnavailable && summary.actionableInvoices.length === 0 && <AppText tone="muted">{t("home.noActionablePayments")}</AppText>}
+      {!paymentsUnavailable && summary.actionableInvoices.length === 0 && <EmptyState compact icon="checkmark-done-outline" title={t("home.noActionablePayments")} />}
     </SummarySection>
-    <NavigationCard accessibilityLabel={t("paymentHistory.title")} onPress={() => router.push("/payment-history" as never)}>
-      <View style={styles.navigationCardRow}><Ionicons name="receipt-outline" size={20} color={colors.primary} /><AppText variant="h5">{t("paymentHistory.title")}</AppText></View>
-      <AppText tone="muted">{t("paymentHistory.description")}</AppText>
-    </NavigationCard>
+    <MenuSection title={t("home.quickActions")}>
+      <MenuItem icon="receipt-outline" title={t("paymentHistory.title")} description={t("paymentHistory.description")} onPress={() => router.push("/payment-history" as never)} />
+      {Boolean(programsSummary.data?.activePrograms) && programsSummary.data!.childIds[0] && <MenuItem icon="heart-outline" title={t("children.programs")} description={t("children.programsSummary", { count: programsSummary.data!.activePrograms })} onPress={() => router.push({ pathname: "/parent-child-profile", params: { childId: programsSummary.data!.childIds[0] } })} />}
+      {hasPrivateTutoring && <MenuItem icon="school-outline" title={t("privateTutoring.menu")} description={t("privateTutoring.description")} onPress={() => router.push("/private-tutoring")} />}
+      <MenuItem icon="add-circle-outline" title={t("parentEnrollment.newTenant")} description={t("parentEnrollment.startDescription")} onPress={() => router.push("/parent-enrollment-form")} />
+      <MenuItem icon="chatbox-ellipses-outline" title={t("tenantFeedback.title")} description={t("tenantFeedback.description")} onPress={() => router.push("/tenant-feedback" as never)} />
+    </MenuSection>
   </View></AppScreen>;
 }
 
@@ -248,7 +231,7 @@ function ParentOnboardingHome({ displayName }: { displayName: string }) {
     <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{t("parentEnrollment.onboardingSubtitle")}</AppText></View><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
     {next?.status === "PENDING_APPROVAL" && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText tone="muted">{t("parentEnrollment.pendingApproval")}</AppText><Button variant="secondary" onPress={() => router.push("/parent-enrollment")}>{t("parentEnrollment.viewApplication")}</Button></View>}
     {next?.invoiceStatus === "PENDING" && next.invoiceId && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText>{next.planName} · {formatCurrency(next.totalAmount)}</AppText><AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText><Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: next.invoiceId!, organizationId: next.organizationId } })}>{t("parentEnrollment.pay")}</Button></View>}
-    {!next && <NavigationCard accessibilityLabel={t("parentEnrollment.newTenant")} onPress={() => router.push("/parent-enrollment-form")}><AppText variant="h5">{t("parentEnrollment.newTenant")}</AppText><AppText tone="muted">{t("parentEnrollment.startDescription")}</AppText></NavigationCard>}
+    {!next && <MenuItem icon="add-circle-outline" title={t("parentEnrollment.newTenant")} description={t("parentEnrollment.startDescription")} onPress={() => router.push("/parent-enrollment-form")} />}
   </View></AppScreen>;
 }
 
@@ -303,7 +286,7 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
         <Ionicons name="person-circle-outline" size={32} color={colors.primary} />
       </Pressable>
     </View>
-    {readiness.data?.status === "NEEDS_ATTENTION" && <NavigationCard accessibilityLabel={t("home.setupAttentionOpen")} onPress={() => router.push("/staff-admin")}>
+    {readiness.data?.status === "NEEDS_ATTENTION" && <NavigationCard accessibilityLabel={t("home.setupAttentionOpen")} onPress={() => router.push("/staff-admin")} style={styles.attentionCard} leading={<Ionicons name="alert-circle" size={28} color={colors.danger} />}>
       <AppText variant="h5" tone="danger">{t("home.setupAttentionTitle")}</AppText>
       <AppText variant="bodySmall" tone="muted">{t("home.setupAttentionDescription")}</AppText>
       {readiness.data.issues.map((issue) => <AppText key={issue} variant="caption" tone="danger">• {t(tenantReadinessIssueKey(issue))}</AppText>)}
@@ -323,8 +306,8 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
       <SummaryCard label={t("home.programFeedback")} value={programsSummary.isFetching || programsSummary.isError ? undefined : programsSummary.data?.feedbackCount} onPress={() => router.push("/children")} />
     </SummarySection>
 
-    <AppText variant="heading">{t("home.branchSummary")}</AppText>
-    <TextInput style={styles.input} placeholder={t("home.branchSearchPlaceholder")} value={branchSearch} onChangeText={setBranchSearch} />
+    <SectionHeader title={t("home.branchSummary")} />
+    <SearchField accessibilityLabel={t("home.branchSearchPlaceholder")} placeholder={t("home.branchSearchPlaceholder")} clearAccessibilityLabel={t("common.clearSearch")} value={branchSearch} onChangeText={setBranchSearch} />
     {(branches.isFetching || capacities.isFetching || children.isFetching || users.isFetching || pendingBookings.isFetching || pendingEnrollments.isFetching || invoices.isFetching) && <ShimmerList />}
     {!branches.isFetching && !capacities.isFetching && !children.isFetching && !users.isFetching && !pendingBookings.isFetching && !pendingEnrollments.isFetching && !invoices.isFetching && branchSummaries.map((item) => <Pressable key={item.branch.id} accessibilityRole="button" accessibilityLabel={item.branch.name} onPress={() => router.push("/branches")} style={({ pressed }) => [styles.branchCard, pressed && styles.branchCardPressed]}>
       <AppText variant="heading">{item.branch.name}</AppText>
@@ -332,12 +315,12 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
       <AppText tone="muted">{t("home.branchStaffSummary", { count: item.staffCount })}</AppText>
       {hasDaycareOperations && <><AppText tone={item.pendingApprovals > 0 ? "danger" : "muted"}>{t("home.branchApprovalsSummary", { count: item.pendingApprovals })}</AppText><AppText tone={item.pendingInvoices > 0 ? "danger" : "muted"}>{t("home.branchInvoicesSummary", { count: item.pendingInvoices })}</AppText></>}
     </Pressable>)}
-    {!branches.isFetching && activeBranches.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+    {!branches.isFetching && activeBranches.length === 0 && <EmptyState icon="business-outline" title={t("common.noData")} description={debouncedBranchSearch ? undefined : t("home.noBranchesDescription")} />}
   </View></AppScreen>;
 }
 
 function SummarySection({ title, children }: { title: string; children: ReactNode }) {
-  return <View style={styles.summarySection}><AppText variant="heading">{title}</AppText><View style={styles.summaryGrid}>{children}</View></View>;
+  return <View style={styles.summarySection}><SectionHeader title={title} /><View style={styles.summaryGrid}>{children}</View></View>;
 }
 
 function SummaryCard({ label, value, onPress }: { label: string; value?: number; onPress: () => void }) {
@@ -374,7 +357,7 @@ function PlatformAdminHome() {
   const pendingTenants = tenants.data?.filter((tenant) => tenant.subscriptionStatus === "PENDING_PAYMENT") ?? [];
   const homeRefresh = useHomeRefresh([["platform-tenants"], ["platform-tenant-readiness"]]);
 
-  return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()} floatingAction={<FloatingActionButton accessibilityLabel={t("home.addTenant")} onPress={() => router.push("/add-tenant")}>+ {t("home.addTenant")}</FloatingActionButton>}><View style={styles.content}>
+  return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()} floatingAction={<FloatingActionButton icon="add" accessibilityLabel={t("home.addTenant")} onPress={() => router.push("/add-tenant")}>{t("home.addTenant")}</FloatingActionButton>}><View style={styles.content}>
     <View style={styles.staffAdminToolbar}>
       <View style={styles.staffAdminHeading}>
         <AppText variant="title">{t("home.platformAdmin")}</AppText>
@@ -385,7 +368,7 @@ function PlatformAdminHome() {
       </Pressable>
     </View>
     {tenants.isFetching && <ShimmerList />}
-    {tenants.isError && <AppText tone="danger">{t("home.tenantsError")}</AppText>}
+    {tenants.isError && !tenants.isFetching && <ErrorState compact title={t("home.tenantsError")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void tenants.refetch()} />}
     <NavigationCard accessibilityLabel={t("tenantReadiness.open")} onPress={() => router.push("/tenant-readiness")}>
       <AppText variant="h5">{t("tenantReadiness.menu")}</AppText>
       <AppText variant="bodySmall" tone="muted">{t("tenantReadiness.menuDescription")}</AppText>
@@ -400,8 +383,8 @@ function PlatformAdminHome() {
 
 function TenantSection({ title, tenants, emptyMessage, formatCurrency, t }: { title: string; tenants: { id: string; name: string; subscriptionPlan: "STARTER" | "STANDARD" | "PREMIUM" | null; payments: { amount: number; status: "PENDING" | "PAID" | "VOID" }[] }[]; emptyMessage: string; formatCurrency: (value: number) => string; t: ReturnType<typeof useI18n>["t"] }) {
   return <View style={styles.section}>
-    <AppText variant="heading">{title}</AppText>
-    {tenants.length === 0 && <AppText tone="muted">{emptyMessage}</AppText>}
+    <SectionHeader title={title} />
+    {tenants.length === 0 && <EmptyState compact icon="business-outline" title={emptyMessage} />}
     {tenants.map((tenant) => <View key={tenant.id} style={styles.tenant}>
       <AppText variant="label">{tenant.name}</AppText>
       <AppText tone="muted">{tenant.subscriptionPlan ? t(tenantSubscriptionPlanKey(tenant.subscriptionPlan)) : t("home.noSubscription")}</AppText>
@@ -412,7 +395,7 @@ function TenantSection({ title, tenants, emptyMessage, formatCurrency, t }: { ti
 
 const styles = StyleSheet.create({
   content: { gap: spacing.md },
-  input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  attentionCard: { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
   loading: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm, minHeight: 240 },
   profileError: { flex: 1, justifyContent: "center", gap: spacing.md, minHeight: 240 },
   profileErrorActions: { gap: spacing.sm },
@@ -440,15 +423,9 @@ const styles = StyleSheet.create({
   avatar: { width: 44, height: 44, borderRadius: radius.pill, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
   avatarText: { color: colors.onPrimary },
   childCardHeading: { flex: 1, gap: spacing.xs },
-  statusPill: { flexDirection: "row", alignSelf: "flex-start", alignItems: "center", gap: spacing.xs / 2, paddingVertical: spacing.xs / 2, paddingHorizontal: spacing.sm, borderRadius: radius.pill },
-  statusPillActive: { backgroundColor: colors.accentSoft },
-  statusPillNeutral: { backgroundColor: colors.disabled },
-  statusPillPending: { backgroundColor: colors.dangerSoft },
-  statusPillPendingText: { color: colors.danger },
   entitlementsRow: { gap: spacing.sm },
   entitlementPill: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.accentSoft },
   entitlementPlanText: { fontWeight: "700" },
-  navigationCardRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   invoiceCard: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, ...shadows.sm },
   invoiceHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.sm },
   invoiceRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },

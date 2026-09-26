@@ -4,7 +4,8 @@ import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TenantFeedback } from "@daycare/api-client";
 import type { TenantFeedbackStatus } from "@daycare/core";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, spacing } from "@daycare/ui";
+import { AppText, BackButton, Badge, Banner, BottomSheet, Button, EmptyState, ErrorState, NavigationCard, ShimmerList, spacing } from "@daycare/ui";
+import { statusTone } from "@/ui/statusTone";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
@@ -31,21 +32,21 @@ export default function TenantFeedbackInboxScreen() {
   return <AppScreen showBottomNavigation={false} title={t("tenantFeedback.inboxTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <AppText tone="muted">{t("tenantFeedback.inboxDescription")}</AppText>
     {items.isLoading && <ShimmerList />}
-    {items.isError && <Button variant="secondary" onPress={() => items.refetch()}>{t("common.retry")}</Button>}
+    {items.isError && !items.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void items.refetch()} />}
     {!items.isLoading && !items.isError && items.data?.map((item) => <NavigationCard key={item.id} accessibilityLabel={t("tenantFeedback.review")} onPress={() => open(item)}>
-      <View style={styles.row}><AppText variant="h5">{item.submittedByName}</AppText><AppText variant="caption" tone="muted">{t(statusKey(item.status))}</AppText></View>
+      <View style={styles.row}><AppText variant="h5">{item.submittedByName}</AppText><Badge tone={statusTone(item.status)} label={t(statusKey(item.status))} /></View>
       <AppText tone="muted">{t(categoryKey(item.category))}</AppText>
       <AppText numberOfLines={2} tone="muted">{item.message}</AppText>
     </NavigationCard>)}
-    {!items.isLoading && !items.isError && items.data?.length === 0 && <AppText tone="muted">{t("tenantFeedback.noItems")}</AppText>}
+    {!items.isLoading && !items.isError && items.data?.length === 0 && <EmptyState compact title={t("tenantFeedback.noItems")} />}
 
     <BottomSheet visible={selected !== null} onClose={() => setSelected(null)} closeAccessibilityLabel={t("common.close")} title={t("tenantFeedback.review")}>
-      {decisionError && <AppText accessibilityRole="alert" tone="danger">{decisionError}</AppText>}
+      {decisionError && <Banner tone="danger" title={decisionError} />}
       {selected && <View style={styles.summary}>
         <AppText variant="heading">{selected.submittedByName}</AppText>
         <AppText tone="muted">{t(categoryKey(selected.category))} · {formatDateTime(selected.createdAt)}</AppText>
         <AppText>{selected.message}</AppText>
-        <AppText variant="caption" tone="muted">{t(statusKey(selected.status))}</AppText>
+        <Badge tone={statusTone(selected.status)} label={t(statusKey(selected.status))} />
       </View>}
       {selected && selected.status !== "RESOLVED" && <View style={styles.actions}>
         {selected.status === "NEW" && <Button style={styles.action} loading={updateStatus.isPending} onPress={() => updateStatus.mutate({ id: selected.id, status: "READ" })}>{t("tenantFeedback.markRead")}</Button>}

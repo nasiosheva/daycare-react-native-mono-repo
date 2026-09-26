@@ -34,6 +34,11 @@ describe("translations", () => {
     }
   });
 
+  it("includes the grouped menu, empty-state and search labels in every supported locale", () => {
+    const keys: TranslationKey[] = ["menu.groupDaily", "menu.groupLearning", "menu.groupFinance", "menu.groupInstitution", "menu.groupOther", "common.clearSearch", "common.loadFailed", "common.loadFailedDescription", "home.quickActions", "learning.capacityHint", "parentEnrollment.payStepTransfer", "parentEnrollment.payStepUpload", "parentEnrollment.payStepVerify", "parentEnrollment.needsPayment", "paymentInstruction.transferHint", "qr.instruction", "children.safetySection", "auth.haveAccountSignIn", "attendance.searchChild", "attendance.scanInstruction", "children.dailyRecords", "development.recordShort", "profile.workSection"];
+    for (const locale of supportedLocales) for (const key of keys) expect(translate(locale, key)).not.toBe(key);
+  });
+
   it("includes the published-offering readiness issue in every supported locale", () => {
     for (const locale of supportedLocales) expect(translate(locale, "tenantReadiness.issuePublishedOffering")).not.toBe("tenantReadiness.issuePublishedOffering");
   });

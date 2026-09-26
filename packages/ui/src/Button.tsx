@@ -8,7 +8,8 @@ type Props = { children: ReactNode; onPress: () => void; variant?: Variant; disa
 
 export function Button({ children, onPress, variant = "primary", disabled = false, loading = false, leadingIcon, accessibilityLabel, style }: Props) {
   const inactive = disabled || loading;
-  const textTone = variant === "primary" || variant === "danger" ? "onDark" : "onLight";
+  // Disabled buttons sit on a light background, so white label text would disappear.
+  const textTone = !inactive && (variant === "primary" || variant === "danger") ? "onDark" : "onLight";
   return (
     <Pressable
       accessibilityRole="button"
@@ -20,7 +21,7 @@ export function Button({ children, onPress, variant = "primary", disabled = fals
     >
       <View style={styles.content}>
         {loading ? <ActivityIndicator color={textTone === "onDark" ? colors.onPrimary : colors.primary} /> : leadingIcon}
-        <AppText variant="label" style={textTone === "onDark" ? styles.onDark : undefined}>{children}</AppText>
+        <AppText variant="label" style={textTone === "onDark" ? styles.onDark : inactive ? styles.disabledLabel : undefined}>{children}</AppText>
       </View>
     </Pressable>
   );
@@ -37,4 +38,5 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.82, transform: [{ scale: 0.97 }] },
   onDark: { color: colors.onPrimary },
   onLight: { color: colors.text },
+  disabledLabel: { color: colors.muted },
 });

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Badge, BackButton, Banner, BottomSheet, Button, Card, EmptyState, FloatingActionButton, InfoRow, ShimmerList, TextField, spacing } from "@daycare/ui";
+import { statusTone } from "@/ui/statusTone";
 import { AppScreen } from "@/navigation/AppScreen";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
@@ -33,29 +34,29 @@ export default function EmergencyContactsScreen() {
   const revoke = useMutation({ mutationFn: () => api.revokeEmergencyContact(childId!, revokeId!, revokeReason.trim()), onSuccess: async () => { await client.invalidateQueries({ queryKey: ["emergency-contacts", organizationId, childId] }); setRevokeId(null); setRevokeReason(""); } });
   if (!profile) return null;
   if (!childId || !(isParent || membership?.role === "STAFF_ADMIN")) return <Redirect href="/home" />;
-  const submit = async () => { if (!name.trim() || !relationship.trim() || !phoneNumber.trim()) return; try { await create.mutateAsync(); } catch (error) { notify(t("auth.tryAgain"), error instanceof Error ? error.message : undefined); } };
-  return <AppScreen showBottomNavigation={false} title={t("emergencyContacts.manage")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={isParent ? <FloatingActionButton accessibilityLabel={t("emergencyContacts.add")} onPress={() => setOpen(true)}>+ {t("emergencyContacts.add")}</FloatingActionButton> : undefined}><View style={styles.content}>
+  const submit = async () => { if (!name.trim() || !relationship.trim() || !phoneNumber.trim()) return; try { await create.mutateAsync(); } catch (error) { notify(t("auth.tryAgain"), error instanceof Error ? error.message : undefined, "danger"); } };
+  return <AppScreen showBottomNavigation={false} title={t("emergencyContacts.manage")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={isParent ? <FloatingActionButton icon="add" accessibilityLabel={t("emergencyContacts.add")} onPress={() => setOpen(true)}>{t("emergencyContacts.add")}</FloatingActionButton> : undefined}><View style={styles.content}>
     {contacts.isLoading && <ShimmerList variant="tile" />}
-    {contacts.data?.map((item) => <View key={item.id} style={styles.card}>
-      <AppText variant="heading">{item.name}</AppText>
-      <AppText tone="muted">{item.relationship}</AppText>
-      <AppText tone="muted">{item.phoneNumber}</AppText>
-      <AppText tone={item.status === "ACTIVE" ? "default" : "muted"}>{t(`emergencyContacts.status.${item.status}`)}</AppText>
-      {item.canRevoke && <Button variant="secondary" onPress={() => { setRevokeId(item.id); setRevokeReason(""); }}>{t("emergencyContacts.revoke")}</Button>}
-      {item.canRemove && <Button variant="danger" loading={remove.isPending} onPress={() => void remove.mutateAsync(item.id)}>{t("emergencyContacts.remove")}</Button>}
-    </View>)}
-    {!contacts.isLoading && !contacts.data?.length && <AppText tone="muted">{t("emergencyContacts.empty")}</AppText>}
+    {contacts.data?.map((item) => <Card key={item.id} icon="person-outline" title={item.name} subtitle={item.relationship} trailing={<Badge tone={statusTone(item.status)} label={t(`emergencyContacts.status.${item.status}`)} />}>
+      <InfoRow icon="call-outline" label={t("emergencyContacts.phone")} value={<AppText variant="label" selectable>{item.phoneNumber}</AppText>} />
+      {(item.canRevoke || item.canRemove) && <View style={styles.actions}>
+        {item.canRevoke && <Button style={styles.action} variant="secondary" onPress={() => { setRevokeId(item.id); setRevokeReason(""); }}>{t("emergencyContacts.revoke")}</Button>}
+        {item.canRemove && <Button style={styles.action} variant="danger" loading={remove.isPending} onPress={() => void remove.mutateAsync(item.id)}>{t("emergencyContacts.remove")}</Button>}
+      </View>}
+    </Card>)}
+    {!contacts.isLoading && !contacts.data?.length && <EmptyState icon="call-outline" title={t("emergencyContacts.empty")} action={isParent ? { label: t("emergencyContacts.add"), onPress: () => setOpen(true) } : undefined} />}
   </View>
   <BottomSheet visible={open} onClose={() => setOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("emergencyContacts.add")} negativeAction={{ label: t("common.cancel"), onPress: () => setOpen(false) }} positiveAction={{ label: t("common.save"), loading: create.isPending, disabled: !name.trim() || !relationship.trim() || !phoneNumber.trim(), onPress: () => void submit() }}><View style={styles.form}>
-    <AppText variant="label">{t("emergencyContacts.name")}</AppText><TextInput style={styles.input} value={name} onChangeText={setName} placeholder={t("emergencyContacts.name")} />
-    <AppText variant="label">{t("emergencyContacts.relationship")}</AppText><TextInput style={styles.input} value={relationship} onChangeText={setRelationship} placeholder={t("emergencyContacts.relationship")} />
-    <AppText variant="label">{t("emergencyContacts.phone")}</AppText><TextInput style={styles.input} value={phoneNumber} onChangeText={setPhoneNumber} placeholder={t("emergencyContacts.phone")} keyboardType="phone-pad" />
+    <TextField label={t("emergencyContacts.name")} required autoCapitalize="words" value={name} onChangeText={setName} />
+    <TextField label={t("emergencyContacts.relationship")} required value={relationship} onChangeText={setRelationship} />
+    <TextField label={t("emergencyContacts.phone")} required leadingIcon="call-outline" value={phoneNumber} onChangeText={setPhoneNumber} placeholder="+628..." keyboardType="phone-pad" />
     <AppText variant="label">{t("emergencyContacts.expiresOn")}</AppText>
     <DatePicker placeholder={t("emergencyContacts.expiresOn")} value={expiresOn} minimumDate={formatIsoDate(new Date())} onChange={setExpiresOn} onClear={() => setExpiresOn("")} clearAccessibilityLabel={t("common.clear")} />
   </View></BottomSheet>
   <BottomSheet visible={Boolean(revokeId)} onClose={() => { setRevokeId(null); setRevokeReason(""); }} closeAccessibilityLabel={t("common.close")} title={t("emergencyContacts.revoke")} negativeAction={{ label: t("common.cancel"), onPress: () => { setRevokeId(null); setRevokeReason(""); } }} positiveAction={{ label: t("emergencyContacts.revoke"), loading: revoke.isPending, disabled: !revokeReason.trim(), onPress: () => void revoke.mutateAsync() }}><View style={styles.form}>
-    <AppText variant="label">{t("emergencyContacts.revokeReason")}</AppText><TextInput style={[styles.input, styles.multiline]} value={revokeReason} onChangeText={setRevokeReason} placeholder={t("emergencyContacts.revokeReason")} multiline />
+    <Banner tone="warning" title={t("emergencyContacts.revoke")} />
+    <TextField label={t("emergencyContacts.revokeReason")} required value={revokeReason} onChangeText={setRevokeReason} multiline />
   </View></BottomSheet></AppScreen>;
 }
 
-const styles = StyleSheet.create({ content: { gap: spacing.md }, card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, form: { gap: spacing.xs }, input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, multiline: { minHeight: 96, paddingTop: spacing.sm, textAlignVertical: "top" } });
+const styles = StyleSheet.create({ content: { gap: spacing.md }, form: { gap: spacing.md }, actions: { flexDirection: "row", gap: spacing.sm }, action: { flex: 1 } });

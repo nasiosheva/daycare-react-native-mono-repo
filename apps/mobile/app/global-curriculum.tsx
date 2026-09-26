@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { GlobalCurriculumProgram } from "@daycare/api-client";
-import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, Chip, EmptyState, FloatingActionButton, SearchField, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -44,11 +44,11 @@ export default function GlobalCurriculumScreen() {
   const openAdd = () => { closeSheet(); setSheetOpen(true); };
   const openEdit = (program: GlobalCurriculumProgram) => { setEditing(program); setName(program.name); setDescription(program.description); setLearningLevelId(program.learningLevelId ?? undefined); setDevelopmentProgramIds(program.developmentProgramIds); setSheetOpen(true); };
   const save = async () => {
-    if (!name.trim()) return Alert.alert(t("globalCurriculum.required"));
-    if (!learningLevelId) return Alert.alert(t("globalCurriculum.referenceLevelRequired"));
+    if (!name.trim()) return notify(t("globalCurriculum.required"), undefined, "warning");
+    if (!learningLevelId) return notify(t("globalCurriculum.referenceLevelRequired"), undefined, "warning");
     const input = { learningLevelId, name: name.trim(), description: description.trim(), developmentProgramIds };
     try { if (editing) await updateProgram.mutateAsync({ id: editing.id, input }); else await createProgram.mutateAsync(input); closeSheet(); }
-    catch (error) { Alert.alert(t("globalCurriculum.failed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    catch (error) { notify(t("globalCurriculum.failed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
   const visibleGoals = goals.data?.filter((goal) => goal.active && goal.learningLevelId === learningLevelId) ?? [];
   const toggleGoal = (id: string) => setDevelopmentProgramIds((ids) => ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id]);
@@ -60,26 +60,26 @@ export default function GlobalCurriculumScreen() {
   };
   const learningLevelNames = new Map(levels.data?.map((level) => [level.id, level.name]));
 
-  return <AppScreen showBottomNavigation={false} title={t("globalCurriculum.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton accessibilityLabel={t("globalCurriculum.add")} onPress={openAdd}>+ {t("globalCurriculum.add")}</FloatingActionButton>}>
+  return <AppScreen showBottomNavigation={false} title={t("globalCurriculum.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton icon="add" accessibilityLabel={t("globalCurriculum.add")} onPress={openAdd}>{t("globalCurriculum.add")}</FloatingActionButton>}>
     <AppText tone="muted">{t("globalCurriculum.subtitle")}</AppText>
     <Button variant="secondary" loading={seedReferenceData.isPending} onPress={() => void seedReferenceData.mutateAsync()}>{t("globalCurriculum.seed")}</Button>
     <AppText variant="caption" tone="muted">{t("globalCurriculum.seedDescription")}</AppText>
     {programs.isFetching ? <ShimmerList /> : programs.data?.filter((program) => program.active).map((program) => <ProgramCard key={program.id} program={program} learningLevelName={program.learningLevelId ? learningLevelNames.get(program.learningLevelId) : undefined} t={t} onEdit={() => openEdit(program)} onActiveChange={(active) => void setActive.mutateAsync({ id: program.id, active })} />)}
-    {!programs.isFetching && programs.data?.filter((program) => program.active).length === 0 && <AppText tone="muted">{t("globalCurriculum.empty")}</AppText>}
+    {!programs.isFetching && programs.data?.filter((program) => program.active).length === 0 && <EmptyState compact title={t("globalCurriculum.empty")} />}
     {programs.data?.some((program) => !program.active) && <View style={styles.archivedSection}><AppText variant="label">{t("learning.archived")}</AppText>{programs.data.filter((program) => !program.active).map((program) => <ProgramCard key={program.id} program={program} learningLevelName={program.learningLevelId ? learningLevelNames.get(program.learningLevelId) : undefined} t={t} onEdit={() => openEdit(program)} onActiveChange={(active) => void setActive.mutateAsync({ id: program.id, active })} />)}</View>}
     <BottomSheet visible={sheetOpen} onClose={closeSheet} closeAccessibilityLabel={t("common.close")} title={t(editing ? "common.edit" : "globalCurriculum.add")} negativeAction={{ label: t("common.cancel"), onPress: closeSheet }} positiveAction={{ label: t("common.save"), loading: createProgram.isPending || updateProgram.isPending, disabled: !name.trim() || !learningLevelId, onPress: () => void save() }}>
-      <TextInput style={styles.input} placeholder={t("academic.programName")} value={name} onChangeText={setName} />
-      <TextInput style={[styles.input, styles.description]} placeholder={t("academic.description")} value={description} onChangeText={setDescription} multiline />
+      <TextField label={t("academic.programName")} value={name} onChangeText={setName} />
+      <TextField label={t("academic.description")} value={description} onChangeText={setDescription} multiline />
       <AppText variant="label">{t("globalCurriculum.referenceLevel")}</AppText>
       {levels.isFetching && <ShimmerList />}
-      {!levels.isFetching && <View style={styles.options}>{levels.data?.filter((level) => level.active).map((level) => <Button key={level.id} variant={learningLevelId === level.id ? "primary" : "secondary"} onPress={() => selectLearningLevel(level.id)}>{level.name}</Button>)}</View>}
-      {!levels.isFetching && levels.data?.filter((level) => level.active).length === 0 && <AppText tone="muted">{t("globalDevelopmentPrograms.noLevels")}</AppText>}
+      {!levels.isFetching && <View style={styles.options}>{levels.data?.filter((level) => level.active).map((level) => <Chip key={level.id} label={level.name} selected={learningLevelId === level.id} onPress={() => selectLearningLevel(level.id)} />)}</View>}
+      {!levels.isFetching && levels.data?.filter((level) => level.active).length === 0 && <EmptyState compact title={t("globalDevelopmentPrograms.noLevels")} />}
       {learningLevelId && <AppText variant="caption" tone="muted">{t("globalCurriculum.goalLevelHint", { level: learningLevelNames.get(learningLevelId) ?? t("common.noData") })}</AppText>}
       <AppText variant="label">{t("academic.programGoals", { count: developmentProgramIds.length })}</AppText>
-      {learningLevelId && <><TextInput style={styles.input} placeholder={t("academic.searchProgramGoals")} value={goalSearch} onChangeText={setGoalSearch} />
+      {learningLevelId && <><SearchField accessibilityLabel={t("academic.searchProgramGoals")} placeholder={t("academic.searchProgramGoals")} clearAccessibilityLabel={t("common.clearSearch")} value={goalSearch} onChangeText={setGoalSearch} />
         {goals.isFetching && <ShimmerList />}
-        {visibleGoals.map((goal) => <Button key={goal.id} variant={developmentProgramIds.includes(goal.id) ? "primary" : "secondary"} onPress={() => toggleGoal(goal.id)}>{goalPickerLabel(t, goal.domain, goal.name)}</Button>)}
-        {!goals.isFetching && visibleGoals.length === 0 && <AppText tone="muted">{t("academic.noProgramGoals")}</AppText>}</>}
+        {visibleGoals.map((goal) => <Chip key={goal.id} label={goalPickerLabel(t, goal.domain, goal.name)} selected={developmentProgramIds.includes(goal.id)} onPress={() => toggleGoal(goal.id)} />)}
+        {!goals.isFetching && visibleGoals.length === 0 && <EmptyState compact title={t("academic.noProgramGoals")} />}</>}
     </BottomSheet>
   </AppScreen>;
 }

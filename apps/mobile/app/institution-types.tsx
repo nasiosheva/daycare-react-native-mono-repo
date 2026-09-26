@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InstitutionTypeDefinition, InstitutionTypeDefinitionInput, InstitutionTypeParameters } from "@daycare/api-client";
-import { AppText, BackButton, Button, ShimmerList, ToggleSwitch, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Button, EmptyState, ShimmerList, TextField, ToggleSwitch, colors, radius, spacing } from "@daycare/ui";
+import { notify } from "@/notify/notify";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { TranslationKey } from "@/i18n/translations";
@@ -86,20 +87,20 @@ export default function InstitutionTypesScreen() {
   };
   const save = async () => {
     const trimmedName = name.trim();
-    if (!trimmedName) return Alert.alert(t("institutionCatalog.nameRequired"));
+    if (!trimmedName) return notify(t("institutionCatalog.nameRequired"), undefined, "warning");
     const parameterValues = parameterValuesFromRows(parameters);
-    if (!parameterValues) return Alert.alert(t("institutionCatalog.parameterKeyRequired"));
+    if (!parameterValues) return notify(t("institutionCatalog.parameterKeyRequired"), undefined, "warning");
     try {
       if (sheet === "create") {
         await createInstitutionType.mutateAsync({ name: trimmedName, description: description.trim(), parentOccupationVisible, parentIncomeRangeVisible, logo: logo.trim(), backgroundColor: backgroundColor.trim(), borderColor: borderColor.trim(), textColor: textColor.trim(), parameters: parameterValues });
-        Alert.alert(t("institutionCatalog.created"));
+        notify(t("institutionCatalog.created"), undefined, "success");
       } else if (sheet === "edit" && selectedType) {
         await updateInstitutionType.mutateAsync({ code: selectedType.code, name: trimmedName, description: description.trim(), parentOccupationVisible, parentIncomeRangeVisible, logo: logo.trim(), backgroundColor: backgroundColor.trim(), borderColor: borderColor.trim(), textColor: textColor.trim(), parameters: parameterValues });
-        Alert.alert(t("institutionCatalog.updated"));
+        notify(t("institutionCatalog.updated"), undefined, "success");
       }
       closeSheet();
     } catch (error) {
-      Alert.alert(t(sheet === "create" ? "institutionCatalog.createFailed" : "institutionCatalog.updateFailed"), error instanceof Error ? error.message : t("auth.tryAgain"));
+      notify(t(sheet === "create" ? "institutionCatalog.createFailed" : "institutionCatalog.updateFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger");
     }
   };
   const remove = async () => {
@@ -107,9 +108,9 @@ export default function InstitutionTypesScreen() {
     try {
       await deleteInstitutionType.mutateAsync(selectedType.code);
       closeSheet();
-      Alert.alert(t("institutionCatalog.deleted"));
+      notify(t("institutionCatalog.deleted"), undefined, "success");
     } catch (error) {
-      Alert.alert(t("institutionCatalog.deleteFailed"), error instanceof Error ? error.message : t("auth.tryAgain"));
+      notify(t("institutionCatalog.deleteFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger");
     }
   };
 
@@ -129,7 +130,7 @@ export default function InstitutionTypesScreen() {
 
     {institutionTypes.isFetching && <ShimmerList />}
     {institutionTypes.isError && <Button variant="secondary" onPress={() => institutionTypes.refetch()}>{t("institutionCatalog.reload")}</Button>}
-    {!institutionTypes.isFetching && !institutionTypes.isError && institutionTypes.data?.length === 0 && <AppText tone="muted">{t("institutionCatalog.empty")}</AppText>}
+    {!institutionTypes.isFetching && !institutionTypes.isError && institutionTypes.data?.length === 0 && <EmptyState compact title={t("institutionCatalog.empty")} />}
     {!institutionTypes.isFetching && institutionTypes.data?.map((type) => {
       const isSelected = selectedType?.code === type.code;
       if (isSelected && sheet === "edit") return <View key={type.code} style={styles.form}>
@@ -162,16 +163,16 @@ export default function InstitutionTypesScreen() {
 function InstitutionTypeFormFields({ autoFocus, name, onNameChange, description, onDescriptionChange, logo, onLogoChange, backgroundColor, onBackgroundColorChange, borderColor, onBorderColorChange, textColor, onTextColorChange, parameters, onParametersChange, occupationVisible, incomeRangeVisible, onOccupationVisibleChange, onIncomeRangeVisibleChange }: { autoFocus: boolean; name: string; onNameChange: (value: string) => void; description: string; onDescriptionChange: (value: string) => void; logo: string; onLogoChange: (value: string) => void; backgroundColor: string; onBackgroundColorChange: (value: string) => void; borderColor: string; onBorderColorChange: (value: string) => void; textColor: string; onTextColorChange: (value: string) => void; parameters: ParameterRow[]; onParametersChange: (value: ParameterRow[]) => void; occupationVisible: boolean; incomeRangeVisible: boolean; onOccupationVisibleChange: (value: boolean) => void; onIncomeRangeVisibleChange: (value: boolean) => void }) {
   const { t } = useI18n();
   return <>
-    <TextInput autoFocus={autoFocus} style={styles.input} placeholder={t("institutionCatalog.name")} value={name} onChangeText={onNameChange} />
-    <TextInput multiline maxLength={2000} style={[styles.input, styles.descriptionInput]} placeholder={t("institutionCatalog.typeDescription")} value={description} onChangeText={onDescriptionChange} />
-    <TextInput autoCapitalize="none" autoCorrect={false} keyboardType="url" style={styles.input} placeholder={t("institutionCatalog.logo")} value={logo} onChangeText={onLogoChange} />
-    <TextInput autoCapitalize="none" autoCorrect={false} style={styles.input} placeholder={t("institutionCatalog.backgroundColor")} value={backgroundColor} onChangeText={onBackgroundColorChange} />
-    <TextInput autoCapitalize="none" autoCorrect={false} style={styles.input} placeholder={t("institutionCatalog.borderColor")} value={borderColor} onChangeText={onBorderColorChange} />
-    <TextInput autoCapitalize="none" autoCorrect={false} style={styles.input} placeholder={t("institutionCatalog.textColor")} value={textColor} onChangeText={onTextColorChange} />
+    <TextField label={t("institutionCatalog.name")} autoFocus={autoFocus} value={name} onChangeText={onNameChange} />
+    <TextField label={t("institutionCatalog.typeDescription")} multiline maxLength={2000} value={description} onChangeText={onDescriptionChange} />
+    <TextField label={t("institutionCatalog.logo")} autoCapitalize="none" autoCorrect={false} keyboardType="url" value={logo} onChangeText={onLogoChange} />
+    <TextField label={t("institutionCatalog.backgroundColor")} autoCapitalize="none" autoCorrect={false} value={backgroundColor} onChangeText={onBackgroundColorChange} />
+    <TextField label={t("institutionCatalog.borderColor")} autoCapitalize="none" autoCorrect={false} value={borderColor} onChangeText={onBorderColorChange} />
+    <TextField label={t("institutionCatalog.textColor")} autoCapitalize="none" autoCorrect={false} value={textColor} onChangeText={onTextColorChange} />
     <AppText variant="label">{t("institutionCatalog.parameters")}</AppText>
     {parameters.map((parameter, index) => <View key={`parameter-${index}`} style={styles.parameterRow}>
-      <TextInput autoCapitalize="none" autoCorrect={false} style={[styles.input, styles.parameterInput]} placeholder={t("institutionCatalog.parameterKey")} value={parameter.key} onChangeText={(key) => onParametersChange(parameters.map((item, itemIndex) => itemIndex === index ? { ...item, key } : item))} />
-      <TextInput style={[styles.input, styles.parameterInput]} placeholder={t("institutionCatalog.parameterValue")} value={parameter.value} onChangeText={(value) => onParametersChange(parameters.map((item, itemIndex) => itemIndex === index ? { ...item, value } : item))} />
+      <TextField label={t("institutionCatalog.parameterKey")} autoCapitalize="none" autoCorrect={false} value={parameter.key} onChangeText={(key) => onParametersChange(parameters.map((item, itemIndex) => itemIndex === index ? { ...item, key } : item))} />
+      <TextField label={t("institutionCatalog.parameterValue")} value={parameter.value} onChangeText={(value) => onParametersChange(parameters.map((item, itemIndex) => itemIndex === index ? { ...item, value } : item))} />
       <Button variant="danger" onPress={() => onParametersChange(parameters.filter((_, itemIndex) => itemIndex !== index))}>{t("institutionCatalog.removeParameter")}</Button>
     </View>)}
     <Button variant="secondary" onPress={() => onParametersChange([...parameters, { key: "", value: "" }])}>{t("institutionCatalog.addParameter")}</Button>

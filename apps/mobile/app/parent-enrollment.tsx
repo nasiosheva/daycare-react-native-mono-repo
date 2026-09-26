@@ -2,12 +2,13 @@ import { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { AppText, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Badge, Button, Card, EmptyState, ErrorState, MenuItem, SectionHeader, ShimmerList, spacing, type Tone } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { parentEnrollmentQueryKey } from "@/parent-enrollment/queryKeys";
 import type { ParentEnrollment } from "@daycare/api-client";
+import type { TranslationKey } from "@/i18n/translations";
 
 export default function ParentEnrollmentScreen() {
   const router = useRouter();
@@ -36,26 +37,37 @@ export default function ParentEnrollmentScreen() {
   return <AppScreen><View style={styles.content}>
     <AppText variant="title">{t("parentEnrollment.title")}</AppText>
     <AppText tone="muted">{t("parentEnrollment.subtitle")}</AppText>
-    <NavigationCard accessibilityLabel={t("parentEnrollment.newTenant")} onPress={() => router.push("/parent-enrollment-form")}>
-      <AppText variant="h5">{t("parentEnrollment.newTenant")}</AppText>
-      <AppText tone="muted">{t("parentEnrollment.startDescription")}</AppText>
-    </NavigationCard>
+    <MenuItem icon="add-circle-outline" title={t("parentEnrollment.newTenant")} description={t("parentEnrollment.startDescription")} onPress={() => router.push("/parent-enrollment-form")} />
     <View style={styles.section}>
-      <AppText variant="heading">{t("parentEnrollment.status")}</AppText>
-      {enrollments.isFetching && <ShimmerList />}
-      {!enrollments.isFetching && enrollments.data?.map((item) => <View key={item.id} style={styles.card}>
-        <AppText variant="heading">{item.childName}</AppText>
-        {item.transferredFromOrganizationName && <AppText variant="caption" tone="muted">{t("parentEnrollment.transferBadge", { organization: item.transferredFromOrganizationName })}</AppText>}
-        <AppText>{item.planName} · {formatCurrency(item.totalAmount)}</AppText>
-        <EnrollmentAction enrollment={item} onApply={() => router.push("/parent-enrollment-form")} onPay={() => item.invoiceId && router.push({ pathname: "/parent-payment", params: { invoiceId: item.invoiceId, organizationId: item.organizationId } })} t={t} />
-      </View>)}
-      {!enrollments.isFetching && enrollments.data?.length === 0 && <AppText tone="muted">{t("parentEnrollment.noApplication")}</AppText>}
+      <SectionHeader title={t("parentEnrollment.status")} />
+      {enrollments.isLoading && <ShimmerList />}
+      {enrollments.isError && !enrollments.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void enrollments.refetch()} />}
+      {!enrollments.isLoading && enrollments.data?.map((item) => {
+        const badge = enrollmentBadge(item);
+        return <Card key={item.id} title={item.childName} subtitle={`${item.planName} · ${formatCurrency(item.totalAmount)}`} trailing={<Badge tone={badge.tone} label={t(badge.labelKey)} />}>
+          {item.transferredFromOrganizationName && <Badge tone="info" icon="swap-horizontal" label={t("parentEnrollment.transferBadge", { organization: item.transferredFromOrganizationName })} />}
+          <EnrollmentAction enrollment={item} onApply={() => router.push("/parent-enrollment-form")} onPay={() => item.invoiceId && router.push({ pathname: "/parent-payment", params: { invoiceId: item.invoiceId, organizationId: item.organizationId } })} t={t} />
+        </Card>;
+      })}
+      {!enrollments.isLoading && !enrollments.isError && enrollments.data?.length === 0 && <EmptyState icon="document-text-outline" title={t("parentEnrollment.noApplication")} description={t("parentEnrollment.startDescription")} action={{ label: t("parentEnrollment.newTenant"), onPress: () => router.push("/parent-enrollment-form") }} />}
     </View>
     {profile?.memberships.filter((membership) => membership.role === "PARENT").length ? <View style={styles.section}>
-      <AppText variant="heading">{t("parentEnrollment.activeTenants")}</AppText>
-      {profile.memberships.filter((membership) => membership.role === "PARENT").map((membership) => <Button key={membership.organizationId} variant={membership.organizationId === organizationId ? "primary" : "secondary"} onPress={() => { selectOrganization(membership.organizationId); router.replace("/home"); }}>{membership.organizationName}</Button>)}
+      <SectionHeader title={t("parentEnrollment.activeTenants")} />
+      {profile.memberships.filter((membership) => membership.role === "PARENT").map((membership) => <MenuItem key={membership.organizationId} icon="business-outline" title={membership.organizationName} badge={membership.organizationId === organizationId ? <Badge tone="success" icon="checkmark-circle" label={t("parentEnrollment.currentTenant")} /> : undefined} onPress={() => { selectOrganization(membership.organizationId); router.replace("/home"); }} />)}
     </View> : null}
   </View></AppScreen>;
+}
+
+function enrollmentBadge(enrollment: ParentEnrollment): { tone: Tone; labelKey: TranslationKey } {
+  switch (enrollment.accessState) {
+    case "PENDING_APPROVAL": return { tone: "info", labelKey: "status.PENDING_APPROVAL" };
+    case "PAYMENT_DUE": return { tone: "warning", labelKey: "parentEnrollment.needsPayment" };
+    case "PAYMENT_REVIEW": return { tone: "info", labelKey: "status.PAYMENT_SUBMITTED" };
+    case "ACTIVE": return { tone: "success", labelKey: "status.ACTIVE" };
+    case "CLOSED": return enrollment.status === "REJECTED" ? { tone: "danger", labelKey: "status.REJECTED" } : { tone: "neutral", labelKey: "status.EXPIRED" };
+    case "BILLING_LIMITED": return { tone: "neutral", labelKey: "status.EXPIRED" };
+    default: return { tone: "info", labelKey: "status.PENDING_APPROVAL" };
+  }
 }
 
 function EnrollmentAction({ enrollment, onApply, onPay, t }: { enrollment: ParentEnrollment; onApply: () => void; onPay: () => void; t: ReturnType<typeof useI18n>["t"] }) {
@@ -68,4 +80,4 @@ function EnrollmentAction({ enrollment, onApply, onPay, t }: { enrollment: Paren
   return <AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText>;
 }
 
-const styles = StyleSheet.create({ content: { gap: spacing.md }, section: { gap: spacing.sm }, card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border } });
+const styles = StyleSheet.create({ content: { gap: spacing.md }, section: { gap: spacing.sm } });

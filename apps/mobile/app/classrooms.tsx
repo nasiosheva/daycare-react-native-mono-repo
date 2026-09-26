@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Banner, BottomSheet, Button, Chip, ChipGroup, EmptyState, ErrorState, FloatingActionButton, NavigationCard, ShimmerList, TabBar, TextField, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -64,21 +64,19 @@ export default function ClassroomsScreen() {
     } catch (error) { failure(error); }
   };
 
-  return <AppScreen showBottomNavigation={false} title={t("learning.classroom")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton accessibilityLabel={t("learning.addClassroom")} onPress={openCreate}>+ {t("learning.addClassroom")}</FloatingActionButton> : undefined}>
-    {isStaffAdmin && <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
-      <BranchTab label={t("branchFilter.allBranches")} selected={!filterBranchId} onPress={() => setFilterBranchId(undefined)} />
-      {filterBranches.data?.map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
-    </ScrollView>}
+  return <AppScreen showBottomNavigation={false} title={t("learning.classroom")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton icon="add" accessibilityLabel={t("learning.addClassroom")} onPress={openCreate}>{t("learning.addClassroom")}</FloatingActionButton> : undefined}>
+    {isStaffAdmin && <TabBar accessibilityLabel={t("branchFilter.allBranches")} selected={filterBranchId ?? ""} onSelect={(key) => setFilterBranchId(key || undefined)} items={[{ key: "", label: t("branchFilter.allBranches") }, ...(filterBranches.data?.map((branch) => ({ key: branch.id, label: branch.name })) ?? [])]} />}
     {classrooms.isFetching && <ShimmerList />}
     {!classrooms.isFetching && classrooms.data?.map((classroom) => <ClassroomCard key={classroom.id} classroom={classroom} levelName={levels.data?.find((level) => level.id === classroom.learningLevelId)?.name} branchName={branches.data?.find((branch) => branch.id === classroom.branchId)?.name} periodName={periods.data?.find((period) => period.id === classroom.learningPeriodId)?.name} canManage={canManage} onEdit={() => openEdit(classroom)} onArchive={() => void archiveClassroom.mutateAsync(classroom.id)} />)}
-    {!classrooms.isFetching && classrooms.data?.length === 0 && <AppText tone="muted">{t("learning.noClassrooms")}</AppText>}
+    {classrooms.isError && !classrooms.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void classrooms.refetch()} />}
+    {!classrooms.isFetching && classrooms.data?.length === 0 && <EmptyState icon="grid-outline" title={t("learning.noClassrooms")} description={canManage ? t("learning.noClassroomsDescription") : undefined} action={canManage ? { label: t("learning.addClassroom"), onPress: openCreate } : undefined} />}
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t(editingClassroomId ? "learning.editClassroom" : "learning.addClassroom")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t(editingClassroomId ? "common.save" : "learning.addClassroom"), loading: createClassroom.isPending || updateClassroom.isPending, onPress: () => void save() }}>
-      <View style={styles.fieldGroup}><AppText variant="label">{t("learning.branch")}</AppText><View style={styles.options}>{branches.data?.map((branch) => <Button key={branch.id} variant={branchId === branch.id ? "primary" : "secondary"} onPress={() => setBranchId(branch.id)}>{branch.name}</Button>)}</View></View>
-      <View style={styles.fieldGroup}><AppText variant="label">{t(hasAcademicOffering ? "learning.level" : "learning.legacyLevel")}</AppText><View style={styles.options}>{levels.data?.filter((level) => level.active).map((level) => <Button key={level.id} variant={levelId === level.id ? "primary" : "secondary"} onPress={() => setLevelId(level.id)}>{level.name}</Button>)}</View>{levels.data?.every((level) => !level.active) && <View style={styles.options}><AppText tone="muted">{t("learning.noActiveLevelsForClassroom")}</AppText><Button variant="secondary" onPress={openLearningLevels}>{t(hasAcademicOffering ? "learning.addLevel" : "learning.addLegacyLevel")}</Button></View>}</View>
-      {hasAcademicOffering && <View style={styles.fieldGroup}><AppText variant="label">{t("learning.selectPeriod")}</AppText><View style={styles.options}><Button variant="secondary" onPress={() => setPeriodId(undefined)}>{t("learning.clearPeriod")}</Button>{periods.data?.map((period) => <Button key={period.id} variant={periodId === period.id ? "primary" : "secondary"} onPress={() => setPeriodId(period.id)}>{period.name}</Button>)}</View></View>}
-      <TextInput style={styles.input} placeholder={t("learning.classroomName")} value={name} onChangeText={setName} />
-      <TextInput style={styles.input} inputMode="numeric" placeholder={t("learning.capacity")} value={capacity} onChangeText={setCapacity} />
+      <TextField label={t("learning.classroomName")} required value={name} onChangeText={setName} />
+      <View style={styles.fieldGroup}><AppText variant="label">{t("learning.branch")}</AppText><ChipGroup accessibilityLabel={t("learning.branch")}>{branches.data?.map((branch) => <Chip key={branch.id} label={branch.name} selected={branchId === branch.id} onPress={() => setBranchId(branch.id)} />)}</ChipGroup></View>
+      <View style={styles.fieldGroup}><AppText variant="label">{t(hasAcademicOffering ? "learning.level" : "learning.legacyLevel")}</AppText><ChipGroup accessibilityLabel={t(hasAcademicOffering ? "learning.level" : "learning.legacyLevel")}>{levels.data?.filter((level) => level.active).map((level) => <Chip key={level.id} label={level.name} selected={levelId === level.id} onPress={() => setLevelId(level.id)} />)}</ChipGroup>{levels.data?.every((level) => !level.active) && <Banner tone="warning" title={t("learning.noActiveLevelsForClassroom")} action={<Button variant="secondary" onPress={openLearningLevels}>{t(hasAcademicOffering ? "learning.addLevel" : "learning.addLegacyLevel")}</Button>} />}</View>
+      {hasAcademicOffering && <View style={styles.fieldGroup}><AppText variant="label">{t("learning.selectPeriod")}</AppText><ChipGroup accessibilityLabel={t("learning.selectPeriod")}><Chip label={t("learning.clearPeriod")} selected={!periodId} onPress={() => setPeriodId(undefined)} />{periods.data?.map((period) => <Chip key={period.id} label={period.name} selected={periodId === period.id} onPress={() => setPeriodId(period.id)} />)}</ChipGroup></View>}
+      <TextField label={t("learning.capacity")} hint={t("learning.capacityHint")} inputMode="numeric" value={capacity} onChangeText={setCapacity} />
     </BottomSheet>
   </AppScreen>;
 }
@@ -154,25 +152,19 @@ function ClassroomCard({ classroom, levelName, branchName, periodName, canManage
     </BottomSheet>
 
     <BottomSheet visible={cardSheet === "program"} onClose={closeProgramSheet} closeAccessibilityLabel={t("common.close")} title={t("learning.addClassroomProgram")} negativeAction={{ label: t("common.cancel"), onPress: closeProgramSheet }} positiveAction={{ label: t("common.save"), loading: createProgram.isPending, disabled: !programName.trim(), onPress: () => void saveProgram() }}>
-      <TextInput style={styles.input} placeholder={t("academic.programName")} value={programName} onChangeText={setProgramName} />
-      <TextInput style={styles.input} placeholder={t("academic.description")} value={programDescription} onChangeText={setProgramDescription} />
+      <TextField label={t("academic.programName")} required value={programName} onChangeText={setProgramName} />
+      <TextField label={t("academic.description")} multiline value={programDescription} onChangeText={setProgramDescription} />
     </BottomSheet>
 
     <BottomSheet visible={cardSheet === "staff"} onClose={closeStaffSheet} closeAccessibilityLabel={t("common.close")} title={t("learning.assignStaff")} negativeAction={{ label: t("common.cancel"), onPress: closeStaffSheet }} positiveAction={{ label: t("learning.assignStaff"), loading: assign.isPending, disabled: !staffId, onPress: () => void saveAssignment() }}>
-      <View style={styles.options}>{availableUsers.map((user) => <Button key={user.id} variant={staffId === user.userId ? "primary" : "secondary"} onPress={() => setStaffId(user.userId ?? undefined)}>{user.displayName ?? user.email ?? "–"}</Button>)}</View>
-      <View style={styles.options}>{assignmentRoles.map((item) => <Button key={item} variant={role === item ? "primary" : "secondary"} onPress={() => setRole(item)}>{item}</Button>)}</View>
+      <View style={styles.fieldGroup}><AppText variant="label">{t("learning.staff")}</AppText><ChipGroup accessibilityLabel={t("learning.staff")}>{availableUsers.map((user) => <Chip key={user.id} label={user.displayName ?? user.email ?? "–"} selected={staffId === user.userId} onPress={() => setStaffId(user.userId ?? undefined)} />)}</ChipGroup></View>
+      <ChipGroup>{assignmentRoles.map((item) => <Chip key={item} label={assignmentRoleLabel(item)} selected={role === item} onPress={() => setRole(item)} />)}</ChipGroup>
     </BottomSheet>
   </View>;
 }
 
 function ClassroomMetric({ label, value, detail, emphasis = false }: { label: string; value: string; detail: string; emphasis?: boolean }) {
   return <View style={[styles.metric, emphasis && styles.metricWarning]}><AppText variant="overline" tone="muted">{label}</AppText><AppText variant="h5" tone={emphasis ? "danger" : "default"}>{value}</AppText><AppText variant="caption" tone="muted">{detail}</AppText></View>;
-}
-
-function BranchTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}>
-    <AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText>
-  </Pressable>;
 }
 
 function IconButton({ icon, tone = "secondary", onPress, accessibilityLabel, disabled }: { icon: keyof typeof Ionicons.glyphMap; tone?: "secondary" | "danger"; onPress: () => void; accessibilityLabel: string; disabled?: boolean }) {
@@ -189,14 +181,6 @@ function IconButton({ icon, tone = "secondary", onPress, accessibilityLabel, dis
 }
 
 const styles = StyleSheet.create({
-  tabsScroll: { flexGrow: 0, flexShrink: 0 },
-  tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" },
-  activeTab: { borderBottomColor: colors.primary },
-  tabText: { color: colors.muted },
-  activeTabText: { color: colors.primary },
-  pressedTab: { opacity: 0.72 },
-  input: { minHeight: 48, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface },
   fieldGroup: { gap: spacing.xs },
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, alignItems: "center" },
   iconButton: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },

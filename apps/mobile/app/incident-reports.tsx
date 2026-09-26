@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Image, StyleSheet, TextInput, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ChildIncidentReport, IncidentCategory, IncidentSeverity } from "@daycare/api-client";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Badge, BackButton, Banner, BottomSheet, Button, Card, Chip, ChipGroup, EmptyState, ErrorState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing, type Tone } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -13,6 +14,7 @@ import { encodeLocalFileBase64 } from "@/development/encodeLocalFile";
 
 const severities: IncidentSeverity[] = ["MINOR", "MODERATE", "SERIOUS"];
 const categories: IncidentCategory[] = ["INJURY", "ILLNESS", "BEHAVIOR", "OTHER"];
+const severityTones: Record<IncidentSeverity, Tone> = { MINOR: "info", MODERATE: "warning", SERIOUS: "danger" };
 
 type FormState = { severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken: string };
 const defaultForm = (): FormState => ({ severity: "MINOR", category: "INJURY", description: "", actionTaken: "" });
@@ -61,31 +63,27 @@ export default function IncidentReportsScreen() {
     catch (error) { setFormError(error instanceof Error ? error.message : t("incident.saveFailed")); }
   };
 
-  return <AppScreen showBottomNavigation={false} title={t("incident.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canCreate ? <FloatingActionButton accessibilityLabel={t("incident.add")} onPress={openForm}>+ {t("incident.add")}</FloatingActionButton> : undefined}>
+  return <AppScreen showBottomNavigation={false} title={t("incident.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canCreate ? <FloatingActionButton icon="add" accessibilityLabel={t("incident.add")} onPress={openForm}>{t("incident.add")}</FloatingActionButton> : undefined}>
     {reports.isLoading && <ShimmerList />}
-    {reports.isError && <Button variant="secondary" onPress={() => reports.refetch()}>{t("common.retry")}</Button>}
-    {!reports.isLoading && !reports.isError && reports.data?.map((report) => <View key={report.id} style={styles.card}>
-      <View style={styles.row}><AppText variant="label">{severityLabel(report.severity)}</AppText><AppText tone="muted">{categoryLabel(report.category)}</AppText></View>
-      <AppText tone="muted">{formatDateTime(report.occurredAt)}</AppText>
+    {reports.isError && !reports.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void reports.refetch()} />}
+    {!reports.isLoading && !reports.isError && reports.data?.map((report) => <Card key={report.id} icon="bandage-outline" title={categoryLabel(report.category)} subtitle={formatDateTime(report.occurredAt)} trailing={<Badge tone={severityTones[report.severity]} label={severityLabel(report.severity)} />}>
       <AppText>{report.description}</AppText>
       {report.actionTaken && <AppText tone="muted">{t("incident.actionTakenLabel", { action: report.actionTaken })}</AppText>}
-      {report.hasPhoto && <Button variant="secondary" onPress={() => setPhotoEntry(report)}>{t("incident.viewPhoto")}</Button>}
-      {canAcknowledge && (report.acknowledgedByMe ? <AppText variant="caption" tone="muted">{t("incident.acknowledged")}</AppText> : <Button variant="secondary" loading={acknowledge.isPending} onPress={() => void acknowledge.mutateAsync(report.id)}>{t("incident.acknowledge")}</Button>)}
-    </View>)}
-    {!reports.isLoading && !reports.isError && reports.data?.length === 0 && <AppText tone="muted">{t("incident.empty")}</AppText>}
+      {report.hasPhoto && <Button variant="secondary" leadingIcon={<Ionicons name="image-outline" size={18} color={colors.primary} />} onPress={() => setPhotoEntry(report)}>{t("incident.viewPhoto")}</Button>}
+      {canAcknowledge && (report.acknowledgedByMe ? <Badge tone="success" icon="checkmark-circle" label={t("incident.acknowledged")} /> : <Button loading={acknowledge.isPending} onPress={() => void acknowledge.mutateAsync(report.id)}>{t("incident.acknowledge")}</Button>)}
+    </Card>)}
+    {!reports.isLoading && !reports.isError && reports.data?.length === 0 && <EmptyState icon="shield-checkmark-outline" title={t("incident.empty")} />}
 
     <BottomSheet visible={form !== null} onClose={() => setForm(null)} closeAccessibilityLabel={t("common.close")} title={t("incident.add")} negativeAction={{ label: t("common.cancel"), onPress: () => setForm(null) }} positiveAction={{ label: t("common.save"), loading: create.isPending, onPress: () => void submit() }}>
-      {formError && <AppText accessibilityRole="alert" tone="danger">{formError}</AppText>}
-      <AppText variant="label">{t("incident.severity")}</AppText>
-      <View style={styles.options}>{severities.map((severity) => <Button key={severity} variant={form?.severity === severity ? "primary" : "secondary"} onPress={() => setForm((current) => current ? { ...current, severity } : current)}>{severityLabel(severity)}</Button>)}</View>
-      <AppText variant="label">{t("incident.category")}</AppText>
-      <View style={styles.options}>{categories.map((category) => <Button key={category} variant={form?.category === category ? "primary" : "secondary"} onPress={() => setForm((current) => current ? { ...current, category } : current)}>{categoryLabel(category)}</Button>)}</View>
-      <TextInput style={[styles.input, styles.multiline]} placeholder={t("incident.description")} value={form?.description ?? ""} onChangeText={(description) => setForm((current) => current ? { ...current, description } : current)} multiline maxLength={2_000} />
-      <TextInput style={[styles.input, styles.multiline]} placeholder={t("incident.actionTaken")} value={form?.actionTaken ?? ""} onChangeText={(actionTaken) => setForm((current) => current ? { ...current, actionTaken } : current)} multiline maxLength={2_000} />
+      {formError && <Banner tone="danger" title={formError} />}
+      <View style={styles.field}><AppText variant="label">{t("incident.severity")}</AppText><ChipGroup accessibilityLabel={t("incident.severity")}>{severities.map((severity) => <Chip key={severity} label={severityLabel(severity)} selected={form?.severity === severity} onPress={() => setForm((current) => current ? { ...current, severity } : current)} />)}</ChipGroup></View>
+      <View style={styles.field}><AppText variant="label">{t("incident.category")}</AppText><ChipGroup accessibilityLabel={t("incident.category")}>{categories.map((category) => <Chip key={category} label={categoryLabel(category)} selected={form?.category === category} onPress={() => setForm((current) => current ? { ...current, category } : current)} />)}</ChipGroup></View>
+      <TextField label={t("incident.description")} required value={form?.description ?? ""} onChangeText={(description) => setForm((current) => current ? { ...current, description } : current)} multiline maxLength={2_000} />
+      <TextField label={t("incident.actionTaken")} value={form?.actionTaken ?? ""} onChangeText={(actionTaken) => setForm((current) => current ? { ...current, actionTaken } : current)} multiline maxLength={2_000} />
       {photo && <Image source={{ uri: photo.uri }} style={styles.photoPreview} resizeMode="contain" />}
       <View style={styles.options}>
-        <Button variant="secondary" onPress={() => void imagePicker.pickFromLibrary().then((images) => setPhoto(images[0] ?? null))}>{t("goals.pickPhoto")}</Button>
-        <Button variant="secondary" onPress={() => void imagePicker.takePhoto().then(setPhoto)}>{t("goals.takePhoto")}</Button>
+        <Button variant="secondary" leadingIcon={<Ionicons name="images-outline" size={18} color={colors.primary} />} onPress={() => void imagePicker.pickFromLibrary().then((images) => setPhoto(images[0] ?? null))}>{t("goals.pickPhoto")}</Button>
+        <Button variant="secondary" leadingIcon={<Ionicons name="camera-outline" size={18} color={colors.primary} />} onPress={() => void imagePicker.takePhoto().then(setPhoto)}>{t("goals.takePhoto")}</Button>
       </View>
     </BottomSheet>
 
@@ -97,10 +95,7 @@ export default function IncidentReportsScreen() {
 }
 
 const styles = StyleSheet.create({
-  card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
+  field: { gap: spacing.xs },
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  input: { minHeight: 48, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, textAlignVertical: "top" },
-  multiline: { minHeight: 80 },
   photoPreview: { width: "100%", height: 220, borderRadius: radius.md, backgroundColor: colors.surfaceTint },
 });

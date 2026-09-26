@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, PasswordInput, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Badge, BottomSheet, Button, Chip, EmptyState, ErrorState, PasswordInput, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { statusTone } from "@/ui/statusTone";
 import { tenantSubscriptionPlans, type TenantSubscriptionPlan } from "@daycare/core";
 import type { TenantStaffAdmin } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
@@ -126,7 +127,7 @@ export default function TenantDetailScreen() {
   };
   return <AppScreen showBottomNavigation={false} title={t("tenant.detailTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {tenant.isLoading && <ShimmerList variant="card" count={4} />}
-    {tenant.isError && <Button variant="secondary" onPress={() => tenant.refetch()}>{t("common.retry")}</Button>}
+    {tenant.isError && !tenant.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void tenant.refetch()} />}
     {tenant.data && <View style={styles.content}>
       <View style={styles.card}>
         <AppText variant="title">{tenant.data.name}</AppText>
@@ -144,13 +145,13 @@ export default function TenantDetailScreen() {
         <AppText variant="heading">{t("tenant.staffAdmin")}</AppText>
         {staffAdmins.map((staffAdmin) => <View key={staffAdmin.id} style={styles.staffAdmin}>
           <AppText variant="label">{staffAdmin.displayName ?? staffAdmin.email ?? t("common.noData")}{staffAdmin.primary ? ` · ${t("tenant.primaryStaffAdmin")}` : ""}</AppText>
-          <AppText tone="muted">{t(`status.${staffAdmin.status}` as Parameters<typeof t>[0])}</AppText>
+          <Badge tone={statusTone(staffAdmin.status)} label={t(`status.${staffAdmin.status}` as Parameters<typeof t>[0])} />
           {!staffAdmin.primary && staffAdmin.status === "ACTIVE" && <View style={styles.actions}>
             <IconButton icon="pencil-outline" tone="secondary" accessibilityLabel={t("tenant.editStaffAdmin")} onPress={() => openEditStaffAdmin(staffAdmin)} />
             <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("tenant.removeStaffAdmin")} disabled={removeStaffAdmin.isPending} onPress={() => { setStaffAdminToRemove(staffAdmin); setSheet("removeStaffAdmin"); }} />
           </View>}
         </View>)}
-        {staffAdmins.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+        {staffAdmins.length === 0 && <EmptyState compact title={t("common.noData")} />}
         {tenant.data.staffAdmin?.status === "PENDING" && <View style={styles.actions}><Button variant="secondary" loading={refreshInvitation.isPending} onPress={() => void updateInvitation("refresh")}>{t("tenant.refreshInvitation")}</Button><Button variant="danger" loading={cancelInvitation.isPending} onPress={() => void updateInvitation("cancel")}>{t("tenant.cancelInvitation")}</Button></View>}
         <Button variant="secondary" onPress={() => setSheet("staffAdmin")}>{t("tenant.addStaffAdmin")}</Button>
       </View>
@@ -166,7 +167,7 @@ export default function TenantDetailScreen() {
         </View>
       </View>
       <AppText variant="heading">{t("tenant.paymentHistory")}</AppText>
-      {tenant.data.payments.length === 0 && <AppText tone="muted">{t("tenant.noPayments")}</AppText>}
+      {tenant.data.payments.length === 0 && <EmptyState compact title={t("tenant.noPayments")} />}
       {tenant.data.payments.map((payment) => <View key={payment.id} style={styles.card}>
         <AppText>{formatCurrency(payment.amount)} · {t(tenantPaymentStatusKey(payment.status))}</AppText>
         <AppText tone="muted">{t("tenant.dueDate", { date: formatDate(payment.dueDate) })}</AppText>
@@ -174,24 +175,24 @@ export default function TenantDetailScreen() {
       </View>)}
     </View>}
     <BottomSheet visible={sheet === "edit"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("tenant.edit")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("common.save"), loading: update.isPending, onPress: () => void save() }}>
-      <TextInput style={styles.input} placeholder={t("tenant.name")} value={name} onChangeText={setName} />
+      <TextField label={t("tenant.name")} value={name} onChangeText={setName} />
       <AppText variant="label">{t("tenant.institutionTypes")}</AppText>
       <AppText variant="caption" tone="muted">{t("tenant.institutionTypesInfo")}</AppText>
-      <View style={styles.actions}>{institutionTypes.data?.map((type) => <Button key={type.code} variant={types.includes(type.code) ? "primary" : "secondary"} onPress={() => setTypes((current) => current.includes(type.code) ? current.filter((item) => item !== type.code) : [...current, type.code])}>{type.name}</Button>)}</View>
-      <View style={styles.actions}>{tenantSubscriptionPlans.map((item) => <Button key={item} variant={plan === item ? "primary" : "secondary"} onPress={() => setPlan(item)}>{t(tenantSubscriptionPlanKey(item))}</Button>)}</View>
-      <TextInput style={styles.input} keyboardType="numeric" placeholder={t("tenant.monthlyFee")} value={monthlyFee} onChangeText={setMonthlyFee} />
+      <View style={styles.actions}>{institutionTypes.data?.map((type) => <Chip key={type.code} label={type.name} selected={types.includes(type.code)} onPress={() => setTypes((current) => current.includes(type.code) ? current.filter((item) => item !== type.code) : [...current, type.code])} />)}</View>
+      <View style={styles.actions}>{tenantSubscriptionPlans.map((item) => <Chip key={item} label={t(tenantSubscriptionPlanKey(item))} selected={plan === item} onPress={() => setPlan(item)} />)}</View>
+      <TextField label={t("tenant.monthlyFee")} keyboardType="numeric" value={monthlyFee} onChangeText={setMonthlyFee} />
     </BottomSheet>
     <BottomSheet visible={sheet === "renew"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("tenant.renewal")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("tenant.renew"), loading: renew.isPending, onPress: () => void submitRenewal() }}>
-      <TextInput style={styles.input} keyboardType="numeric" placeholder={t("tenant.monthlyFee")} value={monthlyFee} onChangeText={setMonthlyFee} />
+      <TextField label={t("tenant.monthlyFee")} keyboardType="numeric" value={monthlyFee} onChangeText={setMonthlyFee} />
     </BottomSheet>
     <BottomSheet visible={sheet === "staffAdmin"} onClose={closeStaffAdminSheet} closeAccessibilityLabel={t("common.close")} title={t("tenant.addStaffAdmin")} negativeAction={{ label: t("common.cancel"), onPress: closeStaffAdminSheet }} positiveAction={{ label: t("common.save"), loading: createStaffAdmin.isPending, onPress: () => void submitStaffAdmin() }}>
-      <TextInput style={styles.input} autoCapitalize="words" placeholder={t("tenantUsers.displayName")} value={staffAdminName} onChangeText={(value) => setStaffAdminName(capitalizeWords(value))} />
-      <TextInput style={styles.input} autoCapitalize="none" placeholder={t("tenant.staffAdminUsernameOptional")} value={staffAdminUsername} onChangeText={setStaffAdminUsername} />
-      <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder={t("tenantUsers.email")} value={staffAdminEmail} onChangeText={setStaffAdminEmail} />
+      <TextField label={t("tenantUsers.displayName")} autoCapitalize="words" value={staffAdminName} onChangeText={(value) => setStaffAdminName(capitalizeWords(value))} />
+      <TextField label={t("tenant.staffAdminUsernameOptional")} autoCapitalize="none" value={staffAdminUsername} onChangeText={setStaffAdminUsername} />
+      <TextField label={t("tenantUsers.email")} autoCapitalize="none" keyboardType="email-address" value={staffAdminEmail} onChangeText={setStaffAdminEmail} />
       <PasswordInput placeholder={t("tenantUsers.password")} value={staffAdminPassword} onChangeText={setStaffAdminPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
     </BottomSheet>
     <BottomSheet visible={sheet === "editStaffAdmin"} onClose={closeEditStaffAdminSheet} closeAccessibilityLabel={t("common.close")} title={t("tenant.editStaffAdmin")} negativeAction={{ label: t("common.cancel"), onPress: closeEditStaffAdminSheet }} positiveAction={{ label: t("common.save"), loading: updateStaffAdmin.isPending, disabled: !editStaffAdminName.trim(), onPress: () => void submitEditStaffAdmin() }}>
-      <TextInput style={styles.input} placeholder={t("tenantUsers.displayName")} value={editStaffAdminName} onChangeText={setEditStaffAdminName} />
+      <TextField label={t("tenantUsers.displayName")} value={editStaffAdminName} onChangeText={setEditStaffAdminName} />
     </BottomSheet>
     <BottomSheet visible={sheet === "removeStaffAdmin"} onClose={() => { setStaffAdminToRemove(null); setSheet(null); }} closeAccessibilityLabel={t("common.close")} title={t("tenant.removeStaffAdmin")} negativeAction={{ label: t("common.cancel"), onPress: () => { setStaffAdminToRemove(null); setSheet(null); } }} positiveAction={{ label: t("tenant.removeStaffAdmin"), variant: "danger", loading: removeStaffAdmin.isPending, onPress: () => void submitRemoveStaffAdmin() }}>
       <AppText tone="muted">{t("tenant.removeStaffAdminConfirm", { name: staffAdminToRemove?.displayName ?? staffAdminToRemove?.email ?? t("common.noData") })}</AppText>
