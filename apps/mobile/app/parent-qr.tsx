@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import QRCode from "react-native-qrcode-svg";
 import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { AppText, BottomSheet, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BottomSheet, EmptyState, ErrorState, MenuItem, Shimmer, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
 import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAccess";
@@ -13,10 +13,10 @@ import { useI18n } from "@/i18n/I18nProvider";
 function ChildQr({ childId, name }: { childId: string; name: string }) {
   const qr = useAttendanceQr(childId);
   const { t, formatTime } = useI18n();
-  if (qr.isLoading) return <AppText>{t("qr.preparing", { name })}</AppText>;
-  if (qr.isError || !qr.data) return <AppText tone="danger">{t("qr.failed")}</AppText>;
+  if (qr.isLoading) return <View style={styles.card}><Shimmer width={220} height={220} /><AppText tone="muted">{t("qr.preparing", { name })}</AppText></View>;
+  if (qr.isError || !qr.data) return <ErrorState compact title={t("qr.failed")} retryLabel={t("common.retry")} onRetry={() => void qr.refetch()} />;
   const payload = JSON.stringify({ version: 1, child: { id: childId, name }, token: qr.data.token });
-  return <View style={styles.card}><AppText variant="caption" tone="muted">{t("qr.childId", { id: childId })}</AppText><QRCode value={payload} size={220} /><AppText tone="muted">{t("qr.validUntil", { time: formatTime(qr.data.expiresAt) })}</AppText></View>;
+  return <View style={styles.card}><AppText tone="muted" style={styles.center}>{t("qr.instruction")}</AppText><View style={styles.qrFrame}><QRCode value={payload} size={220} /></View><AppText variant="label">{t("qr.validUntil", { time: formatTime(qr.data.expiresAt) })}</AppText><AppText variant="caption" tone="muted">{t("qr.childId", { id: childId })}</AppText></View>;
 }
 
 export default function ParentQrScreen() {
@@ -45,16 +45,19 @@ function ParentQrScreenContent() {
   };
   return <AppScreen>
     <AppText variant="title">{t("qr.title")}</AppText>
+    {!onlyChild && visibleChildren.length > 0 && <AppText tone="muted">{t("qr.chooseChild")}</AppText>}
     {children.isFetching && <ShimmerList variant="tile" />}
     {!children.isFetching && onlyChild && <View style={styles.single}><AppText variant="h5">{onlyChild.fullName}</AppText>{onlyChild.organizationId === organizationId && <ChildQr childId={onlyChild.id} name={onlyChild.fullName} />}</View>}
-    {!children.isFetching && !onlyChild && visibleChildren.map((child) => <NavigationCard key={child.id} accessibilityLabel={t("qr.showQr", { name: child.fullName })} onPress={() => openChild(child)}>
-      <AppText variant="h5">{child.fullName}</AppText>
-      {showsTenantLabel && <AppText variant="caption" tone="muted">{child.organizationName}</AppText>}
-    </NavigationCard>)}
-    {!children.isFetching && visibleChildren.length === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
+    {!children.isFetching && !onlyChild && visibleChildren.map((child) => <MenuItem key={child.id} icon="qr-code-outline" title={child.fullName} description={showsTenantLabel ? child.organizationName : t("qr.showQr", { name: child.fullName })} onPress={() => openChild(child)} />)}
+    {!children.isFetching && visibleChildren.length === 0 && <EmptyState icon="happy-outline" title={t("children.empty")} />}
     {!onlyChild && <BottomSheet visible={Boolean(selectedChild)} onClose={() => setSelectedChildId(null)} closeAccessibilityLabel={t("common.close")} title={selectedChild?.fullName ?? t("qr.title")}>
       {selectedChild && selectedChild.organizationId === organizationId && <ChildQr childId={selectedChild.id} name={selectedChild.fullName} />}
     </BottomSheet>}
   </AppScreen>;
 }
-const styles = StyleSheet.create({ card: { alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, single: { gap: spacing.sm } });
+const styles = StyleSheet.create({
+  card: { alignItems: "center", gap: spacing.sm, padding: spacing.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  qrFrame: { padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.onPrimary },
+  center: { textAlign: "center" },
+  single: { gap: spacing.sm },
+});

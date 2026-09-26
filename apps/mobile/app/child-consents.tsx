@@ -1,7 +1,8 @@
 import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Badge, BackButton, Button, Card, EmptyState, ErrorState, ShimmerList, spacing } from "@daycare/ui";
+import { statusTone } from "@/ui/statusTone";
 import { AppScreen } from "@/navigation/AppScreen";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
@@ -32,19 +33,16 @@ export default function ChildConsentsScreen() {
   return <AppScreen showBottomNavigation={false} title={t("consent.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.content}>
     <AppText tone="muted">{t("consent.parentDescription")}</AppText>
     {consents.isLoading && <ShimmerList variant="tile" />}
-    {consents.isError && <View style={styles.error}><AppText tone="danger">{t("consent.decisionFailed")}</AppText><Button variant="secondary" onPress={() => void consents.refetch()}>{t("common.retry")}</Button></View>}
-    {consents.data?.map((item) => <View key={item.definition.id} style={styles.card}>
-      <AppText variant="heading">{item.definition.title}</AppText>
-      <AppText variant="caption" tone="muted">{t(consentPurposeKey(item.definition.purpose))} · {t("consent.revision", { revision: item.definition.revision })}</AppText>
+    {consents.isError && !consents.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void consents.refetch()} />}
+    {consents.data?.map((item) => <Card key={item.definition.id} icon="shield-checkmark-outline" title={item.definition.title} subtitle={`${t(consentPurposeKey(item.definition.purpose))} · ${t("consent.revision", { revision: item.definition.revision })}`} trailing={<Badge tone={statusTone(item.status)} label={t(consentStatusKey(item.status))} />}>
       <AppText>{item.definition.content}</AppText>
-      <AppText variant="label">{t(consentStatusKey(item.status))}</AppText>
       {item.status === "GRANTED" ? <Button variant="danger" loading={withdraw.isPending} onPress={() => void withdraw.mutateAsync(item.definition.id)}>{t("consent.withdraw")}</Button> : <View style={styles.actions}>
-        <Button loading={decide.isPending} onPress={() => void decide.mutateAsync({ definitionId: item.definition.id, granted: true })}>{t("consent.grant")}</Button>
-        <Button variant="secondary" loading={decide.isPending} onPress={() => void decide.mutateAsync({ definitionId: item.definition.id, granted: false })}>{t("consent.decline")}</Button>
+        <Button style={styles.action} variant="secondary" loading={decide.isPending} onPress={() => void decide.mutateAsync({ definitionId: item.definition.id, granted: false })}>{t("consent.decline")}</Button>
+        <Button style={styles.action} loading={decide.isPending} onPress={() => void decide.mutateAsync({ definitionId: item.definition.id, granted: true })}>{t("consent.grant")}</Button>
       </View>}
-    </View>)}
-    {!consents.isLoading && !consents.isError && !consents.data?.length && <AppText tone="muted">{t("consent.empty")}</AppText>}
+    </Card>)}
+    {!consents.isLoading && !consents.isError && !consents.data?.length && <EmptyState icon="shield-checkmark-outline" title={t("consent.empty")} />}
   </View></AppScreen>;
 }
 
-const styles = StyleSheet.create({ content: { gap: spacing.md }, card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, error: { gap: spacing.sm, alignItems: "flex-start" } });
+const styles = StyleSheet.create({ content: { gap: spacing.md }, actions: { flexDirection: "row", gap: spacing.sm }, action: { flex: 1 } });

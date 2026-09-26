@@ -6,6 +6,7 @@ export * from "./Banner";
 export * from "./BottomSheet";
 export * from "./brand";
 export * from "./Button";
+export * from "./Card";
 export * from "./Chip";
 export * from "./EmptyState";
 export * from "./FloatingActionButton";

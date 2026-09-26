@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Alert, Linking, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Linking, StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ChildProgramStatus } from "@daycare/api-client";
-import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Badge, BackButton, BottomSheet, Button, Card, EmptyState, ErrorState, InfoRow, MenuItem, MenuSection, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { statusTone } from "@/ui/statusTone";
 import { AppScreen } from "@/navigation/AppScreen";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
@@ -37,24 +39,47 @@ export default function ParentChildProfileScreen() {
   const statusLabel = (status: ChildProgramStatus) => t(status === "ACTIVE" ? "children.programStatus.ACTIVE" : status === "COMPLETED" ? "children.programStatus.COMPLETED" : "children.programStatus.DISCONTINUED");
   const submitFeedback = async () => {
     if (!feedbackProgramId || !feedbackNote.trim()) return;
-    try { await feedback.mutateAsync({ programId: feedbackProgramId, note: feedbackNote.trim() }); setFeedbackNote(""); setFeedbackProgramId(null); notify(t("children.feedbackSent")); }
-    catch (error) { notify(t("children.feedbackFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    try { await feedback.mutateAsync({ programId: feedbackProgramId, note: feedbackNote.trim() }); setFeedbackNote(""); setFeedbackProgramId(null); notify(t("children.feedbackSent"), undefined, "success"); }
+    catch (error) { notify(t("children.feedbackFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
   return <AppScreen showBottomNavigation={false} title={t("children.parentProfile")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.content}>
     {childProfile.isLoading && <ShimmerList variant="tile" />}
-    {childProfile.isError && <View style={styles.feedback}><AppText tone="danger">{t("auth.profileLoadFailed")}</AppText><Button variant="secondary" onPress={() => void childProfile.refetch()}>{t("common.retry")}</Button></View>}
+    {childProfile.isError && !childProfile.isFetching && <ErrorState title={t("auth.profileLoadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void childProfile.refetch()} />}
     {childProfile.data && <>
-      <View style={styles.card}><AppText variant="h5">{childProfile.data.child.fullName}</AppText><AppText tone="muted">{childProfile.data.child.gender === "MALE" ? t("children.genderMale") : childProfile.data.child.gender === "FEMALE" ? t("children.genderFemale") : t("children.genderUnspecified")}</AppText><AppText tone="muted">{childProfile.data.child.dateOfBirth}</AppText>{childProfile.data.child.nisn && <AppText tone="muted">{t("children.nisn")}: {childProfile.data.child.nisn}</AppText>}</View>
-      <View style={styles.card}><AppText variant="h5">{t("branch.location")}</AppText><AppText variant="label">{childProfile.data.branch.name}</AppText><AppText tone="muted">{childProfile.data.branch.fullAddress ?? t("branch.locationUnavailable")}</AppText>{childProfile.data.branch.googleMapsUrl && <Button variant="secondary" onPress={() => void openMaps()}>{t("branch.openGoogleMaps")}</Button>}</View>
-      {hasDaycarePickupOperations && <View style={styles.card}><AppText variant="h5">{t("pickup.title")}</AppText><Button variant="secondary" onPress={() => router.push({ pathname: "/pickup-authorizations", params: { childId } } as never)}>{t("pickup.manage")}</Button></View>}
-      <View style={styles.card}><AppText variant="h5">{t("emergencyContacts.title")}</AppText><Button variant="secondary" onPress={() => router.push({ pathname: "/emergency-contacts", params: { childId } } as never)}>{t("emergencyContacts.manage")}</Button></View>
-      {hasDaycarePickupOperations && <View style={styles.card}><AppText variant="h5">{t("consent.title")}</AppText><Button variant="secondary" onPress={() => router.push({ pathname: "/child-consents", params: { childId } } as never)}>{t("consent.title")}</Button></View>}
-      <View style={styles.card}><AppText variant="h5">{t("children.classroom")}</AppText>{childProfile.data.placement ? <><AppText variant="label">{childProfile.data.placement.classroomName}</AppText><AppText tone="muted">{childProfile.data.placement.learningLevelName ?? t("common.noData")}</AppText></> : <AppText tone="muted">{t("common.noData")}</AppText>}</View>
-      <View style={styles.card}><AppText variant="h5">{t("children.programs")}</AppText>{childProfile.data.programs.map((program) => <View key={program.id} style={styles.item}><AppText variant="label">{program.name}</AppText><AppText variant="caption" tone="muted">{statusLabel(program.status)}</AppText>{program.parentSummary && <AppText tone="muted">{program.parentSummary}</AppText>}{program.homeGuidance && <><AppText variant="label">{t("children.homeGuidance")}</AppText><AppText tone="muted">{program.homeGuidance}</AppText></>}{program.steps.map((step) => <View key={step.id} style={styles.step}><AppText variant="label">{step.title}</AppText>{step.homeGuidance && <AppText tone="muted">{step.homeGuidance}</AppText>}</View>)}{program.steps.length === 0 && !program.homeGuidance && <AppText tone="muted">{t("children.noSteps")}</AppText>}<Button variant="secondary" onPress={() => setFeedbackProgramId(program.id)}>{t("children.addFeedback")}</Button>{program.feedback.map((item) => <View key={item.id} style={styles.step}><AppText>{item.note}</AppText></View>)}</View>)}{childProfile.data.programs.length === 0 && <AppText tone="muted">{t("children.noPrograms")}</AppText>}</View>
-      <View style={styles.card}><AppText variant="h5">{t("children.staffAssignments")}</AppText>{childProfile.data.staffAssignments.map((staff) => <View key={`${staff.displayName}-${staff.assignmentRole}`} style={styles.item}><AppText variant="label">{staff.displayName}</AppText><AppText tone="muted">{staffRole(staff.assignmentRole)}</AppText></View>)}{childProfile.data.staffAssignments.length === 0 && <AppText tone="muted">{t("children.noStaff")}</AppText>}</View>
-      <View style={styles.card}><AppText variant="h5">{t("parentEnrollment.transferTitle")}</AppText><AppText tone="muted">{t("parentEnrollment.transferDescription")}</AppText><Button variant="secondary" onPress={() => router.push({ pathname: "/parent-enrollment-form", params: { transferChildId: childId, transferChildName: childProfile.data.child.fullName } })}>{t("parentEnrollment.transferAction")}</Button></View>
+      <View style={styles.hero}>
+        <View style={styles.avatar}><AppText variant="h4" style={styles.avatarText}>{childProfile.data.child.fullName.trim().charAt(0).toUpperCase() || "?"}</AppText></View>
+        <View style={styles.heroCopy}>
+          <AppText variant="h4">{childProfile.data.child.fullName}</AppText>
+          <AppText tone="muted">{childProfile.data.child.gender === "MALE" ? t("children.genderMale") : childProfile.data.child.gender === "FEMALE" ? t("children.genderFemale") : t("children.genderUnspecified")} · {childProfile.data.child.dateOfBirth}</AppText>
+          {childProfile.data.child.nisn && <AppText variant="caption" tone="muted">{t("children.nisn")}: {childProfile.data.child.nisn}</AppText>}
+        </View>
+      </View>
+      <Card icon="location-outline" title={t("branch.location")}>
+        <InfoRow label={childProfile.data.branch.name} value={<AppText tone="muted">{childProfile.data.branch.fullAddress ?? t("branch.locationUnavailable")}</AppText>} />
+        {childProfile.data.branch.googleMapsUrl && <Button variant="secondary" leadingIcon={<Ionicons name="map-outline" size={18} color={colors.primary} />} onPress={() => void openMaps()}>{t("branch.openGoogleMaps")}</Button>}
+      </Card>
+      <MenuSection title={t("children.safetySection")}>
+        <MenuItem icon="call-outline" title={t("emergencyContacts.title")} description={t("emergencyContacts.manage")} onPress={() => router.push({ pathname: "/emergency-contacts", params: { childId } } as never)} />
+        {hasDaycarePickupOperations && <MenuItem icon="car-outline" title={t("pickup.title")} description={t("pickup.manage")} onPress={() => router.push({ pathname: "/pickup-authorizations", params: { childId } } as never)} />}
+        {hasDaycarePickupOperations && <MenuItem icon="shield-checkmark-outline" title={t("consent.title")} description={t("consent.parentDescription")} onPress={() => router.push({ pathname: "/child-consents", params: { childId } } as never)} />}
+      </MenuSection>
+      <Card icon="grid-outline" title={t("children.classroom")}>{childProfile.data.placement ? <InfoRow label={childProfile.data.placement.learningLevelName ?? t("common.noData")} value={childProfile.data.placement.classroomName} /> : <AppText tone="muted">{t("common.noData")}</AppText>}</Card>
+      <Card icon="heart-outline" title={t("children.programs")}>{childProfile.data.programs.map((program) => <View key={program.id} style={styles.item}><View style={styles.itemHeader}><AppText variant="label" style={styles.grow}>{program.name}</AppText><Badge tone={statusTone(program.status)} label={statusLabel(program.status)} /></View>{program.parentSummary && <AppText tone="muted">{program.parentSummary}</AppText>}{program.homeGuidance && <><AppText variant="label">{t("children.homeGuidance")}</AppText><AppText tone="muted">{program.homeGuidance}</AppText></>}{program.steps.map((step) => <View key={step.id} style={styles.step}><AppText variant="label">{step.title}</AppText>{step.homeGuidance && <AppText tone="muted">{step.homeGuidance}</AppText>}</View>)}{program.steps.length === 0 && !program.homeGuidance && <AppText tone="muted">{t("children.noSteps")}</AppText>}{program.feedback.map((item) => <View key={item.id} style={styles.feedbackNote}><Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.muted} /><AppText style={styles.grow}>{item.note}</AppText></View>)}<Button variant="secondary" leadingIcon={<Ionicons name="create-outline" size={18} color={colors.primary} />} onPress={() => setFeedbackProgramId(program.id)}>{t("children.addFeedback")}</Button></View>)}{childProfile.data.programs.length === 0 && <EmptyState compact icon="heart-outline" title={t("children.noPrograms")} />}</Card>
+      <Card icon="people-outline" title={t("children.staffAssignments")}>{childProfile.data.staffAssignments.map((staff) => <InfoRow key={`${staff.displayName}-${staff.assignmentRole}`} icon="person-outline" label={staffRole(staff.assignmentRole)} value={staff.displayName} />)}{childProfile.data.staffAssignments.length === 0 && <AppText tone="muted">{t("children.noStaff")}</AppText>}</Card>
+      <Card icon="swap-horizontal-outline" title={t("parentEnrollment.transferTitle")} subtitle={t("parentEnrollment.transferDescription")}><Button variant="secondary" onPress={() => router.push({ pathname: "/parent-enrollment-form", params: { transferChildId: childId, transferChildName: childProfile.data.child.fullName } })}>{t("parentEnrollment.transferAction")}</Button></Card>
     </>}
-  </View><BottomSheet visible={Boolean(feedbackProgramId)} onClose={() => { setFeedbackProgramId(null); setFeedbackNote(""); }} closeAccessibilityLabel={t("common.close")} title={t("children.addFeedback")} negativeAction={{ label: t("common.cancel"), onPress: () => { setFeedbackProgramId(null); setFeedbackNote(""); } }} positiveAction={{ label: t("common.save"), loading: feedback.isPending, disabled: !feedbackNote.trim(), onPress: () => void submitFeedback() }}><TextInput style={[styles.input, styles.multiline]} placeholder={t("children.feedbackNote")} value={feedbackNote} onChangeText={setFeedbackNote} multiline /></BottomSheet></AppScreen>;
+  </View><BottomSheet visible={Boolean(feedbackProgramId)} onClose={() => { setFeedbackProgramId(null); setFeedbackNote(""); }} closeAccessibilityLabel={t("common.close")} title={t("children.addFeedback")} negativeAction={{ label: t("common.cancel"), onPress: () => { setFeedbackProgramId(null); setFeedbackNote(""); } }} positiveAction={{ label: t("common.save"), loading: feedback.isPending, disabled: !feedbackNote.trim(), onPress: () => void submitFeedback() }}><TextField label={t("children.feedbackNote")} value={feedbackNote} onChangeText={setFeedbackNote} multiline /></BottomSheet></AppScreen>;
 }
 
-const styles = StyleSheet.create({ content: { gap: spacing.md }, card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, item: { gap: spacing.xs, paddingTop: spacing.sm }, step: { gap: spacing.xs, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint }, feedback: { gap: spacing.sm, alignItems: "flex-start" }, input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, multiline: { minHeight: 96, paddingTop: spacing.sm, textAlignVertical: "top" } });
+const styles = StyleSheet.create({
+  content: { gap: spacing.md },
+  hero: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  avatar: { width: 64, height: 64, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
+  avatarText: { color: colors.onPrimary },
+  heroCopy: { flex: 1, gap: 2 },
+  item: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
+  itemHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  grow: { flex: 1 },
+  step: { gap: spacing.xs, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
+  feedbackNote: { flexDirection: "row", alignItems: "flex-start", gap: spacing.xs, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
+});

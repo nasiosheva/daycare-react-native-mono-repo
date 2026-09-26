@@ -1,6 +1,6 @@
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
-import { AppText, BackButton, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Badge, BackButton, Button, Card, EmptyState, ErrorState, InfoRow, ShimmerList, spacing } from "@daycare/ui";
 import type { InvoiceWithTenant } from "@/booking/useBooking";
 import { useParentInvoicesAcrossTenants } from "@/booking/useBooking";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -8,6 +8,7 @@ import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { invoiceSourceKey, invoiceStatusKey } from "@/i18n/translations";
+import { statusTone } from "@/ui/statusTone";
 
 export default function PaymentHistoryScreen() {
   const router = useRouter();
@@ -29,21 +30,22 @@ export default function PaymentHistoryScreen() {
 
   return <AppScreen showBottomNavigation={false} title={t("paymentHistory.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.content}>
     {invoices.isFetching && <ShimmerList />}
-    {invoices.isError && <Button variant="secondary" onPress={() => invoices.refetch()}>{t("common.retry")}</Button>}
-    {!invoices.isFetching && !invoices.isError && sorted.map((invoice) => <View key={invoice.id} style={styles.card}>
-      <View style={styles.row}><AppText variant="heading">{invoice.invoiceNumber}</AppText><AppText variant="caption" tone="muted">{t(invoiceStatusKey(invoice.status))}</AppText></View>
-      <AppText tone="muted">{invoice.childName}{showsTenantLabel ? ` · ${invoice.organizationName}` : ""}</AppText>
-      <AppText>{invoice.description ?? t(invoiceSourceKey(invoice.source))} · {formatCurrency(invoice.totalAmount)}</AppText>
-      <AppText variant="caption" tone="muted">{t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>
+    {invoices.isError && !invoices.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void invoices.refetch()} />}
+    {!invoices.isFetching && !invoices.isError && sorted.map((invoice) => <Card key={invoice.id} title={invoice.invoiceNumber} subtitle={`${invoice.childName}${showsTenantLabel ? ` · ${invoice.organizationName}` : ""}`} trailing={<Badge tone={statusTone(invoice.status)} label={t(invoiceStatusKey(invoice.status))} />}>
+      <View style={styles.row}>
+        <AppText tone="muted" style={styles.grow}>{invoice.description ?? t(invoiceSourceKey(invoice.source))}</AppText>
+        <AppText variant="label">{formatCurrency(invoice.totalAmount)}</AppText>
+      </View>
+      <InfoRow icon="calendar-outline" label={t("parentEnrollment.dueDateLabel")} value={formatDate(invoice.dueDate)} />
       {invoice.status === "PENDING" && <Button onPress={() => openPayment(invoice)}>{t("parentEnrollment.pay")}</Button>}
       {invoice.status === "PAYMENT_SUBMITTED" && <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
-    </View>)}
-    {!invoices.isFetching && !invoices.isError && sorted.length === 0 && <AppText tone="muted">{t("paymentHistory.empty")}</AppText>}
+    </Card>)}
+    {!invoices.isFetching && !invoices.isError && sorted.length === 0 && <EmptyState icon="receipt-outline" title={t("paymentHistory.empty")} />}
   </View></AppScreen>;
 }
 
 const styles = StyleSheet.create({
   content: { gap: spacing.md },
-  card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
+  grow: { flex: 1 },
 });

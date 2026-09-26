@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import type { OperatingDay } from "@daycare/api-client";
-import { AppText, ShimmerList, colors, radius, shadows, spacing } from "@daycare/ui";
+import { AppText, EmptyState, ShimmerList, colors, radius, shadows, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -67,7 +67,7 @@ export default function OperationalHoursScreen() {
         </View>}
       </View>;
     })}
-    {!hours.isFetching && hours.data?.length === 0 && <AppText tone="muted">{t("overtime.noParentBranches")}</AppText>}
+    {!hours.isFetching && hours.data?.length === 0 && <EmptyState icon="time-outline" title={t("overtime.noParentBranches")} />}
   </AppScreen>;
 }
 

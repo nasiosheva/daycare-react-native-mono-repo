@@ -35,7 +35,7 @@ describe("translations", () => {
   });
 
   it("includes the grouped menu, empty-state and search labels in every supported locale", () => {
-    const keys: TranslationKey[] = ["menu.groupDaily", "menu.groupLearning", "menu.groupFinance", "menu.groupInstitution", "menu.groupOther", "common.clearSearch", "common.loadFailed", "common.loadFailedDescription", "home.quickActions", "learning.capacityHint"];
+    const keys: TranslationKey[] = ["menu.groupDaily", "menu.groupLearning", "menu.groupFinance", "menu.groupInstitution", "menu.groupOther", "common.clearSearch", "common.loadFailed", "common.loadFailedDescription", "home.quickActions", "learning.capacityHint", "parentEnrollment.payStepTransfer", "parentEnrollment.payStepUpload", "parentEnrollment.payStepVerify", "parentEnrollment.needsPayment", "paymentInstruction.transferHint", "qr.instruction", "children.safetySection", "auth.haveAccountSignIn"];
     for (const locale of supportedLocales) for (const key of keys) expect(translate(locale, key)).not.toBe(key);
   });
 

@@ -1,14 +1,19 @@
 import { useState } from "react";
-import { Alert, Image, StyleSheet, TextInput, View } from "react-native";
+import { Image, Pressable, StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, Button, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Badge, BackButton, Banner, Button, Card, InfoRow, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useImagePicker, type PickedImage } from "@/image-picker";
 import { parentEnrollmentQueryKey } from "@/parent-enrollment/queryKeys";
 import { encodePaymentProofImage } from "@/payment-proof/encodeImage";
+import { PaymentSteps, paymentStepForInvoice } from "@/payment-proof/PaymentSteps";
+import { invoiceStatusKey } from "@/i18n/translations";
+import { notify } from "@/notify/notify";
+import { statusTone } from "@/ui/statusTone";
 
 const acceptedTypes = new Set(["image/jpeg", "image/png"]);
 
@@ -36,7 +41,7 @@ export default function PaymentProofScreen() {
       if (paymentOrganizationId) void client.invalidateQueries({ queryKey: ["invoices", paymentOrganizationId] });
       void client.invalidateQueries({ queryKey: ["invoice", invoiceScope, invoiceId] });
       void client.invalidateQueries({ queryKey: parentEnrollmentQueryKey(user?.uid) });
-      Alert.alert(t("paymentProof.submitted"));
+      notify(t("paymentProof.submitted"), t("paymentProof.awaitingReview"), "success");
       router.back();
     },
   });
@@ -46,28 +51,44 @@ export default function PaymentProofScreen() {
 
   if (!invoiceId) return null;
   return <AppScreen showBottomNavigation={false} title={t("paymentProof.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    {invoice.isLoading ? <AppText>{t("common.loading")}</AppText> : invoice.data && <View style={styles.card}>
-      <AppText variant="h5">{invoice.data.invoiceNumber}</AppText>
-      <AppText>{invoice.data.childName} · {formatCurrency(invoice.data.totalAmount)}</AppText>
-      <AppText tone="muted">{t("tenant.dueDate", { date: formatDate(invoice.data.dueDate) })}</AppText>
-      {invoice.data.paymentProof?.status === "SUBMITTED" && <AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
-      {invoice.data.paymentProof?.status === "REJECTED" && <AppText tone="muted">{t("paymentProof.rejected", { reason: invoice.data.paymentProof.rejectionReason ?? t("common.noData") })}</AppText>}
-    </View>}
-    {canSubmit && <View style={styles.form}>
-      <AppText tone="muted">{t("paymentProof.description")}</AppText>
-      <View style={styles.actions}><Button variant="secondary" onPress={() => void selectFromLibrary()}>{t("paymentProof.upload")}</Button><Button variant="secondary" onPress={() => void takePhoto()}>{t("paymentProof.camera")}</Button></View>
-      {image && <Image source={{ uri: image.uri }} style={styles.preview} resizeMode="contain" />}
-      <TextInput style={styles.input} multiline placeholder={t("paymentProof.note")} value={note} onChangeText={setNote} />
-      <Button loading={submit.isPending} disabled={!image} onPress={() => void submit.mutateAsync().catch((error: unknown) => Alert.alert(t("paymentProof.failed"), error instanceof Error ? error.message : t("auth.tryAgain")))}>{t("paymentProof.submit")}</Button>
-      {imagePicker.error && <AppText tone="muted">{imagePicker.error.message}</AppText>}
-    </View>}
+    <PaymentSteps current={paymentStepForInvoice(invoice.data?.status, "upload")} labels={[t("parentEnrollment.payStepTransfer"), t("parentEnrollment.payStepUpload"), t("parentEnrollment.payStepVerify")]} />
+    {invoice.isLoading ? <ShimmerList variant="tile" count={1} /> : invoice.data && <Card icon="receipt-outline" title={invoice.data.invoiceNumber} subtitle={invoice.data.childName} trailing={<Badge tone={statusTone(invoice.data.status)} label={t(invoiceStatusKey(invoice.data.status))} />}>
+      <AppText variant="h4" style={styles.amount}>{formatCurrency(invoice.data.totalAmount)}</AppText>
+      <InfoRow icon="calendar-outline" label={t("parentEnrollment.dueDateLabel")} value={formatDate(invoice.data.dueDate)} />
+    </Card>}
+    {invoice.data?.paymentProof?.status === "SUBMITTED" && <Banner tone="info" title={t("status.PAYMENT_SUBMITTED")} message={t("paymentProof.awaitingReview")} />}
+    {invoice.data?.paymentProof?.status === "REJECTED" && <Banner tone="danger" title={t("status.REJECTED")} message={t("paymentProof.rejected", { reason: invoice.data.paymentProof.rejectionReason ?? t("common.noData") })} />}
+    {canSubmit && <Card title={t("paymentProof.title")} subtitle={t("paymentProof.description")}>
+      {image
+        ? <View style={styles.previewWrap}>
+          <Image source={{ uri: image.uri }} style={styles.preview} resizeMode="contain" accessibilityIgnoresInvertColors />
+          <Button variant="ghost" leadingIcon={<Ionicons name="refresh" size={18} color={colors.primary} />} onPress={() => setImage(null)}>{t("paymentProof.changeImage")}</Button>
+        </View>
+        : <View style={styles.pickers}>
+          <PickerTile icon="images-outline" label={t("paymentProof.upload")} onPress={() => void selectFromLibrary()} />
+          <PickerTile icon="camera-outline" label={t("paymentProof.camera")} onPress={() => void takePhoto()} />
+        </View>}
+      {imagePicker.error && <Banner tone="danger" title={imagePicker.error.message} />}
+      <TextField label={t("paymentProof.note")} multiline value={note} onChangeText={setNote} />
+      <Button loading={submit.isPending} disabled={!image} leadingIcon={<Ionicons name="send" size={16} color={image ? colors.onPrimary : colors.muted} />} onPress={() => void submit.mutateAsync().catch((error: unknown) => notify(t("paymentProof.failed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))}>{t("paymentProof.submit")}</Button>
+      {!image && <AppText variant="caption" tone="muted" style={styles.center}>{t("paymentProof.imageRequired")}</AppText>}
+    </Card>}
   </AppScreen>;
 }
 
+function PickerTile({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ pressed }) => [styles.pickerTile, pressed && styles.pickerTilePressed]}>
+    <Ionicons name={icon} size={28} color={colors.primary} />
+    <AppText variant="label" style={styles.center}>{label}</AppText>
+  </Pressable>;
+}
+
 const styles = StyleSheet.create({
-  card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  form: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  amount: { color: colors.primary },
+  pickers: { flexDirection: "row", gap: spacing.sm },
+  pickerTile: { flex: 1, minHeight: 104, alignItems: "center", justifyContent: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderStyle: "dashed", borderColor: colors.primary, backgroundColor: colors.surfaceTint },
+  pickerTilePressed: { opacity: 0.8 },
+  previewWrap: { gap: spacing.xs },
   preview: { width: "100%", height: 240, borderRadius: radius.md, backgroundColor: colors.surfaceTint },
-  input: { minHeight: 96, padding: spacing.sm, textAlignVertical: "top", borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface },
+  center: { textAlign: "center" },
 });
