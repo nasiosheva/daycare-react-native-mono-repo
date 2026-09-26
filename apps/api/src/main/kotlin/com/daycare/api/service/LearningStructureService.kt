@@ -18,6 +18,7 @@ import com.daycare.api.persistence.ChildPlacement
 import com.daycare.api.persistence.ChildPlacementRepository
 import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.CurriculumProgramRepository
+import com.daycare.api.persistence.DevelopmentProgramRepository
 import com.daycare.api.persistence.LearningLevel
 import com.daycare.api.persistence.LearningLevelCurriculumProgram
 import com.daycare.api.persistence.LearningLevelCurriculumProgramRepository
@@ -60,6 +61,10 @@ data class CreateClassroomProgramRequest(@field:NotBlank @field:Size(max = 120) 
 data class CreateChildPlacementRequest(val classroomId: UUID, val startsOn: LocalDate = LocalDate.now())
 data class ChildPlacementResponse(val id: UUID, val classroomId: UUID, val classroomName: String, val learningLevelId: UUID?, val learningLevelName: String?, val learningPeriodId: UUID?, val startsOn: LocalDate, val endedOn: LocalDate?, val ageGuidanceWarning: Boolean)
 
+object LearningLevelError {
+    const val ASSIGNED = "learning_level.assigned"
+}
+
 @Service
 class LearningStructureService(
     private val access: AccessService,
@@ -67,6 +72,7 @@ class LearningStructureService(
     private val levels: LearningLevelRepository,
     private val levelPrograms: LearningLevelCurriculumProgramRepository,
     private val programs: CurriculumProgramRepository,
+    private val developmentPrograms: DevelopmentProgramRepository,
     private val classrooms: ClassroomRepository,
     private val placements: ChildPlacementRepository,
     private val children: ChildRepository,
@@ -135,7 +141,12 @@ class LearningStructureService(
     @Transactional
     fun deleteGlobalLevel(jwt: Jwt, levelId: UUID) {
         platformAccess.requirePlatformAdmin(jwt)
-        levels.delete(globalLevel(levelId))
+        val level = globalLevel(levelId)
+        // A NOT NULL FK from development_programs to learning_levels cascades on delete (§6); without this
+        // check, deleting a level would silently remove every global Development Program still using it,
+        // bypassing the "cannot delete a program already assigned to a child" rule enforced in GoalService.
+        require(!developmentPrograms.existsByLearningLevelId(levelId)) { LearningLevelError.ASSIGNED }
+        levels.delete(level)
     }
 
     @Transactional(readOnly = true)
