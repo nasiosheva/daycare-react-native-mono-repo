@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { EducationOffering } from "@daycare/api-client";
 import type { EducationOfferingStatus, InstitutionType } from "@daycare/core";
-import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, Chip, EmptyState, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
@@ -35,14 +35,14 @@ export default function EducationOfferingsScreen() {
   if (!profile) return null;
   if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
   const activeBranches = branches.data?.filter((branch) => branch.active) ?? [];
-  return <AppScreen showBottomNavigation={false} title={t("tenant.institutionTypes")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton accessibilityLabel={t("institutionCatalog.add")} onPress={() => setOpen(true)}>+ {t("institutionCatalog.add")}</FloatingActionButton>}><View style={styles.content}>
+  return <AppScreen showBottomNavigation={false} title={t("tenant.institutionTypes")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton icon="add" accessibilityLabel={t("institutionCatalog.add")} onPress={() => setOpen(true)}>{t("institutionCatalog.add")}</FloatingActionButton>}><View style={styles.content}>
     <AppText variant="title">{t("tenant.institutionTypes")}</AppText><AppText tone="muted">{t("tenant.institutionTypesInfo")}</AppText>
     {offerings.isLoading && <ShimmerList variant="card" />}
     {offerings.data?.map((offering) => <OfferingCard key={offering.id} offering={offering} branchName={branches.data?.find((branch) => branch.id === offering.branchId)?.name ?? t("common.noData")} onStatus={(status) => changeStatus.mutate({ offering, status })} loading={changeStatus.isPending} />)}
-    {!offerings.isLoading && offerings.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+    {!offerings.isLoading && offerings.data?.length === 0 && <EmptyState compact title={t("common.noData")} />}
     <BottomSheet visible={open} onClose={close} closeAccessibilityLabel={t("common.close")} title={t("institutionCatalog.add")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t("common.save"), loading: create.isPending, onPress: submit }}>
-      {error && <AppText tone="danger">{error}</AppText>}<AppText variant="label">{t("tenant.branches")}</AppText><View style={styles.options}>{activeBranches.map((branch) => <Button key={branch.id} variant={branchId === branch.id ? "primary" : "secondary"} onPress={() => setBranchId(branch.id)}>{branch.name}</Button>)}</View>
-      <AppText variant="label">{t("tenant.institutionTypes")}</AppText><View style={styles.options}>{membership.institutionTypes.map((type) => <Button key={type} variant={institutionType === type ? "primary" : "secondary"} onPress={() => setInstitutionType(type)}>{type}</Button>)}</View>
+      {error && <AppText tone="danger">{error}</AppText>}<AppText variant="label">{t("tenant.branches")}</AppText><View style={styles.options}>{activeBranches.map((branch) => <Chip key={branch.id} label={branch.name} selected={branchId === branch.id} onPress={() => setBranchId(branch.id)} />)}</View>
+      <AppText variant="label">{t("tenant.institutionTypes")}</AppText><View style={styles.options}>{membership.institutionTypes.map((type) => <Chip key={type} label={type} selected={institutionType === type} onPress={() => setInstitutionType(type)} />)}</View>
     </BottomSheet>
   </View></AppScreen>;
 }

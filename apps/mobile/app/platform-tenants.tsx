@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, Button, colors, FloatingActionButton, radius, ShimmerList, spacing } from "@daycare/ui";
+import { AppText, Avatar, Badge, Button, EmptyState, FloatingActionButton, SearchField, ShimmerList, TabBar, colors, radius, spacing } from "@daycare/ui";
+import { statusTone } from "@/ui/statusTone";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { tenantSubscriptionStatuses, type TenantSubscriptionStatus } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
@@ -34,32 +35,32 @@ export default function PlatformTenantsScreen() {
   if (!profile.isPlatformAdmin) return <Redirect href="/home" />;
 
   return <AppScreen floatingAction={<View style={styles.floatingActions}>
-    <FloatingActionButton accessibilityLabel={t("tenant.addTitle")} onPress={() => router.push("/add-tenant")}>+ {t("tenant.addTitle")}</FloatingActionButton>
-    <FloatingActionButton accessibilityLabel={t("institutionCatalog.add")} onPress={() => router.push("/institution-types")}>+ {t("institutionCatalog.add")}</FloatingActionButton>
+    <FloatingActionButton icon="add" accessibilityLabel={t("tenant.addTitle")} onPress={() => router.push("/add-tenant")}>{t("tenant.addTitle")}</FloatingActionButton>
+    <FloatingActionButton icon="add" accessibilityLabel={t("institutionCatalog.add")} onPress={() => router.push("/institution-types")}>{t("institutionCatalog.add")}</FloatingActionButton>
   </View>}><AppText variant="title">{t("tenant.title")}</AppText>
     <AppText variant="heading">{t("tenant.list")}</AppText>
-    <TextInput style={styles.input} placeholder={t("tenant.search")} value={search} onChangeText={setSearch} />
+    <SearchField accessibilityLabel={t("tenant.search")} placeholder={t("tenant.search")} clearAccessibilityLabel={t("common.clearSearch")} value={search} onChangeText={setSearch} />
     <AppText variant="label">{t("tenant.filterStatus")}</AppText>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
-      <StatusTab label={t("tenant.filterAll")} selected={!status} onPress={() => setStatus(null)} />
-      {tenantSubscriptionStatuses.map((item) => <StatusTab key={item} label={t(tenantSubscriptionFilterKey(item))} selected={status === item} onPress={() => setStatus(item)} />)}
-    </ScrollView>
+    <TabBar accessibilityLabel={t("tenant.filterAll")} selected={status ?? ""} onSelect={(key) => setStatus(key ? key as NonNullable<typeof status> : null)} items={[{ key: "", label: t("tenant.filterAll") }, ...tenantSubscriptionStatuses.map((item) => ({ key: item, label: t(tenantSubscriptionFilterKey(item)) }))]} />
     <AppText variant="label">{t("tenant.institutionTypes")}</AppText>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
-      <StatusTab label={t("tenant.filterAll")} selected={!institutionType} onPress={() => setInstitutionType(null)} />
-      {institutionTypes.data?.map((item) => <StatusTab key={item.code} label={item.name} selected={institutionType === item.code} onPress={() => setInstitutionType(item.code)} />)}
-    </ScrollView>
+    <TabBar accessibilityLabel={t("tenant.filterAll")} selected={institutionType ?? ""} onSelect={(key) => setInstitutionType(key || null)} items={[{ key: "", label: t("tenant.filterAll") }, ...(institutionTypes.data?.map((item) => ({ key: item.code, label: item.name })) ?? [])]} />
     {tenants.isFetching && <ShimmerList />}
     {tenants.isError && <Button variant="secondary" onPress={() => tenants.refetch()}>{t("tenant.reload")}</Button>}
-    {!tenants.isFetching && !tenants.isError && visibleTenants.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+    {!tenants.isFetching && !tenants.isError && visibleTenants.length === 0 && <EmptyState compact title={t("common.noData")} />}
     {!tenants.isFetching && visibleTenants.map((tenant) => <View key={tenant.id} style={styles.card}>
-      <AppText variant="heading">{tenant.name}</AppText>
-      <AppText tone="muted">{tenant.institutionTypes.map((type) => institutionTypeNames.get(type) ?? type).join(" + ")}</AppText>
-      <AppText tone="muted">{tenant.subscriptionPlan ? t(tenantSubscriptionPlanKey(tenant.subscriptionPlan)) : t("tenant.noSubscription")} · {tenant.subscriptionStatus ? t(tenantSubscriptionStatusKey(tenant.subscriptionStatus)) : t("tenant.noStatus")}</AppText>
+      <View style={styles.tenantHeader}>
+        <Avatar name={tenant.name} />
+        <View style={styles.grow}>
+          <AppText variant="h6">{tenant.name}</AppText>
+          <AppText variant="bodySmall" tone="muted">{tenant.institutionTypes.map((type) => institutionTypeNames.get(type) ?? type).join(" + ")}</AppText>
+        </View>
+        <Badge tone={tenant.subscriptionStatus ? statusTone(tenant.subscriptionStatus) : "neutral"} label={tenant.subscriptionStatus ? t(tenantSubscriptionStatusKey(tenant.subscriptionStatus)) : t("tenant.noStatus")} />
+      </View>
+      <AppText variant="label">{tenant.subscriptionPlan ? t(tenantSubscriptionPlanKey(tenant.subscriptionPlan)) : t("tenant.noSubscription")}</AppText>
       {tenant.staffAdmin && <AppText variant="caption" tone="muted">{t("tenant.staffAdmin")} · {tenant.staffAdmin.email ?? tenant.staffAdmin.displayName ?? t("common.noData")}</AppText>}
       {tenant.trialEndsAt && <AppText variant="caption" tone="muted">{t("tenant.trialUntil", { date: formatDate(tenant.trialEndsAt) })}</AppText>}
       {tenant.payments.map((payment) => <View key={payment.id} style={styles.payment}>
-        <AppText>{formatCurrency(payment.amount)} · {t(tenantPaymentStatusKey(payment.status))}</AppText>
+        <View style={styles.paymentRow}><AppText variant="label" style={styles.grow}>{formatCurrency(payment.amount)}</AppText><Badge tone={statusTone(payment.status)} label={t(tenantPaymentStatusKey(payment.status))} /></View>
         <AppText variant="caption" tone="muted">{t("tenant.dueDate", { date: formatDate(payment.dueDate) })}</AppText>
         {payment.status === "PENDING" && <Button loading={markPaymentPaid.isPending} onPress={() => void markPaymentPaid.mutateAsync({ organizationId: tenant.id, paymentId: payment.id })}>{t("tenant.markPaid")}</Button>}
       </View>)}
@@ -68,22 +69,13 @@ export default function PlatformTenantsScreen() {
   </AppScreen>;
 }
 
-function StatusTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}>
-    <AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText>
-  </Pressable>;
-}
 
 const styles = StyleSheet.create({
+  tenantHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  paymentRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  grow: { flex: 1, gap: 2 },
   floatingActions: { alignItems: "flex-end", gap: spacing.sm },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  tabsScroll: { flexGrow: 0, flexShrink: 0 },
-  tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" },
-  activeTab: { borderBottomColor: colors.primary },
-  tabText: { color: colors.muted },
-  activeTabText: { color: colors.primary },
-  pressedTab: { opacity: 0.72 },
   card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint },
   payment: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
 });

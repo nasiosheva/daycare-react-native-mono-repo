@@ -3,6 +3,7 @@ import { Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { BackButton, PinEntryScreen } from "@daycare/ui";
+import { notify } from "@/notify/notify";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -28,7 +29,7 @@ export default function AdminPinScreen() {
     setConfirmation(pin);
     if (pin !== newPin) {
       setConfirmation("");
-      Alert.alert(t("pin.mismatch"), t("pin.mismatchDescription"));
+      notify(t("pin.mismatch"), t("pin.mismatchDescription"), "warning");
       return;
     }
     try {
@@ -36,7 +37,7 @@ export default function AdminPinScreen() {
       Alert.alert(t("pin.changed"), t("pin.changedDescription"), [{ text: t("common.ok"), onPress: () => router.replace("/profile") }]);
     } catch (error) {
       setConfirmation("");
-      Alert.alert(t("pin.failed"), error instanceof Error ? error.message : t("auth.tryAgain"));
+      notify(t("pin.failed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger");
     }
   };
 

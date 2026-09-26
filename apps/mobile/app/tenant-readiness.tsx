@@ -2,7 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import type { TenantReadiness } from "@daycare/api-client";
-import { AppText, BackButton, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Avatar, BackButton, Badge, EmptyState, ErrorState, NavigationCard, SectionHeader, ShimmerList, colors, spacing } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
@@ -25,7 +25,7 @@ export default function TenantReadinessScreen() {
     <AppText variant="title">{t("tenantReadiness.title")}</AppText>
     <AppText tone="muted">{t("tenantReadiness.description")}</AppText>
     {readiness.isFetching && <ShimmerList variant="card" count={4} />}
-    {readiness.isError && <View style={styles.error}><AppText tone="danger">{t("tenantReadiness.loadFailed")}</AppText><Button variant="secondary" onPress={() => void readiness.refetch()}>{t("common.retry")}</Button></View>}
+    {readiness.isError && !readiness.isFetching && <ErrorState title={t("tenantReadiness.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void readiness.refetch()} />}
     {!readiness.isFetching && !readiness.isError && <>
       <ReadinessSection title={t("tenantReadiness.needsAttention")} emptyMessage={t("tenantReadiness.noAttentionNeeded")} tenants={needsAttention} onOpen={(tenantId) => router.push({ pathname: "/tenant-detail", params: { tenantId } })} t={t} />
       <ReadinessSection title={t("tenantReadiness.ready")} emptyMessage={t("tenantReadiness.noReadyTenants")} tenants={ready} onOpen={(tenantId) => router.push({ pathname: "/tenant-detail", params: { tenantId } })} t={t} />
@@ -35,10 +35,10 @@ export default function TenantReadinessScreen() {
 
 function ReadinessSection({ title, emptyMessage, tenants, onOpen, t }: { title: string; emptyMessage: string; tenants: TenantReadiness[]; onOpen: (tenantId: string) => void; t: ReturnType<typeof useI18n>["t"] }) {
   return <View style={styles.section}>
-    <AppText variant="heading">{title}</AppText>
-    {tenants.length === 0 && <AppText tone="muted">{emptyMessage}</AppText>}
-    {tenants.map((tenant) => <NavigationCard key={tenant.tenantId} accessibilityLabel={t("tenantReadiness.openTenant", { name: tenant.tenantName })} onPress={() => onOpen(tenant.tenantId)}>
-      <AppText variant="h5">{tenant.tenantName}</AppText>
+    <SectionHeader title={`${title} (${tenants.length})`} />
+    {tenants.length === 0 && <EmptyState compact icon="checkmark-done-outline" title={emptyMessage} />}
+    {tenants.map((tenant) => <NavigationCard key={tenant.tenantId} accessibilityLabel={t("tenantReadiness.openTenant", { name: tenant.tenantName })} onPress={() => onOpen(tenant.tenantId)} leading={<Avatar name={tenant.tenantName} />} style={tenant.status === "NEEDS_ATTENTION" ? styles.attention : undefined}>
+      <View style={styles.titleRow}><AppText variant="h6" style={styles.grow}>{tenant.tenantName}</AppText><Badge tone={tenant.status === "READY" ? "success" : "danger"} label={t(tenant.status === "READY" ? "tenantReadiness.ready" : "tenantReadiness.needsAttention")} /></View>
       {tenant.issues.map((issue) => <AppText key={issue} variant="caption" tone="danger">• {t(tenantReadinessIssueKey(issue))}</AppText>)}
       {tenant.status === "READY" && <AppText variant="caption" tone="muted">{t("tenantReadiness.readyDescription")}</AppText>}
     </NavigationCard>)}
@@ -48,5 +48,7 @@ function ReadinessSection({ title, emptyMessage, tenants, onOpen, t }: { title: 
 const styles = StyleSheet.create({
   content: { gap: spacing.md },
   section: { gap: spacing.sm },
-  error: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.danger, backgroundColor: colors.surface },
+  attention: { borderColor: colors.danger },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  grow: { flex: 1 },
 });

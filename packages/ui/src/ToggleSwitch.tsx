@@ -35,7 +35,7 @@ export function ToggleSwitch({ label, value, onValueChange, accessibilityLabel, 
 const styles = StyleSheet.create({
   container: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
   copy: { flex: 1, gap: spacing.xs },
-  track: { width: 48, height: 28, justifyContent: "center", padding: 3, borderRadius: radius.pill, backgroundColor: colors.disabled },
+  track: { width: 48, height: 28, justifyContent: "center", padding: 3, borderRadius: radius.pill, backgroundColor: colors.switchOff },
   trackOn: { alignItems: "flex-end", backgroundColor: colors.primary },
   thumb: { width: 22, height: 22, borderRadius: radius.pill, backgroundColor: colors.surface },
   thumbOn: { backgroundColor: colors.onPrimary },

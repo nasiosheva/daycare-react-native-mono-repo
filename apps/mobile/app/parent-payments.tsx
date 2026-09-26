@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Image, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Image, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Badge, Banner, BottomSheet, Button, Card, EmptyState, InfoRow, SearchField, ShimmerList, TabBar, TextField, colors, radius, spacing } from "@daycare/ui";
+import { statusTone } from "@/ui/statusTone";
+import { notify } from "@/notify/notify";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useMarkInvoicePaid } from "@/booking/useBooking";
@@ -37,62 +39,46 @@ export default function ParentPaymentsScreen() {
   if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
   const pay = async (invoiceId: string) => {
     try { await markPaid.mutateAsync(invoiceId); }
-    catch (error) { Alert.alert(t("billing.failed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    catch (error) { notify(t("billing.failed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
   const openReview = (invoiceId: string) => setReviewInvoiceId(invoiceId);
   const approveProof = async () => {
     if (!reviewInvoiceId) return;
     try { await review.mutateAsync({ invoiceId: reviewInvoiceId, approved: true }); }
-    catch (error) { Alert.alert(t("billing.failed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    catch (error) { notify(t("billing.failed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
   const rejectProof = async () => {
     if (!reviewInvoiceId || !rejectionReason.trim()) return;
     try { await review.mutateAsync({ invoiceId: reviewInvoiceId, approved: false, reason: rejectionReason.trim() }); }
-    catch (error) { Alert.alert(t("billing.failed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    catch (error) { notify(t("billing.failed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
 
   return <AppScreen showBottomNavigation={false} title={t("staffAdmin.paymentsTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    {!canManage && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
-      <BranchTab label={t("branchFilter.allBranches")} selected={!filterBranchId} onPress={() => setFilterBranchId(undefined)} />
-      {branches.data?.map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
-    </ScrollView>
-    <TextInput style={styles.searchInput} placeholder={t("staffAdmin.paymentsSearch")} value={search} onChangeText={setSearch} />
+    {!canManage && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
+    <TabBar accessibilityLabel={t("branchFilter.allBranches")} selected={filterBranchId ?? ""} onSelect={(key) => setFilterBranchId(key || undefined)} items={[{ key: "", label: t("branchFilter.allBranches") }, ...(branches.data?.map((branch) => ({ key: branch.id, label: branch.name })) ?? [])]} />
+    <SearchField accessibilityLabel={t("staffAdmin.paymentsSearch")} placeholder={t("staffAdmin.paymentsSearch")} clearAccessibilityLabel={t("common.clearSearch")} value={search} onChangeText={setSearch} />
     <AppText variant="bodySmall" tone="muted">{t("staffAdmin.paymentsSubtitle")}</AppText>
     <AppText tone={pendingInvoices.length > 0 ? "danger" : "muted"}>{pendingInvoices.length > 0 ? t("staffAdmin.paymentsSummary", { count: pendingInvoices.length, amount: formatCurrency(pendingTotal) }) : t("staffAdmin.noPayments")}</AppText>
     {invoices.isFetching && <ShimmerList />}
-    {!invoices.isFetching && pendingInvoices.map((invoice) => <View key={invoice.id} style={styles.card}>
-      <AppText variant="h5">{invoice.childName}</AppText>
-      <AppText tone="muted">{invoice.description ?? t(invoiceSourceKey(invoice.source))}</AppText>
-      <AppText tone="muted">{t("staffAdmin.parent")}: {invoice.parentName ?? invoice.parentEmail ?? t("common.noData")}</AppText>
-      <AppText>{invoice.invoiceNumber} · {formatCurrency(invoice.totalAmount)}</AppText>
-      <AppText variant="caption" tone="muted">{t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>
+    {!invoices.isFetching && pendingInvoices.map((invoice) => <Card key={invoice.id} title={invoice.childName} subtitle={invoice.description ?? t(invoiceSourceKey(invoice.source))} trailing={<Badge tone={statusTone(invoice.status)} label={t(`status.${invoice.status}` as Parameters<typeof t>[0])} />}>
+      <AppText variant="h5" style={styles.amount}>{formatCurrency(invoice.totalAmount)}</AppText>
+      <InfoRow icon="person-outline" label={t("staffAdmin.parent")} value={invoice.parentName ?? invoice.parentEmail ?? t("common.noData")} />
+      <InfoRow icon="receipt-outline" label={invoice.invoiceNumber} value={t("tenant.dueDate", { date: formatDate(invoice.dueDate) })} />
       {invoice.status === "PAYMENT_SUBMITTED" ? <><AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>{canManage && <Button loading={review.isPending} onPress={() => openReview(invoice.id)}>{t("paymentProof.review")}</Button>}</> : canManage && <Button loading={markPaid.isPending} onPress={() => void pay(invoice.id)}>{t("billing.markPaid")}</Button>}
-    </View>)}
-    {!invoices.isFetching && pendingInvoices.length === 0 && <AppText tone="muted">{t("staffAdmin.noPayments")}</AppText>}
+    </Card>)}
+    {!invoices.isFetching && pendingInvoices.length === 0 && <EmptyState compact title={t("staffAdmin.noPayments")} />}
     <BottomSheet visible={Boolean(reviewInvoiceId)} onClose={() => setReviewInvoiceId(null)} closeAccessibilityLabel={t("common.close")} title={t("paymentProof.review")} negativeAction={{ label: t("common.cancel"), onPress: () => setReviewInvoiceId(null) }} positiveAction={{ label: t("paymentProof.verify"), loading: review.isPending, onPress: () => void approveProof() }}>
       {proof.isLoading ? <AppText>{t("common.loading")}</AppText> : proof.data && <Image source={{ uri: `data:${proof.data.contentType};base64,${proof.data.dataBase64}` }} style={styles.preview} resizeMode="contain" />}
       {proof.data?.note && <AppText tone="muted">{proof.data.note}</AppText>}
-      <TextInput style={styles.input} multiline placeholder={t("paymentProof.rejectReason")} value={rejectionReason} onChangeText={setRejectionReason} />
+      <TextField label={t("paymentProof.rejectReason")} multiline value={rejectionReason} onChangeText={setRejectionReason} />
       <Button variant="danger" loading={review.isPending} disabled={!rejectionReason.trim()} onPress={() => void rejectProof()}>{t("paymentProof.reject")}</Button>
     </BottomSheet>
   </AppScreen>;
 }
 
-function BranchTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}>
-    <AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText>
-  </Pressable>;
-}
 
 const styles = StyleSheet.create({
-  tabsScroll: { flexGrow: 0, flexShrink: 0 },
-  tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" },
-  activeTab: { borderBottomColor: colors.primary },
-  tabText: { color: colors.muted },
-  activeTabText: { color: colors.primary },
-  pressedTab: { opacity: 0.72 },
+  amount: { color: colors.primary },
   searchInput: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   preview: { width: "100%", height: 280, borderRadius: radius.md, backgroundColor: colors.surfaceTint },

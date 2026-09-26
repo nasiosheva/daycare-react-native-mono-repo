@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CurriculumProgram } from "@daycare/api-client";
-import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, Chip, EmptyState, ErrorState, FloatingActionButton, SearchField, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { notify } from "@/notify/notify";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { goalPickerLabel } from "@/i18n/translations";
@@ -47,34 +48,34 @@ export default function CurriculumProgramsScreen() {
   const openAdd = () => { close(); setVisible(true); };
   const openEdit = (program: CurriculumProgram) => { setEditing(program); setName(program.name); setDescription(program.description); setPeriodId(program.academicYearId ?? undefined); setDevelopmentProgramIds(program.developmentProgramIds); setVisible(true); };
   const save = async () => {
-    if (!name.trim()) return Alert.alert(t("academic.programRequired"));
+    if (!name.trim()) return notify(t("academic.programRequired"), undefined, "warning");
     const input = { academicYearId: periodId, name: name.trim(), description: description.trim(), developmentProgramIds };
     try { if (editing) await updateProgram.mutateAsync({ id: editing.id, input }); else await createProgram.mutateAsync(input); close(); }
-    catch (error) { Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    catch (error) { notify(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
   const toggleGoal = (id: string) => setDevelopmentProgramIds((ids) => ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id]);
   const selectedGoalCount = developmentProgramIds.length;
   const activePrograms = programs.data?.filter((program) => program.active) ?? [];
   const archivedPrograms = programs.data?.filter((program) => !program.active) ?? [];
 
-  return <AppScreen showBottomNavigation={false} title={t("academic.program")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton accessibilityLabel={t("academic.addProgram")} onPress={openAdd}>+ {t("academic.addProgram")}</FloatingActionButton> : undefined}>
+  return <AppScreen showBottomNavigation={false} title={t("academic.program")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton icon="add" accessibilityLabel={t("academic.addProgram")} onPress={openAdd}>{t("academic.addProgram")}</FloatingActionButton> : undefined}>
     <AppText variant="bodySmall" tone="muted">{t("academic.addProgramDescription")}</AppText>
-    <TextInput style={styles.input} placeholder={t("academic.searchPrograms")} value={search} onChangeText={setSearch} />
+    <SearchField accessibilityLabel={t("academic.searchPrograms")} placeholder={t("academic.searchPrograms")} clearAccessibilityLabel={t("common.clearSearch")} value={search} onChangeText={setSearch} />
     {programs.isFetching && <ShimmerList />}
-    {programs.isError && <Button variant="secondary" onPress={() => programs.refetch()}>{t("common.retry")}</Button>}
+    {programs.isError && !programs.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void programs.refetch()} />}
     {!programs.isFetching && activePrograms.map((program) => <ProgramCard key={program.id} program={program} periodName={periods.data?.find((period) => period.id === program.academicYearId)?.name} canManage={canManage} t={t} onEdit={() => openEdit(program)} onActiveChange={(active) => void setProgramActive.mutateAsync({ id: program.id, active })} />)}
-    {!programs.isFetching && !programs.isError && activePrograms.length === 0 && <AppText tone="muted">{t("academic.noPrograms")}</AppText>}
+    {!programs.isFetching && !programs.isError && activePrograms.length === 0 && <EmptyState compact title={t("academic.noPrograms")} />}
     {archivedPrograms.length > 0 && <View style={styles.archivedSection}><AppText variant="label">{t("learning.archived")}</AppText>{archivedPrograms.map((program) => <ProgramCard key={program.id} program={program} periodName={periods.data?.find((period) => period.id === program.academicYearId)?.name} canManage={canManage} t={t} onEdit={() => openEdit(program)} onActiveChange={(active) => void setProgramActive.mutateAsync({ id: program.id, active })} />)}</View>}
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t(editing ? "common.edit" : "academic.addProgram")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t("common.save"), loading: createProgram.isPending || updateProgram.isPending, onPress: () => void save() }}>
-      <View style={styles.options}>{periods.data?.map((period) => <Button key={period.id} variant={periodId === period.id ? "primary" : "secondary"} onPress={() => setPeriodId((current) => current === period.id ? undefined : period.id)}>{period.name}</Button>)}</View>
-      <TextInput style={styles.input} placeholder={t("academic.programName")} value={name} onChangeText={setName} />
-      <TextInput style={[styles.input, styles.description]} placeholder={t("academic.description")} value={description} onChangeText={setDescription} multiline />
+      <View style={styles.options}>{periods.data?.map((period) => <Chip key={period.id} label={period.name} selected={periodId === period.id} onPress={() => setPeriodId((current) => current === period.id ? undefined : period.id)} />)}</View>
+      <TextField label={t("academic.programName")} value={name} onChangeText={setName} />
+      <TextField label={t("academic.description")} value={description} onChangeText={setDescription} multiline />
       <AppText variant="label">{t("academic.programGoals", { count: selectedGoalCount })}</AppText>
-      <TextInput style={styles.input} placeholder={t("academic.searchProgramGoals")} value={goalSearch} onChangeText={setGoalSearch} />
+      <SearchField accessibilityLabel={t("academic.searchProgramGoals")} placeholder={t("academic.searchProgramGoals")} clearAccessibilityLabel={t("common.clearSearch")} value={goalSearch} onChangeText={setGoalSearch} />
       {developmentProgramsQuery.isFetching && <ShimmerList />}
-      {developmentProgramsQuery.data?.filter((goal) => goal.active).map((goal) => <Button key={goal.id} variant={developmentProgramIds.includes(goal.id) ? "primary" : "secondary"} onPress={() => toggleGoal(goal.id)}>{goalPickerLabel(t, goal.domain, goal.name)}</Button>)}
-      {!developmentProgramsQuery.isFetching && developmentProgramsQuery.data?.filter((goal) => goal.active).length === 0 && <AppText tone="muted">{t("academic.noProgramGoals")}</AppText>}
+      {developmentProgramsQuery.data?.filter((goal) => goal.active).map((goal) => <Chip key={goal.id} label={goalPickerLabel(t, goal.domain, goal.name)} selected={developmentProgramIds.includes(goal.id)} onPress={() => toggleGoal(goal.id)} />)}
+      {!developmentProgramsQuery.isFetching && developmentProgramsQuery.data?.filter((goal) => goal.active).length === 0 && <EmptyState compact title={t("academic.noProgramGoals")} />}
     </BottomSheet>
   </AppScreen>;
 }

@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import type { ChildProgramTemplate, ChildProgramTemplateStepInput } from "@daycare/api-client";
-import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, EmptyState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -64,7 +64,7 @@ export default function ChildProgramTemplatesScreen() {
     ]);
   };
 
-  return <AppScreen showBottomNavigation={false} title={t("children.programTemplates")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton accessibilityLabel={t("children.addTemplate")} onPress={openCreate}>+ {t("children.addTemplate")}</FloatingActionButton>}>
+  return <AppScreen showBottomNavigation={false} title={t("children.programTemplates")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton icon="add" accessibilityLabel={t("children.addTemplate")} onPress={openCreate}>{t("children.addTemplate")}</FloatingActionButton>}>
     <AppText tone="muted">{t("children.programTemplatesSubtitle")}</AppText>
     {templates.isFetching && <ShimmerList variant="row" />}
     {templates.isError && <View style={styles.errorState}><AppText tone="muted">{t("common.error")}</AppText><Button variant="secondary" onPress={() => void templates.refetch()}>{t("common.retry")}</Button></View>}
@@ -79,19 +79,19 @@ export default function ChildProgramTemplatesScreen() {
         <Button variant="danger" loading={removeTemplate.isPending} onPress={() => remove(template.id)}>{t("children.remove")}</Button>
       </View>
     </View>)}
-    {!templates.isFetching && templates.data?.length === 0 && <AppText tone="muted">{t("children.noTemplates")}</AppText>}
+    {!templates.isFetching && templates.data?.length === 0 && <EmptyState compact title={t("children.noTemplates")} />}
 
     <BottomSheet visible={visible} onClose={close} closeAccessibilityLabel={t("common.close")} title={t(editingId ? "children.editTemplate" : "children.addTemplate")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t("common.save"), loading: createTemplate.isPending || updateTemplate.isPending, disabled: !name.trim(), onPress: () => void save() }}>
-      <TextInput style={styles.input} placeholder={t("children.templateName")} value={name} onChangeText={setName} />
-      <TextInput style={[styles.input, styles.multiline]} placeholder={t("children.templateDescription")} value={description} onChangeText={setDescription} multiline />
+      <TextField label={t("children.templateName")} value={name} onChangeText={setName} />
+      <TextField label={t("children.templateDescription")} value={description} onChangeText={setDescription} multiline />
       <AppText variant="label">{t("children.steps")}</AppText>
       {steps.map((step, index) => <View key={`${step.title}-${index}`} style={styles.stepRow}>
         <View style={styles.itemContent}><AppText variant="label">{step.title}</AppText>{step.description && <AppText variant="bodySmall" tone="muted">{step.description}</AppText>}</View>
         <Button variant="danger" onPress={() => removeStep(index)}>{t("children.remove")}</Button>
       </View>)}
-      <TextInput style={styles.input} placeholder={t("children.stepTitle")} value={stepTitle} onChangeText={setStepTitle} />
-      <TextInput style={[styles.input, styles.multiline]} placeholder={t("children.stepDescription")} value={stepDescription} onChangeText={setStepDescription} multiline />
-      <TextInput style={[styles.input, styles.multiline]} placeholder={t("children.homeGuidance")} value={stepHomeGuidance} onChangeText={setStepHomeGuidance} multiline />
+      <TextField label={t("children.stepTitle")} value={stepTitle} onChangeText={setStepTitle} />
+      <TextField label={t("children.stepDescription")} value={stepDescription} onChangeText={setStepDescription} multiline />
+      <TextField label={t("children.homeGuidance")} value={stepHomeGuidance} onChangeText={setStepHomeGuidance} multiline />
       <Button variant="secondary" disabled={!stepTitle.trim()} onPress={addStep}>{t("children.addTemplateStep")}</Button>
     </BottomSheet>
   </AppScreen>;

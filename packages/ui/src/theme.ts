@@ -21,6 +21,8 @@ export const colors = {
   info: "#2F6690",
   infoSoft: "#E4F1FB",
   overlay: "rgba(61, 38, 50, 0.42)",
+  // Off-state track for switches: 3:1 against white so the control stays visible.
+  switchOff: "#948A77",
 } as const;
 
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger";

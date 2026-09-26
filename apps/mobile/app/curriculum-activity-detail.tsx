@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, EmptyState, NavigationCard, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { notify } from "@/notify/notify";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -50,11 +51,11 @@ export default function CurriculumActivityDetailScreen() {
 
   const closeEditSheet = () => setSheet(null);
   const saveActivity = async () => {
-    if (!name.trim()) return Alert.alert(t("learning.activityRequired"));
+    if (!name.trim()) return notify(t("learning.activityRequired"), undefined, "warning");
     try {
       await updateActivity.mutateAsync({ name: name.trim(), description: description.trim() });
       closeEditSheet();
-    } catch (error) { Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    } catch (error) { notify(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
   const archive = () => {
     Alert.alert(t("learning.archive"), t("learning.activityArchived"), [
@@ -65,11 +66,11 @@ export default function CurriculumActivityDetailScreen() {
   const openAssessmentSheet = () => { setListOpen(false); setSheet("assessment"); };
   const closeAssessmentSheet = () => { setSheet(null); setAssessmentName(""); setAssessmentDescription(""); };
   const saveAssessment = async () => {
-    if (!assessmentName.trim()) return Alert.alert(t("learning.activityRequired"));
+    if (!assessmentName.trim()) return notify(t("learning.activityRequired"), undefined, "warning");
     try {
       await createAssessment.mutateAsync({ name: assessmentName.trim(), description: assessmentDescription.trim() || undefined });
       closeAssessmentSheet();
-    } catch (error) { Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    } catch (error) { notify(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
 
   return <AppScreen showBottomNavigation={false} title={t("learning.activityDetailTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
@@ -100,17 +101,17 @@ export default function CurriculumActivityDetailScreen() {
         </View>
         {canManage && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.removeAssessment")} onPress={() => void removeAssessment.mutateAsync(assessment.id)} />}
       </View>)}
-      {!assessments.isFetching && assessments.data?.length === 0 && <AppText tone="muted">{t("learning.noAssessments")}</AppText>}
+      {!assessments.isFetching && assessments.data?.length === 0 && <EmptyState compact title={t("learning.noAssessments")} />}
     </BottomSheet>
 
     <BottomSheet visible={sheet === "edit"} onClose={closeEditSheet} closeAccessibilityLabel={t("common.close")} title={t("learning.editActivity")} negativeAction={{ label: t("common.cancel"), onPress: closeEditSheet }} positiveAction={{ label: t("common.save"), loading: updateActivity.isPending, onPress: () => void saveActivity() }}>
-      <TextInput style={styles.input} placeholder={t("learning.activityName")} value={name} onChangeText={setName} />
-      <TextInput style={styles.input} placeholder={t("academic.description")} value={description} onChangeText={setDescription} />
+      <TextField label={t("learning.activityName")} value={name} onChangeText={setName} />
+      <TextField label={t("academic.description")} value={description} onChangeText={setDescription} />
     </BottomSheet>
 
     <BottomSheet visible={sheet === "assessment"} onClose={closeAssessmentSheet} closeAccessibilityLabel={t("common.close")} title={t("learning.addAssessment")} negativeAction={{ label: t("common.cancel"), onPress: closeAssessmentSheet }} positiveAction={{ label: t("common.save"), loading: createAssessment.isPending, disabled: !assessmentName.trim(), onPress: () => void saveAssessment() }}>
-      <TextInput style={styles.input} placeholder={t("learning.assessmentName")} value={assessmentName} onChangeText={setAssessmentName} />
-      <TextInput style={styles.input} placeholder={t("learning.assessmentDescription")} value={assessmentDescription} onChangeText={setAssessmentDescription} />
+      <TextField label={t("learning.assessmentName")} value={assessmentName} onChangeText={setAssessmentName} />
+      <TextField label={t("learning.assessmentDescription")} value={assessmentDescription} onChangeText={setAssessmentDescription} />
     </BottomSheet>
   </AppScreen>;
 }

@@ -1,20 +1,9 @@
 import { useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  AppText,
-  BackButton,
-  Button,
-  MultiStepFormWizard,
-  PasswordInput,
-  ShimmerList,
-  colors,
-  radius,
-  spacing,
-  type MultiStepFormWizardStep,
-} from "@daycare/ui";
+import { AppText, BackButton, Button, MultiStepFormWizard, PasswordInput, ShimmerList, TextField, colors, radius, spacing, type MultiStepFormWizardStep } from "@daycare/ui";
 import { isApiNetworkError, type InstitutionTypeDefinition } from "@daycare/api-client";
 import { tenantSubscriptionPlans } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
@@ -145,30 +134,10 @@ export default function AddTenantScreen() {
       {step === 0 && <View style={styles.section}>
         <SectionHeading title={t("tenantCreation.stepInstitution")} description={t("tenantCreation.institutionDescription")} />
         <View style={styles.field}>
-          <AppText variant="label">{t("tenant.name")}</AppText>
-          <TextInput
-            accessibilityLabel={t("tenant.name")}
-            style={[styles.input, showInstitutionErrors && institutionErrors.tenantName && styles.inputError]}
-            autoCapitalize="words"
-            maxLength={200}
-            placeholder={t("tenant.name")}
-            value={draft.tenantName}
-            onChangeText={(value) => updateDraft("tenantName", capitalizeWords(value))}
-          />
-          {showInstitutionErrors && institutionErrors.tenantName && <FieldError>{t("tenantCreation.tenantNameRequired")}</FieldError>}
+          <TextField label={t("tenant.name")} autoCapitalize="words" maxLength={200} value={draft.tenantName} onChangeText={(value) => updateDraft("tenantName", capitalizeWords(value))} required error={showInstitutionErrors && institutionErrors.tenantName ? t("tenantCreation.tenantNameRequired") : undefined} />
         </View>
         <View style={styles.field}>
-          <AppText variant="label">{t("tenant.branch")}</AppText>
-          <TextInput
-            accessibilityLabel={t("tenant.branch")}
-            style={[styles.input, showInstitutionErrors && institutionErrors.branchName && styles.inputError]}
-            autoCapitalize="words"
-            maxLength={200}
-            placeholder={t("tenant.branch")}
-            value={draft.branchName}
-            onChangeText={(value) => updateDraft("branchName", capitalizeWords(value))}
-          />
-          {showInstitutionErrors && institutionErrors.branchName && <FieldError>{t("tenantCreation.branchRequired")}</FieldError>}
+          <TextField label={t("tenant.branch")} autoCapitalize="words" maxLength={200} value={draft.branchName} onChangeText={(value) => updateDraft("branchName", capitalizeWords(value))} required error={showInstitutionErrors && institutionErrors.branchName ? t("tenantCreation.branchRequired") : undefined} />
         </View>
         <View style={styles.field}>
           <AppText variant="label">{t("tenant.institutionTypes")}</AppText>
@@ -193,45 +162,13 @@ export default function AddTenantScreen() {
       {step === 1 && <View style={styles.section}>
         <SectionHeading title={t("tenantCreation.stepAdmin")} description={t("tenantCreation.adminDescription")} />
         <View style={styles.field}>
-          <AppText variant="label">{t("tenant.staffAdminName")}</AppText>
-          <TextInput
-            accessibilityLabel={t("tenant.staffAdminName")}
-            style={[styles.input, showAdminErrors && adminErrors.name && styles.inputError]}
-            autoCapitalize="words"
-            maxLength={100}
-            placeholder={t("tenant.staffAdminName")}
-            value={draft.staffAdminName}
-            onChangeText={(value) => updateDraft("staffAdminName", capitalizeWords(value))}
-          />
-          {showAdminErrors && adminErrors.name && <FieldError>{t(adminErrors.name === "REQUIRED" ? "tenantCreation.adminNameRequired" : "tenantCreation.adminNameInvalid")}</FieldError>}
+          <TextField label={t("tenant.staffAdminName")} autoCapitalize="words" maxLength={100} value={draft.staffAdminName} onChangeText={(value) => updateDraft("staffAdminName", capitalizeWords(value))} required error={showAdminErrors && adminErrors.name ? t(adminErrors.name === "REQUIRED" ? "tenantCreation.adminNameRequired" : "tenantCreation.adminNameInvalid") : undefined} />
         </View>
         <View style={styles.field}>
-          <AppText variant="label">{t("tenant.staffAdminUsernameOptional")}</AppText>
-          <TextInput
-            accessibilityLabel={t("tenant.staffAdminUsernameOptional")}
-            style={[styles.input, showAdminErrors && adminErrors.username && styles.inputError]}
-            autoCapitalize="none"
-            autoCorrect={false}
-            maxLength={100}
-            placeholder={t("tenant.staffAdminUsernameOptional")}
-            value={draft.staffAdminUsername}
-            onChangeText={(value) => updateDraft("staffAdminUsername", value)}
-          />
-          {showAdminErrors && adminErrors.username && <FieldError>{t("tenantCreation.usernameInvalid")}</FieldError>}
+          <TextField label={t("tenant.staffAdminUsernameOptional")} autoCapitalize="none" autoCorrect={false} maxLength={100} value={draft.staffAdminUsername} onChangeText={(value) => updateDraft("staffAdminUsername", value)} error={showAdminErrors && adminErrors.username ? t("tenantCreation.usernameInvalid") : undefined} />
         </View>
         <View style={styles.field}>
-          <AppText variant="label">{t("tenant.staffAdminEmail")}</AppText>
-          <TextInput
-            accessibilityLabel={t("tenant.staffAdminEmail")}
-            style={[styles.input, showAdminErrors && adminErrors.email && styles.inputError]}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            placeholder={t("tenant.staffAdminEmail")}
-            value={draft.staffAdminEmail}
-            onChangeText={(value) => updateDraft("staffAdminEmail", value)}
-          />
-          {showAdminErrors && adminErrors.email && <FieldError>{t(adminErrors.email === "REQUIRED" ? "tenantCreation.emailRequired" : "tenantCreation.emailInvalid")}</FieldError>}
+          <TextField label={t("tenant.staffAdminEmail")} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" value={draft.staffAdminEmail} onChangeText={(value) => updateDraft("staffAdminEmail", value)} required error={showAdminErrors && adminErrors.email ? t(adminErrors.email === "REQUIRED" ? "tenantCreation.emailRequired" : "tenantCreation.emailInvalid") : undefined} />
         </View>
         <View style={styles.field}>
           <AppText variant="label">{t("tenant.staffAdminPassword")}</AppText>
@@ -277,16 +214,7 @@ export default function AddTenantScreen() {
           >{t("tenant.monthShort", { count: month })}</Button>)}</View>
         </View>}
         {!draft.hasTrial && <View style={styles.field}>
-          <AppText variant="label">{t("tenant.monthlyFee")}</AppText>
-          <TextInput
-            accessibilityLabel={t("tenant.monthlyFee")}
-            style={[styles.input, showSubscriptionErrors && subscriptionErrors.monthlyFee && styles.inputError]}
-            keyboardType="numeric"
-            placeholder={t("tenant.monthlyFee")}
-            value={draft.monthlyFee}
-            onChangeText={(value) => updateDraft("monthlyFee", value)}
-          />
-          {showSubscriptionErrors && subscriptionErrors.monthlyFee && <FieldError>{t("tenant.feeRequired")}</FieldError>}
+          <TextField label={t("tenant.monthlyFee")} keyboardType="numeric" value={draft.monthlyFee} onChangeText={(value) => updateDraft("monthlyFee", value)} required error={showSubscriptionErrors && subscriptionErrors.monthlyFee ? t("tenant.feeRequired") : undefined} />
         </View>}
       </View>}
 

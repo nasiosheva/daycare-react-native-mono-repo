@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PaymentInstruction, UpsertPaymentInstructionInput } from "@daycare/api-client";
-import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, EmptyState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -26,13 +26,13 @@ export default function PaymentInstructionsScreen() {
     save.mutate();
   };
   if (!profile || membership?.role !== "STAFF_ADMIN") return null;
-  return <AppScreen showBottomNavigation={false} title={t("paymentInstruction.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton accessibilityLabel={t("paymentInstruction.add")} onPress={openForCreate}>+ {t("paymentInstruction.add")}</FloatingActionButton>}><View style={styles.content}>
+  return <AppScreen showBottomNavigation={false} title={t("paymentInstruction.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton icon="add" accessibilityLabel={t("paymentInstruction.add")} onPress={openForCreate}>{t("paymentInstruction.add")}</FloatingActionButton>}><View style={styles.content}>
     <AppText variant="title">{t("paymentInstruction.title")}</AppText><AppText tone="muted">{t("paymentInstruction.managementDescription")}</AppText>
     {instructions.isFetching && <ShimmerList />}
     {!instructions.isFetching && instructions.data?.map((instruction) => <View key={instruction.id} style={styles.card}><AppText variant="heading">{instruction.name}</AppText><AppText>{instruction.accountHolder} · {instruction.accountNumber}</AppText>{instruction.note && <AppText tone="muted">{instruction.note}</AppText>}<Button variant="secondary" onPress={() => openForEdit(instruction)}>{t("common.edit")}</Button><Button variant="danger" onPress={() => setPendingDelete(instruction)}>{t("common.delete")}</Button></View>)}
-    {!instructions.isFetching && instructions.data?.length === 0 && <AppText tone="muted">{t("paymentInstruction.empty")}</AppText>}
+    {!instructions.isFetching && instructions.data?.length === 0 && <EmptyState compact title={t("paymentInstruction.empty")} />}
     <BottomSheet visible={isFormOpen} onClose={close} closeAccessibilityLabel={t("common.close")} title={editing ? t("paymentInstruction.edit") : t("paymentInstruction.add")} negativeAction={{ label: t("common.cancel"), onPress: close }} positiveAction={{ label: t("common.save"), loading: save.isPending, onPress: submit }}>
-      {error && <AppText tone="danger">{error}</AppText>}<TextInput style={styles.input} placeholder={t("paymentInstruction.name")} value={draft.name} onChangeText={(name) => setDraft((value) => ({ ...value, name }))} /><TextInput style={styles.input} autoCapitalize="words" placeholder={t("paymentInstruction.accountHolder")} value={draft.accountHolder} onChangeText={(value) => setDraft((current) => ({ ...current, accountHolder: capitalizeWords(value) }))} /><TextInput style={styles.input} placeholder={t("paymentInstruction.accountNumber")} value={draft.accountNumber} onChangeText={(accountNumber) => setDraft((value) => ({ ...value, accountNumber }))} /><TextInput style={styles.input} placeholder={t("paymentInstruction.note")} value={draft.note ?? ""} onChangeText={(note) => setDraft((value) => ({ ...value, note }))} />
+      {error && <AppText tone="danger">{error}</AppText>}<TextField label={t("paymentInstruction.name")} value={draft.name} onChangeText={(name) => setDraft((value) => ({ ...value, name }))} /><TextField label={t("paymentInstruction.accountHolder")} autoCapitalize="words" value={draft.accountHolder} onChangeText={(value) => setDraft((current) => ({ ...current, accountHolder: capitalizeWords(value) }))} /><TextField label={t("paymentInstruction.accountNumber")} value={draft.accountNumber} onChangeText={(accountNumber) => setDraft((value) => ({ ...value, accountNumber }))} /><TextField label={t("paymentInstruction.note")} value={draft.note ?? ""} onChangeText={(note) => setDraft((value) => ({ ...value, note }))} />
     </BottomSheet>
     <BottomSheet visible={pendingDelete !== null} onClose={() => setPendingDelete(null)} closeAccessibilityLabel={t("common.close")} title={t("paymentInstruction.delete")} negativeAction={{ label: t("common.cancel"), onPress: () => setPendingDelete(null) }} positiveAction={{ label: t("common.delete"), variant: "danger", loading: remove.isPending, onPress: () => pendingDelete && remove.mutate(pendingDelete.id) }}>
       <AppText tone="muted">{t("paymentInstruction.deleteConfirmation", { name: pendingDelete?.name ?? "" })}</AppText>

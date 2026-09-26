@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DevelopmentProgram, UpsertDevelopmentProgramInput } from "@daycare/api-client";
 import { goalDomains, type GoalDomain } from "@daycare/core";
-import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, Chip, EmptyState, ErrorState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { notify } from "@/notify/notify";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -89,7 +90,7 @@ export default function GlobalDevelopmentProgramsScreen() {
     const percent = Number(minimumPercent);
     const streak = Number(minimumStreak);
     if (!name.trim() || !learningLevelId || !domain || !Number.isInteger(duration) || duration < 1 || !Number.isInteger(percent) || percent < 0 || percent > 100 || !Number.isInteger(streak) || streak < 0) {
-      Alert.alert(t("globalDevelopmentPrograms.required"));
+      notify(t("globalDevelopmentPrograms.required"), undefined, "warning");
       return;
     }
     const input: UpsertDevelopmentProgramInput = { learningLevelId, name: name.trim(), description: description.trim(), durationDays: duration, minimumYesPercent: percent, minimumYesStreak: streak, domain };
@@ -100,7 +101,7 @@ export default function GlobalDevelopmentProgramsScreen() {
       else await createProgram.mutateAsync(input);
       closeSheet();
     } catch (error) {
-      Alert.alert(t("globalDevelopmentPrograms.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"));
+      notify(t("globalDevelopmentPrograms.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger");
     }
   };
   const remove = async () => {
@@ -109,15 +110,15 @@ export default function GlobalDevelopmentProgramsScreen() {
       await deleteProgram.mutateAsync(editing.id);
       closeSheet();
     } catch (error) {
-      Alert.alert(t("globalDevelopmentPrograms.deleteFailed"), error instanceof Error ? error.message : t("auth.tryAgain"));
+      notify(t("globalDevelopmentPrograms.deleteFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger");
     }
   };
 
-  return <AppScreen showBottomNavigation={false} title={t("globalDevelopmentPrograms.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton accessibilityLabel={t("globalDevelopmentPrograms.add")} onPress={openCreate}>+ {t("globalDevelopmentPrograms.add")}</FloatingActionButton>}>
+  return <AppScreen showBottomNavigation={false} title={t("globalDevelopmentPrograms.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton icon="add" accessibilityLabel={t("globalDevelopmentPrograms.add")} onPress={openCreate}>{t("globalDevelopmentPrograms.add")}</FloatingActionButton>}>
     <AppText tone="muted">{t("globalDevelopmentPrograms.subtitle")}</AppText>
     {programs.isFetching && <ShimmerList />}
-    {programs.isError && <Button variant="secondary" onPress={() => programs.refetch()}>{t("common.retry")}</Button>}
-    {!programs.isFetching && !programs.isError && programs.data?.length === 0 && <AppText tone="muted">{t("globalDevelopmentPrograms.empty")}</AppText>}
+    {programs.isError && !programs.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void programs.refetch()} />}
+    {!programs.isFetching && !programs.isError && programs.data?.length === 0 && <EmptyState compact title={t("globalDevelopmentPrograms.empty")} />}
     {!programs.isFetching && programs.data?.map((program) => <View key={program.id} style={styles.card}>
       <AppText variant="label">{program.name}</AppText>
       <AppText tone="muted">{t(goalDomainKey(program.domain))}</AppText>
@@ -140,24 +141,21 @@ export default function GlobalDevelopmentProgramsScreen() {
       negativeAction={{ label: t("common.cancel"), onPress: closeSheet }}
       positiveAction={{ label: t("common.save"), loading: createProgram.isPending || updateProgram.isPending || reviseProgram.isPending, onPress: () => void save() }}
     >
-      <TextInput style={styles.input} placeholder={t("goals.templateName")} value={name} onChangeText={setName} />
-      <TextInput style={styles.input} placeholder={t("goals.templateDescription")} value={description} onChangeText={setDescription} />
+      <TextField label={t("goals.templateName")} value={name} onChangeText={setName} />
+      <TextField label={t("goals.templateDescription")} value={description} onChangeText={setDescription} />
       <AppText variant="label">{t("goals.learningLevel")}</AppText>
-      {levels.data?.length === 0 && <AppText tone="muted">{t("globalDevelopmentPrograms.noLevels")}</AppText>}
-      <View style={styles.options}>{levels.data?.filter((level) => level.active).map((level) => <Button key={level.id} variant={learningLevelId === level.id ? "primary" : "secondary"} onPress={() => setLearningLevelId(level.id)}>{level.name}</Button>)}</View>
+      {levels.data?.length === 0 && <EmptyState compact title={t("globalDevelopmentPrograms.noLevels")} />}
+      <View style={styles.options}>{levels.data?.filter((level) => level.active).map((level) => <Chip key={level.id} label={level.name} selected={learningLevelId === level.id} onPress={() => setLearningLevelId(level.id)} />)}</View>
       <AppText variant="label">{t("goals.categoryOptional")}</AppText>
-      <View style={styles.options}>{goalDomains.map((item) => <Button key={item} variant={domain === item ? "primary" : "secondary"} onPress={() => setDomain(item)}>{t(goalDomainKey(item))}</Button>)}</View>
-      <AppText variant="label">{t("goals.durationDays")}</AppText>
-      <TextInput style={styles.input} inputMode="numeric" value={durationDays} onChangeText={setDurationDays} />
-      <AppText variant="label">{t("goals.minimumPercent")}</AppText>
-      <TextInput style={styles.input} inputMode="numeric" value={minimumPercent} onChangeText={setMinimumPercent} />
-      <AppText variant="label">{t("goals.minimumStreak")}</AppText>
-      <TextInput style={styles.input} inputMode="numeric" value={minimumStreak} onChangeText={setMinimumStreak} />
+      <View style={styles.options}>{goalDomains.map((item) => <Chip key={item} label={t(goalDomainKey(item))} selected={domain === item} onPress={() => setDomain(item)} />)}</View>
+      <TextField label={t("goals.durationDays")} inputMode="numeric" value={durationDays} onChangeText={setDurationDays} />
+      <TextField label={t("goals.minimumPercent")} inputMode="numeric" value={minimumPercent} onChangeText={setMinimumPercent} />
+      <TextField label={t("goals.minimumStreak")} inputMode="numeric" value={minimumStreak} onChangeText={setMinimumStreak} />
       {(!editing || revisionOf) && <View style={styles.field}>
         <View style={styles.fieldHeader}><AppText variant="label">{t("goals.indicators")}</AppText><Button variant="secondary" onPress={addIndicatorField}>{t("goals.addIndicator")}</Button></View>
         <AppText variant="caption" tone="muted">{t("goals.indicatorsInfo")}</AppText>
         {indicatorNames.map((value, index) => <View key={index} style={styles.indicatorRow}>
-          <TextInput style={[styles.input, styles.indicatorName]} placeholder={t("goals.indicatorName")} value={value} onChangeText={(text) => updateIndicatorName(index, text)} />
+          <TextField label={t("goals.indicatorName")} value={value} onChangeText={(text) => updateIndicatorName(index, text)} />
           {indicatorNames.length > 1 && <Button variant="secondary" onPress={() => removeIndicatorField(index)}>{t("common.delete")}</Button>}
         </View>)}
       </View>}

@@ -10,6 +10,7 @@ describe("statusTone", () => {
   it("shows items waiting on the institution as informational", () => {
     expect(statusTone("PAYMENT_SUBMITTED")).toBe("info");
     expect(statusTone("PENDING_APPROVAL")).toBe("info");
+    expect(statusTone("TRIAL")).toBe("info");
   });
 
   it("maps finished, refused and unknown statuses", () => {

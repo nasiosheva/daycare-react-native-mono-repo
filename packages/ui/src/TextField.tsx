@@ -15,11 +15,13 @@ export type TextFieldProps = Omit<TextInputProps, "style"> & {
   error?: string | null;
   required?: boolean;
   leadingIcon?: IoniconName;
+  /** Short text shown before the value, e.g. a currency such as "Rp". */
+  prefix?: string;
   trailing?: ReactNode;
   containerStyle?: StyleProp<ViewStyle>;
 };
 
-export const TextField = forwardRef<TextInput, TextFieldProps>(function TextField({ label, hint, error, required = false, leadingIcon, trailing, containerStyle, multiline, editable = true, onFocus, onBlur, accessibilityLabel, ...props }, ref) {
+export const TextField = forwardRef<TextInput, TextFieldProps>(function TextField({ label, hint, error, required = false, leadingIcon, prefix, trailing, containerStyle, multiline, editable = true, onFocus, onBlur, accessibilityLabel, ...props }, ref) {
   const [focused, setFocused] = useState(false);
   const hasError = Boolean(error);
   const iconColor = hasError ? colors.danger : focused ? colors.primary : colors.muted;
@@ -30,6 +32,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
     </View>}
     <View style={[styles.field, multiline && styles.fieldMultiline, focused && styles.fieldFocused, hasError && styles.fieldError, !editable && styles.fieldDisabled]}>
       {leadingIcon && <Ionicons name={leadingIcon} size={20} color={iconColor} style={multiline ? styles.leadingIconMultiline : undefined} />}
+      {prefix && <AppText variant="label" tone="muted">{prefix}</AppText>}
       <TextInput
         ref={ref}
         {...props}

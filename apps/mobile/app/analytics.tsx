@@ -2,7 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, BackButton, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, EmptyState, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -28,7 +28,7 @@ export default function AnalyticsScreen() {
         <AppText>{branch.branchName}</AppText>
         <AppText tone="muted">{branch.dailyCapacity != null ? t("analytics.occupancyWithCapacity", { count: branch.activeChildrenCount, capacity: branch.dailyCapacity }) : t("analytics.occupancyNoCapacity", { count: branch.activeChildrenCount })}</AppText>
       </View>)}
-      {!occupancy.isFetching && occupancy.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+      {!occupancy.isFetching && occupancy.data?.length === 0 && <EmptyState compact title={t("common.noData")} />}
     </View>
 
     <View style={styles.section}>

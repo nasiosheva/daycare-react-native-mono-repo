@@ -601,6 +601,8 @@ const childProgramTranslations = {
 
 const uiFoundationTranslations = {
   id: {
+    "contextSelection.description": "Pilih lembaga yang ingin Anda buka. Anda bisa berpindah kapan saja dari Profil.",
+    "staffOperations.readOnlyShort": "Baca saja",
     "approval.emptyDescription": "Pengajuan booking dan pendaftaran baru akan muncul di sini.",
     "attendance.filterAll": "Semua",
     "attendance.manualInstead": "Catat manual saja",
@@ -657,6 +659,8 @@ const uiFoundationTranslations = {
     "learning.noClassroomsDescription": "Buat rombel pertama untuk mulai mengelompokkan anak.",
   },
   en: {
+    "contextSelection.description": "Choose the institution you want to open. You can switch any time from Profile.",
+    "staffOperations.readOnlyShort": "Read-only",
     "approval.emptyDescription": "New booking and enrollment requests will appear here.",
     "attendance.filterAll": "All",
     "attendance.manualInstead": "Record manually instead",
@@ -713,6 +717,8 @@ const uiFoundationTranslations = {
     "learning.noClassroomsDescription": "Create your first class group to start organising children.",
   },
   zh: {
+    "contextSelection.description": "选择要进入的机构。您可以随时在个人资料中切换。",
+    "staffOperations.readOnlyShort": "只读",
     "approval.emptyDescription": "新的预订和报名申请将显示在这里。",
     "attendance.filterAll": "全部",
     "attendance.manualInstead": "改为手动记录",
@@ -769,6 +775,8 @@ const uiFoundationTranslations = {
     "learning.noClassroomsDescription": "创建第一个班组，开始为孩子分组。",
   },
   fr: {
+    "contextSelection.description": "Choisissez l'établissement à ouvrir. Vous pouvez en changer à tout moment depuis le Profil.",
+    "staffOperations.readOnlyShort": "Lecture seule",
     "approval.emptyDescription": "Les nouvelles demandes de réservation et d'inscription apparaîtront ici.",
     "attendance.filterAll": "Tous",
     "attendance.manualInstead": "Enregistrer manuellement",
@@ -825,6 +833,8 @@ const uiFoundationTranslations = {
     "learning.noClassroomsDescription": "Créez votre premier groupe pour commencer à organiser les enfants.",
   },
   pt: {
+    "contextSelection.description": "Escolha a instituição que pretende abrir. Pode mudar a qualquer momento no Perfil.",
+    "staffOperations.readOnlyShort": "Só leitura",
     "approval.emptyDescription": "Os novos pedidos de reserva e inscrição aparecerão aqui.",
     "attendance.filterAll": "Todos",
     "attendance.manualInstead": "Registar manualmente",
@@ -881,6 +891,8 @@ const uiFoundationTranslations = {
     "learning.noClassroomsDescription": "Crie a primeira turma para começar a organizar as crianças.",
   },
   es: {
+    "contextSelection.description": "Elija la institución que desea abrir. Puede cambiarla en cualquier momento desde el Perfil.",
+    "staffOperations.readOnlyShort": "Solo lectura",
     "approval.emptyDescription": "Las nuevas solicitudes de reserva e inscripción aparecerán aquí.",
     "attendance.filterAll": "Todos",
     "attendance.manualInstead": "Registrar manualmente",
@@ -937,6 +949,8 @@ const uiFoundationTranslations = {
     "learning.noClassroomsDescription": "Cree el primer grupo para empezar a organizar a los niños.",
   },
   ru: {
+    "contextSelection.description": "Выберите учреждение. Переключиться можно в любой момент в профиле.",
+    "staffOperations.readOnlyShort": "Только чтение",
     "approval.emptyDescription": "Новые заявки на бронирование и зачисление появятся здесь.",
     "attendance.filterAll": "Все",
     "attendance.manualInstead": "Отметить вручную",

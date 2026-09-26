@@ -2,7 +2,7 @@ import type { Tone } from "@daycare/ui";
 
 const successStatuses = new Set(["ACTIVE", "APPROVED", "CONFIRMED", "COMPLETED", "GRANTED", "PAID", "RESOLVED", "VERIFIED"]);
 const warningStatuses = new Set(["PENDING", "PENDING_PAYMENT", "PAYMENT_DUE", "PENDING_VERIFICATION", "NEW"]);
-const infoStatuses = new Set(["PENDING_APPROVAL", "PAYMENT_SUBMITTED", "PAYMENT_REVIEW", "SUBMITTED", "READ"]);
+const infoStatuses = new Set(["PENDING_APPROVAL", "PAYMENT_SUBMITTED", "PAYMENT_REVIEW", "SUBMITTED", "READ", "TRIAL"]);
 const dangerStatuses = new Set(["REJECTED", "DECLINED", "OVERDUE", "REVOKED", "SUSPENDED"]);
 
 /**

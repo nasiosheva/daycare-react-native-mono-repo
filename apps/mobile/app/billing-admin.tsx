@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Banner, BottomSheet, Button, Chip, EmptyState, NavigationCard, ShimmerList, TabBar, TextField, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useInvoices, useMarkInvoicePaid, useServicePlans } from "@/booking/useBooking";
 import { useAuth } from "@/auth/AuthProvider";
@@ -156,11 +156,8 @@ function BillingAdminScreenContent() {
   const pendingInvoices = invoices.data?.filter((invoice) => invoice.status === "PENDING") ?? [];
 
   return <AppScreen showBottomNavigation={false} title={t("billing.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    {!canManage && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
-      <BranchTab label={t("branchFilter.allBranches")} selected={!filterBranchId} onPress={() => setFilterBranchId(undefined)} />
-      {branches.data?.map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
-    </ScrollView>
+    {!canManage && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
+    <TabBar accessibilityLabel={t("branchFilter.allBranches")} selected={filterBranchId ?? ""} onSelect={(key) => setFilterBranchId(key || undefined)} items={[{ key: "", label: t("branchFilter.allBranches") }, ...(branches.data?.map((branch) => ({ key: branch.id, label: branch.name })) ?? [])]} />
     <View style={styles.grid}>
       <NavigationCard accessibilityLabel={t("billing.activePlans")} onPress={() => setListSheet("plans")} style={styles.tile}>
         <AppText variant="label">{t("billing.activePlans")}</AppText>
@@ -193,7 +190,7 @@ function BillingAdminScreenContent() {
         <AppText>{t(servicePlanTypeKey(plan.type))} · {formatCurrency(plan.price)}</AppText>
         <PlanExtras type={plan.type} creditCount={plan.creditCount} unusedCreditPolicy={plan.unusedCreditPolicy} dailyCapacity={plan.dailyCapacity} t={t} />
       </View>)}
-      {!plans.isFetching && plans.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+      {!plans.isFetching && plans.data?.length === 0 && <EmptyState compact title={t("common.noData")} />}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "templates"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.templates")}>
@@ -206,7 +203,7 @@ function BillingAdminScreenContent() {
         <PlanExtras type={template.type} creditCount={template.creditCount} unusedCreditPolicy={template.unusedCreditPolicy} dailyCapacity={template.dailyCapacity} t={t} />
         {canManage && <View style={styles.row}><Button variant="secondary" onPress={() => openUseTemplate(template.id)}>{t("billing.useTemplate")}</Button>{template.source === "TENANT" && <Button variant="secondary" onPress={() => openEditTemplate(template.id)}>{t("billing.editTemplate")}</Button>}{template.source === "TENANT" && <Button variant="danger" loading={deleteTemplate.isPending} onPress={() => void deleteTemplate.mutateAsync(template.id)}>{t("billing.deleteTemplate")}</Button>}</View>}
       </View>)}
-      {!templates.isFetching && templates.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+      {!templates.isFetching && templates.data?.length === 0 && <EmptyState compact title={t("common.noData")} />}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "capacity"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.branchCapacity")}>
@@ -221,7 +218,7 @@ function BillingAdminScreenContent() {
 
     <BottomSheet visible={listSheet === "discounts"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.discounts")}>
       <AppText tone="muted">{t("billing.discountsDescription")}</AppText>
-      <View style={styles.row}>{plans.data?.map((plan) => <Button key={plan.id} variant={plan.id === selectedPlanId ? "primary" : "secondary"} onPress={() => setSelectedPlanId(plan.id)}>{plan.name}</Button>)}</View>
+      <View style={styles.row}>{plans.data?.map((plan) => <Chip key={plan.id} label={plan.name} selected={plan.id === selectedPlanId} onPress={() => setSelectedPlanId(plan.id)} />)}</View>
       {canManage && selectedPlanId && <Button variant="secondary" onPress={openCreateDiscount}>{t("billing.createDiscount")}</Button>}
       {discounts.isFetching && <ShimmerList />}
       {!discounts.isFetching && discounts.data?.map((item) => <View key={item.id} style={styles.card}>
@@ -233,7 +230,7 @@ function BillingAdminScreenContent() {
         {item.usageLimit != null && <AppText variant="caption" tone="muted">{t("billing.discountUsageLimit", { count: item.usageLimit })}</AppText>}
         {canManage && item.active && selectedPlanId && <Button variant="danger" loading={deactivateDiscount.isPending} onPress={() => void deactivateDiscount.mutateAsync({ planId: selectedPlanId, discountId: item.id })}>{t("billing.deactivate")}</Button>}
       </View>)}
-      {!discounts.isFetching && selectedPlanId && discounts.data?.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+      {!discounts.isFetching && selectedPlanId && discounts.data?.length === 0 && <EmptyState compact title={t("common.noData")} />}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "invoices"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("billing.pendingInvoices")}>
@@ -246,34 +243,34 @@ function BillingAdminScreenContent() {
         {invoice.discountName && <AppText variant="caption" tone="muted">{t("billing.invoiceDiscountApplied", { name: invoice.discountName, amount: formatCurrency(invoice.discountAmount) })}</AppText>}
         {canManage && <Button loading={markPaid.isPending} onPress={() => void markPaid.mutateAsync(invoice.id)}>{t("billing.markPaid")}</Button>}
       </View>)}
-      {!invoices.isFetching && pendingInvoices.length === 0 && <AppText tone="muted">{t("common.noData")}</AppText>}
+      {!invoices.isFetching && pendingInvoices.length === 0 && <EmptyState compact title={t("common.noData")} />}
     </BottomSheet>
 
-    <BottomSheet visible={Boolean(capacityBranchId)} onClose={() => setCapacityBranchId(undefined)} closeAccessibilityLabel={t("common.close")} title={t("billing.branchCapacity")} negativeAction={{ label: t("common.cancel"), onPress: () => setCapacityBranchId(undefined) }} positiveAction={{ label: t("billing.saveCapacity"), loading: setBranchCapacity.isPending, onPress: () => void saveCapacity() }}><TextInput style={styles.input} placeholder={t("billing.dailyCapacity")} keyboardType="numeric" maxLength={3} value={capacity} onChangeText={(value) => setCapacity(formatCapacityInput(value))} /></BottomSheet>
+    <BottomSheet visible={Boolean(capacityBranchId)} onClose={() => setCapacityBranchId(undefined)} closeAccessibilityLabel={t("common.close")} title={t("billing.branchCapacity")} negativeAction={{ label: t("common.cancel"), onPress: () => setCapacityBranchId(undefined) }} positiveAction={{ label: t("billing.saveCapacity"), loading: setBranchCapacity.isPending, onPress: () => void saveCapacity() }}><TextField label={t("billing.dailyCapacity")} keyboardType="numeric" maxLength={3} value={capacity} onChangeText={(value) => setCapacity(formatCapacityInput(value))} /></BottomSheet>
 
     <BottomSheet visible={discountFormOpen} onClose={closeDiscountForm} closeAccessibilityLabel={t("common.close")} title={t("billing.createDiscount")} negativeAction={{ label: t("common.cancel"), onPress: closeDiscountForm }} positiveAction={{ label: t("billing.saveDiscount"), loading: createDiscount.isPending, onPress: () => void saveDiscount() }}>
-      <TextInput style={styles.input} placeholder={t("billing.discountName")} value={discount.name} onChangeText={(name) => setDiscount((current) => ({ ...current, name }))} />
+      <TextField label={t("billing.discountName")} value={discount.name} onChangeText={(name) => setDiscount((current) => ({ ...current, name }))} />
       <Choice values={discountKinds} value={discount.kind} onChange={(kind) => setDiscount((current) => ({ ...current, kind }))} labels={{ AUTOMATIC: t("billing.automatic"), PROMO_CODE: t("billing.promo") }} />
-      {discount.kind === "PROMO_CODE" && <TextInput style={styles.input} autoCapitalize="characters" placeholder={t("billing.promoCode")} value={discount.promoCode} onChangeText={(promoCode) => setDiscount((current) => ({ ...current, promoCode }))} />}
+      {discount.kind === "PROMO_CODE" && <TextField label={t("billing.promoCode")} autoCapitalize="characters" value={discount.promoCode} onChangeText={(promoCode) => setDiscount((current) => ({ ...current, promoCode }))} />}
       <Choice values={discountTypes} value={discount.type} onChange={(type) => setDiscount((current) => ({ ...current, type }))} labels={{ PERCENTAGE: t("billing.percentage"), FIXED_AMOUNT: t("billing.fixedAmount") }} />
-      <TextInput style={styles.input} placeholder={t("billing.discountValue")} keyboardType="numeric" value={discount.value} onChangeText={(value) => setDiscount((current) => ({ ...current, value }))} />
+      <TextField label={t("billing.discountValue")} keyboardType="numeric" value={discount.value} onChangeText={(value) => setDiscount((current) => ({ ...current, value }))} />
       <DatePicker placeholder={t("billing.startsOn")} value={discount.startsOn} onChange={(startsOn) => setDiscount((current) => ({ ...current, startsOn }))} maximumDate={discount.endsOn || undefined} onClear={() => setDiscount((current) => ({ ...current, startsOn: "" }))} clearAccessibilityLabel={t("common.clear")} />
       <DatePicker placeholder={t("billing.endsOn")} value={discount.endsOn} onChange={(endsOn) => setDiscount((current) => ({ ...current, endsOn }))} minimumDate={discount.startsOn || undefined} onClear={() => setDiscount((current) => ({ ...current, endsOn: "" }))} clearAccessibilityLabel={t("common.clear")} />
-      {discount.kind === "PROMO_CODE" && <TextInput style={styles.input} placeholder={t("billing.usageLimit")} keyboardType="numeric" value={discount.usageLimit} onChangeText={(usageLimit) => setDiscount((current) => ({ ...current, usageLimit }))} />}
+      {discount.kind === "PROMO_CODE" && <TextField label={t("billing.usageLimit")} keyboardType="numeric" value={discount.usageLimit} onChangeText={(usageLimit) => setDiscount((current) => ({ ...current, usageLimit }))} />}
     </BottomSheet>
 
     <BottomSheet visible={planFormMode !== null} onClose={closePlanForm} closeAccessibilityLabel={t("common.close")} title={planFormTitle} negativeAction={{ label: t("common.cancel"), onPress: closePlanForm }} positiveAction={{ label: t(isTemplateEditor ? "common.save" : "billing.savePlan"), loading: createPlan.isPending || createTemplate.isPending || updateTemplate.isPending, onPress: () => void savePlanForm() }}>
-      <TextInput style={styles.input} placeholder={t("billing.planName")} value={planFields.name} onChangeText={(name) => updatePlanFields({ name })} />
+      <TextField label={t("billing.planName")} value={planFields.name} onChangeText={(name) => updatePlanFields({ name })} />
       <Choice values={planTypes} value={planFields.type} onChange={(type) => updatePlanFields({ type, credits: type === "DAILY" ? "1" : planFields.credits })} labels={{ DAILY: t(servicePlanTypeKey("DAILY")), WEEKLY: t(servicePlanTypeKey("WEEKLY")), MONTHLY: t(servicePlanTypeKey("MONTHLY")) }} />
-      <TextInput style={styles.input} placeholder={t(isTemplateEditor ? "billing.suggestedPrice" : "billing.price")} keyboardType="numeric" value={planFields.price} onChangeText={(price) => updatePlanFields({ price: formatPriceInput(price) })} />
-      <TextInput style={styles.input} placeholder={t("billing.dailyCapacity")} keyboardType="numeric" maxLength={3} value={planFields.capacity} onChangeText={(capacity) => updatePlanFields({ capacity: formatCapacityInput(capacity) })} />
-      {planFields.type !== "MONTHLY" && <TextInput style={styles.input} placeholder={t("billing.days")} keyboardType="numeric" value={planFields.credits} onChangeText={(credits) => updatePlanFields({ credits })} />}
-      {planFields.type === "WEEKLY" && <><View style={styles.options}><Button variant={planFields.policy === "EXPIRE" ? "primary" : "secondary"} onPress={() => updatePlanFields({ policy: "EXPIRE" })}>{t("billing.expire")}</Button><Button variant={planFields.policy === "CARRY_FORWARD" ? "primary" : "secondary"} onPress={() => updatePlanFields({ policy: "CARRY_FORWARD" })}>{t("billing.carry")}</Button></View>{planFields.policy === "CARRY_FORWARD" && <TextInput style={styles.input} placeholder={t("billing.carryForwardDays")} keyboardType="numeric" value={planFields.carryDays} onChangeText={(carryDays) => updatePlanFields({ carryDays })} />}</>}
+      <TextField label={t(isTemplateEditor ? "billing.suggestedPrice" : "billing.price")} keyboardType="numeric" value={planFields.price} onChangeText={(price) => updatePlanFields({ price: formatPriceInput(price) })} />
+      <TextField label={t("billing.dailyCapacity")} keyboardType="numeric" maxLength={3} value={planFields.capacity} onChangeText={(capacity) => updatePlanFields({ capacity: formatCapacityInput(capacity) })} />
+      {planFields.type !== "MONTHLY" && <TextField label={t("billing.days")} keyboardType="numeric" value={planFields.credits} onChangeText={(credits) => updatePlanFields({ credits })} />}
+      {planFields.type === "WEEKLY" && <><View style={styles.options}><Chip label={t("billing.expire")} selected={planFields.policy === "EXPIRE"} onPress={() => updatePlanFields({ policy: "EXPIRE" })} /><Chip label={t("billing.carry")} selected={planFields.policy === "CARRY_FORWARD"} onPress={() => updatePlanFields({ policy: "CARRY_FORWARD" })} /></View>{planFields.policy === "CARRY_FORWARD" && <TextField label={t("billing.carryForwardDays")} keyboardType="numeric" value={planFields.carryDays} onChangeText={(carryDays) => updatePlanFields({ carryDays })} />}</>}
     </BottomSheet>
   </AppScreen>;
 }
 
-function Choice<T extends string>({ values, value, onChange, labels }: { values: readonly T[]; value: T; onChange: (value: T) => void; labels: Record<T, string> }) { return <View style={styles.options}>{values.map((item) => <Button key={item} variant={item === value ? "primary" : "secondary"} onPress={() => onChange(item)}>{labels[item]}</Button>)}</View>; }
+function Choice<T extends string>({ values, value, onChange, labels }: { values: readonly T[]; value: T; onChange: (value: T) => void; labels: Record<T, string> }) { return <View style={styles.options}>{values.map((item) => <Chip key={item} label={labels[item]} selected={item === value} onPress={() => onChange(item)} />)}</View>; }
 
 function PlanExtras({ type, creditCount, unusedCreditPolicy, dailyCapacity, t }: { type: ServicePlanType; creditCount?: number | null; unusedCreditPolicy?: UnusedCreditPolicy | null; dailyCapacity?: number | null; t: ReturnType<typeof useI18n>["t"] }) {
   return <>
@@ -283,10 +280,5 @@ function PlanExtras({ type, creditCount, unusedCreditPolicy, dailyCapacity, t }:
   </>;
 }
 
-function BranchTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}>
-    <AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText>
-  </Pressable>;
-}
 
-const styles = StyleSheet.create({ input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.surface }, row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, tile: { flexGrow: 1, flexBasis: "47%" }, options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint }, tabsScroll: { flexGrow: 0, flexShrink: 0 }, tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }, tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" }, activeTab: { borderBottomColor: colors.primary }, tabText: { color: colors.muted }, activeTabText: { color: colors.primary }, pressedTab: { opacity: 0.72 } });
+const styles = StyleSheet.create({ input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.surface }, row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, tile: { flexGrow: 1, flexBasis: "47%" }, options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint } });
