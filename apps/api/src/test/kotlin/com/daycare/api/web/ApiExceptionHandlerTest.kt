@@ -11,6 +11,7 @@ import com.daycare.api.service.LocalAuthenticationError
 import com.daycare.api.service.FirebaseIdentityError
 import com.daycare.api.service.TenantUserAccountError
 import com.daycare.api.service.DevelopmentEntryMediaError
+import com.daycare.api.service.DevelopmentProgramError
 import com.daycare.api.service.StaffLeaveRequestError
 import java.util.Locale
 
@@ -101,6 +102,16 @@ class ApiExceptionHandlerTest {
         val problem = handler.invalidRequest(IllegalArgumentException(DevelopmentEntryMediaError.PHOTO_TOO_LARGE))
 
         assertEquals("The development photo must be at most 5 MB.", problem.detail)
+        assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
+    }
+
+    @Test
+    fun `localizes the assigned Development Program delete rejection`() {
+        LocaleContextHolder.setLocale(Locale.of("id"))
+
+        val problem = handler.invalidRequest(IllegalArgumentException(DevelopmentProgramError.ASSIGNED))
+
+        assertEquals("Program Pengembangan ini sudah diberikan ke anak sehingga tidak dapat dihapus.", problem.detail)
         assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
     }
 

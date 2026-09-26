@@ -103,7 +103,7 @@ class ParentEnrollmentServiceTest {
         assertEquals(listOf("Citra"), additionalTenantResponse.map { it.childName })
         assertEquals(listOf(ParentEnrollmentStatus.PENDING_APPROVAL, ParentEnrollmentStatus.PENDING_APPROVAL), response.map { it.status })
         assertEquals(listOf(ParentEnrollmentAccessState.PENDING_APPROVAL, ParentEnrollmentAccessState.PENDING_APPROVAL), response.map { it.accessState })
-        assertEquals(listOf(emptySet<ParentEnrollmentAllowedAction>(), emptySet<ParentEnrollmentAllowedAction>()), response.map { it.allowedActions })
+        assertEquals(listOf(setOf(ParentEnrollmentAllowedAction.CANCEL), setOf(ParentEnrollmentAllowedAction.CANCEL)), response.map { it.allowedActions })
         assertEquals(listOf<UUID?>(null, null), response.map { it.invoiceId })
         val childCaptor = ArgumentCaptor.forClass(Child::class.java)
         verify(children, times(3)).save(childCaptor.capture())
@@ -218,6 +218,52 @@ class ParentEnrollmentServiceTest {
         assertEquals("Data belum lengkap", response.rejectionReason)
         assertEquals(false, child.active)
         verify(notifications).notify(organizationId, parent.id, "Pengajuan ditolak", "Ajukan kembali saat data pendaftaran sudah siap.", "/parent-enrollment", setOf(RealtimeFlag.PARENT_ENROLLMENTS))
+    }
+
+    @Test
+    fun `Parent can cancel their own application while it awaits approval`() {
+        val fixture = CancelFixture()
+        val enrollment = ParentEnrollment(userId = fixture.parent.id, organizationId = fixture.child.organizationId, branchId = fixture.child.branchId, childId = fixture.child.id)
+        `when`(fixture.enrollments.findById(enrollment.id)).thenReturn(Optional.of(enrollment))
+
+        val response = fixture.service.cancel(fixture.jwt, enrollment.id)
+
+        assertEquals(ParentEnrollmentStatus.CANCELLED, response.status)
+        assertEquals(ParentEnrollmentAccessState.CLOSED, response.accessState)
+        assertEquals(setOf(ParentEnrollmentAllowedAction.REAPPLY), response.allowedActions)
+        assertEquals(false, fixture.child.active)
+    }
+
+    @Test
+    fun `Parent cannot cancel another Parent's application or one that is no longer pending`() {
+        val fixture = CancelFixture()
+        val otherParentsEnrollment = ParentEnrollment(userId = UUID.randomUUID(), organizationId = fixture.child.organizationId, branchId = fixture.child.branchId, childId = fixture.child.id)
+        val approvedEnrollment = ParentEnrollment(userId = fixture.parent.id, organizationId = fixture.child.organizationId, branchId = fixture.child.branchId, childId = fixture.child.id).apply { status = ParentEnrollmentStatus.APPROVED }
+        `when`(fixture.enrollments.findById(otherParentsEnrollment.id)).thenReturn(Optional.of(otherParentsEnrollment))
+        `when`(fixture.enrollments.findById(approvedEnrollment.id)).thenReturn(Optional.of(approvedEnrollment))
+
+        val notOwner = assertThrows(IllegalArgumentException::class.java) { fixture.service.cancel(fixture.jwt, otherParentsEnrollment.id) }
+        val notPending = assertThrows(IllegalArgumentException::class.java) { fixture.service.cancel(fixture.jwt, approvedEnrollment.id) }
+
+        assertEquals(ParentEnrollmentError.CANNOT_CANCEL, notOwner.message)
+        assertEquals(ParentEnrollmentError.CANNOT_CANCEL, notPending.message)
+        assertEquals(ParentEnrollmentStatus.PENDING_APPROVAL, otherParentsEnrollment.status)
+        assertEquals(true, fixture.child.active)
+    }
+
+    private class CancelFixture {
+        val identity: IdentityService = mock(IdentityService::class.java)
+        val children: ChildRepository = mock(ChildRepository::class.java)
+        val enrollments: ParentEnrollmentRepository = mock(ParentEnrollmentRepository::class.java)
+        val parent = UserProfile()
+        val child = Child(organizationId = UUID.randomUUID(), firstName = "Alya", enrollmentStatus = ChildEnrollmentStatus.PENDING)
+        val jwt: Jwt = mock(Jwt::class.java)
+        val service = ParentEnrollmentService(identity, mock(AccessService::class.java), mock(OrganizationRepository::class.java), mock(TenantSubscriptionRepository::class.java), mock(BranchRepository::class.java), mock(ServicePlanRepository::class.java), children, enrollments, mock(MembershipRepository::class.java), mock(GuardianLinkRepository::class.java), mock(UserProfileRepository::class.java), mock(ServiceEntitlementRepository::class.java), mock(InvoiceRepository::class.java), mock(BillingService::class.java), mock(NotificationService::class.java), mock(BranchListFilterService::class.java), mock(TenantPaymentInstructionService::class.java), mock(ParentFamilyProfileVisibilityService::class.java), mock(PublishedOfferingCapabilityService::class.java))
+
+        init {
+            `when`(identity.sync(jwt)).thenReturn(parent)
+            `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        }
     }
 
     @Test

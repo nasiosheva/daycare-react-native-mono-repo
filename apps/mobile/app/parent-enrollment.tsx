@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
-import { AppText, Badge, Button, Card, EmptyState, ErrorState, MenuItem, SectionHeader, ShimmerList, spacing, type Tone } from "@daycare/ui";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AppText, Badge, Banner, BottomSheet, Button, Card, EmptyState, ErrorState, MenuItem, SectionHeader, ShimmerList, spacing, type Tone } from "@daycare/ui";
+import { notify } from "@/notify/notify";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -16,6 +17,18 @@ export default function ParentEnrollmentScreen() {
   const { t, formatCurrency } = useI18n();
   const enrollments = useQuery({ queryKey: parentEnrollmentQueryKey(user?.uid), queryFn: () => api.parentEnrollments(), enabled: Boolean(user), refetchInterval: 15_000 });
   const activatedEnrollmentId = useRef<string | null>(null);
+  const queryClient = useQueryClient();
+  const [cancelTarget, setCancelTarget] = useState<ParentEnrollment | null>(null);
+  const cancel = useMutation({
+    mutationFn: (enrollmentId: string) => api.cancelParentEnrollment(enrollmentId),
+    onSuccess: () => { setCancelTarget(null); notify(t("parentEnrollment.cancelPendingDone"), undefined, "success"); },
+    // A failed or timed-out cancel has an unknown outcome, so always reload the canonical list before the Parent acts again.
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: parentEnrollmentQueryKey(user?.uid) }),
+  });
+  const confirmCancel = () => {
+    if (!cancelTarget) return;
+    cancel.mutate(cancelTarget.id, { onError: (error) => { setCancelTarget(null); notify(t("parentEnrollment.cancelPendingFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); } });
+  };
   const approvedUnboundEnrollment = enrollments.data?.find((item) => item.status === "APPROVED" && !profile?.memberships.some((membership) => membership.organizationId === item.organizationId));
 
   useEffect(() => {
@@ -46,7 +59,7 @@ export default function ParentEnrollmentScreen() {
         const badge = enrollmentBadge(item);
         return <Card key={item.id} title={item.childName} subtitle={`${item.planName} · ${formatCurrency(item.totalAmount)}`} trailing={<Badge tone={badge.tone} label={t(badge.labelKey)} />}>
           {item.transferredFromOrganizationName && <Badge tone="info" icon="swap-horizontal" label={t("parentEnrollment.transferBadge", { organization: item.transferredFromOrganizationName })} />}
-          <EnrollmentAction enrollment={item} onApply={() => router.push("/parent-enrollment-form")} onPay={() => item.invoiceId && router.push({ pathname: "/parent-payment", params: { invoiceId: item.invoiceId, organizationId: item.organizationId } })} t={t} />
+          <EnrollmentAction enrollment={item} onCancel={() => setCancelTarget(item)} onApply={() => router.push("/parent-enrollment-form")} onPay={() => item.invoiceId && router.push({ pathname: "/parent-payment", params: { invoiceId: item.invoiceId, organizationId: item.organizationId } })} t={t} />
         </Card>;
       })}
       {!enrollments.isLoading && !enrollments.isError && enrollments.data?.length === 0 && <EmptyState icon="document-text-outline" title={t("parentEnrollment.noApplication")} description={t("parentEnrollment.startDescription")} action={{ label: t("parentEnrollment.newTenant"), onPress: () => router.push("/parent-enrollment-form") }} />}
@@ -55,7 +68,18 @@ export default function ParentEnrollmentScreen() {
       <SectionHeader title={t("parentEnrollment.activeTenants")} />
       {profile.memberships.filter((membership) => membership.role === "PARENT").map((membership) => <MenuItem key={membership.organizationId} icon="business-outline" title={membership.organizationName} badge={membership.organizationId === organizationId ? <Badge tone="success" icon="checkmark-circle" label={t("parentEnrollment.currentTenant")} /> : undefined} onPress={() => { selectOrganization(membership.organizationId); router.replace("/home"); }} />)}
     </View> : null}
-  </View></AppScreen>;
+  </View>
+    <BottomSheet
+      visible={cancelTarget !== null}
+      onClose={() => setCancelTarget(null)}
+      closeAccessibilityLabel={t("common.close")}
+      title={t("parentEnrollment.cancel")}
+      negativeAction={{ label: t("common.back"), onPress: () => setCancelTarget(null), disabled: cancel.isPending }}
+      positiveAction={{ label: t("parentEnrollment.cancel"), variant: "danger", loading: cancel.isPending, onPress: confirmCancel }}
+    >
+      {cancelTarget && <Banner tone="warning" title={t("parentEnrollment.cancelPendingConfirm", { name: cancelTarget.childName, plan: cancelTarget.planName })} />}
+    </BottomSheet>
+  </AppScreen>;
 }
 
 function enrollmentBadge(enrollment: ParentEnrollment): { tone: Tone; labelKey: TranslationKey } {
@@ -70,8 +94,8 @@ function enrollmentBadge(enrollment: ParentEnrollment): { tone: Tone; labelKey: 
   }
 }
 
-function EnrollmentAction({ enrollment, onApply, onPay, t }: { enrollment: ParentEnrollment; onApply: () => void; onPay: () => void; t: ReturnType<typeof useI18n>["t"] }) {
-  if (enrollment.accessState === "PENDING_APPROVAL") return <AppText tone="muted">{t("parentEnrollment.pendingApproval")}</AppText>;
+function EnrollmentAction({ enrollment, onApply, onPay, onCancel, t }: { enrollment: ParentEnrollment; onApply: () => void; onPay: () => void; onCancel: () => void; t: ReturnType<typeof useI18n>["t"] }) {
+  if (enrollment.accessState === "PENDING_APPROVAL") return <><AppText tone="muted">{t("parentEnrollment.pendingApproval")}</AppText>{enrollment.allowedActions.includes("CANCEL") && <Button variant="ghost" accessibilityLabel={`${t("parentEnrollment.cancel")}: ${enrollment.childName}`} onPress={onCancel}><AppText variant="label" tone="danger">{t("parentEnrollment.cancel")}</AppText></Button>}</>;
   if (enrollment.accessState === "CLOSED") return <><AppText tone={enrollment.status === "REJECTED" ? "danger" : "muted"}>{enrollment.status === "REJECTED" ? t("parentEnrollment.rejected") : t("parentEnrollment.expired")}</AppText>{enrollment.allowedActions.includes("REAPPLY") && <Button variant="secondary" onPress={onApply}>{t("parentEnrollment.retry")}</Button>}</>;
   if (enrollment.accessState === "BILLING_LIMITED") return <><AppText tone="muted">{t("parentEnrollment.expired")}</AppText>{enrollment.allowedActions.includes("REAPPLY") && <Button variant="secondary" onPress={onApply}>{t("parentEnrollment.retry")}</Button>}</>;
   if (enrollment.accessState === "PAYMENT_DUE") return <><AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText>{enrollment.allowedActions.includes("UPLOAD_PAYMENT_PROOF") && <Button onPress={onPay}>{t("parentEnrollment.pay")}</Button>}</>;

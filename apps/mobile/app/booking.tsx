@@ -37,6 +37,15 @@ function BookingScreenContent() {
   const pendingChildInvoices = useMemo(() => invoices.data?.filter((item) => item.childId === childId && item.status === "PENDING") ?? [], [invoices.data, childId]);
   const pendingChildInvoicesTotal = useMemo(() => pendingChildInvoices.reduce((sum, item) => sum + item.totalAmount, 0), [pendingChildInvoices]);
   const childBookings = useMemo(() => bookings.data?.filter((item) => item.childId === childId) ?? [], [bookings.data, childId]);
+  // §13.6: invoices and booking drafts are always scoped to the selected child.
+  const childInvoices = useMemo(() => invoices.data?.filter((item) => item.childId === childId) ?? [], [invoices.data, childId]);
+  const selectChild = (nextChildId: string) => {
+    if (nextChildId === childId) return;
+    setChildId(nextChildId);
+    setBookingDates([]);
+    setPlanId(null);
+    setCreditEntitlementId(null);
+  };
   const closeListSheet = () => setListSheet(null);
   const pickDate = (value: string) => { if (!isIsoDate(value) || bookingDates.includes(value)) return; setBookingDates((dates) => [...dates, value].sort()); };
   const selectPlan = (item: ServicePlan) => { setPlanId(item.id); setCreditEntitlementId(null); setBookingDates([]); setListSheet(null); setBookFormOpen(true); };
@@ -59,7 +68,7 @@ function BookingScreenContent() {
     <AppText tone="muted">{t("booking.subtitle")}</AppText>
     <SectionHeader title={t("booking.child")} />
     {children.isFetching && <ShimmerList variant="tile" />}
-    {!children.isFetching && <ChipGroup accessibilityLabel={t("booking.child")}>{children.data?.map((child) => <Chip key={child.id} label={child.fullName} selected={child.id === childId} onPress={() => setChildId(child.id)} />)}</ChipGroup>}
+    {!children.isFetching && <ChipGroup accessibilityLabel={t("booking.child")}>{children.data?.map((child) => <Chip key={child.id} label={child.fullName} selected={child.id === childId} onPress={() => selectChild(child.id)} />)}</ChipGroup>}
     {!children.isFetching && children.data?.length === 0 && <EmptyState compact icon="happy-outline" title={t("children.empty")} />}
     <Button leadingIcon={<Ionicons name="add-circle-outline" size={18} color={colors.onPrimary} />} disabled={!childId} onPress={() => setListSheet("plan")}>{t("booking.bookNow")}</Button>
     <View style={styles.grid}>
@@ -99,8 +108,8 @@ function BookingScreenContent() {
     <BottomSheet visible={listSheet === "invoices"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.invoices")}>
       <AppText tone="muted">{t("booking.invoicesDescription")}</AppText>
       {invoices.isFetching && <ShimmerList />}
-      {!invoices.isFetching && invoices.data?.map((item) => <Card key={item.id} variant="tinted" title={`${item.invoiceNumber} · ${formatCurrency(item.totalAmount)}`} subtitle={item.description ?? t(invoiceSourceKey(item.source))} trailing={<Badge tone={statusTone(item.status)} label={t(invoiceStatusKey(item.status))} />}><AppText variant="bodySmall" tone="muted">{t("tenant.dueDate", { date: formatDate(item.dueDate) })}</AppText>{item.status === "PENDING" && <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: item.id, ...(organizationId ? { organizationId } : {}) } })}>{t("parentEnrollment.pay")}</Button>}{item.status === "PAYMENT_SUBMITTED" && <AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>}</Card>)}
-      {!invoices.isFetching && invoices.data?.length === 0 && <EmptyState compact icon="receipt-outline" title={t("booking.noPendingInvoices")} />}
+      {!invoices.isFetching && childInvoices.map((item) => <Card key={item.id} variant="tinted" title={`${item.invoiceNumber} · ${formatCurrency(item.totalAmount)}`} subtitle={item.description ?? t(invoiceSourceKey(item.source))} trailing={<Badge tone={statusTone(item.status)} label={t(invoiceStatusKey(item.status))} />}><AppText variant="bodySmall" tone="muted">{t("tenant.dueDate", { date: formatDate(item.dueDate) })}</AppText>{item.status === "PENDING" && <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: item.id, ...(organizationId ? { organizationId } : {}) } })}>{t("parentEnrollment.pay")}</Button>}{item.status === "PAYMENT_SUBMITTED" && <AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>}</Card>)}
+      {!invoices.isFetching && childInvoices.length === 0 && <EmptyState compact icon="receipt-outline" title={t("booking.noInvoicesForChild")} />}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "history"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.history")}>

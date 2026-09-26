@@ -369,6 +369,37 @@ class GoalServiceTest {
         assertEquals(0, response.single().conclusionCorrections.size)
         verifyNoInteractions(fixture.conclusionCorrections)
     }
+
+    @Test
+    fun `Staff Admin deletes an unassigned tenant Development Program`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val program = DevelopmentProgram(organizationId = organizationId, name = "Kosakata")
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = false)).thenReturn(fixture.scope(organizationId))
+        `when`(fixture.programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(fixture.goals.existsByProgramId(program.id)).thenReturn(false)
+
+        fixture.service.deleteProgram(jwt, organizationId, program.id)
+
+        verify(fixture.programs).delete(program)
+    }
+
+    @Test
+    fun `rejects deleting a Development Program already assigned to a child`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val program = DevelopmentProgram(organizationId = organizationId, name = "Kosakata")
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = false)).thenReturn(fixture.scope(organizationId))
+        `when`(fixture.programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(fixture.goals.existsByProgramId(program.id)).thenReturn(true)
+
+        val error = assertThrows(IllegalArgumentException::class.java) { fixture.service.deleteProgram(jwt, organizationId, program.id) }
+
+        assertEquals(DevelopmentProgramError.ASSIGNED, error.message)
+        verify(fixture.programs, never()).delete(program)
+    }
 }
 
 private class GoalServiceFixture {
