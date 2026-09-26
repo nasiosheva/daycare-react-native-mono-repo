@@ -30,7 +30,7 @@ Staff Admin decides Parent enrollment from Booking Approvals. The decision happe
 ## Rejection, cancellation, and expiry
 
 - A rejected application does not create an invoice or entitlement. The Parent submits a new application when ready.
-- A Parent may cancel only an application in `PENDING_APPROVAL`; cancellation deactivates its pending child and does not create billing records.
+- A Parent may cancel only an application in `PENDING_APPROVAL`; cancellation deactivates its pending child and does not create billing records. The server offers this through `allowedActions: ["CANCEL"]`; the Parent enrollment screen shows **Batalkan** only when that action is present and asks for confirmation first.
 - If an approved enrollment invoice becomes overdue, its pending entitlement expires. When the Parent has no other active entitlement in that tenant, the tenant Parent membership is deactivated and the Parent returns to limited onboarding/billing access. A new application starts the flow again.
 
 ## API and data model

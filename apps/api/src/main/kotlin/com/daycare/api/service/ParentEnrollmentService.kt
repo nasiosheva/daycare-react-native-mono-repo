@@ -48,7 +48,7 @@ data class ParentEnrollmentApprovalRequest(val approved: Boolean, @field:Size(ma
 data class ParentChildTransferRequest(val childId: UUID, val organizationId: UUID, val branchId: UUID, val planId: UUID, val promoCode: String? = null)
 data class ParentEnrollmentRetryRequest(val bookingDates: List<LocalDate> = emptyList())
 enum class ParentEnrollmentAccessState { PENDING_APPROVAL, PAYMENT_DUE, PAYMENT_REVIEW, ACTIVE, BILLING_LIMITED, CLOSED }
-enum class ParentEnrollmentAllowedAction { REAPPLY, UPLOAD_PAYMENT_PROOF }
+enum class ParentEnrollmentAllowedAction { REAPPLY, UPLOAD_PAYMENT_PROOF, CANCEL }
 data class ParentTenantPlanResponse(val id: UUID, val name: String, val type: com.daycare.api.domain.ServicePlanType, val price: java.math.BigDecimal, val creditCount: Int?, val bookingRequiresApproval: Boolean, val dailyCapacity: Int?)
 data class ParentTenantBranchResponse(val id: UUID, val name: String, val dailyCapacity: Int?, val fullAddress: String?, val googleMapsUrl: String?)
 data class ParentTenantCatalogResponse(val organizationId: UUID, val organizationName: String, val branches: List<ParentTenantBranchResponse>, val plans: List<ParentTenantPlanResponse>)
@@ -278,7 +278,7 @@ class ParentEnrollmentService(
     }
 
     private fun accessState(status: ParentEnrollmentStatus, invoiceStatus: InvoiceStatus?): Pair<ParentEnrollmentAccessState, Set<ParentEnrollmentAllowedAction>> = when {
-        status == ParentEnrollmentStatus.PENDING_APPROVAL -> ParentEnrollmentAccessState.PENDING_APPROVAL to emptySet()
+        status == ParentEnrollmentStatus.PENDING_APPROVAL -> ParentEnrollmentAccessState.PENDING_APPROVAL to setOf(ParentEnrollmentAllowedAction.CANCEL)
         status in setOf(ParentEnrollmentStatus.REJECTED, ParentEnrollmentStatus.CANCELLED, ParentEnrollmentStatus.EXPIRED) -> ParentEnrollmentAccessState.CLOSED to setOf(ParentEnrollmentAllowedAction.REAPPLY)
         invoiceStatus == InvoiceStatus.OVERDUE -> ParentEnrollmentAccessState.BILLING_LIMITED to setOf(ParentEnrollmentAllowedAction.REAPPLY)
         invoiceStatus == InvoiceStatus.PENDING -> ParentEnrollmentAccessState.PAYMENT_DUE to setOf(ParentEnrollmentAllowedAction.UPLOAD_PAYMENT_PROOF)

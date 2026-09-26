@@ -81,6 +81,10 @@ data class ChildGoalResponse(
     val indicators: List<GoalIndicatorResponse>, val checkIns: List<GoalIndicatorCheckInResponse>, val conclusionCorrections: List<ChildGoalConclusionCorrectionResponse>,
 )
 
+object DevelopmentProgramError {
+    const val ASSIGNED = "development_program.assigned"
+}
+
 @Service
 class GoalService(
     private val access: AccessService,
@@ -171,7 +175,7 @@ class GoalService(
     fun deleteGlobalProgram(jwt: Jwt, programId: UUID) {
         platformAccess.requirePlatformAdmin(jwt)
         val program = globalProgram(programId)
-        require(!goals.existsByProgramId(program.id)) { "Program is already assigned to children and cannot be deleted" }
+        require(!goals.existsByProgramId(program.id)) { DevelopmentProgramError.ASSIGNED }
         programs.delete(program)
     }
 
@@ -215,7 +219,7 @@ class GoalService(
     fun deleteProgram(jwt: Jwt, organizationId: UUID, programId: UUID) {
         requireAcademicScope(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         val program = program(programId, organizationId); requireTenantOwned(program)
-        require(!goals.existsByProgramId(program.id)) { "Program is already assigned to children and cannot be deleted" }
+        require(!goals.existsByProgramId(program.id)) { DevelopmentProgramError.ASSIGNED }
         programs.delete(program)
         realtime.publishToTenantRoles(organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), setOf(RealtimeFlag.GOALS))
     }

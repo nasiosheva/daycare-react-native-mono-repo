@@ -133,7 +133,7 @@ UI/UX belum memiliki satu entity bernama **Rencana Belajar** yang ditetapkan seb
 
 - Program Perkembangan (`DevelopmentProgram`, sebelumnya disebut Goal Template/Goal Category) menyimpan tingkatan, kategori perkembangan, nama, deskripsi, target durasi, minimum persentase `Yes`, minimum streak, dan indikator (`DevelopmentProgramItem`).
 - Platform Admin membuat, mengubah, dan menghapus Program Perkembangan global dari menu **Master data global > Program Perkembangan global**. Indikator hanya dapat ditambahkan saat Program Perkembangan global dibuat; menambah, mengubah, atau mengarsipkan indikator pada Program Perkembangan global yang sudah ada belum didukung.
-- Staff Admin mengelola Program Perkembangan tenant, termasuk menambah/mengubah/mengarsipkan indikatornya; Staff tidak dapat membuat atau mengubah Program Perkembangan. Layar **Goals** menampilkan daftar Program Perkembangan milik tenant beserta aksi **Ubah** hanya untuk Staff Admin aktif; record `source=GLOBAL` tidak boleh memiliki aksi ubah pada UI tenant.
+- Staff Admin mengelola Program Perkembangan tenant, termasuk menambah/mengubah/mengarsipkan indikatornya; Staff tidak dapat membuat atau mengubah Program Perkembangan. Layar **Goals** menampilkan daftar Program Perkembangan milik tenant beserta aksi **Ubah** hanya untuk Staff Admin aktif; record `source=GLOBAL` tidak boleh memiliki aksi ubah pada UI tenant. Dari form ubah, Staff Admin aktif dapat **Hapus program** setelah konfirmasi yang menyebut nama program; bila program sudah pernah ditetapkan ke anak, server menolak dengan pesan terlokalisasi (`error.developmentProgramAssigned`) dan UI menampilkannya.
 - Program Perkembangan adalah definisi reusable tanpa snapshot versi per Goal Anak. Menyimpan perubahan target, nama, deskripsi, tingkatan, kategori, atau indikator tenant memengaruhi tampilan dan perhitungan Goal Anak yang menggunakannya saat ini, termasuk Goal aktif dan riwayat yang dibaca Parent. Form **Ubah Program Perkembangan** wajib memberi pemberitahuan yang jelas sebelum Staff Admin menyimpan perubahan tersebut.
 - Program Perkembangan (global maupun tenant) tidak memiliki status
   arsip/nonaktif terpisah. Penghapusan ditolak selama program masih ditetapkan
@@ -972,7 +972,9 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
   sudah overdue. `PAYMENT_DUE` hanya mengirim `UPLOAD_PAYMENT_PROOF` bila
   invoice masih `PENDING`. `REAPPLY` tersedia pada application yang sudah
   ditutup (`REJECTED`, `CANCELLED`, atau `EXPIRED`) dan pada
-  `BILLING_LIMITED`. Ini berbeda dari restriction finance pendidikan §13.11,
+  `BILLING_LIMITED`. `CANCEL` hanya dikirim pada `PENDING_APPROVAL` dan
+  hanya untuk application milik Parent itu sendiri; UI meminta konfirmasi
+  sebelum membatalkan. Ini berbeda dari restriction finance pendidikan §13.11,
   yang default-nya `NONE` dan tidak menonaktifkan enrollment akademik.
 
 - Checkout multi-anak harus mendapat hasil server yang eksplisit untuk setiap

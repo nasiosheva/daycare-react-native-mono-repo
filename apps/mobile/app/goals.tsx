@@ -127,6 +127,14 @@ export default function GoalsScreen() {
   const createIndicator = useMutation({ mutationFn: (indicatorInput: { name: string; priority: boolean }) => api.createGoalIndicator(editingProgramId!, indicatorInput), onSuccess: refreshGoals });
   const updateIndicatorMutation = useMutation({ mutationFn: ({ indicatorId, indicatorInput }: { indicatorId: string; indicatorInput: { name: string; displayOrder: number; priority: boolean } }) => api.updateGoalIndicator(editingProgramId!, indicatorId, indicatorInput), onSuccess: refreshGoals });
   const archiveIndicatorMutation = useMutation({ mutationFn: (indicatorId: string) => api.archiveGoalIndicator(editingProgramId!, indicatorId), onSuccess: refreshGoals });
+  // Business rules §6.3: only a program never assigned to a child can be deleted; the server enforces it and explains the rejection.
+  const [deleteTarget, setDeleteTarget] = useState<DevelopmentProgram | null>(null);
+  const deleteProgram = useMutation({
+    mutationFn: (targetId: string) => api.deleteDevelopmentProgram(targetId),
+    onSuccess: () => { setDeleteTarget(null); notify(t("goals.templateDeleted"), undefined, "success"); },
+    onError: (error) => { setDeleteTarget(null); notify(t("goals.deleteTemplateFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); },
+    onSettled: refreshGoals,
+  });
 
   if (!profile || !membership) return null;
   if (!access.isLoading && !hasAcademicOffering) return <Redirect href="/home" />;
@@ -135,6 +143,7 @@ export default function GoalsScreen() {
   const openCreateProgram = () => { setEditingProgramId(undefined); resetProgramForm(); setProgramFormOpen(true); };
   const openEditProgram = (program: DevelopmentProgram) => { setEditingProgramId(program.id); setOpenInfo(null); setProgramFormOpen(true); };
   const closeProgramForm = () => { setProgramFormOpen(false); setEditingProgramId(undefined); resetProgramForm(); };
+  const requestDeleteProgram = () => { if (!editingProgram) return; const target = editingProgram; closeProgramForm(); setDeleteTarget(target); };
   const updateNewIndicatorName = (index: number, value: string) => setNewIndicatorNames((current) => current.map((item, itemIndex) => itemIndex === index ? value : item));
   const addNewIndicatorField = () => setNewIndicatorNames((current) => [...current, ""]);
   const removeNewIndicatorField = (index: number) => setNewIndicatorNames((current) => current.length > 1 ? current.filter((_, itemIndex) => itemIndex !== index) : current);
@@ -326,6 +335,18 @@ export default function GoalsScreen() {
           </View>
         </View>)}
       </View>}
+      {editingProgram && <Button variant="ghost" accessibilityLabel={`${t("goals.deleteTemplate")}: ${editingProgram.name}`} onPress={requestDeleteProgram}><AppText variant="label" tone="danger">{t("goals.deleteTemplate")}</AppText></Button>}
+    </BottomSheet>
+
+    <BottomSheet
+      visible={deleteTarget !== null}
+      onClose={() => setDeleteTarget(null)}
+      closeAccessibilityLabel={t("common.close")}
+      title={t("goals.deleteTemplate")}
+      negativeAction={{ label: t("common.back"), onPress: () => setDeleteTarget(null) }}
+      positiveAction={{ label: t("common.delete"), variant: "danger", loading: deleteProgram.isPending, onPress: () => { if (deleteTarget) deleteProgram.mutate(deleteTarget.id); } }}
+    >
+      {deleteTarget && <Banner tone="warning" title={t("goals.deleteTemplateConfirm", { name: deleteTarget.name })} />}
     </BottomSheet>
 
     <BottomSheet

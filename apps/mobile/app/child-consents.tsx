@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, Badge, BackButton, Button, Card, EmptyState, ErrorState, ShimmerList, spacing } from "@daycare/ui";
+import { AppText, Badge, BackButton, Banner, BottomSheet, Button, Card, EmptyState, ErrorState, ShimmerList, spacing } from "@daycare/ui";
 import { statusTone } from "@/ui/statusTone";
 import { AppScreen } from "@/navigation/AppScreen";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
@@ -24,7 +25,9 @@ export default function ChildConsentsScreen() {
   const consents = useQuery({ queryKey: ["child-consents", organizationId, childId], queryFn: () => api.childConsents(childId!), enabled: Boolean(childId && canUseConsents) });
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["child-consents", organizationId, childId] });
   const decide = useMutation({ mutationFn: ({ definitionId, granted }: { definitionId: string; granted: boolean }) => api.decideConsent(childId!, definitionId, granted), onSuccess: invalidate, onError: (error) => notify(t("consent.decisionFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) });
-  const withdraw = useMutation({ mutationFn: (definitionId: string) => api.withdrawConsent(childId!, definitionId), onSuccess: invalidate, onError: (error) => notify(t("consent.decisionFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) });
+  const withdraw = useMutation({ mutationFn: (definitionId: string) => api.withdrawConsent(childId!, definitionId), onSuccess: () => setWithdrawTarget(null), onError: (error) => { setWithdrawTarget(null); notify(t("consent.decisionFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }, onSettled: invalidate });
+  // §13.15: revoking consent is a high-risk action and needs an explicit confirmation that names the consent.
+  const [withdrawTarget, setWithdrawTarget] = useState<{ definitionId: string; title: string } | null>(null);
 
   if (!profile) return null;
   if (!childId || childProfile.isLoading || access.isLoading) return null;
@@ -36,13 +39,24 @@ export default function ChildConsentsScreen() {
     {consents.isError && !consents.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void consents.refetch()} />}
     {consents.data?.map((item) => <Card key={item.definition.id} icon="shield-checkmark-outline" title={item.definition.title} subtitle={`${t(consentPurposeKey(item.definition.purpose))} · ${t("consent.revision", { revision: item.definition.revision })}`} trailing={<Badge tone={statusTone(item.status)} label={t(consentStatusKey(item.status))} />}>
       <AppText>{item.definition.content}</AppText>
-      {item.status === "GRANTED" ? <Button variant="danger" loading={withdraw.isPending} onPress={() => void withdraw.mutateAsync(item.definition.id)}>{t("consent.withdraw")}</Button> : <View style={styles.actions}>
+      {item.status === "GRANTED" ? <Button variant="danger" onPress={() => setWithdrawTarget({ definitionId: item.definition.id, title: item.definition.title })}>{t("consent.withdraw")}</Button> : <View style={styles.actions}>
         <Button style={styles.action} variant="secondary" loading={decide.isPending} onPress={() => void decide.mutateAsync({ definitionId: item.definition.id, granted: false })}>{t("consent.decline")}</Button>
         <Button style={styles.action} loading={decide.isPending} onPress={() => void decide.mutateAsync({ definitionId: item.definition.id, granted: true })}>{t("consent.grant")}</Button>
       </View>}
     </Card>)}
     {!consents.isLoading && !consents.isError && !consents.data?.length && <EmptyState icon="shield-checkmark-outline" title={t("consent.empty")} />}
-  </View></AppScreen>;
+  </View>
+    <BottomSheet
+      visible={withdrawTarget !== null}
+      onClose={() => setWithdrawTarget(null)}
+      closeAccessibilityLabel={t("common.close")}
+      title={t("consent.withdraw")}
+      negativeAction={{ label: t("common.cancel"), onPress: () => setWithdrawTarget(null), disabled: withdraw.isPending }}
+      positiveAction={{ label: t("consent.withdraw"), variant: "danger", loading: withdraw.isPending, onPress: () => withdrawTarget && withdraw.mutate(withdrawTarget.definitionId) }}
+    >
+      {withdrawTarget && <Banner tone="warning" title={t("consent.withdrawConfirm", { title: withdrawTarget.title })} />}
+    </BottomSheet>
+  </AppScreen>;
 }
 
 const styles = StyleSheet.create({ content: { gap: spacing.md }, actions: { flexDirection: "row", gap: spacing.sm }, action: { flex: 1 } });
