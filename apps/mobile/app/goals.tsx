@@ -1,12 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Image, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ChildGoal, ChildListFilter, CurriculumProgram, DevelopmentProgram, GoalCheckInAudioInput, GoalCheckInBatchInput, GoalCheckInPhotoInput, GoalIndicator, UpsertDevelopmentProgramInput } from "@daycare/api-client";
 import { childGoalOutcomes, goalDomains, goalCheckInOutcomes, type ChildGoalOutcome, type GoalCheckInOutcome, type GoalDomain } from "@daycare/core";
-import { AppText, BackButton, BottomSheet, Button, FloatingActionButton, NavigationCard, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Avatar, Badge, BackButton, Banner, BottomSheet, Button, Card, Chip, EmptyState, ErrorState, FloatingActionButton, NavigationCard, SearchField, SectionHeader, ShimmerList, TextField, ToggleSwitch, colors, radius, spacing } from "@daycare/ui";
+import { notify } from "@/notify/notify";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren } from "@/attendance/useAttendance";
@@ -142,12 +143,12 @@ export default function GoalsScreen() {
     const percent = Number(programMinimumPercent);
     const streak = Number(programMinimumStreak);
     if (!programName.trim() || !programLearningLevelId || !programDomain || !Number.isInteger(duration) || duration < 1 || !Number.isInteger(percent) || percent < 0 || percent > 100 || !Number.isInteger(streak) || streak < 0) {
-      Alert.alert(t("goals.templateRequired"));
+      notify(t("goals.templateRequired"), undefined, "warning");
       return;
     }
     const input: UpsertDevelopmentProgramInput = { learningLevelId: programLearningLevelId, name: programName.trim(), description: programDescription.trim(), durationDays: duration, minimumYesPercent: percent, minimumYesStreak: streak, domain: programDomain };
     if (!editingProgramId) input.indicatorNames = newIndicatorNames.map((name) => name.trim()).filter(Boolean);
-    void saveProgram.mutateAsync(input).catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")));
+    void saveProgram.mutateAsync(input).catch((error: unknown) => notify(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"));
   };
   const openAddIndicator = () => { setEditingIndicator(null); setIndicatorName(""); setIndicatorPriority(false); setIndicatorSheetOpen(true); };
   const openEditIndicatorForm = (indicator: GoalIndicator) => { setEditingIndicator(indicator); setIndicatorName(indicator.name); setIndicatorPriority(indicator.priority); setIndicatorSheetOpen(true); };
@@ -158,7 +159,7 @@ export default function GoalsScreen() {
       if (editingIndicator) await updateIndicatorMutation.mutateAsync({ indicatorId: editingIndicator.id, indicatorInput: { name: indicatorName.trim(), displayOrder: editingIndicator.displayOrder, priority: indicatorPriority } });
       else await createIndicator.mutateAsync({ name: indicatorName.trim(), priority: indicatorPriority });
       closeIndicatorSheet();
-    } catch (error) { Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    } catch (error) { notify(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
   const activeIndicatorCount = editingProgram?.indicators.filter((indicator) => indicator.active).length ?? 0;
   const totalMissedDays = goals.data?.filter((goal) => goal.status === "ACTIVE").reduce((sum, goal) => sum + goal.missedDays, 0) ?? 0;
@@ -174,14 +175,11 @@ export default function GoalsScreen() {
       const activeIndicators = goal.indicators.filter((indicator) => indicator.active);
       const hasCheckInDraft = activeIndicators.some((indicator) => checkInDrafts[goalCheckInDraftKey(goal.id, indicator.id)] != null);
       const hasCompleteDailyResult = activeIndicators.every((indicator) => checkInDrafts[goalCheckInDraftKey(goal.id, indicator.id)] != null || goal.checkIns.some((item) => item.indicatorId === indicator.id && item.date === todayIso));
-      return <View key={goal.id} style={styles.card}>
-      <AppText variant="label">{goal.name}</AppText>
-      <AppText tone="muted" variant="caption">{t("academic.program")}: {goal.curriculumProgramName ?? t("common.noData")}</AppText>
-      <AppText tone="muted">{formatDate(goal.startsOn)} – {formatDate(goal.targetEndsOn)}</AppText>
+      return <Card key={goal.id} icon="flag-outline" title={goal.name} subtitle={`${t("academic.program")}: ${goal.curriculumProgramName ?? t("common.noData")} · ${formatDate(goal.startsOn)} – ${formatDate(goal.targetEndsOn)}`} trailing={<Badge tone={goal.status === "COMPLETED" ? "success" : goal.meetsYesPercent && goal.meetsYesStreak ? "success" : "info"} label={t(goal.status === "COMPLETED" ? "status.COMPLETED" : goal.meetsYesPercent && goal.meetsYesStreak ? "goals.targetsMet" : "status.ACTIVE")} />}>
       <AppText>{goal.recordedDays === 0 ? t("goals.progressNoCompleteDays") : t("goals.progress", { yes: goal.yesDays, recorded: goal.recordedDays, percent: goal.yesPercent ?? 0, streak: goal.longestYesStreak })}</AppText>
       <AppText tone="muted">{t(goal.meetsYesPercent && goal.meetsYesStreak ? "goals.targetsMet" : "goals.targetsPending")}</AppText>
       <GoalDailyRecord goal={goal} />
-      {goal.status === "ACTIVE" && goal.missedDays > 0 && <View style={styles.missedBadge}><AppText tone="danger" variant="caption">{t("goals.missedDays", { count: goal.missedDays })}</AppText></View>}
+      {goal.status === "ACTIVE" && goal.missedDays > 0 && <Badge tone="warning" icon="alert-circle" label={t("goals.missedDays", { count: goal.missedDays })} />}
       {goal.status === "ACTIVE" && canWrite && <View style={styles.indicators}><AppText tone="muted" variant="caption">{t("goals.dailyCheckInInstruction")}</AppText>{activeIndicators.map((indicator) => {
         const todayCheckIn = goal.checkIns.find((item) => item.indicatorId === indicator.id && item.date === todayIso);
         const detailKey = goalCheckInDraftKey(goal.id, indicator.id);
@@ -205,7 +203,7 @@ export default function GoalsScreen() {
           />}
         </View>;
       })}<View style={styles.dailyCheckInAction}>
-        {!hasCompleteDailyResult && <AppText tone="danger" variant="caption">{t("goals.dailyCheckInIncomplete")}</AppText>}
+        {!hasCompleteDailyResult && <Banner tone="warning" title={t("goals.dailyCheckInIncomplete")} />}
         <Button disabled={!hasCheckInDraft || !hasCompleteDailyResult} loading={saveCheckInBatch.isPending} onPress={() => void saveCheckInBatch.mutateAsync({
           goalId: goal.id,
           date: todayIso,
@@ -213,7 +211,7 @@ export default function GoalsScreen() {
             indicatorId: indicator.id,
             outcome: checkInDrafts[goalCheckInDraftKey(goal.id, indicator.id)] ?? goal.checkIns.find((item) => item.indicatorId === indicator.id && item.date === todayIso)!.outcome,
           })),
-        }).catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")))}>{t("goals.saveDailyCheckIn")}</Button>
+        }).catch((error: unknown) => notify(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))}>{t("goals.saveDailyCheckIn")}</Button>
       </View></View>}
       {goal.status === "ACTIVE" && canWrite && <Button onPress={() => { setGoalsListOpen(false); setFinalGoalId(goal.id); setSheet("finalize"); }}>{t("goals.finalize")}</Button>}
       {goal.status === "COMPLETED" && <>
@@ -230,43 +228,41 @@ export default function GoalsScreen() {
           </View>)}
         </View>}
       </>}
-    </View>;
+    </Card>;
     })}
-    {selectedChild && goals.data?.length === 0 && <AppText tone="muted">{t("goals.empty")}</AppText>}
+    {selectedChild && goals.data?.length === 0 && <EmptyState compact icon="flag-outline" title={t("goals.empty")} action={canWrite ? { label: t("goals.assign"), onPress: openAssignment } : undefined} />}
   </>;
 
   const floatingAction = hasFixedChild && selectedChild && canWrite
-    ? <FloatingActionButton accessibilityLabel={t("goals.assign")} onPress={openAssignment}>+ {t("goals.assign")}</FloatingActionButton>
+    ? <FloatingActionButton icon="add" accessibilityLabel={t("goals.assign")} onPress={openAssignment}>{t("goals.assign")}</FloatingActionButton>
     : canAdmin
-      ? <FloatingActionButton accessibilityLabel={t("goals.addTemplate")} onPress={openCreateProgram}>+ {t("goals.addTemplate")}</FloatingActionButton>
+      ? <FloatingActionButton icon="add" accessibilityLabel={t("goals.addTemplate")} onPress={openCreateProgram}>{t("goals.addTemplate")}</FloatingActionButton>
       : undefined;
   return <AppScreen showBottomNavigation={false} title={t("goals.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={floatingAction}>
     <AppText tone="muted">{t("goals.subtitle")}</AppText>
 
     {canAdmin && <View style={styles.section}>
-      <AppText variant="heading">{t("goals.templates")}</AppText>
+      <SectionHeader title={t("goals.templates")} />
       {programs.isFetching && <ShimmerList variant="tile" />}
-      {!programs.isFetching && !programs.isError && tenantPrograms.map((program) => <View key={program.id} style={styles.card}>
-        <AppText variant="label">{program.name}</AppText>
-        {program.description && <AppText tone="muted" variant="caption">{program.description}</AppText>}
+      {!programs.isFetching && !programs.isError && tenantPrograms.map((program) => <NavigationCard key={program.id} accessibilityLabel={`${t("common.edit")}: ${program.name}`} onPress={() => openEditProgram(program)}>
+        <AppText variant="h6">{program.name}</AppText>
+        {program.description && <AppText tone="muted" variant="bodySmall">{program.description}</AppText>}
         <AppText tone="muted" variant="caption">{t("goals.target", { days: program.durationDays, percent: program.minimumYesPercent, streak: program.minimumYesStreak })}</AppText>
-        <Button variant="secondary" onPress={() => openEditProgram(program)}>{t("common.edit")}</Button>
-      </View>)}
-      {programs.isError && <Button variant="secondary" onPress={() => void programs.refetch()}>{t("common.retry")}</Button>}
-      {!programs.isFetching && !programs.isError && tenantPrograms.length === 0 && <AppText tone="muted">{t("goals.noTenantTemplates")}</AppText>}
+      </NavigationCard>)}
+      {programs.isError && !programs.isFetching && <ErrorState compact title={t("common.loadFailed")} retryLabel={t("common.retry")} onRetry={() => void programs.refetch()} />}
+      {!programs.isFetching && !programs.isError && tenantPrograms.length === 0 && <EmptyState compact icon="library-outline" title={t("goals.noTenantTemplates")} action={{ label: t("goals.addTemplate"), onPress: openCreateProgram }} />}
     </View>}
 
     <View style={styles.section}>
-      <View style={styles.row}><AppText variant="heading">{t("goals.childGoals")}</AppText>{!hasFixedChild && isStaffAdmin && <Button variant="secondary" onPress={() => setFilterVisible(true)}>{t("children.filter")}</Button>}</View>
-      {!hasFixedChild && isStaffAdmin && (childFilter.branchId || childFilter.learningLevelId || childFilter.classroomId) && <AppText tone="muted">{t("children.filterActive")}</AppText>}
-      {hasFixedChild && selectedChild && <AppText variant="heading">{selectedChild.fullName}</AppText>}
+      <SectionHeader title={t("goals.childGoals")} action={!hasFixedChild && isStaffAdmin ? <Button variant={childFilter.branchId || childFilter.learningLevelId || childFilter.classroomId ? "primary" : "secondary"} leadingIcon={<Ionicons name="options-outline" size={18} color={childFilter.branchId || childFilter.learningLevelId || childFilter.classroomId ? colors.onPrimary : colors.primary} />} onPress={() => setFilterVisible(true)}>{t("children.filter")}</Button> : undefined} />
+      {hasFixedChild && selectedChild && <View style={styles.childHeader}><Avatar name={selectedChild.fullName} /><AppText variant="h5">{selectedChild.fullName}</AppText></View>}
       {!hasFixedChild && children.isFetching && <ShimmerList variant="tile" />}
-      {!hasFixedChild && !children.isFetching && <View style={styles.options}>{children.data?.map((child) => <Button key={child.id} variant={child.id === childId ? "primary" : "secondary"} onPress={() => setChildId(child.id)}>{child.fullName}</Button>)}</View>}
-      {hasFixedChild && !children.isLoading && !selectedChild && <AppText tone="muted">{t("children.empty")}</AppText>}
-      {selectedChild && !hasFixedChild && <NavigationCard accessibilityLabel={t("goals.childGoals")} onPress={() => setGoalsListOpen(true)}>
-        <AppText variant="h5">{selectedChild.fullName}</AppText>
+      {!hasFixedChild && !children.isFetching && <View style={styles.options}>{children.data?.map((child) => <Chip key={child.id} label={child.fullName} selected={child.id === childId} onPress={() => setChildId(child.id)} />)}</View>}
+      {hasFixedChild && !children.isLoading && !selectedChild && <EmptyState icon="happy-outline" title={t("children.empty")} />}
+      {selectedChild && !hasFixedChild && <NavigationCard accessibilityLabel={t("goals.childGoals")} onPress={() => setGoalsListOpen(true)} leading={<Avatar name={selectedChild.fullName} />}>
+        <AppText variant="h6">{selectedChild.fullName}</AppText>
         <AppText tone={goals.data?.length ? "default" : "muted"}>{goals.data?.length ? t("goals.goalsSummary", { count: goals.data.length }) : t("goals.empty")}</AppText>
-        {totalMissedDays > 0 && <AppText tone="danger" variant="caption">{t("goals.missedDays", { count: totalMissedDays })}</AppText>}
+        {totalMissedDays > 0 && <Badge tone="warning" icon="alert-circle" label={t("goals.missedDays", { count: totalMissedDays })} />}
       </NavigationCard>}
       {selectedChild && hasFixedChild && goalsListContent}
     </View>
@@ -275,21 +271,21 @@ export default function GoalsScreen() {
       {goalsListContent}
     </BottomSheet>}
 
-    <BottomSheet visible={sheet === "assign"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("goals.assign")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("goals.assign"), disabled: !curriculumProgramId || !programId, loading: assign.isPending, onPress: () => void assign.mutateAsync().catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) ) }}>
+    <BottomSheet visible={sheet === "assign"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("goals.assign")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("goals.assign"), disabled: !curriculumProgramId || !programId, loading: assign.isPending, onPress: () => void assign.mutateAsync().catch((error: unknown) => notify(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger") ) }}>
       <AppText variant="label">{t("academic.program")}</AppText>
       {curriculumPrograms.isFetching && <ShimmerList variant="tile" />}
-      {!curriculumPrograms.isFetching && <View style={styles.options}>{availableCurriculumPrograms.map((program) => <Button key={program.id} variant={curriculumProgramId === program.id ? "primary" : "secondary"} onPress={() => selectCurriculumProgram(program)}>{program.name}</Button>)}</View>}
-      {curriculumPrograms.isError && <Button variant="secondary" onPress={() => void curriculumPrograms.refetch()}>{t("common.retry")}</Button>}
-      {!curriculumPrograms.isFetching && !curriculumPrograms.isError && availableCurriculumPrograms.length === 0 && <AppText tone="muted">{t("academic.noPrograms")}</AppText>}
-      {curriculumProgramId && <><AppText variant="label">{t("goals.templates")}</AppText><TextInput accessibilityLabel={t("goals.searchTemplates")} style={styles.input} placeholder={t("goals.searchTemplates")} value={programSearch} onChangeText={setProgramSearch} />{assignPrograms.isFetching && <ShimmerList variant="tile" />}{!assignPrograms.isFetching && <View style={styles.options}>{availablePrograms.map((program) => <Button key={program.id} variant={programId === program.id ? "primary" : "secondary"} onPress={() => setProgramId(program.id)}>{program.name}</Button>)}</View>}{assignPrograms.isError && <Button variant="secondary" onPress={() => void assignPrograms.refetch()}>{t("common.retry")}</Button>}{!assignPrograms.isFetching && !assignPrograms.isError && availablePrograms.length === 0 && <AppText tone="muted">{t("goals.notInAgeRange")}</AppText>}</>}
+      {!curriculumPrograms.isFetching && <View style={styles.options}>{availableCurriculumPrograms.map((program) => <Chip key={program.id} label={program.name} selected={curriculumProgramId === program.id} onPress={() => selectCurriculumProgram(program)} />)}</View>}
+      {curriculumPrograms.isError && !curriculumPrograms.isFetching && <ErrorState compact title={t("common.loadFailed")} retryLabel={t("common.retry")} onRetry={() => void curriculumPrograms.refetch()} />}
+      {!curriculumPrograms.isFetching && !curriculumPrograms.isError && availableCurriculumPrograms.length === 0 && <EmptyState compact icon="library-outline" title={t("academic.noPrograms")} />}
+      {curriculumProgramId && <><AppText variant="label">{t("goals.templates")}</AppText><SearchField accessibilityLabel={t("goals.searchTemplates")} placeholder={t("goals.searchTemplates")} clearAccessibilityLabel={t("common.clearSearch")} value={programSearch} onChangeText={setProgramSearch} />{assignPrograms.isFetching && <ShimmerList variant="tile" />}{!assignPrograms.isFetching && <View style={styles.options}>{availablePrograms.map((program) => <Chip key={program.id} label={program.name} selected={programId === program.id} onPress={() => setProgramId(program.id)} />)}</View>}{assignPrograms.isError && <Button variant="secondary" onPress={() => void assignPrograms.refetch()}>{t("common.retry")}</Button>}{!assignPrograms.isFetching && !assignPrograms.isError && availablePrograms.length === 0 && <AppText tone="muted">{t("goals.notInAgeRange")}</AppText>}</>}
     </BottomSheet>
-    <BottomSheet visible={sheet === "finalize"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("goals.finalize")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("goals.finalize"), disabled: !finalSummary.trim(), loading: finalize.isPending, onPress: () => void finalize.mutateAsync().catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) ) }}><View style={styles.options}>{childGoalOutcomes.map((outcome) => <Button key={outcome} variant={finalOutcome === outcome ? "primary" : "secondary"} onPress={() => setFinalOutcome(outcome)}>{t(outcome === "ACHIEVED" ? "goals.achieved" : "goals.notAchieved")}</Button>)}</View><TextInput style={[styles.input, styles.summaryInput]} multiline placeholder={t("goals.finalSummary")} value={finalSummary} onChangeText={setFinalSummary} /></BottomSheet>
+    <BottomSheet visible={sheet === "finalize"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("goals.finalize")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("goals.finalize"), disabled: !finalSummary.trim(), loading: finalize.isPending, onPress: () => void finalize.mutateAsync().catch((error: unknown) => notify(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger") ) }}><View style={styles.options}>{childGoalOutcomes.map((outcome) => <Chip key={outcome} label={t(outcome === "ACHIEVED" ? "goals.achieved" : "goals.notAchieved")} selected={finalOutcome === outcome} onPress={() => setFinalOutcome(outcome)} />)}</View><TextField label={t("goals.finalSummary")} multiline value={finalSummary} onChangeText={setFinalSummary} /></BottomSheet>
 
-    <BottomSheet visible={sheet === "correct"} onClose={closeConclusionCorrection} closeAccessibilityLabel={t("common.close")} title={t("goals.correctConclusion")} negativeAction={{ label: t("common.cancel"), onPress: closeConclusionCorrection }} positiveAction={{ label: t("goals.saveCorrection"), disabled: !correctionSummary.trim() || !correctionReason.trim(), loading: correctConclusion.isPending, onPress: () => void correctConclusion.mutateAsync().catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) ) }}>
-      <AppText tone="muted" variant="caption">{t("goals.correctionNotice")}</AppText>
-      <View style={styles.options}>{childGoalOutcomes.map((outcome) => <Button key={outcome} variant={correctionOutcome === outcome ? "primary" : "secondary"} onPress={() => setCorrectionOutcome(outcome)}>{t(outcome === "ACHIEVED" ? "goals.achieved" : "goals.notAchieved")}</Button>)}</View>
-      <TextInput style={[styles.input, styles.summaryInput]} multiline placeholder={t("goals.finalSummary")} value={correctionSummary} onChangeText={setCorrectionSummary} />
-      <TextInput style={[styles.input, styles.summaryInput]} multiline placeholder={t("goals.correctionReasonRequired")} value={correctionReason} onChangeText={setCorrectionReason} />
+    <BottomSheet visible={sheet === "correct"} onClose={closeConclusionCorrection} closeAccessibilityLabel={t("common.close")} title={t("goals.correctConclusion")} negativeAction={{ label: t("common.cancel"), onPress: closeConclusionCorrection }} positiveAction={{ label: t("goals.saveCorrection"), disabled: !correctionSummary.trim() || !correctionReason.trim(), loading: correctConclusion.isPending, onPress: () => void correctConclusion.mutateAsync().catch((error: unknown) => notify(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger") ) }}>
+      <Banner tone="warning" title={t("goals.correctionNotice")} />
+      <View style={styles.options}>{childGoalOutcomes.map((outcome) => <Chip key={outcome} label={t(outcome === "ACHIEVED" ? "goals.achieved" : "goals.notAchieved")} selected={correctionOutcome === outcome} onPress={() => setCorrectionOutcome(outcome)} />)}</View>
+      <TextField label={t("goals.finalSummary")} multiline value={correctionSummary} onChangeText={setCorrectionSummary} />
+      <TextField label={t("goals.correctionReasonRequired")} multiline value={correctionReason} onChangeText={setCorrectionReason} />
     </BottomSheet>
 
     <BottomSheet
@@ -300,20 +296,20 @@ export default function GoalsScreen() {
       negativeAction={{ label: t("common.cancel"), onPress: closeProgramForm }}
       positiveAction={{ label: t("common.save"), loading: saveProgram.isPending, onPress: submitProgramForm }}
     >
-      {editingProgramId && <AppText tone="muted" variant="caption">{t("goals.templateEditNotice")}</AppText>}
-      <GoalFormField id="name" label={t("goals.templateName")} info={t("goals.templateNameInfo")} infoAction={t(openInfo === "name" ? "goals.hideInfo" : "goals.showInfo")} expanded={openInfo === "name"} onToggle={() => setOpenInfo((current) => current === "name" ? null : "name")}><TextInput style={styles.input} placeholder={t("goals.templateName")} value={programName} onChangeText={setProgramName} /></GoalFormField>
-      <GoalFormField id="description" label={t("goals.templateDescription")} info={t("goals.templateDescriptionInfo")} infoAction={t(openInfo === "description" ? "goals.hideInfo" : "goals.showInfo")} expanded={openInfo === "description"} onToggle={() => setOpenInfo((current) => current === "description" ? null : "description")}><TextInput style={styles.input} placeholder={t("goals.templateDescription")} value={programDescription} onChangeText={setProgramDescription} /></GoalFormField>
-      <GoalFormField id="level" label={t("goals.learningLevel")} info={t("goals.learningLevelInfo")} infoAction={t(openInfo === "level" ? "goals.hideInfo" : "goals.showInfo")} expanded={openInfo === "level"} onToggle={() => setOpenInfo((current) => current === "level" ? null : "level")}><View style={styles.options}>{levels.data?.filter((level) => level.active).map((level) => <Button key={level.id} variant={programLearningLevelId === level.id ? "primary" : "secondary"} onPress={() => setProgramLearningLevelId(level.id)}>{level.name}</Button>)}</View></GoalFormField>
-      <GoalFormField id="domain" label={t("goals.categoryOptional")} info={t("goals.categoryInfo")} infoAction={t(openInfo === "domain" ? "goals.hideInfo" : "goals.showInfo")} expanded={openInfo === "domain"} onToggle={() => setOpenInfo((current) => current === "domain" ? null : "domain")}><View style={styles.options}>{goalDomains.map((domain) => <Button key={domain} variant={programDomain === domain ? "primary" : "secondary"} onPress={() => setProgramDomain(domain)}>{t(goalDomainKey(domain))}</Button>)}</View></GoalFormField>
-      <GoalFormField id="duration" label={t("goals.durationDays")} info={t("goals.durationDaysInfo")} infoAction={t(openInfo === "duration" ? "goals.hideInfo" : "goals.showInfo")} expanded={openInfo === "duration"} onToggle={() => setOpenInfo((current) => current === "duration" ? null : "duration")}><TextInput style={styles.input} inputMode="numeric" placeholder={t("goals.durationDays")} value={programDurationDays} onChangeText={setProgramDurationDays} /></GoalFormField>
-      <GoalFormField id="percent" label={t("goals.minimumPercent")} info={t("goals.minimumPercentInfo")} infoAction={t(openInfo === "percent" ? "goals.hideInfo" : "goals.showInfo")} expanded={openInfo === "percent"} onToggle={() => setOpenInfo((current) => current === "percent" ? null : "percent")}><TextInput style={styles.input} inputMode="numeric" placeholder={t("goals.minimumPercent")} value={programMinimumPercent} onChangeText={setProgramMinimumPercent} /></GoalFormField>
-      <GoalFormField id="streak" label={t("goals.minimumStreak")} info={t("goals.minimumStreakInfo")} infoAction={t(openInfo === "streak" ? "goals.hideInfo" : "goals.showInfo")} expanded={openInfo === "streak"} onToggle={() => setOpenInfo((current) => current === "streak" ? null : "streak")}><TextInput style={styles.input} inputMode="numeric" placeholder={t("goals.minimumStreak")} value={programMinimumStreak} onChangeText={setProgramMinimumStreak} /></GoalFormField>
+      {editingProgramId && <Banner tone="info" title={t("goals.templateEditNotice")} />}
+      <GoalFormField id="name" label={t("goals.templateName")} info={t("goals.templateNameInfo")} infoAction={t(openInfo === "name" ? "goals.hideInfo" : "goals.showInfo")} expanded={openInfo === "name"} onToggle={() => setOpenInfo((current) => current === "name" ? null : "name")}><TextField accessibilityLabel={t("goals.templateName")} value={programName} onChangeText={setProgramName} /></GoalFormField>
+      <GoalFormField id="description" label={t("goals.templateDescription")} info={t("goals.templateDescriptionInfo")} infoAction={t(openInfo === "description" ? "goals.hideInfo" : "goals.showInfo")} expanded={openInfo === "description"} onToggle={() => setOpenInfo((current) => current === "description" ? null : "description")}><TextField accessibilityLabel={t("goals.templateDescription")} value={programDescription} onChangeText={setProgramDescription} /></GoalFormField>
+      <GoalFormField id="level" label={t("goals.learningLevel")} info={t("goals.learningLevelInfo")} infoAction={t(openInfo === "level" ? "goals.hideInfo" : "goals.showInfo")} expanded={openInfo === "level"} onToggle={() => setOpenInfo((current) => current === "level" ? null : "level")}><View style={styles.options}>{levels.data?.filter((level) => level.active).map((level) => <Chip key={level.id} label={level.name} selected={programLearningLevelId === level.id} onPress={() => setProgramLearningLevelId(level.id)} />)}</View></GoalFormField>
+      <GoalFormField id="domain" label={t("goals.categoryOptional")} info={t("goals.categoryInfo")} infoAction={t(openInfo === "domain" ? "goals.hideInfo" : "goals.showInfo")} expanded={openInfo === "domain"} onToggle={() => setOpenInfo((current) => current === "domain" ? null : "domain")}><View style={styles.options}>{goalDomains.map((domain) => <Chip key={domain} label={t(goalDomainKey(domain))} selected={programDomain === domain} onPress={() => setProgramDomain(domain)} />)}</View></GoalFormField>
+      <GoalFormField id="duration" label={t("goals.durationDays")} info={t("goals.durationDaysInfo")} infoAction={t(openInfo === "duration" ? "goals.hideInfo" : "goals.showInfo")} expanded={openInfo === "duration"} onToggle={() => setOpenInfo((current) => current === "duration" ? null : "duration")}><TextField accessibilityLabel={t("goals.durationDays")} inputMode="numeric" value={programDurationDays} onChangeText={setProgramDurationDays} /></GoalFormField>
+      <GoalFormField id="percent" label={t("goals.minimumPercent")} info={t("goals.minimumPercentInfo")} infoAction={t(openInfo === "percent" ? "goals.hideInfo" : "goals.showInfo")} expanded={openInfo === "percent"} onToggle={() => setOpenInfo((current) => current === "percent" ? null : "percent")}><TextField accessibilityLabel={t("goals.minimumPercent")} inputMode="numeric" value={programMinimumPercent} onChangeText={setProgramMinimumPercent} /></GoalFormField>
+      <GoalFormField id="streak" label={t("goals.minimumStreak")} info={t("goals.minimumStreakInfo")} infoAction={t(openInfo === "streak" ? "goals.hideInfo" : "goals.showInfo")} expanded={openInfo === "streak"} onToggle={() => setOpenInfo((current) => current === "streak" ? null : "streak")}><TextField accessibilityLabel={t("goals.minimumStreak")} inputMode="numeric" value={programMinimumStreak} onChangeText={setProgramMinimumStreak} /></GoalFormField>
 
       {!editingProgramId && <View style={styles.field}>
         <View style={styles.fieldHeader}><AppText variant="label">{t("goals.indicators")}</AppText><Button variant="secondary" onPress={addNewIndicatorField}>{t("goals.addIndicator")}</Button></View>
         <AppText variant="caption" tone="muted">{t("goals.indicatorsInfo")}</AppText>
         {newIndicatorNames.map((name, index) => <View key={index} style={styles.indicatorRow}>
-          <TextInput style={[styles.input, styles.indicatorName]} placeholder={t("goals.indicatorName")} value={name} onChangeText={(value) => updateNewIndicatorName(index, value)} />
+          <TextField containerStyle={styles.indicatorName} accessibilityLabel={t("goals.indicatorName")} placeholder={`${t("goals.indicatorName")} ${index + 1}`} value={name} onChangeText={(value) => updateNewIndicatorName(index, value)} />
           {newIndicatorNames.length > 1 && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("common.delete")} onPress={() => removeNewIndicatorField(index)} />}
         </View>)}
       </View>}
@@ -326,7 +322,7 @@ export default function GoalsScreen() {
           {!indicator.active && <AppText variant="caption" tone="muted">{t("learning.archived")}</AppText>}
           <View style={styles.indicatorActions}>
             <IconButton icon="pencil-outline" tone="secondary" accessibilityLabel={t("common.edit")} onPress={() => openEditIndicatorForm(indicator)} />
-            {indicator.active && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("goals.archive")} disabled={activeIndicatorCount <= 1} onPress={() => void archiveIndicatorMutation.mutateAsync(indicator.id).catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")))} />}
+            {indicator.active && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("goals.archive")} disabled={activeIndicatorCount <= 1} onPress={() => void archiveIndicatorMutation.mutateAsync(indicator.id).catch((error: unknown) => notify(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))} />}
           </View>
         </View>)}
       </View>}
@@ -340,8 +336,8 @@ export default function GoalsScreen() {
       negativeAction={{ label: t("common.cancel"), onPress: closeIndicatorSheet }}
       positiveAction={{ label: t("common.save"), loading: createIndicator.isPending || updateIndicatorMutation.isPending, disabled: !indicatorName.trim(), onPress: () => void saveIndicator() }}
     >
-      <TextInput style={styles.input} placeholder={t("goals.indicatorName")} value={indicatorName} onChangeText={setIndicatorName} />
-      <Button variant={indicatorPriority ? "primary" : "secondary"} onPress={() => setIndicatorPriority((current) => !current)}>★ {t("goals.priority")}</Button>
+      <TextField label={t("goals.indicatorName")} value={indicatorName} onChangeText={setIndicatorName} />
+      <ToggleSwitch label={`★ ${t("goals.priority")}`} accessibilityLabel={t("goals.priority")} value={indicatorPriority} onValueChange={setIndicatorPriority} />
     </BottomSheet>
 
     {!hasFixedChild && isStaffAdmin && <ChildFilterSheet visible={filterVisible} filter={childFilter} onClose={() => setFilterVisible(false)} onApply={(filter) => { setChildFilter(filter); setFilterVisible(false); }} />}
@@ -402,14 +398,14 @@ function CheckInDetailPanel({ goalId, date, indicatorId, existingNote, hasPhoto,
   };
 
   return <View style={styles.detailPanel}>
-    <TextInput style={styles.input} multiline placeholder={t("goals.checkInNote")} value={note} onChangeText={setNote} />
+    <TextField label={t("goals.checkInNote")} multiline value={note} onChangeText={setNote} />
     {photo && <Image source={{ uri: photo.uri }} style={styles.detailPreview} resizeMode="contain" />}
     <View style={styles.options}>
-      <Button variant="secondary" onPress={() => void pickPhoto()}>{t("goals.pickPhoto")}</Button>
-      <Button variant="secondary" onPress={() => void takePhoto()}>{t("goals.takePhoto")}</Button>
+      <Button variant="secondary" leadingIcon={<Ionicons name="images-outline" size={18} color={colors.primary} />} onPress={() => void pickPhoto()}>{t("goals.pickPhoto")}</Button>
+      <Button variant="secondary" leadingIcon={<Ionicons name="camera-outline" size={18} color={colors.primary} />} onPress={() => void takePhoto()}>{t("goals.takePhoto")}</Button>
       {audioRecording.status !== "unsupported" && (audioRecording.status === "recording"
-        ? <Button variant="secondary" onPress={() => void audioRecording.stop()}>{t("goals.stopRecording")}</Button>
-        : <Button variant="secondary" onPress={() => void audioRecording.start()}>{t("goals.recordAudio")}</Button>)}
+        ? <Button variant="danger" leadingIcon={<Ionicons name="stop" size={18} color={colors.onPrimary} />} onPress={() => void audioRecording.stop()}>{t("goals.stopRecording")}</Button>
+        : <Button variant="secondary" leadingIcon={<Ionicons name="mic-outline" size={18} color={colors.primary} />} onPress={() => void audioRecording.start()}>{t("goals.recordAudio")}</Button>)}
     </View>
     {audioRecording.recording && <AppText tone="muted" variant="caption">{t("goals.audioReady", { seconds: Math.round(audioRecording.recording.durationMs / 1000) })}</AppText>}
     {audioRecording.error && <AppText tone="muted" variant="caption">{audioRecording.error.message}</AppText>}
@@ -420,7 +416,7 @@ function CheckInDetailPanel({ goalId, date, indicatorId, existingNote, hasPhoto,
     </View>
     {viewPhoto && <Image source={{ uri: viewPhoto }} style={styles.detailPreview} resizeMode="contain" />}
 
-    <Button loading={pending} onPress={() => void submit().catch((error: unknown) => Alert.alert(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")))}>{t("common.save")}</Button>
+    <Button loading={pending} onPress={() => void submit().catch((error: unknown) => notify(t("goals.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))}>{t("common.save")}</Button>
   </View>;
 }
 
@@ -449,16 +445,12 @@ function GoalFormField({ id, label, info, infoAction, expanded, onToggle, childr
 
 const styles = StyleSheet.create({
   section: { gap: spacing.sm },
-  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
-  card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  childHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   indicators: { gap: spacing.sm },
   dailyCheckInAction: { gap: spacing.xs },
   indicator: { gap: spacing.xs, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
-  missedBadge: { alignSelf: "flex-start", paddingVertical: spacing.xs / 2, paddingHorizontal: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
   correctionHistory: { gap: spacing.sm, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
-  input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.surface },
-  summaryInput: { minHeight: 100, paddingTop: spacing.sm, textAlignVertical: "top" },
   field: { gap: spacing.xs },
   fieldHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   info: { padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },

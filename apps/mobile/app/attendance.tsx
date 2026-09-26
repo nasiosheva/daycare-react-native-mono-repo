@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { useMemo, useState } from "react";
+import { StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import type { ChildListFilter } from "@daycare/api-client";
-import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Avatar, Badge, BackButton, Banner, BottomSheet, Button, Card, Chip, ChipGroup, EmptyState, ErrorState, SearchField, ShimmerList, TabBar, TextField, colors, spacing, type Tone } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useChildren, useRecordAttendance } from "@/attendance/useAttendance";
 import { useAuth } from "@/auth/AuthProvider";
@@ -11,6 +12,11 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { ChildFilterSheet } from "@/children/ChildFilterSheet";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { dateFromIsoTime, formatIsoTime } from "@/date-picker/date";
+import { attendanceStatus, filterRoster, rosterCounts, type AttendanceStatus, type AttendanceStatusFilter } from "@/attendance/attendanceRoster";
+import { notify } from "@/notify/notify";
+
+const statusTones: Record<AttendanceStatus, Tone> = { NOT_YET: "neutral", PRESENT: "success", LEFT: "info" };
+const statusIcons = { NOT_YET: "time-outline", PRESENT: "checkmark-circle", LEFT: "home-outline" } as const;
 
 type ConfirmState = { childId: string; childName: string; action: "CHECK_IN" | "CHECK_OUT" };
 
@@ -24,6 +30,8 @@ export default function AttendanceScreen() {
   const [filterVisible, setFilterVisible] = useState(false);
   const [childFilter, setChildFilter] = useState<ChildListFilter>({});
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<AttendanceStatusFilter>("ALL");
   const [time, setTime] = useState("");
   const [pickupAuthorizationId, setPickupAuthorizationId] = useState<string | null>(null);
   const [pickupExceptionReason, setPickupExceptionReason] = useState("");
@@ -31,7 +39,10 @@ export default function AttendanceScreen() {
   const record = useRecordAttendance();
   const pickupAuthorizations = useQuery({ queryKey: ["pickup-authorizations", organizationId, confirm?.childId], queryFn: () => api.pickupAuthorizations(confirm!.childId), enabled: Boolean(confirm?.childId && confirm.action === "CHECK_OUT") });
   const totalChildren = children.data?.length ?? 0;
-  const presentCount = children.data?.filter((child) => child.todayCheckedInAt).length ?? 0;
+  const counts = useMemo(() => rosterCounts(children.data ?? []), [children.data]);
+  const visibleChildren = useMemo(() => filterRoster(children.data ?? [], search, statusFilter), [children.data, search, statusFilter]);
+  const statusLabels: Record<AttendanceStatus, string> = { NOT_YET: t("attendance.statusNotYet"), PRESENT: t("attendance.statusCheckedIn"), LEFT: t("attendance.statusCheckedOut") };
+  const hasChildFilter = Boolean(childFilter.branchId || childFilter.learningLevelId || childFilter.classroomId);
   const confirmLabel = confirm?.action === "CHECK_IN" ? t("attendance.checkIn") : t("attendance.checkOut");
   const openConfirm = (child: { id: string; fullName: string }, action: "CHECK_IN" | "CHECK_OUT") => {
     setTime(formatIsoTime(new Date()));
@@ -45,41 +56,52 @@ export default function AttendanceScreen() {
     try {
       await record.mutateAsync({ childId: confirm.childId, action: confirm.action, method: "MANUAL", at: dateFromIsoTime(time).toISOString(), pickupAuthorizationId: confirm.action === "CHECK_OUT" ? pickupAuthorizationId ?? undefined : undefined, pickupExceptionReason: confirm.action === "CHECK_OUT" ? pickupExceptionReason.trim() || undefined : undefined });
       setConfirm(null);
-      Alert.alert(t("attendance.success"), t("attendance.recorded", { action: actionLabel }));
+      notify(t("attendance.success"), t("attendance.recorded", { action: actionLabel }), "success");
     } catch (error) {
-      Alert.alert(t("attendance.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"));
+      notify(t("attendance.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger");
     }
   };
   return <AppScreen showBottomNavigation={false} title={t("attendance.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    {readOnly && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
-    {isStaffAdmin && <Button variant="secondary" onPress={() => setFilterVisible(true)}>{t("children.filter")}</Button>}
-    {isStaffAdmin && (childFilter.branchId || childFilter.learningLevelId || childFilter.classroomId) && <AppText tone="muted">{t("children.filterActive")}</AppText>}
-    {!readOnly && <Button variant="secondary" onPress={() => router.push("/attendance-scan")}>{t("attendance.scan")}</Button>}
-    {!children.isFetching && totalChildren > 0 && <AppText tone="muted">{t("attendance.rosterSummary", { present: presentCount, total: totalChildren })}</AppText>}
+    {readOnly && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
+    {!readOnly && <Button leadingIcon={<Ionicons name="qr-code-outline" size={20} color={colors.onPrimary} />} onPress={() => router.push("/attendance-scan")}>{t("attendance.scan")}</Button>}
+    {!children.isFetching && totalChildren > 0 && <AppText variant="label">{t("attendance.rosterSummary", { present: counts.PRESENT + counts.LEFT, total: totalChildren })}</AppText>}
+    <TabBar<AttendanceStatusFilter>
+      accessibilityLabel={t("attendance.title")}
+      selected={statusFilter}
+      onSelect={setStatusFilter}
+      items={[
+        { key: "ALL", label: t("attendance.filterAll"), count: counts.ALL },
+        { key: "NOT_YET", label: statusLabels.NOT_YET, count: counts.NOT_YET },
+        { key: "PRESENT", label: statusLabels.PRESENT, count: counts.PRESENT },
+        { key: "LEFT", label: statusLabels.LEFT, count: counts.LEFT },
+      ]}
+    />
+    <View style={styles.searchRow}>
+      <SearchField containerStyle={styles.grow} accessibilityLabel={t("attendance.searchChild")} placeholder={t("attendance.searchChild")} clearAccessibilityLabel={t("common.clearSearch")} value={search} onChangeText={setSearch} />
+      {isStaffAdmin && <Button variant={hasChildFilter ? "primary" : "secondary"} accessibilityLabel={t(hasChildFilter ? "children.filterActive" : "children.filter")} leadingIcon={<Ionicons name="options-outline" size={18} color={hasChildFilter ? colors.onPrimary : colors.primary} />} onPress={() => setFilterVisible(true)}>{t("children.filter")}</Button>}
+    </View>
     {children.isFetching && <ShimmerList />}
-    {children.isError && <Button onPress={() => children.refetch()}>{t("common.retry")}</Button>}
-    {!children.isFetching && !children.isError && totalChildren === 0 && <AppText tone="muted">{t("children.empty")}</AppText>}
-    {!children.isFetching && children.data?.map((child) => {
-        const checkedIn = Boolean(child.todayCheckedInAt);
-        const checkedOut = Boolean(child.todayCheckedOutAt);
-        const allowedActions = child.attendanceContext?.allowedActions ?? [];
-      return <View key={child.id} style={styles.card}>
+    {children.isError && !children.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void children.refetch()} />}
+    {!children.isFetching && !children.isError && totalChildren === 0 && <EmptyState icon="happy-outline" title={t("children.empty")} />}
+    {!children.isFetching && !children.isError && totalChildren > 0 && visibleChildren.length === 0 && <EmptyState compact icon="search-outline" title={t("common.noResults")} action={{ label: t("attendance.resetFilter"), onPress: () => { setSearch(""); setStatusFilter("ALL"); } }} />}
+    {!children.isFetching && visibleChildren.map((child) => {
+      const status = attendanceStatus(child);
+      const allowedActions = child.attendanceContext?.allowedActions ?? [];
+      return <Card key={child.id}>
         <View style={styles.cardHeader}>
-          <AppText variant="heading">{child.fullName}</AppText>
-          <View style={[styles.statusBadge, checkedOut ? styles.statusBadgeOut : checkedIn ? styles.statusBadgeIn : styles.statusBadgeNone]}>
-            <AppText variant="caption" tone={checkedIn || checkedOut ? "default" : "muted"}>{checkedOut ? t("attendance.statusCheckedOut") : checkedIn ? t("attendance.statusCheckedIn") : t("attendance.statusNotYet")}</AppText>
+          <Avatar name={child.fullName} />
+          <View style={styles.grow}>
+            <AppText variant="h6">{child.fullName}</AppText>
+            <AppText variant="caption" tone="muted">{t("attendance.checkInTime")}: {child.todayCheckedInAt ? formatTime(child.todayCheckedInAt) : "—"} · {t("attendance.checkOutTime")}: {child.todayCheckedOutAt ? formatTime(child.todayCheckedOutAt) : "—"}</AppText>
           </View>
-        </View>
-        <View style={styles.times}>
-          <AppText variant="caption" tone="muted">{t("attendance.checkInTime")}: {child.todayCheckedInAt ? formatTime(child.todayCheckedInAt) : "—"}</AppText>
-          <AppText variant="caption" tone="muted">{t("attendance.checkOutTime")}: {child.todayCheckedOutAt ? formatTime(child.todayCheckedOutAt) : "—"}</AppText>
+          <Badge tone={statusTones[status]} icon={statusIcons[status]} label={statusLabels[status]} />
         </View>
         {!readOnly && <View style={styles.actions}>
-          <Button disabled={record.isPending || !allowedActions.includes("CHECK_IN")} onPress={() => openConfirm(child, "CHECK_IN")}>{t("attendance.checkIn")}</Button>
-          <Button variant="secondary" disabled={record.isPending || !allowedActions.includes("CHECK_OUT")} onPress={() => openConfirm(child, "CHECK_OUT")}>{t("attendance.checkOut")}</Button>
+          <Button style={styles.grow} leadingIcon={<Ionicons name="log-in-outline" size={18} color={allowedActions.includes("CHECK_IN") ? colors.onPrimary : colors.muted} />} disabled={record.isPending || !allowedActions.includes("CHECK_IN")} onPress={() => openConfirm(child, "CHECK_IN")}>{t("attendance.checkIn")}</Button>
+          <Button style={styles.grow} variant="secondary" leadingIcon={<Ionicons name="log-out-outline" size={18} color={allowedActions.includes("CHECK_OUT") ? colors.primary : colors.muted} />} disabled={record.isPending || !allowedActions.includes("CHECK_OUT")} onPress={() => openConfirm(child, "CHECK_OUT")}>{t("attendance.checkOut")}</Button>
         </View>}
-        {!readOnly && child.attendanceContext?.unavailableReason && <AppText tone="muted">{child.attendanceContext.unavailableReason}</AppText>}
-      </View>;
+        {!readOnly && child.attendanceContext?.unavailableReason && <AppText variant="caption" tone="muted">{child.attendanceContext.unavailableReason}</AppText>}
+      </Card>;
     })}
     <BottomSheet
       visible={confirm !== null}
@@ -92,10 +114,11 @@ export default function AttendanceScreen() {
       {confirm && <AppText>{t("attendance.confirmMessage", { action: confirmLabel, name: confirm.childName })}</AppText>}
       {confirm?.action === "CHECK_OUT" && <View style={styles.pickupSection}>
         <AppText variant="label">{t("pickup.title")}</AppText>
-        {pickupAuthorizations.data?.filter((item) => item.status === "ACTIVE").map((item) => <Button key={item.id} variant={pickupAuthorizationId === item.id ? "primary" : "secondary"} onPress={() => { setPickupAuthorizationId(item.id); setPickupExceptionReason(""); }}>{item.pickupPersonName} · {item.relationship}</Button>)}
-        {!pickupAuthorizations.isFetching && !pickupAuthorizations.data?.some((item) => item.status === "ACTIVE") && <AppText tone="muted">{t("pickup.empty")}</AppText>}
-        {!isStaffAdmin && !pickupAuthorizationId && <AppText tone="danger">{t("pickup.exceptionOnlyAdmin")}</AppText>}
-        {isStaffAdmin && !pickupAuthorizationId && <><AppText variant="label">{t("pickup.exception")}</AppText><TextInput value={pickupExceptionReason} onChangeText={setPickupExceptionReason} placeholder={t("pickup.exceptionReason")} style={styles.exceptionInput} multiline /></>}
+        {pickupAuthorizations.isFetching && <ShimmerList variant="row" count={1} />}
+        <ChipGroup accessibilityLabel={t("pickup.title")}>{pickupAuthorizations.data?.filter((item) => item.status === "ACTIVE").map((item) => <Chip key={item.id} label={`${item.pickupPersonName} · ${item.relationship}`} selected={pickupAuthorizationId === item.id} onPress={() => { setPickupAuthorizationId(item.id); setPickupExceptionReason(""); }} />)}</ChipGroup>
+        {!pickupAuthorizations.isFetching && !pickupAuthorizations.data?.some((item) => item.status === "ACTIVE") && <AppText variant="bodySmall" tone="muted">{t("pickup.empty")}</AppText>}
+        {!isStaffAdmin && !pickupAuthorizationId && <Banner tone="warning" title={t("pickup.exceptionOnlyAdmin")} />}
+        {isStaffAdmin && !pickupAuthorizationId && <TextField label={t("pickup.exception")} placeholder={t("pickup.exceptionReason")} value={pickupExceptionReason} onChangeText={setPickupExceptionReason} multiline />}
       </View>}
       <View style={styles.timeField}>
         <AppText variant="label">{t("attendance.time")}</AppText>
@@ -106,15 +129,10 @@ export default function AttendanceScreen() {
   </AppScreen>;
 }
 const styles = StyleSheet.create({
-  card: { padding: spacing.md, backgroundColor: colors.surface, borderRadius: radius.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.border },
-  cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
-  times: { gap: spacing.xs },
-  actions: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  grow: { flex: 1 },
+  searchRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  actions: { flexDirection: "row", gap: spacing.sm },
   timeField: { gap: spacing.xs },
-  pickupSection: { gap: spacing.xs },
-  exceptionInput: { minHeight: 72, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, padding: spacing.sm, color: colors.text, textAlignVertical: "top" },
-  statusBadge: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.pill },
-  statusBadgeIn: { backgroundColor: colors.accentSoft },
-  statusBadgeOut: { backgroundColor: colors.disabled },
-  statusBadgeNone: { backgroundColor: colors.surfaceTint },
+  pickupSection: { gap: spacing.sm },
 });

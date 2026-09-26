@@ -8,6 +8,8 @@ Use these shared building blocks instead of hand-styled `View`/`TextInput` so sc
 | Search box | `SearchField` | Has a search icon and a clear button. |
 | Pick one option | `ChipGroup` + `Chip` | Lighter than a row of full `Button`s. |
 | Menu entry | `MenuItem` inside `MenuSection` | Every entry has an icon; group long menus under short section titles. Use `attention` + a `Badge` for items that need action. |
+| Person / child | `Avatar` | Initial-letter circle (`sm`, `md`, `lg`). Use it as the `leading` of a `NavigationCard` in people lists. |
+| Filter tabs | `TabBar` | Underline tabs with optional counts, e.g. attendance status or branch filter. Replaces hand-built branch tab bars. |
 | Section title | `SectionHeader` | Optional description and action slot. |
 | Content box | `Card` (+ `InfoRow`) | Optional `icon`, `title`, `subtitle` and a `trailing` Badge. Use `InfoRow` for label/value pairs such as due date or account number. `variant="tinted"` inside sheets, `"selected"` for a chosen option. |
 | Status pill | `Badge` | Tones: `neutral`, `info`, `success`, `warning`, `danger`. Always include a text label; colour must not be the only signal. For backend statuses use `statusTone(status)` from `src/ui/statusTone.ts` so the same status always gets the same colour. |
@@ -19,4 +21,4 @@ Use these shared building blocks instead of hand-styled `View`/`TextInput` so sc
 
 Colours come from `theme.ts` (`colors`, `toneColors`). Text colours are checked against WCAG AA (4.5:1) on their backgrounds; keep that when adding new ones.
 
-Reference screens: parent flow — `app/parent-payment.tsx` and `app/payment-proof.tsx` (payment steps, cards), `app/parent-enrollment.tsx` (status badges), `app/parent-child-profile.tsx`. Staff/admin — `app/staff-admin.tsx` (grouped menu), `app/classrooms.tsx` (form, chips, empty state), `app/home.tsx` (empty/error states, search, badges), `app/sign-in.tsx` (labelled fields, error banner).
+Reference screens: staff flow — `app/attendance.tsx` (status tabs with counts, search, check-in/out), `app/child-detail.tsx` (grouped menus), `app/child-health.tsx` (allergy highlight). Parent flow — `app/parent-payment.tsx` and `app/payment-proof.tsx` (payment steps, cards), `app/parent-enrollment.tsx` (status badges), `app/parent-child-profile.tsx`. Staff/admin — `app/staff-admin.tsx` (grouped menu), `app/classrooms.tsx` (form, chips, empty state), `app/home.tsx` (empty/error states, search, badges), `app/sign-in.tsx` (labelled fields, error banner).

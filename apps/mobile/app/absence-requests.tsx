@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { childAbsencePurposes, type ChildAbsencePurpose } from "@daycare/core";
 import type { ChildAbsenceRequest } from "@daycare/api-client";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, Badge, BackButton, Banner, BottomSheet, Button, Card, Chip, ChipGroup, EmptyState, ErrorState, FloatingActionButton, ShimmerList, TextField, colors, spacing, type Tone } from "@daycare/ui";
+import { AppText, Badge, BackButton, Banner, BottomSheet, Button, Card, Chip, ChipGroup, EmptyState, ErrorState, FloatingActionButton, ShimmerList, TabBar, TextField, spacing, type Tone } from "@daycare/ui";
 import { statusTone } from "@/ui/statusTone";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -88,10 +88,7 @@ export default function AbsenceRequestsScreen() {
   return <AppScreen showBottomNavigation={false} title={t("absence.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={isParent && !readOnly ? <FloatingActionButton icon="add" accessibilityLabel={t("absence.add")} onPress={openForm}>{t("absence.add")}</FloatingActionButton> : undefined}>
     <AppText tone="muted">{t("absence.description")}</AppText>
     {readOnly && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
-    {isStaffAdmin && <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
-      <BranchTab label={t("absence.allBranches")} selected={!filterBranchId} onPress={() => setFilterBranchId(undefined)} />
-      {branches.data?.filter((branch) => branch.active).map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
-    </ScrollView>}
+    {isStaffAdmin && <TabBar accessibilityLabel={t("absence.allBranches")} selected={filterBranchId ?? ""} onSelect={(key) => setFilterBranchId(key || undefined)} items={[{ key: "", label: t("absence.allBranches") }, ...(branches.data?.filter((branch) => branch.active).map((branch) => ({ key: branch.id, label: branch.name })) ?? [])]} />}
     {requests.isLoading && <ShimmerList />}
     {requests.isError && !requests.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void requests.refetch()} />}
     {!requests.isLoading && !requests.isError && requests.data?.map((request) => <RequestCard key={request.id} request={request} formatDate={formatDate} purposeLabel={t(purposeKeys[request.purpose])} statusLabel={t(`status.${request.status}` as Parameters<typeof t>[0])} statusTone={statusTone(request.status)} cancelLabel={t("absence.cancelRequest")} approveLabel={t("absence.approve")} rejectLabel={t("absence.reject")} isParent={isParent} canCancel={isParent && !readOnly} canDecide={!readOnly && (isStaff || isStaffAdmin)} onCancel={() => { setCancelRequest(request); setCancelError(null); }} onApprove={() => openDecision(request, true)} onReject={() => openDecision(request, false)} />)}
@@ -118,10 +115,6 @@ export default function AbsenceRequestsScreen() {
   </AppScreen>;
 }
 
-function BranchTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}><AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText></Pressable>;
-}
-
 function RequestCard({ request, formatDate, purposeLabel, statusLabel, statusTone: tone, cancelLabel, approveLabel, rejectLabel, isParent, canCancel, canDecide, onCancel, onApprove, onReject }: { request: ChildAbsenceRequest; formatDate: (value: string) => string; purposeLabel: string; statusLabel: string; statusTone: Tone; cancelLabel: string; approveLabel: string; rejectLabel: string; isParent: boolean; canCancel: boolean; canDecide: boolean; onCancel: () => void; onApprove: () => void; onReject: () => void }) {
   return <Card>
     <View style={styles.cardHeader}><View style={styles.grow}><RequestSummary request={request} formatDate={formatDate} purposeLabel={purposeLabel} /></View><Badge tone={tone} label={statusLabel} /></View>
@@ -142,11 +135,4 @@ const styles = StyleSheet.create({
   field: { gap: spacing.xs },
   actions: { flexDirection: "row", gap: spacing.sm },
   action: { flex: 1 },
-  tabsScroll: { flexGrow: 0, flexShrink: 0 },
-  tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" },
-  activeTab: { borderBottomColor: colors.primary },
-  tabText: { color: colors.muted },
-  activeTabText: { color: colors.primary },
-  pressedTab: { opacity: 0.72 },
 });

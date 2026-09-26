@@ -1,5 +1,6 @@
 export * from "./AppText";
 export * from "./AudioPlayer";
+export * from "./Avatar";
 export * from "./BackButton";
 export * from "./Badge";
 export * from "./Banner";
@@ -19,6 +20,7 @@ export * from "./PinEntryScreen";
 export * from "./Screen";
 export * from "./SectionHeader";
 export * from "./Shimmer";
+export * from "./TabBar";
 export * from "./TextField";
 export * from "./theme";
 export * from "./ToggleSwitch";

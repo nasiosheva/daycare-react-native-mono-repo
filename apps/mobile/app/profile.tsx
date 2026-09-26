@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import type { ChildGender } from "@daycare/core";
-import { AppText, BackButton, BottomSheet, Button, NavigationCard, colors, PasswordInput, radius, spacing } from "@daycare/ui";
+import { AppText, Avatar, Badge, BackButton, BottomSheet, Button, Card, InfoRow, MenuItem, MenuSection, PasswordInput, TextField, spacing } from "@daycare/ui";
+import { notify } from "@/notify/notify";
 import { useAuth } from "@/auth/AuthProvider";
 import { GenderPicker } from "@/children/GenderPicker";
 import { DatePicker } from "@/date-picker/DatePicker";
@@ -57,26 +58,26 @@ export default function ProfileScreen() {
       await updateUsername(username);
       await updatePersonalDetails(gender, dateOfBirth);
       setProfileSheet(null);
-      Alert.alert(t("profile.saved"));
-    } catch (error) { Alert.alert(t("profile.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+      notify(t("profile.saved"), undefined, "success");
+    } catch (error) { notify(t("profile.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
     finally { setSavingProfile(false); }
   };
   const savePassword = async () => {
-    if (newPassword.length < 6) return Alert.alert(t("password.minLength"));
-    if (newPassword !== passwordConfirmation) return Alert.alert(t("password.mismatch"));
+    if (newPassword.length < 6) return notify(t("password.minLength"), undefined, "warning");
+    if (newPassword !== passwordConfirmation) return notify(t("password.mismatch"), undefined, "warning");
     try {
       setSavingPassword(true);
       await changePassword(newPassword);
       setNewPassword("");
       setPasswordConfirmation("");
       setProfileSheet(null);
-      Alert.alert(t("password.changed"));
-    } catch (error) { Alert.alert(t("password.changeFailed"), error instanceof Error ? error.message : t("password.reauthenticate")); }
+      notify(t("password.changed"), undefined, "success");
+    } catch (error) { notify(t("password.changeFailed"), error instanceof Error ? error.message : t("password.reauthenticate"), "danger"); }
     finally { setSavingPassword(false); }
   };
   const createAdmin = async () => {
-    if (!adminEmail.trim() || !adminUsername.trim() || !adminPassword) return Alert.alert(t("profile.adminRequired"));
-    if (adminPassword.length < 6) return Alert.alert(t("password.minLength"));
+    if (!adminEmail.trim() || !adminUsername.trim() || !adminPassword) return notify(t("profile.adminRequired"), undefined, "warning");
+    if (adminPassword.length < 6) return notify(t("password.minLength"), undefined, "warning");
     try {
       setCreatingAdmin(true);
       await api.createPlatformAdmin({ email: adminEmail.trim(), username: adminUsername.trim(), password: adminPassword });
@@ -84,49 +85,46 @@ export default function ProfileScreen() {
       setAdminUsername("");
       setAdminPassword("");
       setProfileSheet(null);
-      Alert.alert(t("profile.adminCreated"), t("profile.adminCreatedDescription"));
-    } catch (error) { Alert.alert(t("profile.adminCreateFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+      notify(t("profile.adminCreated"), t("profile.adminCreatedDescription"), "success");
+    } catch (error) { notify(t("profile.adminCreateFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
     finally { setCreatingAdmin(false); }
   };
 
   return <AppScreen showBottomNavigation={false} title={t("profile.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
-    <View style={styles.card}>
-      <AppText variant="heading">{profile?.displayName ?? user?.displayName ?? t("common.noData")}</AppText>
-      {profile?.gender && profile.gender !== "UNSPECIFIED" && <AppText tone="muted">{t(profile.gender === "MALE" ? "children.genderMale" : "children.genderFemale")}</AppText>}
-      {profile?.dateOfBirth && <AppText tone="muted">{t("profile.dateOfBirth")}: {formatDate(profile.dateOfBirth)}</AppText>}
-      {profile?.username && <AppText tone="muted">{t("profile.username")}: {profile.username}</AppText>}
-      {user?.email && <AppText tone="muted">{user.email}</AppText>}
-      {user?.phoneNumber && <AppText tone="muted">{user.phoneNumber}</AppText>}
-      {profile?.isPlatformAdmin && <AppText tone="muted">{t("profile.rolePlatform")}</AppText>}
-      {membership && <>
-        <AppText>{membership.organizationName}</AppText>
-        <AppText tone="muted">{t("profile.roleTenant", { role: t(roleKey(membership.role)) })}</AppText>
-      </>}
-    </View>
+    <Card>
+      <View style={styles.hero}>
+        <Avatar name={profile?.displayName ?? user?.displayName ?? "?"} size="lg" />
+        <View style={styles.grow}>
+          <AppText variant="h4">{profile?.displayName ?? user?.displayName ?? t("common.noData")}</AppText>
+          {membership && <AppText tone="muted">{membership.organizationName}</AppText>}
+          {membership && <Badge tone="info" label={t(roleKey(membership.role))} />}
+          {profile?.isPlatformAdmin && <Badge tone="info" label={t("profile.rolePlatform")} />}
+        </View>
+      </View>
+      {user?.email && <InfoRow icon="mail-outline" label={t("auth.email")} value={user.email} />}
+      {profile?.username && <InfoRow icon="at-outline" label={t("profile.username")} value={profile.username} />}
+      {user?.phoneNumber && <InfoRow icon="call-outline" label={t("auth.phone")} value={user.phoneNumber} />}
+      {profile?.dateOfBirth && <InfoRow icon="calendar-outline" label={t("profile.dateOfBirth")} value={`${formatDate(profile.dateOfBirth)}${profile.gender && profile.gender !== "UNSPECIFIED" ? ` · ${t(profile.gender === "MALE" ? "children.genderMale" : "children.genderFemale")}` : ""}`} />}
+    </Card>
 
-    {parentMemberships.length > 0 && <NavigationCard accessibilityLabel={t("profile.manageTenants")} onPress={() => setTenantSheetOpen(true)}>
-      <AppText variant="h5">{t("profile.manageTenants")}</AppText>
-      <AppText variant="bodySmall" tone="muted">{t("profile.manageTenantsDescription")}</AppText>
-      <AppText>{t("profile.activeTenantsSummary", { count: parentMemberships.length })}</AppText>
-    </NavigationCard>}
-    {profile?.registrationRole === "PARENT" && <NavigationCard accessibilityLabel={t("parentFamily.cardTitle")} onPress={() => router.push("/parent-family-profile" as never)}>
-      <AppText variant="h5">{t("parentFamily.cardTitle")}</AppText>
-      <AppText variant="bodySmall" tone="muted">{t("parentFamily.cardDescription")}</AppText>
-    </NavigationCard>}
+    {membership?.role === "STAFF" && <MenuSection title={t("profile.workSection")}>
+      <MenuItem icon="airplane-outline" title={t("staffLeave.profileTitle")} description={t("staffLeave.profileDescription")} onPress={() => router.push("/staff-leave-requests" as never)} />
+      <MenuItem icon="alarm-outline" title={t("profile.reminders")} description={t("reminders.subtitle")} onPress={() => router.push("/staff-reminders" as never)} />
+    </MenuSection>}
+    {(parentMemberships.length > 0 || profile?.registrationRole === "PARENT") && <MenuSection title={t("profile.familySection")}>
+      {parentMemberships.length > 0 && <MenuItem icon="business-outline" title={t("profile.manageTenants")} description={t("profile.activeTenantsSummary", { count: parentMemberships.length })} onPress={() => setTenantSheetOpen(true)} />}
+      {profile?.registrationRole === "PARENT" && <MenuItem icon="people-outline" title={t("parentFamily.cardTitle")} description={t("parentFamily.cardDescription")} onPress={() => router.push("/parent-family-profile" as never)} />}
+    </MenuSection>}
 
-    <View style={styles.form}>
-      <AppText variant="heading">{t("profile.personal")}</AppText>
-      <LanguageSelectField />
-      {membership?.role === "STAFF" && <NavigationCard accessibilityLabel={t("staffLeave.profileTitle")} onPress={() => router.push("/staff-leave-requests" as never)}><AppText variant="h5">{t("staffLeave.profileTitle")}</AppText><AppText variant="bodySmall" tone="muted">{t("staffLeave.profileDescription")}</AppText></NavigationCard>}
-      {membership?.role === "STAFF" && <Button variant="secondary" onPress={() => router.push("/staff-reminders" as never)}>{t("profile.reminders")}</Button>}
-      <Button variant="secondary" onPress={() => setProfileSheet("profile")}>{t("profile.savePersonal")}</Button>
-      {usesPassword && <Button variant="secondary" onPress={() => setProfileSheet("password")}>{t("profile.changePassword")}</Button>}
-      {profile?.isPlatformAdmin && <Button variant="secondary" onPress={() => setProfileSheet("admin")}>{t("profile.addAdmin")}</Button>}
-    </View>
+    <MenuSection title={t("profile.accountSection")}>
+      <MenuItem icon="person-outline" title={t("profile.savePersonal")} onPress={() => setProfileSheet("profile")} />
+      {usesPassword && <MenuItem icon="lock-closed-outline" title={t("profile.changePassword")} onPress={() => setProfileSheet("password")} />}
+      {profile?.isPlatformAdmin && <MenuItem icon="person-add-outline" title={t("profile.addAdmin")} onPress={() => setProfileSheet("admin")} />}
+      {profile?.isPlatformAdmin && <MenuItem icon="keypad-outline" title={t("profile.changePin")} onPress={() => router.push("/admin-pin")} />}
+    </MenuSection>
+    <Card><LanguageSelectField /></Card>
 
-    {profile?.isPlatformAdmin && <Button variant="secondary" onPress={() => router.push("/admin-pin")}>{t("profile.changePin")}</Button>}
-
-    <Button variant="danger" onPress={() => setLogoutSheetVisible(true)}>{t("auth.signOut")}</Button>
+    <Button variant="secondary" onPress={() => setLogoutSheetVisible(true)}><AppText variant="label" tone="danger">{t("auth.signOut")}</AppText></Button>
     <BottomSheet
       visible={tenantSheetOpen}
       onClose={() => setTenantSheetOpen(false)}
@@ -134,7 +132,7 @@ export default function ProfileScreen() {
       title={t("profile.manageTenants")}
     >
       <AppText tone="muted">{t("profile.manageTenantsDescription")}</AppText>
-      {parentMemberships.map((item) => <Button key={item.organizationId} variant={item.organizationId === organizationId ? "primary" : "secondary"} onPress={() => { setTenantSheetOpen(false); selectOrganization(item.organizationId); router.replace("/home"); }}>{item.organizationName}</Button>)}
+      {parentMemberships.map((item) => <MenuItem key={item.organizationId} icon="business-outline" title={item.organizationName} badge={item.organizationId === organizationId ? <Badge tone="success" icon="checkmark-circle" label={t("parentEnrollment.currentTenant")} /> : undefined} onPress={() => { setTenantSheetOpen(false); selectOrganization(item.organizationId); router.replace("/home"); }} />)}
       <Button variant="secondary" onPress={() => { setTenantSheetOpen(false); router.push("/parent-enrollment" as never); }}>{t("parentEnrollment.newTenant")}</Button>
     </BottomSheet>
     <BottomSheet
@@ -155,10 +153,10 @@ export default function ProfileScreen() {
       negativeAction={{ label: t("common.cancel"), onPress: () => setProfileSheet(null) }}
       positiveAction={{ label: t("common.save"), loading: savingProfile, disabled: !displayName.trim() || !gender || !isIsoDate(dateOfBirth), onPress: () => void saveProfile() }}
     >
-      <TextInput style={styles.input} autoCapitalize="words" placeholder={t("profile.name")} value={displayName} onChangeText={(value) => setDisplayName(capitalizeWords(value))} />
-      <TextInput style={styles.input} autoCapitalize="none" autoCorrect={false} placeholder={t("profile.usernameOptional")} value={username} onChangeText={setUsername} />
+      <TextField label={t("profile.name")} required autoCapitalize="words" value={displayName} onChangeText={(value) => setDisplayName(capitalizeWords(value))} />
+      <TextField label={t("profile.usernameOptional")} leadingIcon="at-outline" autoCapitalize="none" autoCorrect={false} value={username} onChangeText={setUsername} />
       <GenderPicker value={gender} onChange={setGender} />
-      <DatePicker placeholder={t("profile.dateOfBirth")} value={dateOfBirth} onChange={setDateOfBirth} maximumDate={formatIsoDate(new Date())} />
+      <View style={styles.field}><AppText variant="label">{t("profile.dateOfBirth")}</AppText><DatePicker placeholder={t("profile.dateOfBirth")} value={dateOfBirth} onChange={setDateOfBirth} maximumDate={formatIsoDate(new Date())} /></View>
     </BottomSheet>
     <BottomSheet
       visible={profileSheet === "password"}
@@ -168,8 +166,10 @@ export default function ProfileScreen() {
       negativeAction={{ label: t("common.cancel"), onPress: () => setProfileSheet(null) }}
       positiveAction={{ label: t("common.save"), loading: savingPassword, disabled: !newPassword || !passwordConfirmation, onPress: () => void savePassword() }}
     >
-      <PasswordInput placeholder={t("password.new")} value={newPassword} onChangeText={setNewPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
-      <PasswordInput placeholder={t("password.confirm")} value={passwordConfirmation} onChangeText={setPasswordConfirmation} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
+      <AppText variant="label">{t("password.new")}</AppText>
+      <PasswordInput value={newPassword} onChangeText={setNewPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
+      <AppText variant="label">{t("password.confirm")}</AppText>
+      <PasswordInput value={passwordConfirmation} onChangeText={setPasswordConfirmation} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
     </BottomSheet>
     <BottomSheet
       visible={profileSheet === "admin"}
@@ -180,15 +180,16 @@ export default function ProfileScreen() {
       positiveAction={{ label: t("profile.createAdmin"), loading: creatingAdmin, disabled: !adminEmail.trim() || !adminUsername.trim() || !adminPassword, onPress: () => void createAdmin() }}
     >
       <AppText variant="caption" tone="muted">{t("profile.addAdminDescription")}</AppText>
-      <TextInput style={styles.input} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" placeholder={t("profile.adminEmail")} value={adminEmail} onChangeText={setAdminEmail} />
-      <TextInput style={styles.input} placeholder={t("profile.adminUsername")} value={adminUsername} onChangeText={setAdminUsername} />
-      <PasswordInput placeholder={t("password.new")} value={adminPassword} onChangeText={setAdminPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
+      <TextField label={t("profile.adminEmail")} required leadingIcon="mail-outline" autoCapitalize="none" autoCorrect={false} keyboardType="email-address" value={adminEmail} onChangeText={setAdminEmail} />
+      <TextField label={t("profile.adminUsername")} required leadingIcon="at-outline" autoCapitalize="none" value={adminUsername} onChangeText={setAdminUsername} />
+      <AppText variant="label">{t("password.new")}</AppText>
+      <PasswordInput value={adminPassword} onChangeText={setAdminPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
     </BottomSheet>
   </AppScreen>;
 }
 
 const styles = StyleSheet.create({
-  card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  form: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  hero: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  grow: { flex: 1, gap: spacing.xs },
+  field: { gap: spacing.xs },
 });

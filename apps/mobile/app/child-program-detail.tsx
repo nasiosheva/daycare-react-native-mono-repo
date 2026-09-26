@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import type { ChildProgramStatus } from "@daycare/api-client";
-import { AppText, BackButton, BottomSheet, Button, ShimmerList, ToggleSwitch, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Badge, BackButton, BottomSheet, Button, Card, Chip, EmptyState, InfoRow, SectionHeader, ShimmerList, TextField, ToggleSwitch, colors, spacing } from "@daycare/ui";
+import { statusTone } from "@/ui/statusTone";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
@@ -81,7 +83,7 @@ export default function ChildProgramDetailScreen() {
     try {
       await updateProgram.mutateAsync({ name: name.trim(), description: description.trim() || undefined, status, parentVisible, parentSummary: parentSummary.trim() || undefined, homeGuidance: homeGuidance.trim() || undefined });
       setSheet(null);
-    } catch (error) { notify(t("children.programFailed"), errorMessage(error)); }
+    } catch (error) { notify(t("children.programFailed"), errorMessage(error), "danger"); }
   };
   const saveStep = async () => {
     if (!stepTitle.trim() || !Number.isFinite(stepOrder) || stepOrder < 0) return;
@@ -90,60 +92,60 @@ export default function ChildProgramDetailScreen() {
       if (stepId) await updateStep.mutateAsync({ stepId, input });
       else await addStep.mutateAsync(input);
       closeStepForm();
-    } catch (error) { notify(t("children.programFailed"), errorMessage(error)); }
+    } catch (error) { notify(t("children.programFailed"), errorMessage(error), "danger"); }
   };
   const saveStaffNote = async () => {
     if (!note.trim()) return;
     try { await addStaffNote.mutateAsync({ note: note.trim(), stepId: noteStepId ?? undefined }); setNote(""); setNoteStepId(null); setSheet(null); }
-    catch (error) { notify(t("children.programFailed"), errorMessage(error)); }
+    catch (error) { notify(t("children.programFailed"), errorMessage(error), "danger"); }
   };
   const deleteStep = async (id: string) => {
     try { await removeStep.mutateAsync(id); }
-    catch (error) { notify(t("children.programFailed"), errorMessage(error)); }
+    catch (error) { notify(t("children.programFailed"), errorMessage(error), "danger"); }
   };
 
   return <AppScreen showBottomNavigation={false} title={t("children.programDetail")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.content}>
-    <View style={styles.card}>
-      <View style={styles.heading}><View style={styles.grow}><AppText variant="h5">{program.name}</AppText><AppText tone="muted">{statusLabel(program.status)}</AppText></View><Button variant="secondary" onPress={() => setSheet("program")}>{t("common.edit")}</Button></View>
+    <Card icon="heart-outline" title={program.name} trailing={<Badge tone={statusTone(program.status)} label={statusLabel(program.status)} />}>
       {program.description && <AppText tone="muted">{program.description}</AppText>}
-      {program.parentVisible && <AppText variant="caption" tone="muted">{t("children.parentVisible")}</AppText>}
-      {program.homeGuidance && <><AppText variant="label">{t("children.homeGuidance")}</AppText><AppText tone="muted">{program.homeGuidance}</AppText></>}
+      {program.parentVisible && <Badge tone="info" icon="eye-outline" label={t("children.parentVisible")} />}
+      {program.homeGuidance && <InfoRow icon="home-outline" label={t("children.homeGuidance")} value={<AppText>{program.homeGuidance}</AppText>} />}
+      <Button variant="secondary" leadingIcon={<Ionicons name="create-outline" size={18} color={colors.primary} />} onPress={() => setSheet("program")}>{t("common.edit")}</Button>
+    </Card>
+
+    <View style={styles.section}><SectionHeader title={t("children.steps")} action={<Button variant="ghost" leadingIcon={<Ionicons name="add" size={18} color={colors.primary} />} onPress={() => openStepForm()}>{t("children.addStep")}</Button>} />
+      {program.steps.map((step) => <Card key={step.id} icon={step.completed ? "checkmark-circle" : "ellipse-outline"} title={step.title} trailing={<Badge tone={step.completed ? "success" : "neutral"} label={step.completed ? t("children.completed") : t("children.markIncomplete")} />}>{step.parentVisible && <Badge tone="info" icon="eye-outline" label={t("children.parentVisible")} />}{step.description && <AppText tone="muted">{step.description}</AppText>}{step.homeGuidance && <InfoRow icon="home-outline" label={t("children.homeGuidance")} value={<AppText>{step.homeGuidance}</AppText>} />}<View style={styles.actions}><Button style={styles.grow} variant="secondary" leadingIcon={<Ionicons name="create-outline" size={18} color={colors.primary} />} onPress={() => openStepForm(step.id)}>{t("common.edit")}</Button><Button style={styles.grow} variant="ghost" loading={removeStep.isPending} onPress={() => void deleteStep(step.id)}><AppText variant="label" tone="danger">{t("children.remove")}</AppText></Button></View></Card>)}
+      {program.steps.length === 0 && <EmptyState compact icon="list-outline" title={t("children.noSteps")} action={{ label: t("children.addStep"), onPress: () => openStepForm() }} />}
     </View>
 
-    <View style={styles.section}><View style={styles.heading}><AppText variant="h5">{t("children.steps")}</AppText><Button variant="secondary" onPress={() => openStepForm()}>{t("children.addStep")}</Button></View>
-      {program.steps.map((step) => <View key={step.id} style={styles.card}><View style={styles.heading}><View style={styles.grow}><AppText variant="label">{step.title}</AppText><AppText variant="caption" tone="muted">{step.completed ? t("children.completed") : t("children.markIncomplete")}{step.parentVisible ? ` · ${t("children.parentVisible")}` : ""}</AppText></View><View style={styles.actions}><Button variant="secondary" onPress={() => openStepForm(step.id)}>{t("common.edit")}</Button><Button variant="danger" loading={removeStep.isPending} onPress={() => void deleteStep(step.id)}>{t("children.remove")}</Button></View></View>{step.description && <AppText tone="muted">{step.description}</AppText>}{step.homeGuidance && <><AppText variant="caption" tone="muted">{t("children.homeGuidance")}</AppText><AppText tone="muted">{step.homeGuidance}</AppText></>}</View>)}
-      {program.steps.length === 0 && <AppText tone="muted">{t("children.noSteps")}</AppText>}
+    <View style={styles.section}><SectionHeader title={t("children.staffNotes")} action={<Button variant="ghost" leadingIcon={<Ionicons name="add" size={18} color={colors.primary} />} onPress={() => setSheet("note")}>{t("children.addStaffNote")}</Button>} />
+      {program.staffNotes.map((item) => <Card key={item.id} subtitle={`${item.authorName}${item.stepId ? ` · ${program.steps.find((step) => step.id === item.stepId)?.title ?? t("common.noData")}` : ""}`}><AppText>{item.note}</AppText></Card>)}
+      {program.staffNotes.length === 0 && <EmptyState compact icon="document-text-outline" title={t("children.noStaffNotes")} />}
     </View>
 
-    <View style={styles.section}><View style={styles.heading}><AppText variant="h5">{t("children.staffNotes")}</AppText><Button variant="secondary" onPress={() => setSheet("note")}>{t("children.addStaffNote")}</Button></View>
-      {program.staffNotes.map((item) => <View key={item.id} style={styles.card}><AppText>{item.note}</AppText><AppText variant="caption" tone="muted">{item.authorName}{item.stepId ? ` · ${program.steps.find((step) => step.id === item.stepId)?.title ?? t("common.noData")}` : ""}</AppText></View>)}
-      {program.staffNotes.length === 0 && <AppText tone="muted">{t("children.noStaffNotes")}</AppText>}
-    </View>
-
-    <View style={styles.section}><AppText variant="h5">{t("children.parentFeedback")}</AppText>
-      {program.parentFeedback.map((item) => <View key={item.id} style={styles.card}><AppText>{item.note}</AppText><AppText variant="caption" tone="muted">{item.parentName ?? t("common.noData")}</AppText></View>)}
-      {program.parentFeedback.length === 0 && <AppText tone="muted">{t("children.noFeedback")}</AppText>}
+    <View style={styles.section}><SectionHeader title={t("children.parentFeedback")} />
+      {program.parentFeedback.map((item) => <Card key={item.id} icon="chatbubble-ellipses-outline" subtitle={item.parentName ?? t("common.noData")}><AppText>{item.note}</AppText></Card>)}
+      {program.parentFeedback.length === 0 && <EmptyState compact icon="chatbubbles-outline" title={t("children.noFeedback")} />}
     </View>
   </View>
     <BottomSheet visible={sheet === "program"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("common.edit")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("common.save"), loading: updateProgram.isPending, disabled: !name.trim(), onPress: () => void saveProgram() }}>
-      <TextInput style={styles.input} placeholder={t("children.programName")} value={name} onChangeText={setName} />
-      <TextInput style={[styles.input, styles.multiline]} placeholder={t("children.programDescription")} value={description} onChangeText={setDescription} multiline />
-      <AppText variant="label">{t("children.programStatus")}</AppText><View style={styles.options}>{programStatuses.map((item) => <Button key={item} variant={status === item ? "primary" : "secondary"} onPress={() => setStatus(item)}>{statusLabel(item)}</Button>)}</View>
+      <TextField label={t("children.programName")} value={name} onChangeText={setName} />
+      <TextField label={t("children.programDescription")} value={description} onChangeText={setDescription} multiline />
+      <AppText variant="label">{t("children.programStatus")}</AppText><View style={styles.options}>{programStatuses.map((item) => <Chip key={item} label={statusLabel(item)} selected={status === item} onPress={() => setStatus(item)} />)}</View>
       <ToggleSwitch label={t("children.parentVisible")} description={t("children.parentVisibleDescription")} value={parentVisible} onValueChange={setParentVisible} accessibilityLabel={t("children.parentVisible")} />
-      <TextInput style={[styles.input, styles.multiline]} placeholder={t("children.parentSummary")} value={parentSummary} onChangeText={setParentSummary} multiline />
-      <TextInput style={[styles.input, styles.multiline]} placeholder={t("children.homeGuidance")} value={homeGuidance} onChangeText={setHomeGuidance} multiline />
+      <TextField label={t("children.parentSummary")} value={parentSummary} onChangeText={setParentSummary} multiline />
+      <TextField label={t("children.homeGuidance")} value={homeGuidance} onChangeText={setHomeGuidance} multiline />
     </BottomSheet>
     <BottomSheet visible={sheet === "step"} onClose={closeStepForm} closeAccessibilityLabel={t("common.close")} title={t(stepId ? "children.editStep" : "children.addStep")} negativeAction={{ label: t("common.cancel"), onPress: closeStepForm }} positiveAction={{ label: t("common.save"), loading: addStep.isPending || updateStep.isPending, disabled: !stepTitle.trim() || !Number.isFinite(stepOrder) || stepOrder < 0, onPress: () => void saveStep() }}>
-      <TextInput style={styles.input} placeholder={t("children.stepTitle")} value={stepTitle} onChangeText={setStepTitle} />
-      <TextInput style={[styles.input, styles.multiline]} placeholder={t("children.stepDescription")} value={stepDescription} onChangeText={setStepDescription} multiline />
-      <TextInput style={[styles.input, styles.multiline]} placeholder={t("children.homeGuidance")} value={stepHomeGuidance} onChangeText={setStepHomeGuidance} multiline />
-      <TextInput style={styles.input} inputMode="numeric" placeholder={t("learning.order")} value={stepDisplayOrder} onChangeText={setStepDisplayOrder} />
+      <TextField label={t("children.stepTitle")} value={stepTitle} onChangeText={setStepTitle} />
+      <TextField label={t("children.stepDescription")} value={stepDescription} onChangeText={setStepDescription} multiline />
+      <TextField label={t("children.homeGuidance")} value={stepHomeGuidance} onChangeText={setStepHomeGuidance} multiline />
+      <TextField label={t("learning.order")} inputMode="numeric" value={stepDisplayOrder} onChangeText={setStepDisplayOrder} />
       <ToggleSwitch label={t("children.completed")} value={stepCompleted} onValueChange={setStepCompleted} accessibilityLabel={t("children.completed")} />
       <ToggleSwitch label={t("children.stepParentVisible")} description={program.parentVisible ? undefined : t("children.parentVisibleDescription")} value={stepParentVisible} onValueChange={setStepParentVisible} disabled={!program.parentVisible} accessibilityLabel={t("children.stepParentVisible")} />
     </BottomSheet>
     <BottomSheet visible={sheet === "note"} onClose={() => { setNote(""); setNoteStepId(null); setSheet(null); }} closeAccessibilityLabel={t("common.close")} title={t("children.addStaffNote")} negativeAction={{ label: t("common.cancel"), onPress: () => { setNote(""); setNoteStepId(null); setSheet(null); } }} positiveAction={{ label: t("common.save"), loading: addStaffNote.isPending, disabled: !note.trim(), onPress: () => void saveStaffNote() }}>
-      <TextInput style={[styles.input, styles.multiline]} placeholder={t("children.staffNote")} value={note} onChangeText={setNote} multiline />
-      <AppText variant="label">{t("children.steps")}</AppText><View style={styles.options}><Button variant={noteStepId === null ? "primary" : "secondary"} onPress={() => setNoteStepId(null)}>{t("children.programDetail")}</Button>{program.steps.map((step) => <Button key={step.id} variant={noteStepId === step.id ? "primary" : "secondary"} onPress={() => setNoteStepId(step.id)}>{step.title}</Button>)}</View>
+      <TextField label={t("children.staffNote")} value={note} onChangeText={setNote} multiline />
+      <AppText variant="label">{t("children.steps")}</AppText><View style={styles.options}><Chip label={t("children.programDetail")} selected={noteStepId === null} onPress={() => setNoteStepId(null)} />{program.steps.map((step) => <Chip key={step.id} label={step.title} selected={noteStepId === step.id} onPress={() => setNoteStepId(step.id)} />)}</View>
     </BottomSheet>
   </AppScreen>;
 }
@@ -151,11 +153,7 @@ export default function ChildProgramDetailScreen() {
 const styles = StyleSheet.create({
   content: { gap: spacing.md },
   section: { gap: spacing.sm },
-  card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  heading: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, justifyContent: "space-between" },
-  grow: { flex: 1, gap: spacing.xs },
-  actions: { gap: spacing.xs, alignItems: "flex-end" },
-  input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  multiline: { minHeight: 96, paddingTop: spacing.sm, textAlignVertical: "top" },
+  grow: { flex: 1 },
+  actions: { flexDirection: "row", gap: spacing.sm },
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
 });

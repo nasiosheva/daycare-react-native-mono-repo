@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactElement } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ParentFamilyProfileForTenant } from "@daycare/api-client";
-import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Avatar, BackButton, Banner, BottomSheet, Button, Card, EmptyState, SearchField, SectionHeader, ShimmerList, TabBar, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useBookingApproval } from "@/booking/useBooking";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -72,12 +73,9 @@ function BookingApprovalsScreenContent() {
   return <AppScreen showBottomNavigation={!isStaffAdmin} title={isStaffAdmin ? t("approval.title") : undefined} header={isStaffAdmin ? <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} /> : undefined}>
     {!isStaffAdmin && <AppText variant="title">{t("approval.title")}</AppText>}
     <AppText tone="muted">{t("approval.subtitle")}</AppText>
-    {readOnly && <AppText tone="muted">{t("staffOperations.readOnly")}</AppText>}
-    {isStaffAdmin && <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
-      <BranchTab label={t("branchFilter.allBranches")} selected={!filterBranchId} onPress={() => setFilterBranchId(undefined)} />
-      {branches.data?.map((branch) => <BranchTab key={branch.id} label={branch.name} selected={filterBranchId === branch.id} onPress={() => setFilterBranchId(branch.id)} />)}
-    </ScrollView>}
-    <TextInput style={styles.input} placeholder={t("approval.search")} value={search} onChangeText={setSearch} />
+    {readOnly && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
+    {isStaffAdmin && <TabBar accessibilityLabel={t("branchFilter.allBranches")} selected={filterBranchId ?? ""} onSelect={(key) => setFilterBranchId(key || undefined)} items={[{ key: "", label: t("branchFilter.allBranches") }, ...(branches.data?.map((branch) => ({ key: branch.id, label: branch.name })) ?? [])]} />}
+    <SearchField accessibilityLabel={t("approval.search")} placeholder={t("approval.search")} clearAccessibilityLabel={t("common.clearSearch")} value={search} onChangeText={setSearch} />
 
     {approvalsFetching && <ShimmerList />}
     {isStaffAdmin && !approvalsFetching && Boolean(enrollments.data?.length) && <ApprovalSection title={t("approval.enrollmentSection")} description={t("approval.enrollmentSectionDescription")}>
@@ -87,8 +85,8 @@ function BookingApprovalsScreenContent() {
         description={`${enrollment.planName} · ${formatCurrency(enrollment.totalAmount)} · ${formatDate(enrollment.createdAt)}`}
         parentFamilyProfile={enrollment.parentFamilyProfile}
         actions={canDecideEnrollment ? <View style={styles.actionsRow}>
-          <Button style={styles.actionButton} onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: true, name: enrollment.childName })}>{t("approval.approve")}</Button>
-          <Button style={styles.actionButton} variant="danger" onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: false, name: enrollment.childName })}>{t("approval.reject")}</Button>
+          <Button style={styles.actionButton} variant="secondary" onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: false, name: enrollment.childName })}>{t("approval.reject")}</Button>
+          <Button style={styles.actionButton} leadingIcon={<Ionicons name="checkmark" size={18} color={colors.onPrimary} />} onPress={() => openConfirm({ kind: "enrollment", id: enrollment.id, approved: true, name: enrollment.childName })}>{t("approval.approve")}</Button>
         </View> : undefined}
       />)}
     </ApprovalSection>}
@@ -99,15 +97,15 @@ function BookingApprovalsScreenContent() {
         description={`${formatDate(booking.bookingDate)} · ${booking.planName}`}
         detail={`${booking.invoiceNumber} · ${formatCurrency(booking.invoiceTotalAmount)}`}
         actions={<>
-          {isStaffAdmin && <Button variant="secondary" onPress={() => openProof(booking.invoiceId)}>{t("paymentProof.view")}</Button>}
+          {isStaffAdmin && <Button variant="ghost" leadingIcon={<Ionicons name="receipt-outline" size={18} color={colors.primary} />} onPress={() => openProof(booking.invoiceId)}>{t("paymentProof.view")}</Button>}
           {canDecideBooking && <View style={styles.actionsRow}>
-            <Button style={styles.actionButton} onPress={() => openConfirm({ kind: "booking", id: booking.id, approved: true, name: booking.childName })}>{t("approval.approve")}</Button>
-            <Button style={styles.actionButton} variant="danger" onPress={() => openConfirm({ kind: "booking", id: booking.id, approved: false, name: booking.childName })}>{t("approval.reject")}</Button>
+            <Button style={styles.actionButton} variant="secondary" onPress={() => openConfirm({ kind: "booking", id: booking.id, approved: false, name: booking.childName })}>{t("approval.reject")}</Button>
+            <Button style={styles.actionButton} leadingIcon={<Ionicons name="checkmark" size={18} color={colors.onPrimary} />} onPress={() => openConfirm({ kind: "booking", id: booking.id, approved: true, name: booking.childName })}>{t("approval.approve")}</Button>
           </View>}
         </>}
       />)}
     </ApprovalSection>}
-    {empty && <AppText tone="muted">{t("approval.empty")}</AppText>}
+    {empty && <EmptyState icon="checkmark-done-outline" title={t("approval.empty")} description={debouncedSearch ? undefined : t("approval.emptyDescription")} />}
 
     <BottomSheet
       visible={confirm !== null}
@@ -117,8 +115,8 @@ function BookingApprovalsScreenContent() {
       negativeAction={{ label: t("common.cancel"), onPress: closeConfirm }}
       positiveAction={{ label: t(confirm?.approved ? "approval.approve" : "approval.reject"), variant: confirm?.approved ? "primary" : "danger", loading: confirmLoading, onPress: () => void confirmDecision() }}
     >
-      {decisionError && <AppText accessibilityRole="alert" tone="danger">{decisionError}</AppText>}
-      <AppText tone="muted">{t(confirm?.approved ? "approval.confirmApproveDescription" : "approval.confirmRejectDescription")}</AppText>
+      {decisionError && <Banner tone="danger" title={decisionError} />}
+      <Banner tone={confirm?.approved ? "info" : "warning"} title={t(confirm?.approved ? "approval.confirmApproveDescription" : "approval.confirmRejectDescription")} />
     </BottomSheet>
 
     <BottomSheet
@@ -129,8 +127,8 @@ function BookingApprovalsScreenContent() {
       negativeAction={{ label: t("common.close"), onPress: closeProof }}
       positiveAction={{ label: t("paymentProof.download"), loading: downloading, disabled: !proof.data, onPress: () => void downloadProof() }}
     >
-      {proofError && <AppText accessibilityRole="alert" tone="danger">{proofError}</AppText>}
-      {proof.isLoading ? <AppText>{t("common.loading")}</AppText> : proof.data ? <Image source={{ uri: `data:${proof.data.contentType};base64,${proof.data.dataBase64}` }} style={styles.preview} resizeMode="contain" /> : <AppText tone="muted">{t("paymentProof.none")}</AppText>}
+      {proofError && <Banner tone="danger" title={proofError} />}
+      {proof.isLoading ? <ShimmerList variant="tile" count={1} /> : proof.data ? <Image source={{ uri: `data:${proof.data.contentType};base64,${proof.data.dataBase64}` }} style={styles.preview} resizeMode="contain" /> : <EmptyState compact icon="image-outline" title={t("paymentProof.none")} />}
       {proof.data?.note && <AppText tone="muted">{proof.data.note}</AppText>}
     </BottomSheet>
   </AppScreen>;
@@ -138,19 +136,18 @@ function BookingApprovalsScreenContent() {
 
 function ApprovalSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return <View style={styles.section}>
-    <View style={styles.sectionHeader}><AppText variant="heading">{title}</AppText><AppText tone="muted">{description}</AppText></View>
+    <SectionHeader title={title} description={description} />
     {children}
   </View>;
 }
 
 function ApprovalCard({ title, description, detail, actions, parentFamilyProfile }: { title: string; description: string; detail?: string; actions?: ReactElement; parentFamilyProfile?: ParentFamilyProfileForTenant | null }) {
-  return <View style={styles.card}>
-    <AppText variant="heading">{title}</AppText>
-    <AppText tone="muted">{description}</AppText>
-    {detail && <AppText variant="label">{detail}</AppText>}
+  return <Card>
+    <View style={styles.cardHeader}><Avatar name={title} /><View style={styles.grow}><AppText variant="h6">{title}</AppText><AppText variant="bodySmall" tone="muted">{description}</AppText></View></View>
+    {detail && <View style={styles.detailRow}><Ionicons name="receipt-outline" size={16} color={colors.muted} /><AppText variant="label">{detail}</AppText></View>}
     {parentFamilyProfile && <ParentFamilyProfileSummary profile={parentFamilyProfile} />}
     {actions}
-  </View>;
+  </Card>;
 }
 
 function ParentFamilyProfileSummary({ profile }: { profile: ParentFamilyProfileForTenant }) {
@@ -170,24 +167,11 @@ function parentFamilyDetails(occupation: ParentFamilyProfileForTenant["husbandOc
   return values.length ? values.join(" · ") : null;
 }
 
-function BranchTab({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.tab, selected && styles.activeTab, pressed && styles.pressedTab]}>
-    <AppText variant="label" style={selected ? styles.activeTabText : styles.tabText}>{label}</AppText>
-  </Pressable>;
-}
-
 const styles = StyleSheet.create({
-  input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  tabsScroll: { flexGrow: 0, flexShrink: 0 },
-  tabs: { gap: spacing.md, paddingRight: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  tab: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 2, borderBottomColor: "transparent" },
-  activeTab: { borderBottomColor: colors.primary },
-  tabText: { color: colors.muted },
-  activeTabText: { color: colors.primary },
-  pressedTab: { opacity: 0.72 },
   section: { gap: spacing.sm },
-  sectionHeader: { gap: spacing.xs },
-  card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  grow: { flex: 1 },
+  detailRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   parentFamilyProfile: { gap: spacing.xs, paddingTop: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
   actionsRow: { flexDirection: "row", gap: spacing.sm },
   actionButton: { flex: 1 },

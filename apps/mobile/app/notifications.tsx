@@ -3,8 +3,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PushNotificationMuteDuration } from "@daycare/api-client";
-import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { AppText, BackButton, BottomSheet, Button, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { AppText, BackButton, Banner, BottomSheet, Button, Chip, ChipGroup, EmptyState, ErrorState, SearchField, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { notify } from "@/notify/notify";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -48,7 +49,7 @@ export default function NotificationsScreen() {
       if (muteDuration) {
         const mutedUntil = muteBrowserNotifications(muteDuration);
         if (!mutedUntil) {
-          Alert.alert(t("notifications.saveFailed"));
+          notify(t("notifications.saveFailed"), undefined, "danger");
           return;
         }
         setBrowserMutedUntil(mutedUntil);
@@ -58,7 +59,7 @@ export default function NotificationsScreen() {
       return;
     }
     try { await updatePreference.mutateAsync(muteDuration); }
-    catch (error) { Alert.alert(t("notifications.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    catch (error) { notify(t("notifications.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
 
   const mutedUntil = isNative ? notificationPreference.data?.pushMutedUntil : browserMutedUntil;
@@ -79,31 +80,40 @@ export default function NotificationsScreen() {
   const unreadCount = notifications.data?.filter((item) => !item.readAt).length ?? 0;
 
   return <AppScreen showBottomNavigation={false} title={t("notifications.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} headerAction={<Pressable accessibilityRole="button" accessibilityLabel={t("notifications.settings")} hitSlop={spacing.sm} onPress={openSettings} style={({ pressed }) => [styles.settingsButton, pressed && styles.settingsButtonPressed]}><Ionicons name="settings-outline" size={24} color={colors.primary} /></Pressable>}>
-    <TextInput style={styles.input} placeholder={t("notifications.search")} value={search} onChangeText={setSearch} />
-    <AppText tone={unreadCount > 0 ? "default" : "muted"}>{notifications.isFetching ? t("notifications.loading") : notifications.data?.length ? (unreadCount > 0 ? t("notifications.unreadSummary", { count: unreadCount }) : t("notifications.allRead")) : t("notifications.empty")}</AppText>
-    {notifications.isError && <Button variant="secondary" onPress={() => notifications.refetch()}>{t("common.retry")}</Button>}
+    <SearchField accessibilityLabel={t("notifications.search")} placeholder={t("notifications.search")} clearAccessibilityLabel={t("common.clearSearch")} value={search} onChangeText={setSearch} />
+    {mutedUntil && <Banner tone="info" title={t("notifications.mutedUntil", { date: formatDateTime(mutedUntil) })} action={<Button variant="secondary" onPress={openSettings}>{t("notifications.settings")}</Button>} />}
+    {!notifications.isFetching && Boolean(notifications.data?.length) && <AppText variant="label" tone={unreadCount > 0 ? "default" : "muted"}>{unreadCount > 0 ? t("notifications.unreadSummary", { count: unreadCount }) : t("notifications.allRead")}</AppText>}
+    {notifications.isError && !notifications.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void notifications.refetch()} />}
     {notifications.isFetching ? <ShimmerList /> : notifications.data?.map((item) => <View key={item.id} style={[styles.card, !item.readAt && styles.unread]}>
-      <AppText variant="h5">{item.title}</AppText>
+      <View style={styles.cardHeader}>
+        <View style={[styles.icon, !item.readAt && styles.iconUnread]}><Ionicons name={item.readAt ? "notifications-outline" : "notifications"} size={18} color={item.readAt ? colors.muted : colors.onPrimary} /></View>
+        <View style={styles.grow}>
+          <AppText variant="h6">{item.title}</AppText>
+          <AppText variant="caption" tone="muted">{formatDateTime(item.createdAt)}</AppText>
+        </View>
+        {!item.readAt && <View accessibilityLabel={t("notifications.unread")} style={styles.dot} />}
+      </View>
       <AppText>{item.body}</AppText>
-      <AppText variant="caption" tone="muted">{formatDateTime(item.createdAt)}</AppText>
-      {!item.readAt && <Button variant="secondary" loading={markRead.isPending} onPress={() => void open(item.id, item.actionPath)}>{t(item.actionPath ? "notifications.open" : "notifications.markRead")}</Button>}
-      {item.readAt && item.actionPath && <Button variant="secondary" onPress={() => openAction(item.actionPath)}>{t("notifications.open")}</Button>}
+      {!item.readAt && <Button variant={item.actionPath ? "primary" : "secondary"} loading={markRead.isPending} onPress={() => void open(item.id, item.actionPath)}>{t(item.actionPath ? "notifications.open" : "notifications.markRead")}</Button>}
+      {item.readAt && item.actionPath && <Button variant="ghost" onPress={() => openAction(item.actionPath)}>{t("notifications.open")}</Button>}
     </View>)}
-    {!notifications.isFetching && notifications.data?.length === 0 && <AppText tone="muted">{t("notifications.empty")}</AppText>}
+    {!notifications.isFetching && !notifications.isError && notifications.data?.length === 0 && <EmptyState icon="notifications-off-outline" title={debouncedSearch ? t("common.noResults") : t("notifications.empty")} />}
     <BottomSheet visible={settingsVisible} onClose={closeSettings} closeAccessibilityLabel={t("common.close")} title={t("notifications.settings")} negativeAction={{ label: t("common.close"), onPress: closeSettings }} positiveAction={{ label: t("notifications.apply"), loading: updatePreference.isPending, disabled: selectedMuteDuration === undefined, onPress: applyMutePreference }}>
       <AppText tone="muted">{t("notifications.muteDescription")}</AppText>
-      {mutedUntil && <AppText tone="muted">{t("notifications.mutedUntil", { date: formatDateTime(mutedUntil) })}</AppText>}
-      <View style={styles.options}>{notificationMuteDurations.map((duration) => <Button key={duration} variant={selectedMuteDuration === duration ? "primary" : "secondary"} onPress={() => setSelectedMuteDuration(duration)}>{t(notificationMuteDurationKeys[duration])}</Button>)}</View>
-      {mutedUntil && <Button variant={selectedMuteDuration === null ? "primary" : "secondary"} onPress={() => setSelectedMuteDuration(null)}>{t("notifications.turnOn")}</Button>}
+      {mutedUntil && <Banner tone="info" title={t("notifications.mutedUntil", { date: formatDateTime(mutedUntil) })} />}
+      <ChipGroup>{notificationMuteDurations.map((duration) => <Chip key={duration} label={t(notificationMuteDurationKeys[duration])} selected={selectedMuteDuration === duration} onPress={() => setSelectedMuteDuration(duration)} />)}{mutedUntil && <Chip label={t("notifications.turnOn")} selected={selectedMuteDuration === null} onPress={() => setSelectedMuteDuration(null)} />}</ChipGroup>
     </BottomSheet>
   </AppScreen>;
 }
 
 const styles = StyleSheet.create({
-  input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   unread: { borderColor: colors.primary, backgroundColor: colors.surfaceTint },
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  grow: { flex: 1 },
+  icon: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: colors.disabled },
+  iconUnread: { backgroundColor: colors.primary },
+  dot: { width: 10, height: 10, borderRadius: radius.pill, backgroundColor: colors.danger },
   settingsButton: { padding: spacing.xs, borderRadius: radius.pill },
   settingsButtonPressed: { opacity: 0.76, backgroundColor: colors.surfaceTint },
-  options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
 });
