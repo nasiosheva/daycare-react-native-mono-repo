@@ -1819,7 +1819,18 @@ pendidikan dan context gabungan):
 | `ACTIVE_GUARDIAN` | Semua resource anak yang diizinkan relation, offering, consent, dan capability | Aksi Parent yang diberi grant, mis. booking, izin, upload proof, manage pickup/consent | Data siswa/wali lain, konfigurasi tenant, mutasi operasional Staff. |
 | `BILLING_LIMITED` | Invoice/receipt sendiri, safety card, insiden yang ditujukan, status attendance/check-out saat ini sesuai guardian grant | Hanya `allowedActions` per resource—mis. bayar/upload proof jika invoice masih payable, acknowledge insiden, atau tarik pickup/consent untuk masa depan | Booking baru, QR, future service, perubahan finansial selain penyelesaian invoice, activation pickup baru. |
 | `GUARDIAN_REVOKED` atau `CHILD_WITHDRAWN` | Invoice/dokumen milik actor menurut retensi eksplisit | Tidak ada kecuali tindakan finance yang masih diizinkan | Data anak baru, attendance, development, health, safety feed baru, pickup, consent. |
-| `TENANT_SUBSCRIPTION_RESTRICTED` | Inbox safety yang telah ditujukan dan invoice sendiri sesuai exception server | Tidak ada operasi baru kecuali penyelesaian invoice yang diizinkan | Semua route normal yang tidak berada pada allowlist exception. |
+| `TENANT_SUBSCRIPTION_RESTRICTED` | Inbox safety yang telah ditujukan, invoice sendiri, dan daftar anak miliknya sendiri (read-only) sesuai exception server | Tidak ada operasi baru kecuali penyelesaian invoice yang diizinkan | Semua route normal yang tidak berada pada allowlist exception, termasuk profil/development/QR/absence anak yang sama. |
+
+- Berbeda dari seluruh baris lain pada tabel ini (masih **target**, menunggu
+  `GuardianAuthority`/`reasonCode`/`allowedActions`), bagian `TENANT_SUBSCRIPTION_RESTRICTED`
+  untuk daftar anak sudah **diimplementasikan**: `AccessService.require()`
+  menerima `allowSubscriptionRestrictedForRoles`, dan `GET /children` untuk
+  `PARENT` memakainya sehingga anak tetap muncul di Home walau subscription
+  tenant `SUSPENDED`/`PENDING_PAYMENT`/`EXPIRED`. Exception ini sengaja sempit:
+  hanya endpoint daftar anak yang dibuka; membuka profil/development/QR/absence
+  anak yang sama tetap `403` karena endpoint-endpoint itu belum memakai
+  parameter yang sama. Invoice sendiri dan inbox safety yang ditujukan pada
+  baris ini masih target, belum dibuka lewat mekanisme serupa.
 
 - `GuardianAuthority` target adalah grant terpisah dari `GuardianLink` dan
   `Membership`. Ia memiliki `guardianLinkId`, `learnerId`, scope offering bila

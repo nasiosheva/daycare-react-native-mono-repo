@@ -30,7 +30,11 @@ function ParentQrScreenContent() {
   const showsTenantLabel = parentMemberships.length > 1;
   const children = useParentChildrenAcrossTenants(parentMemberships, true);
   const { t } = useI18n();
-  const visibleChildren = typeof childId === "string" ? children.data.filter((child) => child.id === childId) : children.data;
+  // Issuing an attendance QR still requires an operational tenant subscription (unlike the child
+  // list itself, see docs/business-rules.md §13.12), so a restricted tenant's child has nothing
+  // to do here.
+  const availableChildren = children.data.filter((child) => !child.tenantSubscriptionRestricted);
+  const visibleChildren = typeof childId === "string" ? availableChildren.filter((child) => child.id === childId) : availableChildren;
   const [selectedChildId, setSelectedChildId] = useState<string | null>(typeof childId === "string" ? childId : null);
   const selectedChild = visibleChildren.find((child) => child.id === selectedChildId) ?? null;
   const onlyChild = visibleChildren.length === 1 ? visibleChildren[0] : null;
