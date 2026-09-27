@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useQueries, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { AppText, Badge, Button, EmptyState, ErrorState, FloatingActionButton, MenuItem, MenuSection, NavigationCard, SearchField, SectionHeader, ShimmerList, colors, radius, shadows, spacing } from "@daycare/ui";
@@ -239,8 +239,7 @@ function ParentOnboardingHome({ displayName }: { displayName: string }) {
 }
 
 function HomeLoadingState() {
-  const { t } = useI18n();
-  return <AppScreen showBottomNavigation={false}><View style={styles.loading}><ActivityIndicator color={colors.primary} /><AppText tone="muted">{t("common.loading")}</AppText></View></AppScreen>;
+  return <AppScreen showBottomNavigation={false}><ShimmerList /></AppScreen>;
 }
 
 function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, subscriptionActive }: { displayName: string; organizationName: string; hasDaycareOperations: boolean; subscriptionActive: boolean }) {
@@ -400,7 +399,6 @@ function TenantSection({ title, tenants, emptyMessage, formatCurrency, t }: { ti
 const styles = StyleSheet.create({
   content: { gap: spacing.md },
   attentionCard: { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
-  loading: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm, minHeight: 240 },
   profileError: { flex: 1, justifyContent: "center", gap: spacing.md, minHeight: 240 },
   profileErrorActions: { gap: spacing.sm },
   staffAdminToolbar: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
