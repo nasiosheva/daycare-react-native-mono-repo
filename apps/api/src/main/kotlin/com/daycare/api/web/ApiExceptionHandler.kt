@@ -8,6 +8,7 @@ import com.daycare.api.service.FirebaseIdentityError
 import com.daycare.api.service.TenantUserAccountError
 import com.daycare.api.service.DevelopmentEntryMediaError
 import com.daycare.api.service.DevelopmentProgramError
+import com.daycare.api.service.LearningLevelError
 import com.daycare.api.service.ChildIncidentError
 import com.daycare.api.service.ParentEnrollmentError
 import com.daycare.api.service.TenantPaymentInstructionError
@@ -81,6 +82,7 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             DevelopmentEntryMediaError.AUDIO_INVALID to "error.developmentAudioInvalid",
             DevelopmentEntryMediaError.AUDIO_TOO_LARGE to "error.developmentAudioTooLarge",
             DevelopmentProgramError.ASSIGNED to "error.developmentProgramAssigned",
+            LearningLevelError.ASSIGNED to "error.learningLevelAssigned",
             ChildIncidentError.NOT_FOUND to "error.childIncidentNotFound",
             ChildIncidentError.UNAVAILABLE to "error.childIncidentUnavailable",
             ChildIncidentError.PHOTO_MISSING to "error.childIncidentPhotoMissing",

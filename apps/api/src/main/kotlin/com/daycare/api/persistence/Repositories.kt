@@ -187,6 +187,7 @@ interface DevelopmentProgramRepository : JpaRepository<DevelopmentProgram, UUID>
     fun findAllByOrganizationIdIsNullOrderByCreatedAtDesc(): List<DevelopmentProgram>
     fun findByOrganizationIdAndLearningLevelIdAndDomain(organizationId: UUID?, learningLevelId: UUID, domain: com.daycare.api.domain.GoalDomain): DevelopmentProgram?
     fun findByOrganizationIdIsNullAndLearningLevelIdAndDomainAndActiveTrue(learningLevelId: UUID, domain: com.daycare.api.domain.GoalDomain): DevelopmentProgram?
+    fun existsByLearningLevelId(learningLevelId: UUID): Boolean
 
     @Query("""
         select program

@@ -679,6 +679,86 @@ const flowWiringTranslations = {
   },
 } as const;
 
+const globalLearningLevelsTranslations = {
+  id: {
+    "globalLearningLevels.menu": "Tingkatan global",
+    "globalLearningLevels.title": "Tingkatan global",
+    "globalLearningLevels.subtitle": "Tingkatan referensi global dipakai sebagai acuan usia saat membuat Program Kurikulum dan Program Perkembangan global.",
+    "globalLearningLevels.addLevel": "Tambah tingkatan global",
+    "globalLearningLevels.editLevel": "Ubah tingkatan global",
+    "globalLearningLevels.deleteLevel": "Hapus tingkatan global",
+    "globalLearningLevels.deleteLevelConfirm": "Tingkatan \"{name}\" akan dihapus permanen. Tingkatan yang masih dipakai Program Perkembangan global tidak dapat dihapus.",
+    "globalLearningLevels.deleteFailed": "Tingkatan belum dihapus",
+    "globalLearningLevels.empty": "Belum ada tingkatan global.",
+  },
+  en: {
+    "globalLearningLevels.menu": "Global learning levels",
+    "globalLearningLevels.title": "Global learning levels",
+    "globalLearningLevels.subtitle": "Global reference levels are used as the age reference when creating a global Curriculum Program or Development Program.",
+    "globalLearningLevels.addLevel": "Add global level",
+    "globalLearningLevels.editLevel": "Edit global level",
+    "globalLearningLevels.deleteLevel": "Delete global level",
+    "globalLearningLevels.deleteLevelConfirm": "\"{name}\" will be deleted permanently. A level still used by a global Development Program cannot be deleted.",
+    "globalLearningLevels.deleteFailed": "Level was not deleted",
+    "globalLearningLevels.empty": "No global levels yet.",
+  },
+  zh: {
+    "globalLearningLevels.menu": "全局年龄段",
+    "globalLearningLevels.title": "全局年龄段",
+    "globalLearningLevels.subtitle": "创建全局课程项目或全局发展项目时，全局参考年龄段用作年龄依据。",
+    "globalLearningLevels.addLevel": "添加全局年龄段",
+    "globalLearningLevels.editLevel": "编辑全局年龄段",
+    "globalLearningLevels.deleteLevel": "删除全局年龄段",
+    "globalLearningLevels.deleteLevelConfirm": "“{name}”将被永久删除。仍被全局发展项目使用的年龄段无法删除。",
+    "globalLearningLevels.deleteFailed": "年龄段未删除",
+    "globalLearningLevels.empty": "尚无全局年龄段。",
+  },
+  fr: {
+    "globalLearningLevels.menu": "Niveaux globaux",
+    "globalLearningLevels.title": "Niveaux globaux",
+    "globalLearningLevels.subtitle": "Les niveaux de référence globaux servent de repère d'âge lors de la création d'un Programme de curriculum ou d'un Programme de développement global.",
+    "globalLearningLevels.addLevel": "Ajouter un niveau global",
+    "globalLearningLevels.editLevel": "Modifier le niveau global",
+    "globalLearningLevels.deleteLevel": "Supprimer le niveau global",
+    "globalLearningLevels.deleteLevelConfirm": "« {name} » sera définitivement supprimé. Un niveau encore utilisé par un Programme de développement global ne peut pas être supprimé.",
+    "globalLearningLevels.deleteFailed": "Le niveau n'a pas été supprimé",
+    "globalLearningLevels.empty": "Aucun niveau global pour le moment.",
+  },
+  pt: {
+    "globalLearningLevels.menu": "Níveis globais",
+    "globalLearningLevels.title": "Níveis globais",
+    "globalLearningLevels.subtitle": "Os níveis de referência globais servem de referência de idade ao criar um Programa de Currículo ou Programa de Desenvolvimento global.",
+    "globalLearningLevels.addLevel": "Adicionar nível global",
+    "globalLearningLevels.editLevel": "Editar nível global",
+    "globalLearningLevels.deleteLevel": "Excluir nível global",
+    "globalLearningLevels.deleteLevelConfirm": "\"{name}\" será excluído permanentemente. Um nível ainda usado por um Programa de Desenvolvimento global não pode ser excluído.",
+    "globalLearningLevels.deleteFailed": "O nível não foi excluído",
+    "globalLearningLevels.empty": "Ainda não há níveis globais.",
+  },
+  es: {
+    "globalLearningLevels.menu": "Niveles globales",
+    "globalLearningLevels.title": "Niveles globales",
+    "globalLearningLevels.subtitle": "Los niveles de referencia globales se usan como referencia de edad al crear un Programa de Currículo o Programa de Desarrollo global.",
+    "globalLearningLevels.addLevel": "Agregar nivel global",
+    "globalLearningLevels.editLevel": "Editar nivel global",
+    "globalLearningLevels.deleteLevel": "Eliminar nivel global",
+    "globalLearningLevels.deleteLevelConfirm": "«{name}» se eliminará de forma permanente. Un nivel que aún use un Programa de Desarrollo global no se puede eliminar.",
+    "globalLearningLevels.deleteFailed": "El nivel no se eliminó",
+    "globalLearningLevels.empty": "Aún no hay niveles globales.",
+  },
+  ru: {
+    "globalLearningLevels.menu": "Глобальные уровни",
+    "globalLearningLevels.title": "Глобальные уровни",
+    "globalLearningLevels.subtitle": "Глобальные эталонные уровни используются как возрастной ориентир при создании глобальной Программы курикулума или Программы развития.",
+    "globalLearningLevels.addLevel": "Добавить глобальный уровень",
+    "globalLearningLevels.editLevel": "Изменить глобальный уровень",
+    "globalLearningLevels.deleteLevel": "Удалить глобальный уровень",
+    "globalLearningLevels.deleteLevelConfirm": "«{name}» будет удалён навсегда. Уровень, который всё ещё использует глобальная Программа развития, удалить нельзя.",
+    "globalLearningLevels.deleteFailed": "Уровень не удалён",
+    "globalLearningLevels.empty": "Пока нет глобальных уровней.",
+  },
+} as const;
+
 const uiFoundationTranslations = {
   id: {
     "contextSelection.description": "Pilih lembaga yang ingin Anda buka. Anda bisa berpindah kapan saja dari Profil.",
@@ -1088,7 +1168,7 @@ const uiFoundationTranslations = {
   },
 } as const;
 
-const id = { ...goalSearchTranslations.id, ...goalDailyRecordTranslations.id, ...goalCheckInTranslations.id, ...goalConclusionCorrectionTranslations.id, ...classroomFormTranslations.id, ...privateTutoringTranslations.id, ...privateTutoringFormInfoTranslations.id, ...branchLocationTranslations.id, ...learningLevelUiTranslations.id, ...childPlacementTranslations.id, ...tenantReadinessTranslations.id, ...absenceTranslations.id, ...staffLeaveTranslations.id, ...staffLeaveStatusTranslations.id, ...tenantFeedbackTranslations.id, ...paymentHistoryTranslations.id, ...parentFamilyTranslations.id, ...childProgramTranslations.id, ...uiFoundationTranslations.id, ...flowWiringTranslations.id,
+const id = { ...goalSearchTranslations.id, ...goalDailyRecordTranslations.id, ...goalCheckInTranslations.id, ...goalConclusionCorrectionTranslations.id, ...classroomFormTranslations.id, ...privateTutoringTranslations.id, ...privateTutoringFormInfoTranslations.id, ...branchLocationTranslations.id, ...learningLevelUiTranslations.id, ...childPlacementTranslations.id, ...tenantReadinessTranslations.id, ...absenceTranslations.id, ...staffLeaveTranslations.id, ...staffLeaveStatusTranslations.id, ...tenantFeedbackTranslations.id, ...paymentHistoryTranslations.id, ...parentFamilyTranslations.id, ...childProgramTranslations.id, ...uiFoundationTranslations.id, ...flowWiringTranslations.id, ...globalLearningLevelsTranslations.id,
   "invoice.source.SERVICE": "Tagihan layanan", "invoice.source.OVERTIME": "Tagihan overtime",
   "common.back": "Kembali", "common.retry": "Coba lagi", "common.cancel": "Batal", "common.close": "Tutup", "common.clear": "Hapus tanggal", "common.edit": "Ubah", "common.delete": "Hapus", "common.save": "Simpan", "common.loading": "Memuat...", "common.error": "Terjadi kesalahan", "common.ok": "OK", "common.language": "Bahasa", "common.indonesian": "Bahasa Indonesia", "common.english": "English", "common.noData": "Belum ada data.", "common.noResults": "Tidak ada hasil yang cocok.",
   "paymentProof.title": "Bukti pembayaran", "paymentProof.description": "Unggah atau foto bukti transfer. Staff Admin akan memverifikasinya.", "paymentProof.upload": "Unggah gambar", "paymentProof.camera": "Ambil foto", "paymentProof.note": "Catatan pembayaran (opsional)", "paymentProof.submit": "Kirim bukti", "paymentProof.imageRequired": "Pilih bukti pembayaran terlebih dahulu.", "paymentProof.submitted": "Bukti pembayaran dikirim", "paymentProof.awaitingReview": "Bukti pembayaran sedang menunggu verifikasi.", "paymentProof.rejected": "Bukti pembayaran ditolak: {reason}", "paymentProof.failed": "Gagal mengirim bukti pembayaran", "paymentProof.review": "Tinjau bukti", "paymentProof.verify": "Terima pembayaran", "paymentProof.reject": "Tolak bukti", "paymentProof.rejectReason": "Alasan penolakan", "paymentProof.reviewed": "Bukti pembayaran telah diperbarui", "paymentProof.view": "Lihat bukti pembayaran", "paymentProof.none": "Belum ada bukti pembayaran untuk invoice ini.", "paymentProof.download": "Unduh gambar", "paymentProof.downloadFailed": "Gagal mengunduh bukti pembayaran", "status.PAYMENT_SUBMITTED": "Menunggu verifikasi",
@@ -1152,7 +1232,7 @@ const id = { ...goalSearchTranslations.id, ...goalDailyRecordTranslations.id, ..
   "nav.operatingHours": "Jam operasional", "overtime.operatingHours": "Jam operasional dan overtime", "overtime.operatingHoursDescription": "Atur hari aktif, jam tutup cabang, dan tarif overtime berjenjang.", "overtime.applyTemplate": "Gunakan template {timeRange}", "overtime.active": "Aktif", "overtime.inactive": "Tutup", "overtime.opensAt": "Buka", "overtime.closesAt": "Tutup", "overtime.rateTiers": "Tarif overtime", "overtime.rateTiersDescription": "Tarif ditagihkan kumulatif saat jemput melewati setiap blok waktu. Durasi di atas blok terakhir memakai total blok terakhir.", "overtime.tier": "Blok {number}", "overtime.durationMinutes": "Durasi (menit)", "overtime.amount": "Biaya (Rp)", "overtime.addTier": "Tambah blok", "overtime.removeTier": "Hapus blok", "overtime.invalidConfiguration": "Lengkapi tujuh hari dan tarif overtime yang valid.", "overtime.saved": "Jam operasional berhasil disimpan", "overtime.saveFailed": "Gagal menyimpan jam operasional", "overtime.chargesTitle": "Tagihan overtime", "overtime.chargesDescription": "Catat jam jemput aktual setelah jam tutup untuk menerbitkan tagihan Parent.", "overtime.addCharge": "Tambah tagihan", "overtime.editCharge": "Ubah tagihan", "overtime.chargeRequired": "Pilih anak dan lengkapi waktu jemput serta jatuh tempo.", "overtime.chargeSaved": "Tagihan overtime berhasil disimpan", "overtime.chargeFailed": "Gagal menyimpan tagihan overtime", "overtime.chargeVoided": "Tagihan overtime dibatalkan", "overtime.voidCharge": "Batalkan tagihan", "overtime.noCharges": "Belum ada tagihan overtime.", "overtime.child": "Anak", "overtime.operationalDate": "Tanggal operasional", "overtime.pickedUpAt": "Jam jemput aktual", "overtime.paymentDueDate": "Jatuh tempo pembayaran", "overtime.minutes": "{count} menit overtime", "overtime.dueDate": "{status} · jatuh tempo {date}", "overtime.parentTitle": "Jam operasional", "overtime.parentDescription": "Lihat jam operasional dan tarif overtime untuk setiap anak Anda, dikelompokkan per anak dan tenant.", "overtime.branchOperatingHours": "Jam operasional cabang", "overtime.childTenantLabel": "{organization} · {branch}", "overtime.closed": "Tutup", "overtime.parentTier": "Setiap blok {duration} menit: {amount}", "overtime.noParentBranches": "Belum ada jam operasional untuk anak Anda.", "overtime.day.MONDAY": "Senin", "overtime.day.TUESDAY": "Selasa", "overtime.day.WEDNESDAY": "Rabu", "overtime.day.THURSDAY": "Kamis", "overtime.day.FRIDAY": "Jumat", "overtime.day.SATURDAY": "Sabtu", "overtime.day.SUNDAY": "Minggu",
 } as const;
 
-const en: Record<keyof typeof id, string> = { ...goalSearchTranslations.en, ...goalDailyRecordTranslations.en, ...goalCheckInTranslations.en, ...goalConclusionCorrectionTranslations.en, ...classroomFormTranslations.en, ...privateTutoringTranslations.en, ...privateTutoringFormInfoTranslations.en, ...branchLocationTranslations.en, ...learningLevelUiTranslations.en, ...childPlacementTranslations.en, ...tenantReadinessTranslations.en, ...absenceTranslations.en, ...staffLeaveTranslations.en, ...staffLeaveStatusTranslations.en, ...tenantFeedbackTranslations.en, ...paymentHistoryTranslations.en, ...parentFamilyTranslations.en, ...childProgramTranslations.en, ...uiFoundationTranslations.en, ...flowWiringTranslations.en,
+const en: Record<keyof typeof id, string> = { ...goalSearchTranslations.en, ...goalDailyRecordTranslations.en, ...goalCheckInTranslations.en, ...goalConclusionCorrectionTranslations.en, ...classroomFormTranslations.en, ...privateTutoringTranslations.en, ...privateTutoringFormInfoTranslations.en, ...branchLocationTranslations.en, ...learningLevelUiTranslations.en, ...childPlacementTranslations.en, ...tenantReadinessTranslations.en, ...absenceTranslations.en, ...staffLeaveTranslations.en, ...staffLeaveStatusTranslations.en, ...tenantFeedbackTranslations.en, ...paymentHistoryTranslations.en, ...parentFamilyTranslations.en, ...childProgramTranslations.en, ...uiFoundationTranslations.en, ...flowWiringTranslations.en, ...globalLearningLevelsTranslations.en,
   "overtime.voidCharge": "Cancel invoice",
   "invoice.source.SERVICE": "Service invoice", "invoice.source.OVERTIME": "Overtime invoice",
   "common.back": "Back", "common.retry": "Retry", "common.cancel": "Cancel", "common.close": "Close", "common.clear": "Clear date", "common.edit": "Edit", "common.delete": "Delete", "common.save": "Save", "common.loading": "Loading...", "common.error": "Something went wrong", "common.ok": "OK", "common.language": "Language", "common.indonesian": "Bahasa Indonesia", "common.english": "English", "common.noData": "No data yet.", "common.noResults": "No matching results.",
@@ -1798,11 +1878,11 @@ export type TranslationKey = keyof typeof id | keyof typeof legacyClassroomTrans
 export const translations: Record<AppLocale, Record<TranslationKey, string>> = {
   id: { ...id, ...legacyClassroomTranslations.id, ...institutionPresentationTranslations.id, ...readinessChecklistTranslations.id, ...guardianStatusTranslations.id, ...pickupTranslations.id, ...pickupActionTranslations.id, ...emergencyContactTranslations.id, ...consentTranslations.id, ...consentInformationTranslations.id, ...automaticOvertimeTranslations.id, ...tenantCreationWizardTranslations.id, ...parentEnrollmentWizardTranslations.id },
   en: { ...en, ...legacyClassroomTranslations.en, ...institutionPresentationTranslations.en, ...readinessChecklistTranslations.en, ...guardianStatusTranslations.en, ...pickupTranslations.en, ...pickupActionTranslations.en, ...emergencyContactTranslations.en, ...consentTranslations.en, ...consentInformationTranslations.en, ...automaticOvertimeTranslations.en, ...tenantCreationWizardTranslations.en, ...parentEnrollmentWizardTranslations.en },
-  zh: { ...zh, ...uiFoundationTranslations.zh, ...flowWiringTranslations.zh, ...legacyClassroomTranslations.zh, ...institutionPresentationTranslations.zh, ...readinessChecklistTranslations.zh, ...guardianStatusTranslations.zh, ...pickupTranslations.zh, ...pickupActionTranslations.zh, ...emergencyContactTranslations.zh, ...consentTranslations.zh, ...consentInformationTranslations.zh, ...automaticOvertimeTranslations.zh, ...tenantCreationWizardTranslations.zh, ...parentEnrollmentWizardTranslations.zh, ...tenantReadinessIssueTranslations.zh, ...tenantFeedbackTranslations.zh, ...paymentHistoryTranslations.zh },
-  fr: { ...fr, ...uiFoundationTranslations.fr, ...flowWiringTranslations.fr, ...legacyClassroomTranslations.fr, ...institutionPresentationTranslations.fr, ...readinessChecklistTranslations.fr, ...guardianStatusTranslations.fr, ...pickupTranslations.fr, ...pickupActionTranslations.fr, ...emergencyContactTranslations.fr, ...consentTranslations.fr, ...consentInformationTranslations.fr, ...automaticOvertimeTranslations.fr, ...tenantCreationWizardTranslations.fr, ...parentEnrollmentWizardTranslations.fr, ...tenantReadinessIssueTranslations.fr, ...tenantFeedbackTranslations.fr, ...paymentHistoryTranslations.fr },
-  pt: { ...pt, ...uiFoundationTranslations.pt, ...flowWiringTranslations.pt, ...consentTranslations.pt, ...consentInformationTranslations.pt, ...automaticOvertimeTranslations.pt, ...tenantCreationWizardTranslations.pt, ...parentEnrollmentWizardTranslations.pt, ...tenantReadinessIssueTranslations.pt, ...tenantFeedbackTranslations.pt, ...paymentHistoryTranslations.pt },
-  es: { ...es, ...uiFoundationTranslations.es, ...flowWiringTranslations.es, ...consentTranslations.es, ...consentInformationTranslations.es, ...automaticOvertimeTranslations.es, ...tenantCreationWizardTranslations.es, ...parentEnrollmentWizardTranslations.es, ...tenantReadinessIssueTranslations.es, ...tenantFeedbackTranslations.es, ...paymentHistoryTranslations.es },
-  ru: { ...ru, ...uiFoundationTranslations.ru, ...flowWiringTranslations.ru, ...consentTranslations.ru, ...consentInformationTranslations.ru, ...automaticOvertimeTranslations.ru, ...tenantCreationWizardTranslations.ru, ...parentEnrollmentWizardTranslations.ru, ...tenantReadinessIssueTranslations.ru, ...tenantFeedbackTranslations.ru, ...paymentHistoryTranslations.ru },
+  zh: { ...zh, ...uiFoundationTranslations.zh, ...flowWiringTranslations.zh, ...globalLearningLevelsTranslations.zh, ...legacyClassroomTranslations.zh, ...institutionPresentationTranslations.zh, ...readinessChecklistTranslations.zh, ...guardianStatusTranslations.zh, ...pickupTranslations.zh, ...pickupActionTranslations.zh, ...emergencyContactTranslations.zh, ...consentTranslations.zh, ...consentInformationTranslations.zh, ...automaticOvertimeTranslations.zh, ...tenantCreationWizardTranslations.zh, ...parentEnrollmentWizardTranslations.zh, ...tenantReadinessIssueTranslations.zh, ...tenantFeedbackTranslations.zh, ...paymentHistoryTranslations.zh },
+  fr: { ...fr, ...uiFoundationTranslations.fr, ...flowWiringTranslations.fr, ...globalLearningLevelsTranslations.fr, ...legacyClassroomTranslations.fr, ...institutionPresentationTranslations.fr, ...readinessChecklistTranslations.fr, ...guardianStatusTranslations.fr, ...pickupTranslations.fr, ...pickupActionTranslations.fr, ...emergencyContactTranslations.fr, ...consentTranslations.fr, ...consentInformationTranslations.fr, ...automaticOvertimeTranslations.fr, ...tenantCreationWizardTranslations.fr, ...parentEnrollmentWizardTranslations.fr, ...tenantReadinessIssueTranslations.fr, ...tenantFeedbackTranslations.fr, ...paymentHistoryTranslations.fr },
+  pt: { ...pt, ...uiFoundationTranslations.pt, ...flowWiringTranslations.pt, ...globalLearningLevelsTranslations.pt, ...consentTranslations.pt, ...consentInformationTranslations.pt, ...automaticOvertimeTranslations.pt, ...tenantCreationWizardTranslations.pt, ...parentEnrollmentWizardTranslations.pt, ...tenantReadinessIssueTranslations.pt, ...tenantFeedbackTranslations.pt, ...paymentHistoryTranslations.pt },
+  es: { ...es, ...uiFoundationTranslations.es, ...flowWiringTranslations.es, ...globalLearningLevelsTranslations.es, ...consentTranslations.es, ...consentInformationTranslations.es, ...automaticOvertimeTranslations.es, ...tenantCreationWizardTranslations.es, ...parentEnrollmentWizardTranslations.es, ...tenantReadinessIssueTranslations.es, ...tenantFeedbackTranslations.es, ...paymentHistoryTranslations.es },
+  ru: { ...ru, ...uiFoundationTranslations.ru, ...flowWiringTranslations.ru, ...globalLearningLevelsTranslations.ru, ...consentTranslations.ru, ...consentInformationTranslations.ru, ...automaticOvertimeTranslations.ru, ...tenantCreationWizardTranslations.ru, ...parentEnrollmentWizardTranslations.ru, ...tenantReadinessIssueTranslations.ru, ...tenantFeedbackTranslations.ru, ...paymentHistoryTranslations.ru },
 };
 
 export function translate(locale: AppLocale, key: TranslationKey, params: Record<string, string | number> = {}): string {

@@ -16,6 +16,7 @@ import com.daycare.api.persistence.ClassroomRepository
 import com.daycare.api.persistence.ClassroomStaffAssignment
 import com.daycare.api.persistence.ClassroomStaffAssignmentRepository
 import com.daycare.api.persistence.CurriculumProgramRepository
+import com.daycare.api.persistence.DevelopmentProgramRepository
 import com.daycare.api.persistence.CurriculumProgram
 import com.daycare.api.persistence.LearningLevelCurriculumProgramRepository
 import com.daycare.api.persistence.LearningLevelRepository
@@ -30,6 +31,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.doThrow
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.never
 import org.mockito.Mockito.`when`
 import org.mockito.Mockito.any
 import org.springframework.security.oauth2.jwt.Jwt
@@ -43,6 +45,7 @@ class LearningStructureServiceTest {
     private val levels = mock(LearningLevelRepository::class.java)
     private val levelPrograms = mock(LearningLevelCurriculumProgramRepository::class.java)
     private val programs = mock(CurriculumProgramRepository::class.java)
+    private val developmentPrograms = mock(DevelopmentProgramRepository::class.java)
     private val classrooms = mock(ClassroomRepository::class.java)
     private val placements = mock(ChildPlacementRepository::class.java)
     private val children = mock(ChildRepository::class.java)
@@ -181,8 +184,44 @@ class LearningStructureServiceTest {
             .thenReturn(scope)
     }
 
+    @Test
+    fun `Platform Admin creates a global learning level`() {
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
+        `when`(levels.save(any())).thenAnswer { it.arguments[0] }
+
+        val response = service().createGlobalLevel(jwt, UpsertLearningLevelRequest(name = "Toddler", minAgeMonths = 12, maxAgeMonths = 24))
+
+        assertEquals("Toddler", response.name)
+        assertEquals(LearningLevelSource.GLOBAL, response.source)
+    }
+
+    @Test
+    fun `Platform Admin deletes a global learning level that is not used by any Development Program`() {
+        val level = com.daycare.api.persistence.LearningLevel(organizationId = null, name = "Toddler")
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
+        `when`(levels.findById(level.id)).thenReturn(Optional.of(level))
+        `when`(developmentPrograms.existsByLearningLevelId(level.id)).thenReturn(false)
+
+        service().deleteGlobalLevel(jwt, level.id)
+
+        verify(levels).delete(level)
+    }
+
+    @Test
+    fun `rejects deleting a global learning level still used by a Development Program`() {
+        val level = com.daycare.api.persistence.LearningLevel(organizationId = null, name = "Toddler")
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
+        `when`(levels.findById(level.id)).thenReturn(Optional.of(level))
+        `when`(developmentPrograms.existsByLearningLevelId(level.id)).thenReturn(true)
+
+        val error = assertThrows(IllegalArgumentException::class.java) { service().deleteGlobalLevel(jwt, level.id) }
+
+        assertEquals(LearningLevelError.ASSIGNED, error.message)
+        verify(levels, never()).delete(any())
+    }
+
     private fun service() = LearningStructureService(
-        access, platformAccess, levels, levelPrograms, programs, classrooms, placements, children, academicYears,
+        access, platformAccess, levels, levelPrograms, programs, developmentPrograms, classrooms, placements, children, academicYears,
         memberships, users, classroomAssignments, classroomPrograms, branchCapacities, branches, childScopes, branchFilters,
     )
 }
