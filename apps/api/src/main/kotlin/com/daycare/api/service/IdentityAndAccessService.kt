@@ -101,10 +101,11 @@ class AccessService(
     @Transactional
     fun currentUser(jwt: Jwt): CurrentUserResponse {
         val user = identityService.sync(jwt)
+        val subscriptionsByOrganization = subscriptions.findAll().associateBy { it.organizationId }
         return CurrentUserResponse(user.id, user.displayName, user.username, user.gender, user.dateOfBirth, user.registrationRole, platformAccess.isPlatformAdmin(user), memberships.findAllByUserId(user.id).sortedByDescending { it.active }.map { membership ->
             val name = organizations.findById(membership.organizationId).map { it.name }.orElse("Unknown organization")
             val capabilities = organizationCapabilities.forOrganization(membership.organizationId)
-            MembershipResponse(membership.organizationId, name, membership.role, membership.active, membership.branchId, membership.classroomId, membership.canManageChildPrograms, membership.canManageDevelopmentCategories, capabilities.types, capabilities.capabilities)
+            MembershipResponse(membership.organizationId, name, membership.role, membership.active, membership.branchId, membership.classroomId, membership.canManageChildPrograms, membership.canManageDevelopmentCategories, capabilities.types, capabilities.capabilities, subscriptionsByOrganization[membership.organizationId]?.status)
         }, parentFamilyProfiles.findByUserId(user.id)?.toResponse())
     }
 
@@ -173,5 +174,5 @@ class PlatformAccessService(
     }
 }
 
-data class MembershipResponse(val organizationId: UUID, val organizationName: String, val role: Role, val active: Boolean, val branchId: UUID?, val classroomId: UUID?, val canManageChildPrograms: Boolean, val canManageDevelopmentCategories: Boolean, val institutionTypes: Set<String>, val capabilities: Set<InstitutionCapability>)
+data class MembershipResponse(val organizationId: UUID, val organizationName: String, val role: Role, val active: Boolean, val branchId: UUID?, val classroomId: UUID?, val canManageChildPrograms: Boolean, val canManageDevelopmentCategories: Boolean, val institutionTypes: Set<String>, val capabilities: Set<InstitutionCapability>, val subscriptionStatus: TenantSubscriptionStatus? = null)
 data class CurrentUserResponse(val id: UUID, val displayName: String, val username: String?, val gender: Gender, val dateOfBirth: LocalDate?, val registrationRole: RegistrationRole?, val isPlatformAdmin: Boolean, val memberships: List<MembershipResponse>, val parentFamilyProfile: ParentFamilyProfileResponse?)

@@ -4,8 +4,10 @@ import { Ionicons } from "@expo/vector-icons";
 import type { InstitutionCapability, Role } from "@daycare/core";
 import { AppText, colors, spacing } from "@daycare/ui";
 import { useI18n } from "@/i18n/I18nProvider";
+import { useAuth } from "@/auth/AuthProvider";
 import type { TranslationKey } from "@/i18n/translations";
 import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
+import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 type NavigationItem = { href: Extract<Href, string>; labelKey: TranslationKey; icon: IoniconName; requiredCapability?: InstitutionCapability };
@@ -46,8 +48,10 @@ export const bottomNavigationPaths = new Set<string>(Object.values(navigationByR
 export function RoleBottomNavigation({ role }: { role: NavigationRole }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { profile, organizationId } = useAuth();
   const { t } = useI18n();
-  const access = useUiAccessContext(role !== "ADMIN" && role !== "PARENT_ONBOARDING");
+  const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const access = useUiAccessContext(role !== "ADMIN" && role !== "PARENT_ONBOARDING" && hasOperationalTenantSubscription(membership?.subscriptionStatus));
   return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
     {navigationByRole[role].filter((item) => !item.requiredCapability || hasOfferingCapability(access.data, item.requiredCapability)).map((item) => {
       const selected = pathname === item.href;

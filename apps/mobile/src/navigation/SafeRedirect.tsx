@@ -1,12 +1,14 @@
 import { useEffect } from "react";
-import { type Href, useRouter } from "expo-router";
+import { type Href, useRootNavigationState, useRouter } from "expo-router";
 
 export function SafeRedirect({ href }: { href: Href }) {
   const router = useRouter();
+  const navigationState = useRootNavigationState();
 
   useEffect(() => {
+    if (!navigationState?.key) return;
     router?.replace(href);
-  }, [href, router]);
+  }, [href, navigationState?.key, router]);
 
   return null;
 }

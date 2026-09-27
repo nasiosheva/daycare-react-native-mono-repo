@@ -36,7 +36,7 @@ Every wizard must use the shared `MultiStepFormWizard` from `packages/ui` — pa
 
 All frontend and backend tests must pass — see the Commands section below. Fix any failing/non-compiling test before opening the PR; never open one with a known-failing suite on either side.
 
-Delete every `.txt` file under `run-logs/` before opening a PR, regardless of gitignore status — don't leave session logs on disk across a PR (see the launcher note under Commands).
+Never commit any content from `run-logs/`; it contains generated local runtime artifacts and must remain outside commits. Before opening every PR/MR, delete **all contents** under `run-logs/` (not only `.txt` files), regardless of gitignore status, and verify the directory is empty (see the launcher note under Commands).
 
 Never commit directly on the `production` branch, even for a small or low-risk change — check the current branch before `git commit`; if it's `production`, create and switch to a new branch first. All changes reach `production` only through a reviewed PR. Do not add a "Generated with Claude Code" watermark, 🤖 emoji, or similar tool-attribution footer to PR titles/descriptions — commit trailers such as `Co-Authored-By` are unaffected by this rule.
 
@@ -69,7 +69,7 @@ Local dev stack — prefer the interactive launchers over calling Gradle/Expo di
 ./scripts/run-ios.sh             # asks local/dev/prod; Simulator only, no physical iPhones
 ```
 
-Every launcher exports its session output (including everything the launched Metro/Expo/adb-logcat process prints, since file-descriptor redirection survives both `exec` and a plain child process) to a timestamped `.txt` file under `run-logs/` at the repo root (see `scripts/lib/session-log.sh`). `run-logs/` is `.gitignore`d — delete its `.txt` files before opening a PR regardless (see above).
+Every launcher exports its session output (including everything the launched Metro/Expo/adb-logcat process prints, since file-descriptor redirection survives both `exec` and a plain child process) to a timestamped `.txt` file under `run-logs/` at the repo root (see `scripts/lib/session-log.sh`). The generated directory and every file inside it are local-only and must never be committed. Empty the entire directory before opening every PR/MR (see above).
 
 Use `./scripts/clean-run-logs.sh` to remove all `.txt` session logs under `run-logs/`.
 

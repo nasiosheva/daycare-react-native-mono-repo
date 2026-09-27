@@ -7,7 +7,6 @@ dist/
 coverage/
 *.tsbuildinfo
 *.log
-run-logs/
 npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*

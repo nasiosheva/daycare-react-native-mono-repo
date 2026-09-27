@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ApiError } from "@daycare/api-client";
 import { Stack, useNavigationContainerRef, usePathname, useRouter } from "expo-router";
 import { Alert, BackHandler, Platform } from "react-native";
 import { useEffect, useRef, useState, type PropsWithChildren } from "react";
@@ -18,6 +19,7 @@ import { OrganizationContextRouteBoundary } from "@/navigation/OrganizationConte
 import { ParentSelfServiceRouteBoundary } from "@/navigation/ParentSelfServiceRouteBoundary";
 import { ProfileContextRouteBoundary } from "@/navigation/ProfileContextRouteBoundary";
 import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
+import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
 
 if (Platform.OS !== "web") {
   SplashScreen.setOptions({ duration: 250, fade: true });
@@ -38,7 +40,8 @@ const bottomNavigationScreenNames = ["home", "platform-tenants", "platform-catal
 
 function NotificationRouteHandler() {
   const { organizationId, profile, selectOrganization } = useAuth();
-  const access = useUiAccessContext(Boolean(profile && organizationId));
+  const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const access = useUiAccessContext(Boolean(profile && organizationId && hasOperationalTenantSubscription(membership?.subscriptionStatus)));
   const router = useRouter();
   const navigationRef = useNavigationContainerRef();
   const [pendingRoute, setPendingRoute] = useState<{ actionPath: string; organizationId: string | null } | null>(null);
@@ -74,16 +77,18 @@ function NotificationRouteHandler() {
     }
     router.push(pendingRoute.actionPath as never);
     setPendingRoute(null);
-  }, [access.data, navigationRef, organizationId, pendingRoute, profile, router]);
+  }, [access.data, access.isLoading, navigationRef, organizationId, pendingRoute, profile, router]);
   return null;
 }
 
 function NativeNotificationRegistration() {
   const { api, organizationId, profile, user } = useAuth();
+  const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const subscriptionActive = hasOperationalTenantSubscription(membership?.subscriptionStatus);
 
   useEffect(() => {
     const platform = Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : null;
-    if (!platform || !organizationId || !profile || !user) return;
+    if (!platform || !organizationId || !profile || !user || !subscriptionActive) return;
     let cancelled = false;
     const register = async () => {
       try {
@@ -100,13 +105,22 @@ function NativeNotificationRegistration() {
     };
     void register();
     return () => { cancelled = true; };
-  }, [api, organizationId, profile, user]);
+  }, [api, organizationId, profile, subscriptionActive, user]);
 
   return null;
 }
 
 function Providers({ children }: PropsWithChildren) {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: (failureCount, error) => {
+          if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
+          return failureCount < 2;
+        },
+      },
+    },
+  }));
   return <QueryClientProvider client={queryClient}><I18nProvider><AuthProvider><NativeSplashGate><NotificationRouteHandler /><NativeNotificationRegistration /><RealtimeConnection />{children}</NativeSplashGate></AuthProvider></I18nProvider></QueryClientProvider>;
 }
 
