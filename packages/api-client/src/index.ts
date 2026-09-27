@@ -468,10 +468,10 @@ export class ApiClient {
     const query = params.toString();
     return this.request(`/children${query ? `?${query}` : ""}`, organizationId ? { headers: { "X-Organization-Id": organizationId } } : undefined);
   }
-  async childAbsenceRequests(input: { childId?: string; branchId?: string } = {}): Promise<ChildAbsenceRequest[]> { const params = new URLSearchParams(); if (input.childId) params.set("childId", input.childId); if (input.branchId) params.set("branchId", input.branchId); return this.request(`/child-absence-requests${params.size ? `?${params.toString()}` : ""}`); }
-  async createChildAbsenceRequest(input: CreateChildAbsenceRequestInput): Promise<ChildAbsenceRequest> { return this.request("/child-absence-requests", { method: "POST", body: JSON.stringify(input) }); }
-  async decideChildAbsenceRequest(requestId: string, input: { approved: boolean; rejectionReason?: string }): Promise<ChildAbsenceRequest> { return this.request(`/child-absence-requests/${requestId}/decision`, { method: "POST", body: JSON.stringify(input) }); }
-  async cancelChildAbsenceRequest(requestId: string): Promise<ChildAbsenceRequest> { return this.request(`/child-absence-requests/${requestId}/cancel`, { method: "POST" }); }
+  async childAbsenceRequests(input: { childId?: string; branchId?: string } = {}, organizationId?: string): Promise<ChildAbsenceRequest[]> { const params = new URLSearchParams(); if (input.childId) params.set("childId", input.childId); if (input.branchId) params.set("branchId", input.branchId); return this.request(`/child-absence-requests${params.size ? `?${params.toString()}` : ""}`, this.orgOverride(organizationId)); }
+  async createChildAbsenceRequest(input: CreateChildAbsenceRequestInput, organizationId?: string): Promise<ChildAbsenceRequest> { return this.request("/child-absence-requests", { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async decideChildAbsenceRequest(requestId: string, input: { approved: boolean; rejectionReason?: string }, organizationId?: string): Promise<ChildAbsenceRequest> { return this.request(`/child-absence-requests/${requestId}/decision`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async cancelChildAbsenceRequest(requestId: string, organizationId?: string): Promise<ChildAbsenceRequest> { return this.request(`/child-absence-requests/${requestId}/cancel`, { method: "POST", ...this.orgOverride(organizationId) }); }
   async createChild(input: ChildInput): Promise<Child> { return this.request("/children", { method: "POST", body: JSON.stringify(input) }); }
   async childProfile(childId: string): Promise<ChildProfile> { return this.request(`/children/${childId}`); }
   async childProgramsSummary(): Promise<ChildProgramSummary> { return this.request("/children/programs-summary"); }

@@ -31,8 +31,11 @@ const defaultForm = (): FormState => {
 
 export default function AbsenceRequestsScreen() {
   const router = useRouter();
-  const { childId } = useLocalSearchParams<{ childId?: string }>();
-  const { api, profile, organizationId } = useAuth();
+  const { childId, organizationId: routeOrganizationId } = useLocalSearchParams<{ childId?: string; organizationId?: string }>();
+  const { api, profile, organizationId: activeOrganizationId } = useAuth();
+  // A Parent can open this screen for a child in a tenant that isn't the active one; Staff/Staff
+  // Admin never pass this param, so they keep resolving to the active tenant as before.
+  const organizationId = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
   const { t, formatDate } = useI18n();
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
@@ -52,13 +55,13 @@ export default function AbsenceRequestsScreen() {
   const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: isStaffAdmin && Boolean(organizationId) });
   const requests = useQuery({
     queryKey: ["child-absence-requests", organizationId, isParent ? childId : undefined, isStaffAdmin ? filterBranchId : undefined],
-    queryFn: () => api.childAbsenceRequests(isParent ? { childId } : isStaffAdmin ? { branchId: filterBranchId } : {}),
+    queryFn: () => api.childAbsenceRequests(isParent ? { childId } : isStaffAdmin ? { branchId: filterBranchId } : {}, organizationId),
     enabled: Boolean(organizationId) && ((isParent && Boolean(childId)) || isStaff || isStaffAdmin),
   });
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["child-absence-requests", organizationId] });
-  const create = useMutation({ mutationFn: (input: FormState) => api.createChildAbsenceRequest({ childId: childId!, purpose: input.purpose, startDate: input.startDate, endDate: input.endDate, note: input.note.trim() || undefined }), onSuccess: () => { invalidate(); setForm(null); } });
-  const decide = useMutation({ mutationFn: ({ request, approved, reason }: { request: ChildAbsenceRequest; approved: boolean; reason: string }) => api.decideChildAbsenceRequest(request.id, { approved, rejectionReason: reason.trim() || undefined }), onSuccess: () => { invalidate(); setDecision(null); } });
-  const cancel = useMutation({ mutationFn: (request: ChildAbsenceRequest) => api.cancelChildAbsenceRequest(request.id), onSuccess: () => { invalidate(); setCancelRequest(null); } });
+  const create = useMutation({ mutationFn: (input: FormState) => api.createChildAbsenceRequest({ childId: childId!, purpose: input.purpose, startDate: input.startDate, endDate: input.endDate, note: input.note.trim() || undefined }, organizationId), onSuccess: () => { invalidate(); setForm(null); } });
+  const decide = useMutation({ mutationFn: ({ request, approved, reason }: { request: ChildAbsenceRequest; approved: boolean; reason: string }) => api.decideChildAbsenceRequest(request.id, { approved, rejectionReason: reason.trim() || undefined }, organizationId), onSuccess: () => { invalidate(); setDecision(null); } });
+  const cancel = useMutation({ mutationFn: (request: ChildAbsenceRequest) => api.cancelChildAbsenceRequest(request.id, organizationId), onSuccess: () => { invalidate(); setCancelRequest(null); } });
 
   if (!profile) return null;
   if ((!isParent && !isStaff && !isStaffAdmin) || (isParent && !childId)) return <Redirect href="/home" />;

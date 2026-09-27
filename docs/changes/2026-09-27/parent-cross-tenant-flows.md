@@ -56,9 +56,27 @@ Sekarang:
   di-invalidate; kalau target beda dari tenant aktif, keduanya
   di-invalidate supaya tidak ada layar yang menampilkan data stale.
 
-## Verifikasi (tahap 1-2)
+### Tahap 3 — `absence-requests.tsx` (contoh kategori C)
+Layar per-anak yang juga dipakai Staff/Staff Admin (bukan hanya Parent).
+Pola konvensi kategori C diterapkan: `organizationId` diresolusi dari
+route param dulu, baru fallback ke tenant aktif —
+```ts
+const organizationId = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
+```
+`organizationId` hasil resolusi ini (bukan lagi langsung dari `useAuth()`)
+yang dipakai untuk query key, lookup membership, `enabled` check,
+`invalidate()`, dan keempat call ke `api.childAbsenceRequests`/
+`createChildAbsenceRequest`/`decideChildAbsenceRequest`/
+`cancelChildAbsenceRequest` — keempatnya dikonfirmasi ulang butuh header
+`X-Organization-Id` langsung dari `Controllers.kt` baris 491-501 sebelum
+diberi parameter override. Staff/Staff Admin tidak pernah mengirim route
+param ini, jadi perilaku mereka tidak berubah (tetap resolve ke tenant
+aktif seperti sebelumnya). `home.tsx` belum mengirim `organizationId` ke
+layar ini — itu Tahap 5.
 
-- `cd apps/mobile && npx tsc --noEmit` — bersih.
+## Verifikasi (tahap 1-3)
+
+- `cd apps/mobile && npx tsc --noEmit` — bersih di setiap tahap.
 - `npx eslint app/booking.tsx src/booking/useBooking.ts` — 2 error
   (`import/no-unresolved` pada `@/date-picker/DatePicker`, dan
   `react-hooks/rules-of-hooks` false-positive pada fungsi lokal bernama
@@ -66,9 +84,12 @@ Sekarang:
   eslint lagi terhadap file asli (belum diubah) menghasilkan 2 error yang
   identik (rule sama, hanya nomor baris bergeser), lalu `git stash pop`
   mengembalikan perubahan. Bukan regresi dari perubahan ini.
-- `npx vitest run` — 35 file, 98 test, semua lulus (tidak ada test khusus
-  untuk `booking.tsx`/`useBooking.ts` sebelumnya, jadi ini sinyal "tidak
-  merusak", bukan cakupan baru).
+- `npx eslint app/absence-requests.tsx` — 1 error, `import/no-unresolved`
+  pada `@/date-picker/DatePicker` yang sama; import ini tidak disentuh
+  Tahap 3, jadi pre-existing dengan pola identik ke Tahap 2.
+- `npx vitest run` — 35 file, 98 test, semua lulus di setiap tahap (tidak
+  ada test khusus untuk layar-layar ini, jadi ini sinyal "tidak merusak",
+  bukan cakupan baru).
 - Belum ada verifikasi visual di browser/simulator (di luar kemampuan
   environment ini).
 
@@ -80,15 +101,17 @@ menyebut "switch among approved tenant access links" dalam konteks
 enrollment, bukan booking), jadi tidak ada kalimat yang jadi salah akibat
 tahap 1-2. Akan ditinjau ulang di akhir seluruh rencana (setelah tahap 8)
 kalau perubahan kumulatif membuat deskripsi Parent flow di README perlu
-kalimat baru yang menyebut "tidak perlu switch tenant".
+kalimat baru yang menyebut "tidak perlu switch tenant". Berlaku sama
+untuk Tahap 3 — belum ada kalimat README yang jadi salah karena
+`absence-requests.tsx`.
 
 ## Tindak lanjut yang belum dikerjakan (tahap berikutnya dari rencana yang sama)
 
-- `absence-requests.tsx` dan layar per-anak lain (`parent-child-profile.tsx`,
-  `emergency-contacts.tsx`, `pickup-authorizations.tsx`, `child-consents.tsx`,
-  `child-messages.tsx`, `child-health.tsx`, `incident-reports.tsx`,
-  `goals.tsx`, `parent-qr.tsx`, `development.tsx`) belum menerima parameter
-  route `organizationId`.
+- Layar per-anak lain yang sejenis `absence-requests.tsx`
+  (`parent-child-profile.tsx`, `emergency-contacts.tsx`,
+  `pickup-authorizations.tsx`, `child-consents.tsx`, `child-messages.tsx`,
+  `child-health.tsx`, `incident-reports.tsx`, `goals.tsx`, `parent-qr.tsx`,
+  `development.tsx`) belum menerima parameter route `organizationId`.
 - `home.tsx`'s `openChild` masih memakai `selectOrganization` + navigate;
   baru diganti setelah semua layar tujuan di atas mendukung parameter route.
 - `tenant-feedback.tsx` (switcher ad hoc) dan `private-tutoring.tsx` belum
@@ -98,4 +121,4 @@ kalimat baru yang menyebut "tidak perlu switch tenant".
   tenant aktif bukan tenant milik notifikasi) belum diperbaiki; ini paling
   akhir karena bergantung pada semua layar tujuan di atas.
 - Rencana lengkap ada di `.claude/plans/quiet-sniffing-pinwheel.md` (lokal,
-  tidak masuk repo) — tahapan 3-8.
+  tidak masuk repo) — tahapan 4-8.
