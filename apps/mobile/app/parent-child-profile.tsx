@@ -59,6 +59,7 @@ export default function ParentChildProfileScreen() {
         {childProfile.data.branch.googleMapsUrl && <Button variant="secondary" leadingIcon={<Ionicons name="map-outline" size={18} color={colors.primary} />} onPress={() => void openMaps()}>{t("branch.openGoogleMaps")}</Button>}
       </Card>
       <MenuSection title={t("children.safetySection")}>
+        <MenuItem icon="chatbubbles-outline" title={t("childMessage.menuTitle")} description={t("childMessage.menuDescription")} onPress={() => router.push({ pathname: "/child-messages", params: { childId } } as never)} />
         <MenuItem icon="call-outline" title={t("emergencyContacts.title")} description={t("emergencyContacts.manage")} onPress={() => router.push({ pathname: "/emergency-contacts", params: { childId } } as never)} />
         {hasDaycarePickupOperations && <MenuItem icon="car-outline" title={t("pickup.title")} description={t("pickup.manage")} onPress={() => router.push({ pathname: "/pickup-authorizations", params: { childId } } as never)} />}
         {hasDaycarePickupOperations && <MenuItem icon="shield-checkmark-outline" title={t("consent.title")} description={t("consent.parentDescription")} onPress={() => router.push({ pathname: "/child-consents", params: { childId } } as never)} />}
