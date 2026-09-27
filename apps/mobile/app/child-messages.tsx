@@ -10,8 +10,9 @@ import { useI18n } from "@/i18n/I18nProvider";
 
 export default function ChildMessagesScreen() {
   const router = useRouter();
-  const { childId } = useLocalSearchParams<{ childId?: string }>();
-  const { api, profile, organizationId } = useAuth();
+  const { childId, organizationId: routeOrganizationId } = useLocalSearchParams<{ childId?: string; organizationId?: string }>();
+  const { api, profile, organizationId: activeOrganizationId } = useAuth();
+  const organizationId = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
   const { t, formatDateTime } = useI18n();
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
@@ -19,17 +20,17 @@ export default function ChildMessagesScreen() {
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
 
-  const messages = useQuery({ queryKey: ["child-messages", organizationId, childId], queryFn: () => api.childMessages(childId!), enabled: Boolean(organizationId && childId && canUse) });
+  const messages = useQuery({ queryKey: ["child-messages", organizationId, childId], queryFn: () => api.childMessages(childId!, organizationId), enabled: Boolean(organizationId && childId && canUse) });
   const send = useMutation({
-    mutationFn: (body: string) => api.sendChildMessage(childId!, body),
+    mutationFn: (body: string) => api.sendChildMessage(childId!, body, organizationId),
     onSuccess: () => { setDraft(""); setSendError(null); void queryClient.invalidateQueries({ queryKey: ["child-messages", organizationId, childId] }); },
     onError: (error: unknown) => setSendError(error instanceof Error ? error.message : t("childMessage.sendFailed")),
   });
 
   // Marking messages read is bookkeeping for a future unread badge; a failure here is not worth surfacing to the viewer.
   useEffect(() => {
-    if (messages.isSuccess && childId) void api.markChildMessagesRead(childId).catch(() => undefined);
-  }, [api, childId, messages.isSuccess]);
+    if (messages.isSuccess && childId) void api.markChildMessagesRead(childId, organizationId).catch(() => undefined);
+  }, [api, childId, messages.isSuccess, organizationId]);
 
   if (!profile) return null;
   if (!childId || !canUse) return <Redirect href="/home" />;

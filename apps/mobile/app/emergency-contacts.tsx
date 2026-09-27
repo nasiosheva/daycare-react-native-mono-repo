@@ -14,9 +14,10 @@ import { formatIsoDate } from "@/date-picker/date";
 
 export default function EmergencyContactsScreen() {
   const router = useRouter();
-  const { childId: rawChildId } = useLocalSearchParams<{ childId?: string }>();
+  const { childId: rawChildId, organizationId: routeOrganizationId } = useLocalSearchParams<{ childId?: string; organizationId?: string }>();
   const childId = typeof rawChildId === "string" ? rawChildId : null;
-  const { api, organizationId, profile } = useAuth();
+  const { api, organizationId: activeOrganizationId, profile } = useAuth();
+  const organizationId = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
   const { t } = useI18n();
   const client = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
@@ -28,10 +29,10 @@ export default function EmergencyContactsScreen() {
   const [relationship, setRelationship] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [expiresOn, setExpiresOn] = useState("");
-  const contacts = useQuery({ queryKey: ["emergency-contacts", organizationId, childId], queryFn: () => api.emergencyContacts(childId!), enabled: Boolean(childId && (isParent || membership?.role === "STAFF_ADMIN")) });
-  const create = useMutation({ mutationFn: () => api.createEmergencyContact(childId!, { name: name.trim(), relationship: relationship.trim(), phoneNumber: phoneNumber.trim(), effectiveUntil: expiresOn ? new Date(`${expiresOn}T23:59:59`).toISOString() : undefined }), onSuccess: async () => { await client.invalidateQueries({ queryKey: ["emergency-contacts", organizationId, childId] }); setOpen(false); setName(""); setRelationship(""); setPhoneNumber(""); setExpiresOn(""); } });
-  const remove = useMutation({ mutationFn: (contactId: string) => api.removeEmergencyContact(childId!, contactId), onSuccess: () => void client.invalidateQueries({ queryKey: ["emergency-contacts", organizationId, childId] }) });
-  const revoke = useMutation({ mutationFn: () => api.revokeEmergencyContact(childId!, revokeId!, revokeReason.trim()), onSuccess: async () => { await client.invalidateQueries({ queryKey: ["emergency-contacts", organizationId, childId] }); setRevokeId(null); setRevokeReason(""); } });
+  const contacts = useQuery({ queryKey: ["emergency-contacts", organizationId, childId], queryFn: () => api.emergencyContacts(childId!, organizationId), enabled: Boolean(childId && (isParent || membership?.role === "STAFF_ADMIN")) });
+  const create = useMutation({ mutationFn: () => api.createEmergencyContact(childId!, { name: name.trim(), relationship: relationship.trim(), phoneNumber: phoneNumber.trim(), effectiveUntil: expiresOn ? new Date(`${expiresOn}T23:59:59`).toISOString() : undefined }, organizationId), onSuccess: async () => { await client.invalidateQueries({ queryKey: ["emergency-contacts", organizationId, childId] }); setOpen(false); setName(""); setRelationship(""); setPhoneNumber(""); setExpiresOn(""); } });
+  const remove = useMutation({ mutationFn: (contactId: string) => api.removeEmergencyContact(childId!, contactId, organizationId), onSuccess: () => void client.invalidateQueries({ queryKey: ["emergency-contacts", organizationId, childId] }) });
+  const revoke = useMutation({ mutationFn: () => api.revokeEmergencyContact(childId!, revokeId!, revokeReason.trim(), organizationId), onSuccess: async () => { await client.invalidateQueries({ queryKey: ["emergency-contacts", organizationId, childId] }); setRevokeId(null); setRevokeReason(""); } });
   if (!profile) return null;
   if (!childId || !(isParent || membership?.role === "STAFF_ADMIN")) return <Redirect href="/home" />;
   const submit = async () => { if (!name.trim() || !relationship.trim() || !phoneNumber.trim()) return; try { await create.mutateAsync(); } catch (error) { notify(t("auth.tryAgain"), error instanceof Error ? error.message : undefined, "danger"); } };

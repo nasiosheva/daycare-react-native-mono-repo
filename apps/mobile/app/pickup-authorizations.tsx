@@ -13,15 +13,16 @@ import { hasBranchOfferingCapability, useUiAccessContext } from "@/education/use
 
 export default function PickupAuthorizationsScreen() {
   const router = useRouter();
-  const { childId: rawChildId } = useLocalSearchParams<{ childId?: string }>();
+  const { childId: rawChildId, organizationId: routeOrganizationId } = useLocalSearchParams<{ childId?: string; organizationId?: string }>();
   const childId = typeof rawChildId === "string" ? rawChildId : null;
-  const { api, organizationId, profile } = useAuth();
+  const { api, organizationId: activeOrganizationId, profile } = useAuth();
+  const organizationId = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
   const { t } = useI18n();
   const client = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const access = useUiAccessContext(Boolean(membership));
+  const access = useUiAccessContext(Boolean(membership), organizationId);
   const staffChildProfile = useQuery({ queryKey: ["child-profile", organizationId, childId], queryFn: () => api.childProfile(childId!), enabled: Boolean(childId && membership?.role === "STAFF_ADMIN") });
-  const parentChildProfile = useQuery({ queryKey: ["parent-child-profile", organizationId, childId], queryFn: () => api.parentChildProfile(childId!), enabled: Boolean(childId && membership?.role === "PARENT") });
+  const parentChildProfile = useQuery({ queryKey: ["parent-child-profile", organizationId, childId], queryFn: () => api.parentChildProfile(childId!, organizationId), enabled: Boolean(childId && membership?.role === "PARENT") });
   const childBranchId = staffChildProfile.data?.child.branchId ?? parentChildProfile.data?.child.branchId;
   const hasDaycareOperations = hasBranchOfferingCapability(access.data, childBranchId, "DAYCARE_OPERATIONS");
   const [open, setOpen] = useState(false);
@@ -32,10 +33,10 @@ export default function PickupAuthorizationsScreen() {
   const canManage = membership?.role === "STAFF_ADMIN" && membership.active && hasDaycareOperations;
   const canCreate = membership?.role === "PARENT" && membership.active && hasDaycareOperations;
   const pickupContextLoading = access.isLoading || staffChildProfile.isLoading || parentChildProfile.isLoading;
-  const authorizations = useQuery({ queryKey: ["pickup-authorizations", organizationId, childId], queryFn: () => api.pickupAuthorizations(childId!), enabled: Boolean(childId && hasDaycareOperations && (membership?.role === "PARENT" || membership?.role === "STAFF_ADMIN")) });
-  const create = useMutation({ mutationFn: () => api.createPickupAuthorization(childId!, { pickupPersonName: name.trim(), relationship: relationship.trim(), verificationMethod: "PHOTO_ID" }), onSuccess: async () => { await client.invalidateQueries({ queryKey: ["pickup-authorizations", organizationId, childId] }); setName(""); setRelationship(""); setOpen(false); } });
-  const activate = useMutation({ mutationFn: (authorizationId: string) => api.activatePickupAuthorization(childId!, authorizationId), onSuccess: () => void client.invalidateQueries({ queryKey: ["pickup-authorizations", organizationId, childId] }) });
-  const revoke = useMutation({ mutationFn: () => api.revokePickupAuthorization(childId!, revokeId!, revokeReason.trim()), onSuccess: async () => { await client.invalidateQueries({ queryKey: ["pickup-authorizations", organizationId, childId] }); setRevokeId(null); setRevokeReason(""); } });
+  const authorizations = useQuery({ queryKey: ["pickup-authorizations", organizationId, childId], queryFn: () => api.pickupAuthorizations(childId!, organizationId), enabled: Boolean(childId && hasDaycareOperations && (membership?.role === "PARENT" || membership?.role === "STAFF_ADMIN")) });
+  const create = useMutation({ mutationFn: () => api.createPickupAuthorization(childId!, { pickupPersonName: name.trim(), relationship: relationship.trim(), verificationMethod: "PHOTO_ID" }, organizationId), onSuccess: async () => { await client.invalidateQueries({ queryKey: ["pickup-authorizations", organizationId, childId] }); setName(""); setRelationship(""); setOpen(false); } });
+  const activate = useMutation({ mutationFn: (authorizationId: string) => api.activatePickupAuthorization(childId!, authorizationId, organizationId), onSuccess: () => void client.invalidateQueries({ queryKey: ["pickup-authorizations", organizationId, childId] }) });
+  const revoke = useMutation({ mutationFn: () => api.revokePickupAuthorization(childId!, revokeId!, revokeReason.trim(), organizationId), onSuccess: async () => { await client.invalidateQueries({ queryKey: ["pickup-authorizations", organizationId, childId] }); setRevokeId(null); setRevokeReason(""); } });
   if (!profile) return null;
   if (!childId || !membership?.active || !["PARENT", "STAFF_ADMIN"].includes(membership.role)) return <Redirect href="/home" />;
   if (pickupContextLoading) return <AppScreen showBottomNavigation={false} title={t("pickup.manage")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><ShimmerList variant="tile" /></AppScreen>;

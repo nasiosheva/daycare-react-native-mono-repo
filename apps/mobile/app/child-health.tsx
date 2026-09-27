@@ -11,23 +11,24 @@ import { notify } from "@/notify/notify";
 
 export default function ChildHealthScreen() {
   const router = useRouter();
-  const { childId: rawChildId } = useLocalSearchParams<{ childId?: string }>();
+  const { childId: rawChildId, organizationId: routeOrganizationId } = useLocalSearchParams<{ childId?: string; organizationId?: string }>();
   const childId = typeof rawChildId === "string" ? rawChildId : null;
-  const { api, profile, organizationId } = useAuth();
+  const { api, profile, organizationId: activeOrganizationId } = useAuth();
+  const organizationId = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
   const { t, formatDateTime } = useI18n();
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canEdit = Boolean(membership?.active && (membership.role === "STAFF_ADMIN" || membership.role === "STAFF"));
-  const record = useQuery({ queryKey: ["child-health-record", organizationId, childId], queryFn: () => api.childHealthRecord(childId!), enabled: Boolean(childId && membership) });
+  const record = useQuery({ queryKey: ["child-health-record", organizationId, childId], queryFn: () => api.childHealthRecord(childId!, organizationId), enabled: Boolean(childId && membership) });
   const upsert = useMutation({
-    mutationFn: (input: Parameters<typeof api.upsertChildHealthRecord>[1]) => api.upsertChildHealthRecord(childId!, input),
+    mutationFn: (input: Parameters<typeof api.upsertChildHealthRecord>[1]) => api.upsertChildHealthRecord(childId!, input, organizationId),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["child-health-record", organizationId, childId] }); notify(t("health.saved"), undefined, "success"); },
   });
-  const notes = useQuery({ queryKey: ["child-health-notes", organizationId, childId], queryFn: () => api.childHealthNotes(childId!), enabled: Boolean(childId && membership) });
+  const notes = useQuery({ queryKey: ["child-health-notes", organizationId, childId], queryFn: () => api.childHealthNotes(childId!, organizationId), enabled: Boolean(childId && membership) });
   const [addNoteOpen, setAddNoteOpen] = useState(false);
   const [noteText, setNoteText] = useState("");
   const addNote = useMutation({
-    mutationFn: () => api.createChildHealthNote(childId!, { note: noteText.trim() }),
+    mutationFn: () => api.createChildHealthNote(childId!, { note: noteText.trim() }, organizationId),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["child-health-notes", organizationId, childId] }); notify(t("health.noteSaved"), undefined, "success"); setNoteText(""); setAddNoteOpen(false); },
   });
   const submitNote = () => void addNote.mutateAsync().catch((error: unknown) => notify(t("health.noteSaveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"));

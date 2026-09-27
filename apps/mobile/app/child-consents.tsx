@@ -14,18 +14,19 @@ import { hasBranchOfferingCapability, useUiAccessContext } from "@/education/use
 
 export default function ChildConsentsScreen() {
   const router = useRouter();
-  const { childId } = useLocalSearchParams<{ childId?: string }>();
-  const { api, organizationId, profile } = useAuth();
+  const { childId, organizationId: routeOrganizationId } = useLocalSearchParams<{ childId?: string; organizationId?: string }>();
+  const { api, organizationId: activeOrganizationId, profile } = useAuth();
+  const organizationId = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const access = useUiAccessContext(Boolean(membership));
-  const childProfile = useQuery({ queryKey: ["parent-child-profile", organizationId, childId], queryFn: () => api.parentChildProfile(childId!), enabled: Boolean(childId && membership?.role === "PARENT") });
+  const access = useUiAccessContext(Boolean(membership), organizationId);
+  const childProfile = useQuery({ queryKey: ["parent-child-profile", organizationId, childId], queryFn: () => api.parentChildProfile(childId!, organizationId), enabled: Boolean(childId && membership?.role === "PARENT") });
   const canUseConsents = membership?.role === "PARENT" && hasBranchOfferingCapability(access.data, childProfile.data?.child.branchId, "DAYCARE_OPERATIONS");
-  const consents = useQuery({ queryKey: ["child-consents", organizationId, childId], queryFn: () => api.childConsents(childId!), enabled: Boolean(childId && canUseConsents) });
+  const consents = useQuery({ queryKey: ["child-consents", organizationId, childId], queryFn: () => api.childConsents(childId!, organizationId), enabled: Boolean(childId && canUseConsents) });
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["child-consents", organizationId, childId] });
-  const decide = useMutation({ mutationFn: ({ definitionId, granted }: { definitionId: string; granted: boolean }) => api.decideConsent(childId!, definitionId, granted), onSuccess: invalidate, onError: (error) => notify(t("consent.decisionFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) });
-  const withdraw = useMutation({ mutationFn: (definitionId: string) => api.withdrawConsent(childId!, definitionId), onSuccess: () => setWithdrawTarget(null), onError: (error) => { setWithdrawTarget(null); notify(t("consent.decisionFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }, onSettled: invalidate });
+  const decide = useMutation({ mutationFn: ({ definitionId, granted }: { definitionId: string; granted: boolean }) => api.decideConsent(childId!, definitionId, granted, organizationId), onSuccess: invalidate, onError: (error) => notify(t("consent.decisionFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) });
+  const withdraw = useMutation({ mutationFn: (definitionId: string) => api.withdrawConsent(childId!, definitionId, organizationId), onSuccess: () => setWithdrawTarget(null), onError: (error) => { setWithdrawTarget(null); notify(t("consent.decisionFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }, onSettled: invalidate });
   // §13.15: revoking consent is a high-risk action and needs an explicit confirmation that names the consent.
   const [withdrawTarget, setWithdrawTarget] = useState<{ definitionId: string; title: string } | null>(null);
 

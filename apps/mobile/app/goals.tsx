@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -10,7 +10,7 @@ import { AppText, Avatar, Badge, BackButton, Banner, BottomSheet, Button, Card, 
 import { notify } from "@/notify/notify";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
-import { useChildren } from "@/attendance/useAttendance";
+import { useChildren, useParentChildrenAcrossTenants } from "@/attendance/useAttendance";
 import { useI18n } from "@/i18n/I18nProvider";
 import { goalDomainKey } from "@/i18n/translations";
 import { formatIsoDate } from "@/date-picker/date";
@@ -31,25 +31,35 @@ const goalCheckInDraftKey = (goalId: string, indicatorId: string) => `${goalId}:
 
 export default function GoalsScreen() {
   const router = useRouter();
-  const { childId: routeChildId } = useLocalSearchParams<{ childId?: string }>();
-  const { api, profile, organizationId } = useAuth();
+  const { childId: routeChildId, organizationId: routeOrganizationId } = useLocalSearchParams<{ childId?: string; organizationId?: string }>();
+  const { api, profile, organizationId: activeOrganizationId } = useAuth();
+  // A Parent can view Goals for a child at a tenant that isn't the active one; Staff/Staff Admin
+  // never pass this param, so their own tenant-wide browsing below is unaffected.
+  const organizationId = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
   const { t, formatDate, formatDateTime } = useI18n();
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
+  const isParent = membership?.role === "PARENT";
   const canAdmin = isStaffAdmin && membership.active;
   const canWrite = Boolean(membership?.active && (membership.role === "STAFF_ADMIN" || membership.role === "STAFF"));
-  const access = useUiAccessContext(Boolean(membership));
+  const access = useUiAccessContext(Boolean(membership), organizationId);
   const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
   const [filterVisible, setFilterVisible] = useState(false);
   const [childFilter, setChildFilter] = useState<ChildListFilter>({});
-  const children = useChildren(isStaffAdmin ? childFilter : {});
+  const children = useChildren(isStaffAdmin ? childFilter : {}, !isParent);
+  // Parent always reaches this screen with a fixed childId (from Home), which may belong to a
+  // different tenant than the active one, so it is resolved from every Parent membership instead
+  // of the single active-tenant useChildren() above.
+  const parentMemberships = (profile?.memberships ?? []).filter((item) => item.role === "PARENT" && item.active);
+  const parentChildren = useParentChildrenAcrossTenants(parentMemberships, isParent);
+  const availableChildren = useMemo(() => isParent ? parentChildren.data : children.data ?? [], [isParent, parentChildren.data, children.data]);
   const [childId, setChildId] = useState<string | null>(typeof routeChildId === "string" ? routeChildId : null);
   const hasFixedChild = typeof routeChildId === "string";
   useEffect(() => {
-    setChildId((currentChildId) => resolveSelectedChildId(children.data ?? [], currentChildId, hasFixedChild ? routeChildId : undefined, hasFixedChild));
-  }, [children.data, hasFixedChild, routeChildId]);
-  const selectedChild = children.data?.find((child) => child.id === childId) ?? null;
+    setChildId((currentChildId) => resolveSelectedChildId(availableChildren, currentChildId, hasFixedChild ? routeChildId : undefined, hasFixedChild));
+  }, [availableChildren, hasFixedChild, routeChildId]);
+  const selectedChild = availableChildren.find((child) => child.id === childId) ?? null;
   const [programSearch, setProgramSearch] = useState("");
   const [debouncedProgramSearch, setDebouncedProgramSearch] = useState("");
   useEffect(() => {
@@ -60,7 +70,7 @@ export default function GoalsScreen() {
   const curriculumPrograms = useQuery({ queryKey: ["curriculum-programs", organizationId], queryFn: () => api.curriculumPrograms(), enabled: canWrite && hasAcademicOffering });
   const levels = useQuery({ queryKey: ["learning-levels", organizationId], queryFn: () => api.learningLevels(), enabled: canWrite && hasAcademicOffering });
   const classrooms = useQuery({ queryKey: ["classrooms", organizationId], queryFn: () => api.classrooms(), enabled: canWrite && hasAcademicOffering });
-  const goals = useQuery({ queryKey: ["child-goals", organizationId, childId], queryFn: () => api.childGoals(childId!), enabled: Boolean(selectedChild && membership && hasAcademicOffering) });
+  const goals = useQuery({ queryKey: ["child-goals", organizationId, childId], queryFn: () => api.childGoals(childId!, organizationId), enabled: Boolean(selectedChild && membership && hasAcademicOffering) });
   const refreshGoals = () => { void queryClient.invalidateQueries({ queryKey: ["development-programs", organizationId] }); void queryClient.invalidateQueries({ queryKey: ["child-goals", organizationId, childId] }); };
   const [sheet, setSheet] = useState<Sheet>(null);
   const [curriculumProgramId, setCurriculumProgramId] = useState<string>(); const [programId, setProgramId] = useState<string>(); const [finalGoalId, setFinalGoalId] = useState<string>(); const [finalOutcome, setFinalOutcome] = useState<ChildGoalOutcome>("ACHIEVED"); const [finalSummary, setFinalSummary] = useState("");

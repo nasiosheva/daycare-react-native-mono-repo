@@ -5,9 +5,10 @@ import { hasBranchOfferingCapability } from "./offeringCapabilities";
 
 export { hasBranchOfferingCapability } from "./offeringCapabilities";
 
-export function useUiAccessContext(enabled = true) {
-  const { api, organizationId } = useAuth();
-  return useQuery({ queryKey: ["ui-access-context", organizationId], queryFn: () => api.uiAccessContext(), enabled: enabled && Boolean(organizationId) });
+export function useUiAccessContext(enabled = true, organizationId?: string) {
+  const { api, organizationId: activeOrganizationId } = useAuth();
+  const resolvedOrganizationId = organizationId ?? activeOrganizationId;
+  return useQuery({ queryKey: ["ui-access-context", resolvedOrganizationId], queryFn: () => api.uiAccessContext(resolvedOrganizationId ?? undefined), enabled: enabled && Boolean(resolvedOrganizationId) });
 }
 
 export function hasOfferingCapability(context: ReturnType<typeof useUiAccessContext>["data"], capability: InstitutionCapability) {

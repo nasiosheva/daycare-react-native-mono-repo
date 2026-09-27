@@ -74,7 +74,45 @@ param ini, jadi perilaku mereka tidak berubah (tetap resolve ke tenant
 aktif seperti sebelumnya). `home.tsx` belum mengirim `organizationId` ke
 layar ini — itu Tahap 5.
 
-## Verifikasi (tahap 1-3)
+### Tahap 4 — sisa layar kategori C, plus satu temuan struktural
+Delapan layar per-anak lain menerima perlakuan yang sama:
+`parent-child-profile.tsx`, `emergency-contacts.tsx`,
+`pickup-authorizations.tsx`, `child-consents.tsx`, `child-messages.tsx`,
+`child-health.tsx`, `incident-reports.tsx`, `goals.tsx`. Semua endpoint
+terkait dikonfirmasi ulang butuh `X-Organization-Id` langsung dari
+`Controllers.kt` sebelum diberi parameter override (`parentChildProfile`
+baris 543, pickup/emergency/consent/health/incident/messages/goals baris
+605-734). `parent-child-profile.tsx` juga meneruskan `organizationId` ke
+empat navigasi menu keamanannya (`child-messages`, `emergency-contacts`,
+`pickup-authorizations`, `child-consents`) — tanpa ini, membuka menu itu
+dari profil anak lintas-tenant akan kembali jatuh ke tenant aktif.
+
+**Temuan struktural (bukan sekadar wiring mekanis):** `useUiAccessContext`
+(dipakai `parent-child-profile.tsx`, `pickup-authorizations.tsx`,
+`child-consents.tsx`, `goals.tsx` untuk gate kapabilitas offering/branch)
+ternyata murni ambient — `api.uiAccessContext()` sama sekali tidak punya
+override tenant. Untuk Parent yang melihat anak di tenant non-aktif, ini
+akan mengevaluasi kapabilitas tenant yang salah (tenant aktif, bukan
+tenant anak), yang bisa salah meng-gate akses. Diperbaiki dengan pola
+yang sama: `organizationId?` ditambahkan ke `api.uiAccessContext()` dan
+ke `useUiAccessContext(enabled, organizationId?)` — additive, 24 caller
+lain (`home.tsx`, `private-tutoring.tsx`, layar Staff Admin, dst.) tidak
+disentuh dan tetap memakai tenant aktif seperti sebelumnya karena mereka
+tidak pernah mengirim parameter ini.
+
+`goals.tsx` juga punya versi bug yang sama dengan `booking.tsx` semula:
+untuk Parent, layar ini memakai `useChildren()` (satu tenant aktif) untuk
+me-resolve anak yang dipilih dari `childId` route param — kalau anaknya
+di tenant lain, `resolveSelectedChildId` mengembalikan `null` dan Goals
+tampil kosong. Diperbaiki dengan menambah `useParentChildrenAcrossTenants`
+khusus jalur Parent (`isParent`), sementara `useChildren()` tetap dipakai
+apa adanya untuk jalur browsing multi-anak milik Staff Admin (perannya
+tidak berubah). Hanya query `childGoals` yang diberi override
+`organizationId` — mutasi Goals lain (assign/finalize/check-in/koreksi/
+template) semuanya aksi Staff/Staff Admin yang selalu memakai tenant aktif
+mereka sendiri, jadi tidak disentuh.
+
+## Verifikasi (tahap 1-4)
 
 - `cd apps/mobile && npx tsc --noEmit` — bersih di setiap tahap.
 - `npx eslint app/booking.tsx src/booking/useBooking.ts` — 2 error
@@ -87,9 +125,21 @@ layar ini — itu Tahap 5.
 - `npx eslint app/absence-requests.tsx` — 1 error, `import/no-unresolved`
   pada `@/date-picker/DatePicker` yang sama; import ini tidak disentuh
   Tahap 3, jadi pre-existing dengan pola identik ke Tahap 2.
-- `npx vitest run` — 35 file, 98 test, semua lulus di setiap tahap (tidak
-  ada test khusus untuk layar-layar ini, jadi ini sinyal "tidak merusak",
-  bukan cakupan baru).
+- `npx eslint` pada kedelapan layar Tahap 4 — total 10 error, semuanya
+  `import/no-unresolved` pada alias `@/` yang sudah ada sebelum perubahan
+  ini (`@/notify/notify`, `@/date-picker/DatePicker`,
+  `@/development/encodeLocalFile`, `@/development/checkInAudioUri`).
+  Dikonfirmasi **pre-existing** dengan `git stash`/`git stash pop` yang
+  sama terhadap tiga file contoh (`goals.tsx`, `child-consents.tsx`,
+  `parent-child-profile.tsx`) — error identik pada file asli.
+- `goals.tsx` sempat menghasilkan warning baru
+  `react-hooks/exhaustive-deps` (bukan pre-existing) untuk
+  `availableChildren` yang dipakai di `useEffect`; diperbaiki dengan
+  membungkusnya dalam `useMemo`. Setelah itu `npx eslint app/goals.tsx`
+  hanya menyisakan 3 error `import/no-unresolved` yang pre-existing.
+- `npx vitest run` — 35 file, 98 test, semua lulus di setiap tahap
+  (termasuk `src/education/useUiAccessContext.test.ts` yang sudah ada,
+  tidak terpengaruh karena parameter barunya opsional).
 - Belum ada verifikasi visual di browser/simulator (di luar kemampuan
   environment ini).
 
@@ -102,18 +152,19 @@ enrollment, bukan booking), jadi tidak ada kalimat yang jadi salah akibat
 tahap 1-2. Akan ditinjau ulang di akhir seluruh rencana (setelah tahap 8)
 kalau perubahan kumulatif membuat deskripsi Parent flow di README perlu
 kalimat baru yang menyebut "tidak perlu switch tenant". Berlaku sama
-untuk Tahap 3 — belum ada kalimat README yang jadi salah karena
-`absence-requests.tsx`.
+untuk Tahap 3 dan 4 — belum ada kalimat README yang jadi salah karena
+layar-layar per-anak ini atau karena parameter baru `useUiAccessContext`.
 
 ## Tindak lanjut yang belum dikerjakan (tahap berikutnya dari rencana yang sama)
 
-- Layar per-anak lain yang sejenis `absence-requests.tsx`
-  (`parent-child-profile.tsx`, `emergency-contacts.tsx`,
-  `pickup-authorizations.tsx`, `child-consents.tsx`, `child-messages.tsx`,
-  `child-health.tsx`, `incident-reports.tsx`, `goals.tsx`, `parent-qr.tsx`,
-  `development.tsx`) belum menerima parameter route `organizationId`.
+- `parent-qr.tsx` dan `development.tsx` (target `openChild` lainnya) belum
+  menerima parameter route `organizationId` — mekanisme sama dengan
+  kategori C, ditambah kemungkinan gap `useUiAccessContext` yang sama
+  kalau salah satunya memakainya (perlu dicek ulang saat dikerjakan).
 - `home.tsx`'s `openChild` masih memakai `selectOrganization` + navigate;
-  baru diganti setelah semua layar tujuan di atas mendukung parameter route.
+  baru diganti setelah `parent-qr.tsx`/`development.tsx` di atas juga
+  mendukung parameter route (bersama `absence-requests.tsx`,
+  `parent-child-profile.tsx` yang sudah selesai).
 - `tenant-feedback.tsx` (switcher ad hoc) dan `private-tutoring.tsx` belum
   disentuh.
 - `notifications.tsx` / `notificationRouteAccess.ts` — bug lama (hanya 2
