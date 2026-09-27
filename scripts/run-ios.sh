@@ -22,22 +22,14 @@ bundle_id="com.children.platform"
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 . "$script_dir/lib/session-log.sh"
+. "$script_dir/lib/interactive-menu.sh"
 
 prompt_environment() {
-  echo "Select an environment:" >&2
-  echo "  1) local" >&2
-  echo "  2) dev" >&2
-  echo "  3) prod" >&2
-  printf 'Environment [1-3]: ' >&2
-  read -r selection </dev/tty
-  case "$selection" in
+  interactive_menu_select "Select an environment" local dev prod
+  case "$interactive_menu_selected_index" in
     1) selected_environment=local ;;
     2) selected_environment=dev ;;
     3) selected_environment=prod ;;
-    *)
-      echo "Invalid selection: $selection" >&2
-      exit 1
-      ;;
   esac
 }
 
@@ -77,26 +69,39 @@ select_ios_simulator() {
   if [ "$simulator_count" -eq 1 ]; then
     selected_simulator_line=$simulators
   else
-    echo "Multiple Simulators are booted:" >&2
-    index=1
-    printf '%s\n' "$simulators" | while IFS='	' read -r name udid; do
-      echo "  $index) $name" >&2
-      index=$((index + 1))
-    done
+    interactive_menu_begin
+    interactive_menu_index=1
+    while :; do
+      printf '\033[2J\033[H' >&2
+      echo "Select a Simulator (↑/↓, Enter):" >&2
+      index=1
+      printf '%s\n' "$simulators" | while IFS='	' read -r name udid; do
+        if [ "$index" -eq "$interactive_menu_index" ]; then
+          echo "  > $name" >&2
+        else
+          echo "    $name" >&2
+        fi
+        index=$((index + 1))
+      done
+      echo "  q/Ctrl+C: cancel" >&2
 
-    printf 'Select a Simulator to run [1-%d]: ' "$simulator_count" >&2
-    read -r selection </dev/tty
-    case "$selection" in
-      ''|*[!0-9]*)
-        echo "Invalid selection: $selection" >&2
-        exit 1
-        ;;
-    esac
-    if [ "$selection" -lt 1 ] || [ "$selection" -gt "$simulator_count" ]; then
-      echo "Invalid selection: $selection" >&2
-      exit 1
-    fi
-    selected_simulator_line=$(printf '%s\n' "$simulators" | sed -n "${selection}p")
+      interactive_menu_read_key
+      case "$interactive_menu_key" in
+        up)
+          if [ "$interactive_menu_index" -eq 1 ]; then interactive_menu_index=$simulator_count; else interactive_menu_index=$((interactive_menu_index - 1)); fi
+          ;;
+        down)
+          if [ "$interactive_menu_index" -eq "$simulator_count" ]; then interactive_menu_index=1; else interactive_menu_index=$((interactive_menu_index + 1)); fi
+          ;;
+        enter) break ;;
+        cancel)
+          interactive_menu_restore
+          exit 130
+          ;;
+      esac
+    done
+    interactive_menu_restore
+    selected_simulator_line=$(printf '%s\n' "$simulators" | sed -n "${interactive_menu_index}p")
   fi
 
   selected_ios_name=$(printf '%s' "$selected_simulator_line" | cut -f1)
@@ -128,18 +133,13 @@ prompt_uninstall_choice() {
     return
   fi
 
-  echo "$bundle_id is already installed on $selected_ios_name." >&2
-  echo "  1) Install/update over the existing app" >&2
-  echo "  2) Uninstall it first, then do a clean install" >&2
-  printf 'Choice [1-2]: ' >&2
-  read -r selection </dev/tty
-  case "$selection" in
-    2)
-      echo "Uninstalling $bundle_id from $selected_ios_name..." >&2
-      xcrun simctl uninstall "$selected_ios_udid" "$bundle_id" || true
-      ;;
-    1|*) ;;
-  esac
+  interactive_menu_select "The app is already installed. Choose install mode" "Install/update existing app" "Uninstall first, then clean install"
+  if [ "$interactive_menu_selected_index" -eq 2 ]; then
+    echo "Uninstalling $bundle_id from $selected_ios_name..." >&2
+    xcrun simctl uninstall "$selected_ios_udid" "$bundle_id" || true
+  else
+    echo "Keeping the existing $bundle_id installation." >&2
+  fi
 }
 
 prompt_environment
