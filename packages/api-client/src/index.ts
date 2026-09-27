@@ -607,7 +607,7 @@ export class ApiClient {
     return this.request(`/children/${childId}/development-entries`, { method: "POST", body: JSON.stringify(input) });
   }
 
-  async servicePlans(): Promise<ServicePlan[]> { return this.request("/service-plans"); }
+  async servicePlans(organizationId?: string): Promise<ServicePlan[]> { return this.request("/service-plans", this.orgOverride(organizationId)); }
   async createServicePlan(input: Omit<ServicePlan, "id">): Promise<ServicePlan> { return this.request("/service-plans", { method: "POST", body: JSON.stringify(input) }); }
   async branchCapacities(): Promise<BranchCapacity[]> { return this.request("/branch-capacities"); }
   async setBranchCapacity(branchId: string, dailyCapacity: number): Promise<BranchCapacity> { return this.request(`/branches/${branchId}/capacity`, { method: "PUT", body: JSON.stringify({ dailyCapacity }) }); }
@@ -618,10 +618,10 @@ export class ApiClient {
   async createServicePlanTemplate(input: UpsertServicePlanTemplateInput): Promise<ServicePlanTemplate> { return this.request("/service-plan-templates", { method: "POST", body: JSON.stringify(input) }); }
   async updateServicePlanTemplate(templateId: string, input: UpsertServicePlanTemplateInput): Promise<ServicePlanTemplate> { return this.request(`/service-plan-templates/${templateId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async deleteServicePlanTemplate(templateId: string): Promise<void> { await this.request<void>(`/service-plan-templates/${templateId}`, { method: "DELETE" }); }
-  async purchaseService(input: PurchaseServiceInput): Promise<{ entitlement: ServiceEntitlement; invoice: Invoice; bookings: Booking[] }> { return this.request("/service-purchases", { method: "POST", body: JSON.stringify(input) }); }
-  async entitlements(filter: BranchListFilter = {}): Promise<ServiceEntitlement[]> { return this.request(withBranchFilter("/service-entitlements", filter)); }
-  async bookEntitlement(entitlementId: string, bookingDates: string[]): Promise<Booking[]> { return this.request(`/service-entitlements/${entitlementId}/bookings`, { method: "POST", body: JSON.stringify({ bookingDates }) }); }
-  async bookings(filter: BranchListFilter = {}): Promise<Booking[]> { return this.request(withBranchFilter("/bookings", filter)); }
+  async purchaseService(input: PurchaseServiceInput, organizationId?: string): Promise<{ entitlement: ServiceEntitlement; invoice: Invoice; bookings: Booking[] }> { return this.request("/service-purchases", { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async entitlements(filter: BranchListFilter = {}, organizationId?: string): Promise<ServiceEntitlement[]> { return this.request(withBranchFilter("/service-entitlements", filter), this.orgOverride(organizationId)); }
+  async bookEntitlement(entitlementId: string, bookingDates: string[], organizationId?: string): Promise<Booking[]> { return this.request(`/service-entitlements/${entitlementId}/bookings`, { method: "POST", body: JSON.stringify({ bookingDates }), ...this.orgOverride(organizationId) }); }
+  async bookings(filter: BranchListFilter = {}, organizationId?: string): Promise<Booking[]> { return this.request(withBranchFilter("/bookings", filter), this.orgOverride(organizationId)); }
   async pendingBookings(filter: BranchListFilter = {}, search?: string): Promise<Booking[]> { return this.request(withBranchAndSearchFilter("/bookings/pending-approval", filter, search)); }
   async approveBooking(bookingId: string, approved: boolean): Promise<Booking> { return this.request(`/bookings/${bookingId}/approval`, { method: "POST", body: JSON.stringify({ approved }) }); }
   async invoices(filter: BranchListFilter = {}, search?: string, organizationId?: string): Promise<Invoice[]> { return this.request(withBranchAndSearchFilter("/invoices", filter, search), organizationId ? { headers: { "X-Organization-Id": organizationId } } : undefined); }
@@ -630,6 +630,13 @@ export class ApiClient {
   async paymentProof(invoiceId: string): Promise<PaymentProofImage> { return this.request(`/invoices/${invoiceId}/payment-proof`); }
   async reviewPaymentProof(invoiceId: string, approved: boolean, rejectionReason?: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/payment-proof/review`, { method: "POST", body: JSON.stringify({ approved, rejectionReason }) }); }
   async markInvoicePaid(invoiceId: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/mark-paid`, { method: "POST" }); }
+
+  // Overrides X-Organization-Id for one call without switching the client's ambient
+  // organization — safe for GET or a mutation alike, since authorizedFetch merges
+  // init.headers last regardless of method (see authorizedFetch below).
+  private orgOverride(organizationId?: string): RequestInit {
+    return organizationId ? { headers: { "X-Organization-Id": organizationId } } : {};
+  }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await this.authorizedFetch(path, init);

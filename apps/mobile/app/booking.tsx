@@ -8,7 +8,7 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
 import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAccess";
 import type { ServicePlan } from "@daycare/api-client";
-import { useChildren } from "@/attendance/useAttendance";
+import { useParentChildrenAcrossTenants } from "@/attendance/useAttendance";
 import { useBookEntitlement, useBookings, useEntitlements, useInvoices, usePurchaseService, useServicePlans } from "@/booking/useBooking";
 import { useI18n } from "@/i18n/I18nProvider";
 import { bookingStatusKey, invoiceSourceKey, invoiceStatusKey, servicePlanTypeKey } from "@/i18n/translations";
@@ -24,10 +24,17 @@ export default function BookingScreen() {
 
 function BookingScreenContent() {
   const router = useRouter();
-  const { organizationId } = useAuth();
-  const children = useChildren(); const plans = useServicePlans(); const entitlements = useEntitlements(); const bookings = useBookings(); const invoices = useInvoices(); const purchase = usePurchaseService(); const bookEntitlement = useBookEntitlement();
-  const { t, formatCurrency, formatDate } = useI18n();
+  const { profile } = useAuth();
+  // A Parent's children can belong to different tenants; the child picked below decides which
+  // tenant's plans/entitlements/bookings/invoices load and which tenant a purchase targets — no
+  // active-tenant switch is needed for any of it (see docs/business-rules.md §13.1).
+  const parentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT" && membership.active);
+  const showsTenantLabel = parentMemberships.length > 1;
+  const children = useParentChildrenAcrossTenants(parentMemberships, true);
   const [childId, setChildId] = useState<string | null>(null); const [planId, setPlanId] = useState<string | null>(null); const [creditEntitlementId, setCreditEntitlementId] = useState<string | null>(null); const [bookingDates, setBookingDates] = useState<string[]>([]);
+  const selectedOrganizationId = children.data.find((child) => child.id === childId)?.organizationId;
+  const plans = useServicePlans(selectedOrganizationId); const entitlements = useEntitlements({}, true, selectedOrganizationId); const bookings = useBookings(false, {}, true, selectedOrganizationId); const invoices = useInvoices({}, true, selectedOrganizationId); const purchase = usePurchaseService(); const bookEntitlement = useBookEntitlement();
+  const { t, formatCurrency, formatDate } = useI18n();
   const [listSheet, setListSheet] = useState<ListSheet>(null);
   const [bookFormOpen, setBookFormOpen] = useState(false);
   const plan = useMemo(() => plans.data?.find((item) => item.id === planId) ?? null, [plans.data, planId]);
@@ -54,22 +61,22 @@ function BookingScreenContent() {
   const submit = async () => {
     if (creditEntitlement) {
       if (bookingDates.length === 0) return Alert.alert(t("booking.selectDate"), t("booking.selectDateDescription"));
-      try { await bookEntitlement.mutateAsync({ entitlementId: creditEntitlement.id, bookingDates }); closeBookForm(); Alert.alert(t("booking.created"), t("booking.usingCredit")); }
+      try { await bookEntitlement.mutateAsync({ entitlementId: creditEntitlement.id, bookingDates, organizationId: selectedOrganizationId }); closeBookForm(); Alert.alert(t("booking.created"), t("booking.usingCredit")); }
       catch (error) { Alert.alert(t("booking.createFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
       return;
     }
     if (!childId || !plan) return;
     const dates = plan.type === "MONTHLY" ? [] : bookingDates;
     if (plan.type !== "MONTHLY" && dates.length === 0) return Alert.alert(t("booking.selectDate"), t("booking.selectDateDescription"));
-    try { await purchase.mutateAsync({ childId, planId: plan.id, bookingDates: dates }); closeBookForm(); Alert.alert(t("booking.orderCreated"), t("booking.orderDescription")); }
+    try { await purchase.mutateAsync({ childId, planId: plan.id, bookingDates: dates, organizationId: selectedOrganizationId }); closeBookForm(); Alert.alert(t("booking.orderCreated"), t("booking.orderDescription")); }
     catch (error) { Alert.alert(t("booking.orderFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
   return <AppScreen title={t("booking.title")}>
     <AppText tone="muted">{t("booking.subtitle")}</AppText>
     <SectionHeader title={t("booking.child")} />
     {children.isFetching && <ShimmerList variant="tile" />}
-    {!children.isFetching && <ChipGroup accessibilityLabel={t("booking.child")}>{children.data?.map((child) => <Chip key={child.id} label={child.fullName} selected={child.id === childId} onPress={() => selectChild(child.id)} />)}</ChipGroup>}
-    {!children.isFetching && children.data?.length === 0 && <EmptyState compact icon="happy-outline" title={t("children.empty")} />}
+    {!children.isFetching && <ChipGroup accessibilityLabel={t("booking.child")}>{children.data.map((child) => <Chip key={child.id} label={showsTenantLabel ? `${child.fullName} (${child.organizationName})` : child.fullName} selected={child.id === childId} onPress={() => selectChild(child.id)} />)}</ChipGroup>}
+    {!children.isFetching && children.data.length === 0 && <EmptyState compact icon="happy-outline" title={t("children.empty")} />}
     <Button leadingIcon={<Ionicons name="add-circle-outline" size={18} color={colors.onPrimary} />} disabled={!childId} onPress={() => setListSheet("plan")}>{t("booking.bookNow")}</Button>
     <View style={styles.grid}>
       <NavigationCard accessibilityLabel={t("booking.plan")} onPress={() => setListSheet("plan")} style={styles.tile} leading={<TileIcon name="pricetags-outline" />}>
@@ -108,7 +115,7 @@ function BookingScreenContent() {
     <BottomSheet visible={listSheet === "invoices"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.invoices")}>
       <AppText tone="muted">{t("booking.invoicesDescription")}</AppText>
       {invoices.isFetching && <ShimmerList />}
-      {!invoices.isFetching && childInvoices.map((item) => <Card key={item.id} variant="tinted" title={`${item.invoiceNumber} · ${formatCurrency(item.totalAmount)}`} subtitle={item.description ?? t(invoiceSourceKey(item.source))} trailing={<Badge tone={statusTone(item.status)} label={t(invoiceStatusKey(item.status))} />}><AppText variant="bodySmall" tone="muted">{t("tenant.dueDate", { date: formatDate(item.dueDate) })}</AppText>{item.status === "PENDING" && <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: item.id, ...(organizationId ? { organizationId } : {}) } })}>{t("parentEnrollment.pay")}</Button>}{item.status === "PAYMENT_SUBMITTED" && <AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>}</Card>)}
+      {!invoices.isFetching && childInvoices.map((item) => <Card key={item.id} variant="tinted" title={`${item.invoiceNumber} · ${formatCurrency(item.totalAmount)}`} subtitle={item.description ?? t(invoiceSourceKey(item.source))} trailing={<Badge tone={statusTone(item.status)} label={t(invoiceStatusKey(item.status))} />}><AppText variant="bodySmall" tone="muted">{t("tenant.dueDate", { date: formatDate(item.dueDate) })}</AppText>{item.status === "PENDING" && <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: item.id, ...(selectedOrganizationId ? { organizationId: selectedOrganizationId } : {}) } })}>{t("parentEnrollment.pay")}</Button>}{item.status === "PAYMENT_SUBMITTED" && <AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>}</Card>)}
       {!invoices.isFetching && childInvoices.length === 0 && <EmptyState compact icon="receipt-outline" title={t("booking.noInvoicesForChild")} />}
     </BottomSheet>
 
