@@ -114,6 +114,8 @@ interface ChildProgramTemplateRepository : JpaRepository<ChildProgramTemplate, U
 interface ChildProgramTemplateStepRepository : JpaRepository<ChildProgramTemplateStep, UUID> { fun findAllByOrganizationIdAndChildProgramTemplateIdOrderByDisplayOrderAscCreatedAtAsc(organizationId: UUID, childProgramTemplateId: UUID): List<ChildProgramTemplateStep>; fun deleteAllByChildProgramTemplateId(childProgramTemplateId: UUID) }
 interface ChildHealthRecordRepository : JpaRepository<ChildHealthRecord, UUID> { fun findByOrganizationIdAndChildId(organizationId: UUID, childId: UUID): ChildHealthRecord? }
 interface ChildHealthNoteRepository : JpaRepository<ChildHealthNote, UUID> { fun findAllByOrganizationIdAndChildIdOrderByRecordedAtDesc(organizationId: UUID, childId: UUID): List<ChildHealthNote> }
+interface ChildMessageRepository : JpaRepository<ChildMessage, UUID> { fun findAllByOrganizationIdAndChildIdOrderByCreatedAtAsc(organizationId: UUID, childId: UUID): List<ChildMessage> }
+interface ChildMessageReadRepository : JpaRepository<ChildMessageRead, UUID> { fun findByChildIdAndUserId(childId: UUID, userId: UUID): ChildMessageRead? }
 interface ChildStaffAssignmentRepository : JpaRepository<ChildStaffAssignment, UUID> {
     fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildStaffAssignment>
     fun findAllByOrganizationIdAndUserId(organizationId: UUID, userId: UUID): List<ChildStaffAssignment>

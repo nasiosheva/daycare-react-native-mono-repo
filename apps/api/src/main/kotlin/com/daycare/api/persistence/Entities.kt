@@ -638,6 +638,27 @@ class ChildHealthNote(
 )
 
 @Entity
+@Table(name = "child_messages")
+class ChildMessage(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "sender_user_id", nullable = false) var senderUserId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(name = "sender_role", nullable = false) var senderRole: Role = Role.PARENT,
+    @Column(nullable = false, length = 2_000) var body: String = "",
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity
+@Table(name = "child_message_reads", uniqueConstraints = [UniqueConstraint(columnNames = ["child_id", "user_id"])])
+class ChildMessageRead(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(),
+    @Column(name = "last_read_at", nullable = false) var lastReadAt: Instant = Instant.now(),
+)
+
+@Entity
 @Table(name = "child_staff_assignments", uniqueConstraints = [UniqueConstraint(columnNames = ["child_id", "user_id"])])
 class ChildStaffAssignment(
     @Id var id: UUID = UUID.randomUUID(),

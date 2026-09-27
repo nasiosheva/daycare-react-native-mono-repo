@@ -252,6 +252,14 @@ Status minimum lifecycle Platform Knowledge adalah `CANDIDATE`, `APPROVED`, `PUB
 - **Analitik tenant** (`AnalyticsService`) hanya untuk Staff Admin, dan sepenuhnya terpisah dari sistem Platform Knowledge lintas-tenant di §7 (yang masih aturan target, belum diimplementasikan). Analitik ini mencakup: okupansi per cabang (anak aktif vs kapasitas harian cabang), retensi Parent (jumlah Parent aktif saat ini, plus jumlah yang nonaktif per bulan — bukan rekonstruksi penuh "aktif di akhir bulan X" karena `Membership` tidak menyimpan `createdAt`), dan tren pencapaian Goal bulanan (rata-rata persentase Ya lintas Goal yang dimulai bulan itu, memakai aturan perhitungan yang sama seperti Goal individual: satu hari dihitung Ya hanya jika semua indikator aktif bernilai Ya).
 - `Membership` memiliki `deactivatedAt` (nullable) yang diisi setiap kali `active` berubah menjadi `false`, dan dikosongkan lagi saat membership diaktifkan ulang. Ini murni untuk mendukung metrik retensi di atas; tidak mengubah logika otorisasi mana pun yang sudah ada berdasarkan `active`.
 
+### 10.1 Pesan langsung Parent–Staff per anak
+
+- **Satu thread per anak** (`ChildMessage`, append-only, tanpa edit/hapus) — bukan percakapan 1-on-1 per pasangan Parent–Staff. Semua wali anak yang terhubung dan semua Staff dalam scope anak itu (`ChildScopeService.requireStaffManagedChild`/`requireParentLinkedChild`, sama seperti insiden dan catatan kesehatan) berbagi satu riwayat pesan.
+- **Staff Admin** selalu punya akses baca-tulis ke thread anak manapun dalam tenant (mengikuti `requireStaffManagedChild` yang selalu `true` untuk `STAFF_ADMIN`), untuk keperluan supervisi bila ada komplain — tetapi **tidak** menerima notifikasi push/inbox untuk setiap pesan Parent–Staff, supaya inboxnya tidak kebanjiran dari seluruh anak tenant.
+- **Penerima notifikasi pesan baru**: bila pengirim Parent, dinotifikasi Staff yang secara langsung di-assign ke anak itu (`ChildStaffAssignment`); bila tidak ada Staff yang di-assign, jatuh ke seluruh Staff Admin aktif tenant (fallback, bukan default). Bila pengirim Staff/Staff Admin, dinotifikasi seluruh wali anak yang terhubung — sama seperti pola `ChildIncidentService.notifyGuardians`.
+- **Akses saat anak nonaktif**: fitur ini **tidak punya pengecualian read-only**. Begitu `Child.active = false`, `requireParentLinkedChild`/`requireStaffManagedChild` menolak total (termasuk membaca riwayat), persis seperti Goals, catatan kesehatan, insiden, dan consent — bukan pola `GuardianAuthority` target di §13.12 yang belum dibangun.
+- V1 hanya mendukung teks (maksimum 2.000 karakter); lampiran foto belum ada.
+
 ## 11. Dokumentasi perubahan
 
 Ketika flow, aturan bisnis, kontrak API, konfigurasi, atau verifikasi berubah:

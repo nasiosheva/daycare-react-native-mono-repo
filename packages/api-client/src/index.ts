@@ -141,6 +141,7 @@ export type CreateChildHealthNoteInput = { note: string };
 export type IncidentSeverity = "MINOR" | "MODERATE" | "SERIOUS";
 export type IncidentCategory = "INJURY" | "ILLNESS" | "BEHAVIOR" | "OTHER";
 export type ChildIncidentReport = { id: string; childId: string; severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string | null; occurredAt: string; hasPhoto: boolean; acknowledgedByMe: boolean; createdAt: string };
+export type ChildMessage = { id: string; childId: string; senderUserId: string; senderName: string; senderRole: Role; body: string; createdAt: string; mine: boolean };
 export type IncidentPhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
 export type CreateChildIncidentInput = { severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string; occurredAt: string; photo?: IncidentPhotoInput };
 export type ChildIncidentPhoto = { contentType: string; dataBase64: string };
@@ -256,7 +257,7 @@ export type TenantFeedback = { id: string; submittedByName: string; category: Te
 export type CreateTenantFeedbackInput = { category: TenantFeedbackCategory; message: string };
 export type StaffLeaveEvidence = { contentType: string; dataBase64: string };
 export type GlobalCurriculumSeedResult = { alreadySeeded: boolean; learningLevelCount: number; developmentProgramCount: number; developmentProgramItemCount: number; curriculumProgramCount: number };
-export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "INCIDENT_REPORTS" | "HEALTH" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS" | "PRIVATE_TUTORING" | "CHILD_PROGRAMS" | "TENANT_FEEDBACK";
+export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "INCIDENT_REPORTS" | "HEALTH" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS" | "PRIVATE_TUTORING" | "CHILD_PROGRAMS" | "TENANT_FEEDBACK" | "CHILD_MESSAGES";
 export type RealtimeEvent<TPayload = unknown> = { type: "EVENT"; id: string; organizationId?: string | null; flags: RealtimeFlag[]; payload?: TPayload | null; occurredAt: string };
 export type RealtimeConnectRequest = { type: "CONNECT"; token: string; organizationId?: string | null };
 
@@ -561,6 +562,18 @@ export class ApiClient {
 
   async childIncidentReportPhoto(childId: string, incidentId: string): Promise<ChildIncidentPhoto> {
     return this.request(`/children/${childId}/incident-reports/${incidentId}/photo`);
+  }
+
+  async childMessages(childId: string): Promise<ChildMessage[]> {
+    return this.request(`/children/${childId}/messages`);
+  }
+
+  async sendChildMessage(childId: string, body: string): Promise<ChildMessage> {
+    return this.request(`/children/${childId}/messages`, { method: "POST", body: JSON.stringify({ body }) });
+  }
+
+  async markChildMessagesRead(childId: string): Promise<void> {
+    await this.request<void>(`/children/${childId}/messages/read`, { method: "POST" });
   }
 
   async analyticsOccupancy(): Promise<BranchOccupancy[]> { return this.request("/analytics/occupancy"); }

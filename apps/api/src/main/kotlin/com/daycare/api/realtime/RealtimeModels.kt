@@ -31,6 +31,7 @@ enum class RealtimeFlag {
     PRIVATE_TUTORING,
     CHILD_PROGRAMS,
     TENANT_FEEDBACK,
+    CHILD_MESSAGES,
 }
 
 data class RealtimeConnectRequest(
