@@ -11,26 +11,18 @@ set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 . "$script_dir/lib/session-log.sh"
+. "$script_dir/lib/interactive-menu.sh"
 mobile_launcher="$script_dir/run-mobile.sh"
 backend_launcher="$script_dir/run-backend-local.sh"
 backend_pid=""
 started_backend=false
 
 prompt_environment() {
-  echo "Select an environment:" >&2
-  echo "  1) local" >&2
-  echo "  2) dev" >&2
-  echo "  3) prod" >&2
-  printf 'Environment [1-3]: ' >&2
-  read -r selection </dev/tty
-  case "$selection" in
+  interactive_menu_select "Select an environment" local dev prod
+  case "$interactive_menu_selected_index" in
     1) selected_environment=local ;;
     2) selected_environment=dev ;;
     3) selected_environment=prod ;;
-    *)
-      echo "Invalid selection: $selection" >&2
-      exit 1
-      ;;
   esac
 }
 

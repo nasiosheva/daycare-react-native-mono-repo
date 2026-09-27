@@ -71,6 +71,8 @@ Local dev stack — prefer the interactive launchers over calling Gradle/Expo di
 
 Every launcher exports its session output (including everything the launched Metro/Expo/adb-logcat process prints, since file-descriptor redirection survives both `exec` and a plain child process) to a timestamped `.txt` file under `run-logs/` at the repo root (see `scripts/lib/session-log.sh`). `run-logs/` is `.gitignore`d — delete its `.txt` files before opening a PR regardless (see above).
 
+Use `./scripts/clean-run-logs.sh` to remove all `.txt` session logs under `run-logs/`.
+
 ## Architecture
 
 **Monorepo** (pnpm + Turborepo): `apps/mobile` (Expo Router app, Android/iOS/web), `apps/api` (Kotlin/Spring Boot REST API), `packages/core` (roles, permissions, domain types, Zod schemas — the shared source of truth consumed by both mobile and api-client), `packages/ui` (shared React Native UI primitives/design tokens), `packages/api-client` (typed HTTP client, hand-written to mirror the backend contract). Changing a persisted feature normally touches all four: a migration + entity + repository + service + controller in `apps/api`, then a type/method in `packages/api-client`, then the screen/hook in `apps/mobile`, and often a shared enum/schema in `packages/core`.

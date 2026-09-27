@@ -19,8 +19,11 @@
 #      it is not already responding, so this launcher works standalone
 #      without a second terminal. An already-running local API is left
 #      untouched and is not stopped when this launcher exits.
-#   4. Asks whether to uninstall the existing app from the selected device
-#      first, or install/update over whatever is already there.
+#   4. Uses arrow-key menus instead of numeric input, and asks whether to
+#      uninstall the existing app from the selected device first. The clean
+#      install choice defaults to Yes after five seconds without input.
+#   5. Keeps the session controllable from the same terminal: s stops the
+#      launcher, r restarts the Android client, and b restarts the local API.
 #
 # Debug delegates the actual run to run-mobile.sh (dev-client + Metro, as
 # before). Release instead builds a signed APK via build-android.sh, then
@@ -31,39 +34,98 @@ application_id="com.children.platform"
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 . "$script_dir/lib/session-log.sh"
+. "$script_dir/lib/interactive-menu.sh"
 environment_file="$repository_root/.env"
+run_mobile_pid=""
+backend_pid=""
+backend_log_file=""
 
-prompt_build_type() {
-  echo "Select a build type:" >&2
-  echo "  1) Debug (dev-client, Metro-connected)" >&2
-  echo "  2) Release (install a signed build, no Metro)" >&2
-  printf 'Build type [1-2]: ' >&2
-  read -r selection </dev/tty
-  case "$selection" in
-    1) selected_build_type=debug ;;
-    2) selected_build_type=release ;;
-    *)
-      echo "Invalid selection: $selection" >&2
-      exit 1
+stop_mobile_session() {
+  if [ -n "$run_mobile_pid" ] && kill -0 "$run_mobile_pid" >/dev/null 2>&1; then
+    kill -INT "$run_mobile_pid" >/dev/null 2>&1 || true
+    wait "$run_mobile_pid" >/dev/null 2>&1 || true
+  fi
+  run_mobile_pid=""
+}
+
+cleanup_launcher() {
+  interactive_menu_restore
+  stop_mobile_session
+}
+
+trap cleanup_launcher EXIT
+
+restore_terminal() { interactive_menu_restore; }
+begin_key_mode() { interactive_menu_begin; }
+read_key() { interactive_menu_read_key; menu_key=$interactive_menu_key; }
+read_timed_key() { interactive_menu_read_timed_key; menu_key=$interactive_menu_key; }
+
+render_build_type_menu() {
+  printf '\033[2J\033[H' >&2
+  echo "Select a build type (↑/↓, Enter):" >&2
+  if [ "$menu_index" -eq 1 ]; then echo "  > Debug (dev-client, Metro-connected)" >&2; else echo "    Debug (dev-client, Metro-connected)" >&2; fi
+  if [ "$menu_index" -eq 2 ]; then echo "  > Release (install a signed build, no Metro)" >&2; else echo "    Release (install a signed build, no Metro)" >&2; fi
+  echo "  q/Ctrl+C: cancel" >&2
+}
+
+render_environment_menu() {
+  printf '\033[2J\033[H' >&2
+  echo "Select an environment (↑/↓, Enter):" >&2
+  if [ "$menu_index" -eq 1 ]; then echo "  > local" >&2; else echo "    local" >&2; fi
+  if [ "$menu_index" -eq 2 ]; then echo "  > dev" >&2; else echo "    dev" >&2; fi
+  if [ "$menu_index" -eq 3 ]; then echo "  > prod" >&2; else echo "    prod" >&2; fi
+  echo "  q/Ctrl+C: cancel" >&2
+}
+
+finish_menu_or_exit() {
+  case "$menu_key" in
+    cancel)
+      restore_terminal
+      exit 130
       ;;
   esac
 }
 
+prompt_build_type() {
+  menu_index=1
+  begin_key_mode
+  while :; do
+    render_build_type_menu
+    read_key
+    finish_menu_or_exit
+    case "$menu_key" in
+      up|down)
+        if [ "$menu_index" -eq 1 ]; then menu_index=2; else menu_index=1; fi
+        ;;
+      enter) break ;;
+    esac
+  done
+  restore_terminal
+  if [ "$menu_index" -eq 1 ]; then selected_build_type=debug; else selected_build_type=release; fi
+}
+
 prompt_environment() {
-  echo "Select an environment:" >&2
-  echo "  1) local" >&2
-  echo "  2) dev" >&2
-  echo "  3) prod" >&2
-  printf 'Environment [1-3]: ' >&2
-  read -r selection </dev/tty
-  case "$selection" in
+  menu_index=1
+  begin_key_mode
+  while :; do
+    render_environment_menu
+    read_key
+    finish_menu_or_exit
+    case "$menu_key" in
+      up)
+        if [ "$menu_index" -eq 1 ]; then menu_index=3; else menu_index=$((menu_index - 1)); fi
+        ;;
+      down)
+        if [ "$menu_index" -eq 3 ]; then menu_index=1; else menu_index=$((menu_index + 1)); fi
+        ;;
+      enter) break ;;
+    esac
+  done
+  restore_terminal
+  case "$menu_index" in
     1) selected_environment=local ;;
     2) selected_environment=dev ;;
     3) selected_environment=prod ;;
-    *)
-      echo "Invalid selection: $selection" >&2
-      exit 1
-      ;;
   esac
 }
 
@@ -103,29 +165,38 @@ select_android_device() {
     return
   fi
 
-  echo "Multiple physical Android devices are connected:" >&2
-  index=1
-  for serial in "$@"; do
-    model=$(printf '%s\n' "$device_list" | grep "^$serial " | grep -o 'model:[^ ]*' | cut -d: -f2)
-    echo "  $index) $serial${model:+ ($model)}" >&2
-    index=$((index + 1))
+  device_count=$#
+  menu_index=1
+  begin_key_mode
+  while :; do
+    printf '\033[2J\033[H' >&2
+    echo "Select an Android device (↑/↓, Enter):" >&2
+    index=1
+    for serial in "$@"; do
+      model=$(printf '%s\n' "$device_list" | grep "^$serial " | grep -o 'model:[^ ]*' | cut -d: -f2)
+      if [ "$index" -eq "$menu_index" ]; then
+        echo "  > $serial${model:+ ($model)}" >&2
+      else
+        echo "    $serial${model:+ ($model)}" >&2
+      fi
+      index=$((index + 1))
+    done
+    echo "  q/Ctrl+C: cancel" >&2
+
+    read_key
+    finish_menu_or_exit
+    case "$menu_key" in
+      up)
+        if [ "$menu_index" -eq 1 ]; then menu_index=$device_count; else menu_index=$((menu_index - 1)); fi
+        ;;
+      down)
+        if [ "$menu_index" -eq "$device_count" ]; then menu_index=1; else menu_index=$((menu_index + 1)); fi
+        ;;
+      enter) break ;;
+    esac
   done
-
-  printf 'Select a device to run [1-%d]: ' "$#" >&2
-  read -r selection </dev/tty
-  case "$selection" in
-    ''|*[!0-9]*)
-      echo "Invalid selection: $selection" >&2
-      exit 1
-      ;;
-  esac
-  if [ "$selection" -lt 1 ] || [ "$selection" -gt "$#" ]; then
-    echo "Invalid selection: $selection" >&2
-    exit 1
-  fi
-
-  shift $((selection - 1))
-  selected_android_serial=$1
+  restore_terminal
+  selected_android_serial=$(printf '%s\n' "$device_serials" | sed -n "${menu_index}p")
 }
 
 detect_device_host_ip() {
@@ -192,7 +263,8 @@ ensure_local_backend() {
   echo "No local API detected at http://localhost:8080/api; starting it in the background." >&2
   backend_log_file="$repository_root/daycare-api-local.log"
   nohup "$script_dir/run-backend-local.sh" >"$backend_log_file" 2>&1 &
-  echo "Started local API in the background (PID $!, log: $backend_log_file). Waiting for it to become ready is handled by run-mobile.sh next." >&2
+  backend_pid=$!
+  echo "Started local API in the background (PID $backend_pid, log: $backend_log_file). Waiting for it to become ready is handled by run-mobile.sh next." >&2
 }
 
 prompt_uninstall_choice() {
@@ -200,18 +272,49 @@ prompt_uninstall_choice() {
     return
   fi
 
-  echo "$application_id is already installed on $selected_android_serial." >&2
-  echo "  1) Install/update over the existing app" >&2
-  echo "  2) Uninstall it first, then do a clean install" >&2
-  printf 'Choice [1-2]: ' >&2
-  read -r selection </dev/tty
-  case "$selection" in
-    2)
-      echo "Uninstalling $application_id from $selected_android_serial..." >&2
-      adb -s "$selected_android_serial" uninstall "$application_id" || true
-      ;;
-    1|*) ;;
-  esac
+  uninstall_confirmed=false
+  menu_index=1
+  remaining_seconds=5
+  begin_key_mode
+  while [ "$remaining_seconds" -gt 0 ]; do
+    printf '\033[2J\033[H' >&2
+    echo "$application_id is already installed on $selected_android_serial." >&2
+    echo "Uninstall before launch? (↑/↓, Enter) — timeout: ${remaining_seconds}s; default: Yes" >&2
+    if [ "$menu_index" -eq 1 ]; then echo "  > Yes, uninstall first" >&2; else echo "    Yes, uninstall first" >&2; fi
+    if [ "$menu_index" -eq 2 ]; then echo "  > No, install/update existing app" >&2; else echo "    No, install/update existing app" >&2; fi
+    echo "  s/Ctrl+C: stop" >&2
+
+    read_timed_key
+    case "$menu_key" in
+      up|down)
+        if [ "$menu_index" -eq 1 ]; then menu_index=2; else menu_index=1; fi
+        ;;
+      enter)
+        uninstall_confirmed=true
+        break
+        ;;
+      cancel|stop)
+        restore_terminal
+        exit 130
+        ;;
+      none)
+        remaining_seconds=$((remaining_seconds - 1))
+        ;;
+    esac
+  done
+  restore_terminal
+
+  if [ "$uninstall_confirmed" != "true" ]; then
+    menu_index=1
+    echo "No choice received in 5 seconds; defaulting to Yes and uninstalling first." >&2
+  fi
+
+  if [ "$menu_index" -eq 1 ]; then
+    echo "Uninstalling $application_id from $selected_android_serial..." >&2
+    adb -s "$selected_android_serial" uninstall "$application_id" || true
+  else
+    echo "Keeping the existing $application_id installation." >&2
+  fi
 }
 
 install_and_launch_release() {
@@ -223,6 +326,76 @@ install_and_launch_release() {
   echo "Installing the release build on $selected_android_serial..." >&2
   adb -s "$selected_android_serial" install -r "$release_apk_path"
   adb -s "$selected_android_serial" shell monkey -p "$application_id" -c android.intent.category.LAUNCHER 1 >/dev/null
+}
+
+reload_frontend() {
+  if ! adb -s "$selected_android_serial" shell pm list packages "$application_id" 2>/dev/null | grep -q "$application_id"; then
+    echo "Cannot reload the frontend because $application_id is not installed." >&2
+    return
+  fi
+
+  echo "Reloading the Android frontend..." >&2
+  adb -s "$selected_android_serial" shell am force-stop "$application_id" >/dev/null 2>&1 || true
+  adb -s "$selected_android_serial" shell monkey -p "$application_id" -c android.intent.category.LAUNCHER 1 >/dev/null
+}
+
+reload_backend() {
+  if [ "$selected_environment" != "local" ]; then
+    echo "Backend reload is available only for the local environment." >&2
+    return
+  fi
+
+  echo "Reloading the local backend..." >&2
+  if [ -n "$backend_pid" ] && kill -0 "$backend_pid" >/dev/null 2>&1; then
+    kill "$backend_pid" >/dev/null 2>&1 || true
+    wait "$backend_pid" >/dev/null 2>&1 || true
+  fi
+
+  backend_log_file="$repository_root/daycare-api-local.log"
+  nohup "$script_dir/run-backend-local.sh" >"$backend_log_file" 2>&1 &
+  backend_pid=$!
+  echo "Started the local backend again (PID $backend_pid, log: $backend_log_file)." >&2
+}
+
+run_hotkey_session() {
+  if [ -n "$run_mobile_pid" ]; then
+    echo "Controls: s stop, r reload frontend, b reload local backend." >&2
+  else
+    echo "Release app launched. Controls: s stop launcher, r restart frontend, b reload local backend." >&2
+  fi
+
+  begin_key_mode
+  while :; do
+    if [ -n "$run_mobile_pid" ] && ! kill -0 "$run_mobile_pid" >/dev/null 2>&1; then
+      break
+    fi
+
+    read_timed_key
+    case "$menu_key" in
+      stop)
+        echo "Stopping Android launcher..." >&2
+        stop_mobile_session
+        restore_terminal
+        return 0
+        ;;
+      reload_frontend) reload_frontend ;;
+      reload_backend) reload_backend ;;
+    esac
+  done
+  restore_terminal
+
+  if [ -n "$run_mobile_pid" ]; then
+    mobile_exit_status=0
+    wait "$run_mobile_pid" || mobile_exit_status=$?
+    run_mobile_pid=""
+    return "$mobile_exit_status"
+  fi
+}
+
+run_debug_session() {
+  "$script_dir/run-mobile.sh" android "$selected_environment" </dev/null &
+  run_mobile_pid=$!
+  run_hotkey_session
 }
 
 prompt_build_type
@@ -241,7 +414,8 @@ fi
 
 if [ "$selected_build_type" = "release" ]; then
   install_and_launch_release
+  run_hotkey_session
 else
   prompt_uninstall_choice
-  exec "$script_dir/run-mobile.sh" android "$selected_environment"
+  run_debug_session
 fi
