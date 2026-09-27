@@ -186,6 +186,7 @@ export type CurrentUser = {
     branchId?: string;
     role: Role;
     active: boolean;
+    subscriptionStatus?: TenantSubscriptionStatus | null;
     canManageChildPrograms: boolean;
     canManageDevelopmentCategories: boolean;
     institutionTypes: InstitutionType[];

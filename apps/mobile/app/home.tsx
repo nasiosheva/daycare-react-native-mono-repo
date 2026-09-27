@@ -19,14 +19,14 @@ import { unreadNotificationBadge, unreadNotificationCount } from "@/notification
 import { parentEnrollmentQueryKey } from "@/parent-enrollment/queryKeys";
 import { isInactiveStaffMembership } from "@/navigation/inactiveStaffRouteAccess";
 import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
+import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
 
 export default function HomeScreen() {
-  const router = useRouter();
   const { user, profile, organizationId, loading, profileError, requiresOrganizationSelection } = useAuth();
-  const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const offeringAccess = useUiAccessContext(Boolean(profile && organizationId));
-  const activeStaffMembership = membership?.role === "STAFF" && membership.active;
+  const tenantSubscriptionActive = hasOperationalTenantSubscription(membership?.subscriptionStatus);
+  const offeringAccess = useUiAccessContext(Boolean(profile && organizationId && tenantSubscriptionActive));
+  const activeStaffMembership = membership?.role === "STAFF" && membership.active && tenantSubscriptionActive;
   const staffChildren = useChildren(activeStaffMembership);
   const staffDailyTasks = useStaffDailyTasks(staffChildren.data ?? [], activeStaffMembership);
   if (loading) return <HomeLoadingState />;
@@ -44,9 +44,9 @@ export default function HomeScreen() {
   const hasDaycareOperations = hasOfferingCapability(offeringAccess.data, "DAYCARE_OPERATIONS");
   const isStaffAdmin = membership.role === "STAFF_ADMIN";
   const isStaff = membership.role === "STAFF";
-  if (isStaffAdmin) return <StaffAdminHome displayName={profile.displayName} organizationName={membership.organizationName} hasDaycareOperations={hasDaycareOperations} />;
-  if (isStaff) return <StaffHome displayName={profile.displayName} organizationName={membership.organizationName} managedChildren={staffChildren} tasksByChildId={staffDailyTasks} />;
-  return <ParentHome displayName={profile.displayName} organizationName={membership.organizationName} hasDaycareOperations={hasDaycareOperations} />;
+  if (isStaffAdmin) return <StaffAdminHome displayName={profile.displayName} organizationName={membership.organizationName} hasDaycareOperations={hasDaycareOperations} subscriptionActive={tenantSubscriptionActive} />;
+  if (isStaff) return <StaffHome displayName={profile.displayName} organizationName={membership.organizationName} managedChildren={staffChildren} tasksByChildId={staffDailyTasks} subscriptionActive={tenantSubscriptionActive} />;
+  return <ParentHome displayName={profile.displayName} organizationName={membership.organizationName} hasDaycareOperations={hasDaycareOperations} subscriptionActive={tenantSubscriptionActive} />;
 }
 
 function useHomeRefresh(queryKeys: readonly QueryKey[]) {
@@ -94,16 +94,18 @@ function InactiveStaffHome({ displayName, organizationName, role }: { displayNam
   </View></AppScreen>;
 }
 
-function StaffHome({ displayName, organizationName, managedChildren, tasksByChildId }: { displayName: string; organizationName: string; managedChildren: ReturnType<typeof useChildren>; tasksByChildId: ReturnType<typeof useStaffDailyTasks> }) {
+function StaffHome({ displayName, organizationName, managedChildren, tasksByChildId, subscriptionActive }: { displayName: string; organizationName: string; managedChildren: ReturnType<typeof useChildren>; tasksByChildId: ReturnType<typeof useStaffDailyTasks>; subscriptionActive: boolean }) {
   const router = useRouter();
   const { organizationId } = useAuth();
   const { t } = useI18n();
+  const children = subscriptionActive ? managedChildren.data ?? [] : [];
   const homeRefresh = useHomeRefresh([["children", organizationId], ["development-entries", organizationId], ["child-goals", organizationId], ["notifications", organizationId]]);
   return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
-    <View style={styles.staffToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.STAFF")}</AppText></View><NotificationBellButton /><Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable></View>
+    <View style={styles.staffToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.STAFF")}</AppText></View><NotificationBellButton enabled={subscriptionActive} /><Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable></View>
+    {!subscriptionActive && <AppText tone="danger">{t("tenantReadiness.issueSubscription")}</AppText>}
     <SectionHeader title={t("home.managedChildren")} />
     {managedChildren.isFetching && <ShimmerList variant="tile" />}
-    {!managedChildren.isFetching && managedChildren.data?.map((child) => {
+    {!managedChildren.isFetching && children.map((child) => {
       const tasks = tasksByChildId.get(child.id);
       return <NavigationCard key={child.id} accessibilityLabel={t("home.openDailyTasks", { name: child.fullName })} onPress={() => router.push({ pathname: "/development", params: { childId: child.id } })}>
         <AppText variant="h5">{child.fullName}</AppText>
@@ -111,42 +113,43 @@ function StaffHome({ displayName, organizationName, managedChildren, tasksByChil
       </NavigationCard>;
     })}
     {managedChildren.isError && !managedChildren.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void managedChildren.refetch()} />}
-    {!managedChildren.isFetching && managedChildren.data?.length === 0 && <EmptyState icon="happy-outline" title={t("home.noManagedChildren")} description={t("home.noManagedChildrenDescription")} />}
+    {!managedChildren.isFetching && children.length === 0 && <EmptyState icon="happy-outline" title={t("home.noManagedChildren")} description={t("home.noManagedChildrenDescription")} />}
   </View></AppScreen>;
 }
 
-function ParentHome({ displayName, organizationName, hasDaycareOperations }: { displayName: string; organizationName: string; hasDaycareOperations: boolean }) {
+function ParentHome({ displayName, organizationName, hasDaycareOperations, subscriptionActive }: { displayName: string; organizationName: string; hasDaycareOperations: boolean; subscriptionActive: boolean }) {
   const router = useRouter();
   const { api, organizationId, profile, selectOrganization } = useAuth();
   const { t, formatCurrency, formatDate } = useI18n();
-  const access = useUiAccessContext(true);
+  const access = useUiAccessContext(subscriptionActive);
   const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
-  const parentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT" && membership.active);
+  const parentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT" && membership.active && hasOperationalTenantSubscription(membership.subscriptionStatus));
   const showsTenantLabel = parentMemberships.length > 1;
   const children = useParentChildrenAcrossTenants(parentMemberships, true);
   const openChild = (childOrganizationId: string, pathname: string, params: Record<string, string>) => {
     selectOrganization(childOrganizationId);
     router.push({ pathname, params } as never);
   };
-  const entitlements = useEntitlements(hasDaycareOperations);
-  const invoices = useInvoices(true);
+  const entitlements = useEntitlements(hasDaycareOperations && subscriptionActive);
+  const invoices = useInvoices(subscriptionActive);
   const privateTutoringServices = useQueries({
     queries: (children.data ?? []).map((child) => ({
       queryKey: ["private-tutoring-services", organizationId, child.id],
       queryFn: () => api.parentPrivateTutoringServices(child.id),
-      enabled: Boolean(organizationId && hasAcademicOffering),
+      enabled: Boolean(organizationId && subscriptionActive && hasAcademicOffering),
     })),
   });
   const hasPrivateTutoring = privateTutoringServices.some((query) => (query.data?.length ?? 0) > 0);
-  const programsSummary = useQuery({ queryKey: ["parent-child-profile", organizationId, "programs-summary"], queryFn: () => api.parentChildProgramsSummary(), enabled: Boolean(organizationId) });
-  const summary = createParentHomeSummary(children.data ?? [], entitlements.data ?? [], invoices.data ?? []);
+  const programsSummary = useQuery({ queryKey: ["parent-child-profile", organizationId, "programs-summary"], queryFn: () => api.parentChildProgramsSummary(), enabled: Boolean(organizationId && subscriptionActive) });
+  const summary = createParentHomeSummary(subscriptionActive ? children.data ?? [] : [], subscriptionActive ? entitlements.data ?? [] : [], subscriptionActive ? invoices.data ?? [] : []);
   const childrenUnavailable = children.isFetching || children.isError;
   const servicesUnavailable = hasDaycareOperations && (entitlements.isFetching || entitlements.isError);
   const paymentsUnavailable = invoices.isFetching || invoices.isError;
   const homeRefresh = useHomeRefresh([["ui-access-context", organizationId], ["children", organizationId], ["entitlements", organizationId], ["invoices", organizationId], ["private-tutoring-services", organizationId], ["parent-child-profile", organizationId]]);
 
   return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
-    <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.PARENT")}</AppText></View><NotificationBellButton /><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
+    <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.PARENT")}</AppText></View><NotificationBellButton enabled={subscriptionActive} /><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
+    {!subscriptionActive && <AppText tone="danger">{t("tenantReadiness.issueSubscription")}</AppText>}
     <SummarySection title={t("home.parentChildren")}>
       {children.isFetching && <ShimmerList />}
       {children.isError && !children.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void children.refetch()} />}
@@ -240,25 +243,25 @@ function HomeLoadingState() {
   return <AppScreen showBottomNavigation={false}><View style={styles.loading}><ActivityIndicator color={colors.primary} /><AppText tone="muted">{t("common.loading")}</AppText></View></AppScreen>;
 }
 
-function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }: { displayName: string; organizationName: string; hasDaycareOperations: boolean }) {
+function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, subscriptionActive }: { displayName: string; organizationName: string; hasDaycareOperations: boolean; subscriptionActive: boolean }) {
   const router = useRouter();
   const { api, organizationId } = useAuth();
   const { t } = useI18n();
-  const children = useChildren(true);
-  const users = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: Boolean(organizationId) });
-  const pendingBookings = useBookings(true, hasDaycareOperations);
-  const pendingEnrollments = useQuery({ queryKey: ["parent-enrollments", organizationId, "pending"], queryFn: () => api.pendingParentEnrollments(), enabled: Boolean(organizationId) && hasDaycareOperations });
-  const invoices = useInvoices(hasDaycareOperations);
-  const entitlements = useEntitlements(hasDaycareOperations);
+  const children = useChildren(subscriptionActive);
+  const users = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: Boolean(organizationId && subscriptionActive) });
+  const pendingBookings = useBookings(true, hasDaycareOperations && subscriptionActive);
+  const pendingEnrollments = useQuery({ queryKey: ["parent-enrollments", organizationId, "pending"], queryFn: () => api.pendingParentEnrollments(), enabled: Boolean(organizationId && hasDaycareOperations && subscriptionActive) });
+  const invoices = useInvoices(hasDaycareOperations && subscriptionActive);
+  const entitlements = useEntitlements(hasDaycareOperations && subscriptionActive);
   const [branchSearch, setBranchSearch] = useState("");
   const [debouncedBranchSearch, setDebouncedBranchSearch] = useState("");
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedBranchSearch(branchSearch.trim()), 300);
     return () => clearTimeout(handle);
   }, [branchSearch]);
-  const branches = useQuery({ queryKey: ["tenant-branches", organizationId, debouncedBranchSearch], queryFn: () => api.branches(debouncedBranchSearch || undefined), enabled: Boolean(organizationId) });
-  const capacities = useQuery({ queryKey: ["branch-capacities", organizationId], queryFn: () => api.branchCapacities(), enabled: Boolean(organizationId) });
-  const activeBranches = branches.data?.filter((branch) => branch.active) ?? [];
+  const branches = useQuery({ queryKey: ["tenant-branches", organizationId, debouncedBranchSearch], queryFn: () => api.branches(debouncedBranchSearch || undefined), enabled: Boolean(organizationId && subscriptionActive) });
+  const capacities = useQuery({ queryKey: ["branch-capacities", organizationId], queryFn: () => api.branchCapacities(), enabled: Boolean(organizationId && subscriptionActive) });
+  const activeBranches = subscriptionActive ? branches.data?.filter((branch) => branch.active) ?? [] : [];
   const branchSummaries = activeBranches.map((branch) => ({
     branch,
     capacity: capacities.data?.find((item) => item.branchId === branch.id)?.dailyCapacity,
@@ -267,9 +270,9 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
     pendingApprovals: hasDaycareOperations ? (pendingBookings.data?.filter((booking) => booking.branchId === branch.id && booking.status === "PENDING_APPROVAL").length ?? 0) + (pendingEnrollments.data?.filter((enrollment) => enrollment.branchId === branch.id).length ?? 0) : 0,
     pendingInvoices: invoices.data?.filter((invoice) => invoice.branchId === branch.id && invoice.status === "PENDING").length ?? 0,
   }));
-  const readiness = useQuery({ queryKey: ["organization-readiness", organizationId], queryFn: () => api.organizationReadiness(), enabled: Boolean(organizationId) });
-  const programsSummary = useQuery({ queryKey: ["child-profile", organizationId, "programs-summary"], queryFn: () => api.childProgramsSummary(), enabled: Boolean(organizationId) });
-  const summary = createStaffAdminSummary({ children: children.data ?? [], users: users.data ?? [], pendingBookings: pendingBookings.data ?? [], pendingEnrollments: pendingEnrollments.data ?? [], invoices: invoices.data ?? [], entitlements: entitlements.data ?? [] });
+  const readiness = useQuery({ queryKey: ["organization-readiness", organizationId], queryFn: () => api.organizationReadiness(), enabled: Boolean(organizationId && subscriptionActive) });
+  const programsSummary = useQuery({ queryKey: ["child-profile", organizationId, "programs-summary"], queryFn: () => api.childProgramsSummary(), enabled: Boolean(organizationId && subscriptionActive) });
+  const summary = createStaffAdminSummary({ children: subscriptionActive ? children.data ?? [] : [], users: subscriptionActive ? users.data ?? [] : [], pendingBookings: subscriptionActive ? pendingBookings.data ?? [] : [], pendingEnrollments: subscriptionActive ? pendingEnrollments.data ?? [] : [], invoices: subscriptionActive ? invoices.data ?? [] : [], entitlements: subscriptionActive ? entitlements.data ?? [] : [] });
   const operationalUnavailable = children.isFetching || users.isFetching || children.isError || users.isError;
   const financialUnavailable = pendingBookings.isFetching || invoices.isFetching || entitlements.isFetching || pendingBookings.isError || invoices.isError || entitlements.isError;
   const approvalsUnavailable = hasDaycareOperations && (pendingBookings.isFetching || pendingEnrollments.isFetching || pendingBookings.isError || pendingEnrollments.isError);
@@ -281,7 +284,8 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations }:
         <AppText variant="title">{t("home.greeting", { name: displayName })}</AppText>
         <AppText tone="muted">{organizationName} · {t("role.STAFF_ADMIN")}</AppText>
       </View>
-      <NotificationBellButton />
+      <NotificationBellButton enabled={subscriptionActive} />
+      {!subscriptionActive && <AppText tone="danger">{t("tenantReadiness.issueSubscription")}</AppText>}
       <Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}>
         <Ionicons name="person-circle-outline" size={32} color={colors.primary} />
       </Pressable>
@@ -333,11 +337,11 @@ function ProfileToolbarButton({ label, onPress }: { label: string; onPress: () =
   return <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={spacing.sm} onPress={onPress} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable>;
 }
 
-function NotificationBellButton() {
+function NotificationBellButton({ enabled = true }: { enabled?: boolean }) {
   const router = useRouter();
   const { api, organizationId } = useAuth();
   const { t } = useI18n();
-  const notifications = useQuery({ queryKey: ["notifications", organizationId], queryFn: () => api.notifications(), enabled: Boolean(organizationId) });
+  const notifications = useQuery({ queryKey: ["notifications", organizationId], queryFn: () => api.notifications(), enabled: Boolean(organizationId && enabled) });
   const unreadNotificationsCount = unreadNotificationCount(notifications.data ?? []);
   const unreadNotificationBadgeLabel = unreadNotificationBadge(unreadNotificationsCount);
   const unreadNotificationsLabel = unreadNotificationBadgeLabel ? t("notifications.unreadCount", { count: unreadNotificationsCount }) : t("notifications.title");
