@@ -321,10 +321,10 @@ export class ApiClient {
   async updatePrivateTutor(tutorId: string, input: UpsertPrivateTutorInput): Promise<PrivateTutor> { return this.request(`/private-tutoring/manage/tutors/${tutorId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async privateTutoringRequests(): Promise<PrivateTutoringRequest[]> { return this.request("/private-tutoring/manage/requests"); }
   async decidePrivateTutoringRequest(requestId: string, input: { approved: boolean; tutorId?: string; scheduledAt?: string; rejectionReason?: string }): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/manage/requests/${requestId}/decision`, { method: "POST", body: JSON.stringify(input) }); }
-  async parentPrivateTutoringServices(childId: string): Promise<PrivateTutoringService[]> { return this.request(`/private-tutoring/parent/services?${new URLSearchParams({ childId }).toString()}`); }
-  async parentPrivateTutoringRequests(): Promise<PrivateTutoringRequest[]> { return this.request("/private-tutoring/parent/requests"); }
-  async createParentPrivateTutoringRequest(serviceId: string, input: { childId: string; pricingType: ServicePlanType; preferredAt?: string; note?: string }): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/services/${serviceId}/requests`, { method: "POST", body: JSON.stringify(input) }); }
-  async cancelParentPrivateTutoringRequest(requestId: string): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/requests/${requestId}/cancel`, { method: "POST" }); }
+  async parentPrivateTutoringServices(childId: string, organizationId?: string): Promise<PrivateTutoringService[]> { return this.request(`/private-tutoring/parent/services?${new URLSearchParams({ childId }).toString()}`, this.orgOverride(organizationId)); }
+  async parentPrivateTutoringRequests(organizationId?: string): Promise<PrivateTutoringRequest[]> { return this.request("/private-tutoring/parent/requests", this.orgOverride(organizationId)); }
+  async createParentPrivateTutoringRequest(serviceId: string, input: { childId: string; pricingType: ServicePlanType; preferredAt?: string; note?: string }, organizationId?: string): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/services/${serviceId}/requests`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async cancelParentPrivateTutoringRequest(requestId: string, organizationId?: string): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/requests/${requestId}/cancel`, { method: "POST", ...this.orgOverride(organizationId) }); }
 
   async tenants(search?: string): Promise<Tenant[]> { const query = search?.trim(); return this.request(`/platform/tenants${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
   async tenantReadiness(): Promise<TenantReadinessSummary> { return this.request("/platform/tenant-readiness"); }

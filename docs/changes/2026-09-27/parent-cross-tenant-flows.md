@@ -214,7 +214,31 @@ disengaja (bukan gangguan per-aksi), dan endpoint cancel enrollment-nya
 sendiri tidak punya parameter `X-Organization-Id` sama sekali di
 `Controllers.kt` (baris 260, `fun cancel(jwt, enrollmentId)`).
 
-## Verifikasi (tahap 1-6)
+### Tahap 7 — `private-tutoring.tsx`
+Resep yang sama seperti `booking.tsx`: `useChildren()` diganti
+`useParentChildrenAcrossTenants`; `organizationId` untuk fetch
+services/requests dan mutasi create/cancel diturunkan dari anak yang
+dipilih (`selectedOrganizationId`), bukan tenant aktif ambient; chip anak
+menampilkan nama tenant kalau Parent punya >1 membership PARENT aktif.
+`requests` **tetap** di-scope ke tenant anak yang sedang dipilih (bukan
+agregat lintas-semua-tenant) — sesuai rencana yang sudah menyatakan
+booking/tutoring bekerja "per-selected-child", bukan "tampilkan semuanya
+lintas semua tenant sekaligus" (aturan "rule of three": tidak perlu hook
+agregat ketiga selain `useParentChildrenAcrossTenants`/
+`useParentInvoicesAcrossTenants` yang sudah ada).
+
+**Temuan otorisasi kedua yang serupa Tahap 5 (diperbaiki langsung dengan
+prinsip yang sama, tidak ditanyakan ulang ke user):** gate akses masuk
+layar ini inline (bukan lewat `LegacyDaycareRouteGuard`) juga mengecek
+membership+kapabilitas Academic Curriculum terhadap **tenant aktif**
+saja — persis kelas masalah yang sama dengan temuan Tahap 5, dan user
+sudah memutuskan prinsipnya di sana ("cek lintas semua tenant Parent").
+Diperbaiki dengan hook yang sama, `useAnyMembershipHasOffering`, dipanggil
+lintas semua membership PARENT aktif; gate sekarang: `parentMemberships.length
+=== 0 || (!access.isLoading && !canUsePrivateTutoring)` — tidak lagi
+bergantung pada `organizationId` ambient sama sekali.
+
+## Verifikasi (tahap 1-7)
 
 - `cd apps/mobile && npx tsc --noEmit` — bersih di setiap tahap.
 - `npx eslint app/booking.tsx src/booking/useBooking.ts` — 2 error
@@ -252,6 +276,10 @@ sendiri tidak punya parameter `X-Organization-Id` sama sekali di
   `src/education/useUiAccessContext.test.ts` yang sudah ada, tidak
   terpengaruh karena parameter barunya opsional).
 - `npx eslint app/tenant-feedback.tsx` — 0 masalah.
+- `npx eslint app/private-tutoring.tsx` — 2 error `import/no-unresolved`
+  (`@/notify/notify`, `@/date-picker/DatePicker`), dikonfirmasi
+  pre-existing lewat `git stash`/`git stash pop` yang sama.
+- `npx vitest run` setelah Tahap 7 — 35 file, 100 test, semua lulus.
 - Belum ada verifikasi visual di browser/simulator (di luar kemampuan
   environment ini).
 
@@ -272,16 +300,15 @@ kalimat yang jadi salah. Tahap 6 juga tidak mengubah kemampuan yang
 terlihat user (README sudah menyebut Parent bisa mengirim feedback untuk
 tenant tempat anaknya terdaftar; picker multi-tenant itu sudah ada
 sebelum Tahap 6, hanya mekanismenya yang berubah dari switch-tenant ke
-state lokal) — tidak ada kalimat README yang jadi salah.
+state lokal) — tidak ada kalimat README yang jadi salah. Tahap 7 sama:
+README menyebut "Parent opens Les privat from Home, selects a linked
+child" tanpa menyebut batasan tenant aktif, jadi tetap akurat.
 
 ## Tindak lanjut yang belum dikerjakan (tahap berikutnya dari rencana yang sama)
 
-- `private-tutoring.tsx` belum disentuh — Tahap 7. Kemungkinan besar
-  perlu penanganan `LegacyDaycareRouteGuard`-serupa kalau layar itu juga
-  di-gate oleh kapabilitas ambient; belum dicek ulang.
-- `notifications.tsx` / `notificationRouteAccess.ts` — bug lama (hanya 2
-  dari banyak action route meneruskan `organizationId`, validasi memakai
-  tenant aktif bukan tenant milik notifikasi) belum diperbaiki; ini paling
-  akhir karena bergantung pada semua layar tujuan di atas.
+- `notifications.tsx` / `notificationRouteAccess.ts` — Tahap 8, bug lama
+  (hanya 2 dari banyak action route meneruskan `organizationId`, validasi
+  memakai tenant aktif bukan tenant milik notifikasi) belum diperbaiki;
+  ini paling akhir karena bergantung pada semua layar tujuan di atas.
 - Rencana lengkap ada di `.claude/plans/quiet-sniffing-pinwheel.md` (lokal,
-  tidak masuk repo) — tahapan 4-8.
+  tidak masuk repo) — tahapan 8 (terakhir).
