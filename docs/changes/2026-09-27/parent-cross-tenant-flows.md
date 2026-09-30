@@ -186,7 +186,35 @@ Diimplementasikan dengan menambah `crossTenant?: boolean` pada
   perubahan (skenario single-tenant mereka jatuh ke cabang non-`crossTenant`
   yang sama seperti sebelumnya).
 
-## Verifikasi (tahap 1-5)
+### Tahap 6 — `tenant-feedback.tsx` (kategori B, switcher ad hoc)
+Ini contoh paling langsung dari keluhan awal user: picker tenant di layar
+ini sebelumnya memanggil `selectOrganization(item.organizationId)`
+langsung tiap kali Parent memilih tenant lain untuk melihat/mengirim
+feedback — menyapu bersih seluruh cache query hanya untuk melihat
+riwayat feedback tenant lain. Sekarang penentuan "tenant mana yang
+sedang dilihat" adalah **state lokal murni** (`selectedOrganizationId`),
+bukan derivasi dari tenant aktif ambient:
+```ts
+const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | undefined>(undefined);
+const organizationId = selectedOrganizationId ?? activeOrganizationId ?? undefined;
+```
+Query `myTenantFeedback`/mutasi `createTenantFeedback` memakai
+`organizationId` hasil resolusi ini, bukan tenant aktif. Gate akses layar
+di paling atas (`if (activeMembership?.role !== "PARENT") return
+<Redirect href="/home" />`) tetap memakai tenant **aktif** secara sengaja
+— layar ini hanya dibuka dari menu Parent Home, yang hanya render kalau
+tenant aktifnya sudah PARENT, jadi ini bukan sumber gap yang sama dengan
+`LegacyDaycareRouteGuard` di Tahap 5 (tidak ada cara masuk ke layar ini
+dengan tenant aktif non-PARENT).
+
+`parent-enrollment.tsx` dikonfirmasi ulang **tidak perlu diubah** — daftar
+"Active Tenants"-nya memang sengaja memanggil `selectOrganization()` lalu
+`router.replace("/home")`: itu adalah pemilihan tenant aktif yang
+disengaja (bukan gangguan per-aksi), dan endpoint cancel enrollment-nya
+sendiri tidak punya parameter `X-Organization-Id` sama sekali di
+`Controllers.kt` (baris 260, `fun cancel(jwt, enrollmentId)`).
+
+## Verifikasi (tahap 1-6)
 
 - `cd apps/mobile && npx tsc --noEmit` — bersih di setiap tahap.
 - `npx eslint app/booking.tsx src/booking/useBooking.ts` — 2 error
@@ -223,6 +251,7 @@ Diimplementasikan dengan menambah `crossTenant?: boolean` pada
   di `LegacyDaycareRouteGuard.test.ts`), semua lulus (termasuk
   `src/education/useUiAccessContext.test.ts` yang sudah ada, tidak
   terpengaruh karena parameter barunya opsional).
+- `npx eslint app/tenant-feedback.tsx` — 0 masalah.
 - Belum ada verifikasi visual di browser/simulator (di luar kemampuan
   environment ini).
 
@@ -239,12 +268,15 @@ untuk Tahap 3 dan 4 — belum ada kalimat README yang jadi salah karena
 layar-layar per-anak ini atau karena parameter baru `useUiAccessContext`.
 Berlaku sama untuk Tahap 5 — README tidak mendokumentasikan mekanisme
 internal `LegacyDaycareRouteGuard` atau `openChild`, jadi tidak ada
-kalimat yang jadi salah.
+kalimat yang jadi salah. Tahap 6 juga tidak mengubah kemampuan yang
+terlihat user (README sudah menyebut Parent bisa mengirim feedback untuk
+tenant tempat anaknya terdaftar; picker multi-tenant itu sudah ada
+sebelum Tahap 6, hanya mekanismenya yang berubah dari switch-tenant ke
+state lokal) — tidak ada kalimat README yang jadi salah.
 
 ## Tindak lanjut yang belum dikerjakan (tahap berikutnya dari rencana yang sama)
 
-- `tenant-feedback.tsx` (switcher ad hoc) dan `private-tutoring.tsx` belum
-  disentuh — Tahap 6 dan 7. `private-tutoring.tsx` kemungkinan besar
+- `private-tutoring.tsx` belum disentuh — Tahap 7. Kemungkinan besar
   perlu penanganan `LegacyDaycareRouteGuard`-serupa kalau layar itu juga
   di-gate oleh kapabilitas ambient; belum dicek ulang.
 - `notifications.tsx` / `notificationRouteAccess.ts` — bug lama (hanya 2

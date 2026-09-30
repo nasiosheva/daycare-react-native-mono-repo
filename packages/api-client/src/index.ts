@@ -400,8 +400,8 @@ export class ApiClient {
   async cancelStaffLeaveRequest(requestId: string): Promise<StaffLeaveRequest> { return this.request(`/staff-leave-requests/${requestId}/cancel`, { method: "POST" }); }
   async pendingStaffLeaveRequests(): Promise<StaffLeaveRequest[]> { return this.request("/staff-leave-requests/pending-approval"); }
   async decideStaffLeaveRequest(requestId: string, input: { approved: boolean; rejectionReason?: string }): Promise<StaffLeaveRequest> { return this.request(`/staff-leave-requests/${requestId}/approval`, { method: "POST", body: JSON.stringify(input) }); }
-  async createTenantFeedback(input: CreateTenantFeedbackInput): Promise<TenantFeedback> { return this.request("/tenant-feedback", { method: "POST", body: JSON.stringify(input) }); }
-  async myTenantFeedback(): Promise<TenantFeedback[]> { return this.request("/tenant-feedback/mine"); }
+  async createTenantFeedback(input: CreateTenantFeedbackInput, organizationId?: string): Promise<TenantFeedback> { return this.request("/tenant-feedback", { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async myTenantFeedback(organizationId?: string): Promise<TenantFeedback[]> { return this.request("/tenant-feedback/mine", this.orgOverride(organizationId)); }
   async tenantFeedbackInbox(): Promise<TenantFeedback[]> { return this.request("/tenant-feedback"); }
   async updateTenantFeedbackStatus(feedbackId: string, status: TenantFeedbackStatus): Promise<TenantFeedback> { return this.request(`/tenant-feedback/${feedbackId}/status`, { method: "POST", body: JSON.stringify({ status }) }); }
   async staffLeaveRequestEvidence(requestId: string): Promise<StaffLeaveEvidence> { return this.request(`/staff-leave-requests/${requestId}/evidence`); }
