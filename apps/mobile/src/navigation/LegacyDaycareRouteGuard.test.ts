@@ -55,4 +55,32 @@ describe("hasLegacyDaycareRouteAccess", () => {
 
     expect(hasLegacyDaycareRouteAccess(staffProfile, "tenant-daycare", legacyDaycareRoutePolicies.bookingApprovals, true)).toBe(true);
   });
+
+  it("grants cross-tenant Parent routes when the ACTIVE tenant lacks the capability but another tenant has it", () => {
+    const multiTenantParentProfile: CurrentUser = {
+      ...parentProfile,
+      memberships: [
+        ...parentProfile.memberships.map((membership) => ({ ...membership, capabilities: [] })), // active tenant: no Daycare
+        { ...parentProfile.memberships[0], organizationId: "tenant-other", organizationName: "Other tenant" }, // a second tenant that does have it
+      ],
+    };
+
+    // hasDaycareOffering=true here stands in for what useAnyMembershipHasOffering would report
+    // (true because the second tenant qualifies), even though the active tenant itself has none.
+    expect(hasLegacyDaycareRouteAccess(multiTenantParentProfile, "tenant-daycare", legacyDaycareRoutePolicies.parentBooking, true)).toBe(true);
+    expect(hasLegacyDaycareRouteAccess(multiTenantParentProfile, "tenant-daycare", legacyDaycareRoutePolicies.parentQr, true)).toBe(true);
+
+    // Non-cross-tenant policies keep the old, single-active-tenant behavior: unaffected by other tenants.
+    const staffAdminProfile: CurrentUser = { ...parentProfile, memberships: parentProfile.memberships.map((membership) => ({ ...membership, role: "STAFF_ADMIN" as const })) };
+    expect(hasLegacyDaycareRouteAccess(staffAdminProfile, "tenant-daycare", legacyDaycareRoutePolicies.staffAdminDaycareOperations, false)).toBe(false);
+  });
+
+  it("blocks cross-tenant Parent routes when no membership at all qualifies", () => {
+    const noEligibleTenantProfile: CurrentUser = {
+      ...parentProfile,
+      memberships: parentProfile.memberships.map((membership) => ({ ...membership, capabilities: [] })),
+    };
+
+    expect(hasLegacyDaycareRouteAccess(noEligibleTenantProfile, "tenant-daycare", legacyDaycareRoutePolicies.parentBooking, false)).toBe(false);
+  });
 });

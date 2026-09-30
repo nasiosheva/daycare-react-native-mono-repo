@@ -516,20 +516,20 @@ export class ApiClient {
   async decideConsent(childId: string, definitionId: string, granted: boolean, organizationId?: string): Promise<ConsentRecord> { return this.request(`/children/${childId}/consents`, { method: "POST", body: JSON.stringify({ definitionId, granted }), ...this.orgOverride(organizationId) }); }
   async withdrawConsent(childId: string, definitionId: string, organizationId?: string): Promise<ConsentRecord> { return this.request(`/children/${childId}/consents/${definitionId}/withdraw`, { method: "POST", ...this.orgOverride(organizationId) }); }
 
-  async issueAttendanceQr(childId: string): Promise<{ token: string; expiresAt: string }> {
-    return this.request(`/children/${childId}/attendance-qr`);
+  async issueAttendanceQr(childId: string, organizationId?: string): Promise<{ token: string; expiresAt: string }> {
+    return this.request(`/children/${childId}/attendance-qr`, this.orgOverride(organizationId));
   }
 
-  async developmentEntries(childId: string): Promise<DevelopmentEntry[]> {
-    return this.request(`/children/${childId}/development-entries`);
+  async developmentEntries(childId: string, organizationId?: string): Promise<DevelopmentEntry[]> {
+    return this.request(`/children/${childId}/development-entries`, this.orgOverride(organizationId));
   }
 
-  async developmentEntryPhoto(childId: string, entryId: string): Promise<DevelopmentEntryPhoto> {
-    return this.request(`/children/${childId}/development-entries/${entryId}/photo`);
+  async developmentEntryPhoto(childId: string, entryId: string, organizationId?: string): Promise<DevelopmentEntryPhoto> {
+    return this.request(`/children/${childId}/development-entries/${entryId}/photo`, this.orgOverride(organizationId));
   }
 
-  async developmentEntryMedia(childId: string, entryId: string, mediaId: string): Promise<DevelopmentEntryMediaContent> {
-    return this.request(`/children/${childId}/development-entries/${entryId}/media/${mediaId}`);
+  async developmentEntryMedia(childId: string, entryId: string, mediaId: string, organizationId?: string): Promise<DevelopmentEntryMediaContent> {
+    return this.request(`/children/${childId}/development-entries/${entryId}/media/${mediaId}`, this.orgOverride(organizationId));
   }
 
   async childHealthRecord(childId: string, organizationId?: string): Promise<ChildHealthRecord | null> {

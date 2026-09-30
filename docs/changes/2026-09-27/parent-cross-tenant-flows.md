@@ -112,7 +112,81 @@ tidak berubah). Hanya query `childGoals` yang diberi override
 template) semuanya aksi Staff/Staff Admin yang selalu memakai tenant aktif
 mereka sendiri, jadi tidak disentuh.
 
-## Verifikasi (tahap 1-4)
+### Tahap 5 — `parent-qr.tsx`, `development.tsx`, dan `home.tsx`'s `openChild`
+`parent-qr.tsx` sebelumnya memakai pola "switch lalu navigate" lama:
+`useEffect`/`openChild` di layar itu sendiri memanggil `selectOrganization()`
+tiap kali anak dari tenant lain dipilih (menghapus seluruh query cache),
+lalu men-gate render `<ChildQr>` dengan `child.organizationId ===
+organizationId` (tenant aktif). Sekarang `useAttendanceQr` menerima
+`organizationId?` dan setiap anak memakai `organizationId`-nya sendiri
+secara langsung — `selectOrganization`/`useEffect` switch dihapus total.
+
+`development.tsx` menerima perlakuan yang sama seperti `goals.tsx` di
+Tahap 4: `useParentChildrenAcrossTenants` untuk jalur Parent (`isParent`)
+supaya anak lintas-tenant tidak lagi ter-resolve jadi `null` oleh
+`resolveSelectedChildId`, `useUiAccessContext` diberi `organizationId`
+hasil resolusi, dan tiga quick-link (`goals`, `child-health`,
+`incident-reports`) serta `useDevelopmentEntries`/`useDevelopmentEntryPhoto`/
+`useDevelopmentEntryMedia` (dan komponen turunannya,
+`DevelopmentHistory`/`DevelopmentMediaItem`/`DevelopmentPhotoThumbnail`)
+meneruskan `organizationId` yang sama. `useChildren()` untuk jalur
+Staff Admin (`!hasFixedChild`, picker multi-anak) tidak disentuh karena
+Parent dikonfirmasi selalu datang dengan `childId` route param (semua
+navigasi nyata ke `/development` — `home.tsx`, `child-detail.tsx` —
+menyertakan `childId`; hanya menu Staff Admin yang tidak, dan Parent
+tidak punya akses ke menu itu).
+
+Dengan keempat target `openChild` (`parent-child-profile`, `development`,
+`parent-qr`, `absence-requests`) sudah mendukung parameter route,
+`home.tsx`'s `openChild` diubah untuk mengirim `organizationId` sebagai
+route param dan **tidak lagi memanggil `selectOrganization()` sama sekali**:
+```ts
+const openChild = (childOrganizationId: string, pathname: string, params: Record<string, string>) => {
+  router.push({ pathname, params: { ...params, organizationId: childOrganizationId } } as never);
+};
+```
+
+**Temuan otorisasi (dikonsultasikan ke user, bukan diputuskan sendiri):**
+`booking.tsx` dan `parent-qr.tsx` dibungkus `LegacyDaycareRouteGuard`, yang
+mengecek "apakah tenant **aktif** Parent punya kapabilitas Daycare" sebelum
+mengizinkan render layar sama sekali — murni ambient, dievaluasi terhadap
+tenant aktif, bukan tenant anak manapun. Setelah Tahap 2 membuat isi
+`booking.tsx` lintas-tenant, guard pintu masuknya tetap terikat tenant
+aktif: Parent yang tenant aktifnya kebetulan tidak punya kapabilitas
+Daycare akan ter-redirect ke `/home` sebelum picker anak lintas-tenant
+sempat muncul, walau mereka punya anak lain (di tenant lain) yang eligible
+untuk booking — membatalkan sebagian tujuan Tahap 2. `parent-qr.tsx`
+punya gap yang sama dari kerja sesi sebelumnya (bukan regresi baru).
+User diberi tiga pilihan (cek lintas semua tenant / longgarkan syarat
+kapabilitas / biarkan apa adanya) dan memilih opsi pertama.
+
+Diimplementasikan dengan menambah `crossTenant?: boolean` pada
+`LegacyDaycareRoutePolicy` (di `legacyDaycareRouteAccess.ts`), diset
+`true` hanya untuk `parentBooking`/`parentQr`. Saat `crossTenant` true:
+- `hasLegacyDaycareRouteAccess` mengecek apakah ADA membership dengan role
+  yang sesuai (dan aktif, kalau disyaratkan) di manapun — bukan hanya di
+  `organizationId` (tenant aktif) yang dikirim.
+- `LegacyDaycareRouteGuard` memakai hook baru `useAnyMembershipHasOffering`
+  (`useUiAccessContext.ts`) yang menjalankan satu query `ui-access-context`
+  paralel per membership PARENT aktif (`useQueries`, pola yang sama dengan
+  `useParentChildrenAcrossTenants`) dan mengembalikan `true` kalau
+  **manapun** dari tenant itu punya kapabilitas Daycare. Setiap query
+  memakai queryKey `["ui-access-context", <tenantId>]` yang sama dengan
+  `useUiAccessContext(enabled, organizationId)` di layar lain, jadi tenant
+  yang sudah pernah di-fetch di layar lain tidak di-fetch ulang.
+- Policy Staff/Staff Admin (`attendanceScan`, `staffAdminDaycareOperations`,
+  `bookingApprovals`) tidak diberi `crossTenant`, jadi perilakunya sama
+  persis seperti sebelumnya (tetap terikat tenant aktif — staff memang
+  beroperasi dalam satu tenant, tidak ada ambiguitas lintas-tenant untuk
+  mereka).
+- Dua test baru ditambahkan ke `LegacyDaycareRouteGuard.test.ts`:
+  Parent dengan tenant aktif tanpa kapabilitas tapi tenant lain punya →
+  akses diberikan untuk `parentBooking`/`parentQr`; Parent tanpa satu pun
+  tenant yang eligible → akses ditolak. Tiga test lama tetap lulus tanpa
+  perubahan (skenario single-tenant mereka jatuh ke cabang non-`crossTenant`
+  yang sama seperti sebelumnya).
+
+## Verifikasi (tahap 1-5)
 
 - `cd apps/mobile && npx tsc --noEmit` — bersih di setiap tahap.
 - `npx eslint app/booking.tsx src/booking/useBooking.ts` — 2 error
@@ -137,9 +211,18 @@ mereka sendiri, jadi tidak disentuh.
   `availableChildren` yang dipakai di `useEffect`; diperbaiki dengan
   membungkusnya dalam `useMemo`. Setelah itu `npx eslint app/goals.tsx`
   hanya menyisakan 3 error `import/no-unresolved` yang pre-existing.
-- `npx vitest run` — 35 file, 98 test, semua lulus di setiap tahap
-  (termasuk `src/education/useUiAccessContext.test.ts` yang sudah ada,
-  tidak terpengaruh karena parameter barunya opsional).
+- `npx eslint app/development.tsx app/parent-qr.tsx app/home.tsx
+  src/education/useUiAccessContext.ts
+  src/navigation/LegacyDaycareRouteGuard.tsx` — hanya 3 error
+  `import/no-unresolved` pada `development.tsx` (pola pre-existing yang
+  sama) dan 1 warning pre-existing di `useUiAccessContext.ts`
+  (`hasBranchOfferingCapability` re-export tidak terpakai langsung di
+  file itu sendiri) — keduanya sudah ada sebelum Tahap 5, tidak ada
+  temuan baru.
+- `npx vitest run` — 35 file, **100** test (98 sebelumnya + 2 test baru
+  di `LegacyDaycareRouteGuard.test.ts`), semua lulus (termasuk
+  `src/education/useUiAccessContext.test.ts` yang sudah ada, tidak
+  terpengaruh karena parameter barunya opsional).
 - Belum ada verifikasi visual di browser/simulator (di luar kemampuan
   environment ini).
 
@@ -154,19 +237,16 @@ kalau perubahan kumulatif membuat deskripsi Parent flow di README perlu
 kalimat baru yang menyebut "tidak perlu switch tenant". Berlaku sama
 untuk Tahap 3 dan 4 — belum ada kalimat README yang jadi salah karena
 layar-layar per-anak ini atau karena parameter baru `useUiAccessContext`.
+Berlaku sama untuk Tahap 5 — README tidak mendokumentasikan mekanisme
+internal `LegacyDaycareRouteGuard` atau `openChild`, jadi tidak ada
+kalimat yang jadi salah.
 
 ## Tindak lanjut yang belum dikerjakan (tahap berikutnya dari rencana yang sama)
 
-- `parent-qr.tsx` dan `development.tsx` (target `openChild` lainnya) belum
-  menerima parameter route `organizationId` — mekanisme sama dengan
-  kategori C, ditambah kemungkinan gap `useUiAccessContext` yang sama
-  kalau salah satunya memakainya (perlu dicek ulang saat dikerjakan).
-- `home.tsx`'s `openChild` masih memakai `selectOrganization` + navigate;
-  baru diganti setelah `parent-qr.tsx`/`development.tsx` di atas juga
-  mendukung parameter route (bersama `absence-requests.tsx`,
-  `parent-child-profile.tsx` yang sudah selesai).
 - `tenant-feedback.tsx` (switcher ad hoc) dan `private-tutoring.tsx` belum
-  disentuh.
+  disentuh — Tahap 6 dan 7. `private-tutoring.tsx` kemungkinan besar
+  perlu penanganan `LegacyDaycareRouteGuard`-serupa kalau layar itu juga
+  di-gate oleh kapabilitas ambient; belum dicek ulang.
 - `notifications.tsx` / `notificationRouteAccess.ts` — bug lama (hanya 2
   dari banyak action route meneruskan `organizationId`, validasi memakai
   tenant aktif bukan tenant milik notifikasi) belum diperbaiki; ini paling

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import QRCode from "react-native-qrcode-svg";
 import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
@@ -6,12 +6,12 @@ import { AppText, BottomSheet, EmptyState, ErrorState, MenuItem, Shimmer, Shimme
 import { AppScreen } from "@/navigation/AppScreen";
 import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
 import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAccess";
-import { useAttendanceQr, useParentChildrenAcrossTenants, type ChildWithTenant } from "@/attendance/useAttendance";
+import { useAttendanceQr, useParentChildrenAcrossTenants } from "@/attendance/useAttendance";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 
-function ChildQr({ childId, name }: { childId: string; name: string }) {
-  const qr = useAttendanceQr(childId);
+function ChildQr({ childId, name, organizationId }: { childId: string; name: string; organizationId: string }) {
+  const qr = useAttendanceQr(childId, organizationId);
   const { t, formatTime } = useI18n();
   if (qr.isLoading) return <View style={styles.card}><Shimmer width={220} height={220} /><AppText tone="muted">{t("qr.preparing", { name })}</AppText></View>;
   if (qr.isError || !qr.data) return <ErrorState compact title={t("qr.failed")} retryLabel={t("common.retry")} onRetry={() => void qr.refetch()} />;
@@ -25,7 +25,7 @@ export default function ParentQrScreen() {
 
 function ParentQrScreenContent() {
   const { childId } = useLocalSearchParams<{ childId?: string }>();
-  const { profile, organizationId, selectOrganization } = useAuth();
+  const { profile } = useAuth();
   const parentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT" && membership.active);
   const showsTenantLabel = parentMemberships.length > 1;
   const children = useParentChildrenAcrossTenants(parentMemberships, true);
@@ -38,24 +38,15 @@ function ParentQrScreenContent() {
   const [selectedChildId, setSelectedChildId] = useState<string | null>(typeof childId === "string" ? childId : null);
   const selectedChild = visibleChildren.find((child) => child.id === selectedChildId) ?? null;
   const onlyChild = visibleChildren.length === 1 ? visibleChildren[0] : null;
-  // Attendance QR issuance is scoped to the currently active tenant, so a child from another
-  // tenant needs that tenant made active before its QR can be requested.
-  useEffect(() => {
-    if (onlyChild && onlyChild.organizationId !== organizationId) selectOrganization(onlyChild.organizationId);
-  }, [onlyChild, organizationId, selectOrganization]);
-  const openChild = (child: ChildWithTenant) => {
-    selectOrganization(child.organizationId);
-    setSelectedChildId(child.id);
-  };
   return <AppScreen>
     <AppText variant="title">{t("qr.title")}</AppText>
     {!onlyChild && visibleChildren.length > 0 && <AppText tone="muted">{t("qr.chooseChild")}</AppText>}
     {children.isFetching && <ShimmerList variant="tile" />}
-    {!children.isFetching && onlyChild && <View style={styles.single}><AppText variant="h5">{onlyChild.fullName}</AppText>{onlyChild.organizationId === organizationId && <ChildQr childId={onlyChild.id} name={onlyChild.fullName} />}</View>}
-    {!children.isFetching && !onlyChild && visibleChildren.map((child) => <MenuItem key={child.id} icon="qr-code-outline" title={child.fullName} description={showsTenantLabel ? child.organizationName : t("qr.showQr", { name: child.fullName })} onPress={() => openChild(child)} />)}
+    {!children.isFetching && onlyChild && <View style={styles.single}><AppText variant="h5">{onlyChild.fullName}</AppText><ChildQr childId={onlyChild.id} name={onlyChild.fullName} organizationId={onlyChild.organizationId} /></View>}
+    {!children.isFetching && !onlyChild && visibleChildren.map((child) => <MenuItem key={child.id} icon="qr-code-outline" title={child.fullName} description={showsTenantLabel ? child.organizationName : t("qr.showQr", { name: child.fullName })} onPress={() => setSelectedChildId(child.id)} />)}
     {!children.isFetching && visibleChildren.length === 0 && <EmptyState icon="happy-outline" title={t("children.empty")} />}
     {!onlyChild && <BottomSheet visible={Boolean(selectedChild)} onClose={() => setSelectedChildId(null)} closeAccessibilityLabel={t("common.close")} title={selectedChild?.fullName ?? t("qr.title")}>
-      {selectedChild && selectedChild.organizationId === organizationId && <ChildQr childId={selectedChild.id} name={selectedChild.fullName} />}
+      {selectedChild && <ChildQr childId={selectedChild.id} name={selectedChild.fullName} organizationId={selectedChild.organizationId} />}
     </BottomSheet>}
   </AppScreen>;
 }
