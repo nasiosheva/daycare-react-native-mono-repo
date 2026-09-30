@@ -346,3 +346,18 @@ flow Parent yang tadinya butuh `selectOrganization()`, dan Tahap 8
 ditutup sebagai "tidak ada bug" setelah verifikasi langsung ke backend.
 Tidak ada perubahan backend di seluruh inisiatif ini — backend sudah
 sepenuhnya stateless per-request sejak awal.
+
+## README.md — pembaruan kumulatif di akhir rencana
+
+Setelah Tahap 8 selesai, kalimat `PARENT is global: ... switch among
+approved tenant access links` di README (bagian arsitektur tenant/
+Parent) ditinjau ulang: kalimat itu sendiri tidak salah, tapi sudah
+tidak lengkap menggambarkan flow Parent setelah inisiatif ini. Diberi
+satu kalimat tambahan yang menyebut eksplisit bahwa aksi per-anak dari
+Home (booking, QR, Development, absence requests, Goals, health,
+incident reports, pickup authorizations, emergency contacts, consents,
+child messages), tenant feedback, dan private tutoring kini me-resolve
+tenant per aksi (dari anak yang dipilih atau picker in-screen), bukan
+lagi lewat switch tenant aktif — switch tetap relevan untuk mengubah
+tenant aktif secara umum (misalnya lewat Parent Enrollment), hanya bukan
+lagi prasyarat untuk aksi-aksi di atas.
