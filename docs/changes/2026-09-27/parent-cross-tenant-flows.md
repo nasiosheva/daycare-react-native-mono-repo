@@ -304,11 +304,45 @@ state lokal) — tidak ada kalimat README yang jadi salah. Tahap 7 sama:
 README menyebut "Parent opens Les privat from Home, selects a linked
 child" tanpa menyebut batasan tenant aktif, jadi tetap akurat.
 
-## Tindak lanjut yang belum dikerjakan (tahap berikutnya dari rencana yang sama)
+### Tahap 8 — `notifications.tsx` / `notificationRouteAccess.ts`: ditutup tanpa perubahan kode
 
-- `notifications.tsx` / `notificationRouteAccess.ts` — Tahap 8, bug lama
-  (hanya 2 dari banyak action route meneruskan `organizationId`, validasi
-  memakai tenant aktif bukan tenant milik notifikasi) belum diperbaiki;
-  ini paling akhir karena bergantung pada semua layar tujuan di atas.
-- Rencana lengkap ada di `.claude/plans/quiet-sniffing-pinwheel.md` (lokal,
-  tidak masuk repo) — tahapan 8 (terakhir).
+Rencana awal (ditulis sebelum menyelami backend) mengasumsikan ada bug:
+"`notificationRouteAccess.ts` memvalidasi terhadap tenant aktif, bukan
+tenant milik notifikasi itu sendiri, dan hanya 2 dari banyak action route
+meneruskan `organizationId`". Setelah membaca
+`AdministrationService.notifications()`/`markNotificationRead()`
+(`apps/api/src/main/kotlin/com/daycare/api/service/AdministrationService.kt`
+baris 215-229), premis ini **tidak berlaku**:
+- `notifications()` memakai `findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDesc`
+  — daftar notifikasi selalu di-scope ketat ke `organizationId` (tenant
+  aktif) yang dikirim, tidak pernah lintas-tenant.
+- `markNotificationRead()` bahkan menolak eksplisit kalau
+  `notification.organizationId != organizationId` yang dikirim.
+- Akibatnya, notifikasi yang tampil di layar **selalu** milik tenant yang
+  sedang aktif saat fetch — tidak ada skenario notifikasi tenant lain
+  ikut tampil sambil tenant aktifnya berbeda. Validasi
+  `canOpenNotificationRoute` terhadap tenant aktif sudah benar secara
+  konstruksi, bukan bug.
+- `/parent-payment`/`/payment-proof` mendapat `passesOrganizationId: true`
+  bukan karena alasan lintas-tenant, melainkan karena kedua layar itu
+  memang dirancang tanpa fallback ke tenant aktif sama sekali (beda dari
+  konvensi kategori C di Tahap 3/4/7 yang selalu fallback ke ambient).
+  Menambahkan flag yang sama ke rute kategori C lain tidak mengubah
+  perilaku apa pun, karena nilainya akan selalu identik dengan tenant
+  aktif yang sudah jadi fallback mereka.
+
+Temuan ini dikonsultasikan ke user (bukan diputuskan sendiri, karena
+membatalkan premis tahap yang sudah disetujui): user memilih menutup
+Tahap 8 tanpa perubahan kode — dokumen ini adalah penutupnya.
+`notifications.tsx`/`notificationRouteAccess.ts` **tidak disentuh** di
+sesi ini.
+
+## Ringkasan akhir
+
+Seluruh 8 tahap rencana `.claude/plans/quiet-sniffing-pinwheel.md` (lokal,
+tidak masuk repo) selesai: Tahap 1-7 mengimplementasikan konvensi
+`organizationId` eksplisit (route param atau parameter mutasi) di setiap
+flow Parent yang tadinya butuh `selectOrganization()`, dan Tahap 8
+ditutup sebagai "tidak ada bug" setelah verifikasi langsung ke backend.
+Tidak ada perubahan backend di seluruh inisiatif ini — backend sudah
+sepenuhnya stateless per-request sejak awal.
