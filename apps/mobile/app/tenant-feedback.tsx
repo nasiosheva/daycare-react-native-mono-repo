@@ -17,20 +17,25 @@ const defaultForm = (): FormState => ({ category: "SUGGESTION", message: "" });
 
 export default function TenantFeedbackScreen() {
   const router = useRouter();
-  const { api, profile, organizationId, selectOrganization } = useAuth();
+  const { api, profile, organizationId: activeOrganizationId } = useAuth();
   const { t, formatDateTime } = useI18n();
   const queryClient = useQueryClient();
-  const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const canCreate = membership?.role === "PARENT" && membership.active;
+  const activeMembership = profile?.memberships.find((item) => item.organizationId === activeOrganizationId);
   const parentMemberships = (profile?.memberships ?? []).filter((item) => item.role === "PARENT" && item.active);
   const showsTenantPicker = parentMemberships.length > 1;
+  // Which tenant this screen's feedback list/submission targets is purely local UI state — picking
+  // a different tenant here never switches the app's active tenant or touches selectOrganization().
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | undefined>(undefined);
+  const organizationId = selectedOrganizationId ?? activeOrganizationId ?? undefined;
+  const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const canCreate = membership?.role === "PARENT" && membership.active;
   const [form, setForm] = useState<FormState | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const items = useQuery({ queryKey: ["tenant-feedback-mine", organizationId], queryFn: () => api.myTenantFeedback(), enabled: membership?.role === "PARENT" && Boolean(organizationId) });
-  const create = useMutation({ mutationFn: (input: FormState) => api.createTenantFeedback({ category: input.category, message: input.message.trim() }), onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["tenant-feedback-mine", organizationId] }); setForm(null); } });
+  const items = useQuery({ queryKey: ["tenant-feedback-mine", organizationId], queryFn: () => api.myTenantFeedback(organizationId), enabled: membership?.role === "PARENT" && Boolean(organizationId) });
+  const create = useMutation({ mutationFn: (input: FormState) => api.createTenantFeedback({ category: input.category, message: input.message.trim() }, organizationId), onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["tenant-feedback-mine", organizationId] }); setForm(null); } });
 
   if (!profile) return null;
-  if (membership?.role !== "PARENT") return <Redirect href="/home" />;
+  if (activeMembership?.role !== "PARENT") return <Redirect href="/home" />;
 
   const submit = async () => {
     if (!form) return;
@@ -43,7 +48,7 @@ export default function TenantFeedbackScreen() {
   return <AppScreen showBottomNavigation={false} title={t("tenantFeedback.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canCreate ? <FloatingActionButton accessibilityLabel={t("tenantFeedback.add")} icon="add" onPress={() => { setForm(defaultForm()); setFormError(null); }}>{t("tenantFeedback.add")}</FloatingActionButton> : undefined}>
     {showsTenantPicker && <View style={styles.field}>
       <AppText variant="label">{t("parentEnrollment.tenant")}</AppText>
-      <ChipGroup accessibilityLabel={t("parentEnrollment.tenant")}>{parentMemberships.map((item) => <Chip key={item.organizationId} label={item.organizationName} selected={item.organizationId === organizationId} onPress={() => selectOrganization(item.organizationId)} />)}</ChipGroup>
+      <ChipGroup accessibilityLabel={t("parentEnrollment.tenant")}>{parentMemberships.map((item) => <Chip key={item.organizationId} label={item.organizationName} selected={item.organizationId === organizationId} onPress={() => setSelectedOrganizationId(item.organizationId)} />)}</ChipGroup>
     </View>}
     <AppText tone="muted">{t("tenantFeedback.description")}</AppText>
     {items.isLoading && <ShimmerList />}

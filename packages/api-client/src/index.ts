@@ -294,7 +294,7 @@ export class ApiClient {
   async identityCheck(): Promise<IdentityCheckResult> { return this.request("/auth/identity-check"); }
   async updateMyProfile(input: { gender: ChildGender; dateOfBirth: string }): Promise<CurrentUser> { return this.request("/me", { method: "PATCH", body: JSON.stringify(input) }); }
   async updateMyUsername(username?: string): Promise<CurrentUser> { return this.request("/me/username", { method: "PATCH", body: JSON.stringify({ username }) }); }
-  async uiAccessContext(): Promise<UiAccessContext> { return this.request("/education-offerings/context"); }
+  async uiAccessContext(organizationId?: string): Promise<UiAccessContext> { return this.request("/education-offerings/context", this.orgOverride(organizationId)); }
   async educationOfferings(): Promise<EducationOffering[]> { return this.request("/education-offerings"); }
   async createEducationOffering(input: UpsertEducationOfferingInput): Promise<EducationOffering> { return this.request("/education-offerings", { method: "POST", body: JSON.stringify(input) }); }
   async setEducationOfferingStatus(offeringId: string, status: EducationOfferingStatus): Promise<EducationOffering> { return this.request(`/education-offerings/${offeringId}/status`, { method: "POST", body: JSON.stringify({ status }) }); }
@@ -321,10 +321,10 @@ export class ApiClient {
   async updatePrivateTutor(tutorId: string, input: UpsertPrivateTutorInput): Promise<PrivateTutor> { return this.request(`/private-tutoring/manage/tutors/${tutorId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async privateTutoringRequests(): Promise<PrivateTutoringRequest[]> { return this.request("/private-tutoring/manage/requests"); }
   async decidePrivateTutoringRequest(requestId: string, input: { approved: boolean; tutorId?: string; scheduledAt?: string; rejectionReason?: string }): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/manage/requests/${requestId}/decision`, { method: "POST", body: JSON.stringify(input) }); }
-  async parentPrivateTutoringServices(childId: string): Promise<PrivateTutoringService[]> { return this.request(`/private-tutoring/parent/services?${new URLSearchParams({ childId }).toString()}`); }
-  async parentPrivateTutoringRequests(): Promise<PrivateTutoringRequest[]> { return this.request("/private-tutoring/parent/requests"); }
-  async createParentPrivateTutoringRequest(serviceId: string, input: { childId: string; pricingType: ServicePlanType; preferredAt?: string; note?: string }): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/services/${serviceId}/requests`, { method: "POST", body: JSON.stringify(input) }); }
-  async cancelParentPrivateTutoringRequest(requestId: string): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/requests/${requestId}/cancel`, { method: "POST" }); }
+  async parentPrivateTutoringServices(childId: string, organizationId?: string): Promise<PrivateTutoringService[]> { return this.request(`/private-tutoring/parent/services?${new URLSearchParams({ childId }).toString()}`, this.orgOverride(organizationId)); }
+  async parentPrivateTutoringRequests(organizationId?: string): Promise<PrivateTutoringRequest[]> { return this.request("/private-tutoring/parent/requests", this.orgOverride(organizationId)); }
+  async createParentPrivateTutoringRequest(serviceId: string, input: { childId: string; pricingType: ServicePlanType; preferredAt?: string; note?: string }, organizationId?: string): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/services/${serviceId}/requests`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async cancelParentPrivateTutoringRequest(requestId: string, organizationId?: string): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/requests/${requestId}/cancel`, { method: "POST", ...this.orgOverride(organizationId) }); }
 
   async tenants(search?: string): Promise<Tenant[]> { const query = search?.trim(); return this.request(`/platform/tenants${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
   async tenantReadiness(): Promise<TenantReadinessSummary> { return this.request("/platform/tenant-readiness"); }
@@ -342,8 +342,8 @@ export class ApiClient {
   async branches(search?: string): Promise<TenantBranch[]> { const query = search?.trim(); return this.request(`/branches${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
   async createBranch(input: { name: string; timezone?: string; fullAddress: string; googleMapsUrl?: string }): Promise<TenantBranch> { return this.request("/branches", { method: "POST", body: JSON.stringify(input) }); }
   async updateBranch(branchId: string, input: { name: string; timezone: string; fullAddress: string; googleMapsUrl?: string }): Promise<TenantBranch> { return this.request(`/branches/${branchId}`, { method: "PATCH", body: JSON.stringify(input) }); }
-  async parentChildProfile(childId: string): Promise<ParentChildProfile> { return this.request(`/parent/children/${childId}/profile`); }
-  async addParentChildProgramFeedback(childId: string, programId: string, note: string): Promise<ChildProgramParentFeedback> { return this.request(`/parent/children/${childId}/programs/${programId}/feedback`, { method: "POST", body: JSON.stringify({ note }) }); }
+  async parentChildProfile(childId: string, organizationId?: string): Promise<ParentChildProfile> { return this.request(`/parent/children/${childId}/profile`, this.orgOverride(organizationId)); }
+  async addParentChildProgramFeedback(childId: string, programId: string, note: string, organizationId?: string): Promise<ChildProgramParentFeedback> { return this.request(`/parent/children/${childId}/programs/${programId}/feedback`, { method: "POST", body: JSON.stringify({ note }), ...this.orgOverride(organizationId) }); }
   async setPrimaryBranch(branchId: string): Promise<TenantBranch> { return this.request(`/branches/${branchId}/primary`, { method: "POST" }); }
   async archiveBranch(branchId: string): Promise<TenantBranch> { return this.request(`/branches/${branchId}/archive`, { method: "POST" }); }
   async branchOperatingHours(branchId: string): Promise<BranchOperatingHours> { return this.request(`/branches/${branchId}/operating-hours`); }
@@ -400,8 +400,8 @@ export class ApiClient {
   async cancelStaffLeaveRequest(requestId: string): Promise<StaffLeaveRequest> { return this.request(`/staff-leave-requests/${requestId}/cancel`, { method: "POST" }); }
   async pendingStaffLeaveRequests(): Promise<StaffLeaveRequest[]> { return this.request("/staff-leave-requests/pending-approval"); }
   async decideStaffLeaveRequest(requestId: string, input: { approved: boolean; rejectionReason?: string }): Promise<StaffLeaveRequest> { return this.request(`/staff-leave-requests/${requestId}/approval`, { method: "POST", body: JSON.stringify(input) }); }
-  async createTenantFeedback(input: CreateTenantFeedbackInput): Promise<TenantFeedback> { return this.request("/tenant-feedback", { method: "POST", body: JSON.stringify(input) }); }
-  async myTenantFeedback(): Promise<TenantFeedback[]> { return this.request("/tenant-feedback/mine"); }
+  async createTenantFeedback(input: CreateTenantFeedbackInput, organizationId?: string): Promise<TenantFeedback> { return this.request("/tenant-feedback", { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async myTenantFeedback(organizationId?: string): Promise<TenantFeedback[]> { return this.request("/tenant-feedback/mine", this.orgOverride(organizationId)); }
   async tenantFeedbackInbox(): Promise<TenantFeedback[]> { return this.request("/tenant-feedback"); }
   async updateTenantFeedbackStatus(feedbackId: string, status: TenantFeedbackStatus): Promise<TenantFeedback> { return this.request(`/tenant-feedback/${feedbackId}/status`, { method: "POST", body: JSON.stringify({ status }) }); }
   async staffLeaveRequestEvidence(requestId: string): Promise<StaffLeaveEvidence> { return this.request(`/staff-leave-requests/${requestId}/evidence`); }
@@ -447,7 +447,7 @@ export class ApiClient {
   async createGoalIndicator(programId: string, input: UpsertGoalIndicatorInput): Promise<DevelopmentProgram> { return this.request(`/development-programs/${programId}/indicators`, { method: "POST", body: JSON.stringify(input) }); }
   async updateGoalIndicator(programId: string, indicatorId: string, input: UpsertGoalIndicatorInput): Promise<DevelopmentProgram> { return this.request(`/development-programs/${programId}/indicators/${indicatorId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async archiveGoalIndicator(programId: string, indicatorId: string): Promise<DevelopmentProgram> { return this.request(`/development-programs/${programId}/indicators/${indicatorId}/archive`, { method: "POST" }); }
-  async childGoals(childId: string): Promise<ChildGoal[]> { return this.request(`/children/${childId}/goals`); }
+  async childGoals(childId: string, organizationId?: string): Promise<ChildGoal[]> { return this.request(`/children/${childId}/goals`, this.orgOverride(organizationId)); }
   async assignChildGoal(childId: string, input: { curriculumProgramId: string; programId: string; startsOn?: string }): Promise<ChildGoal> { return this.request(`/children/${childId}/goals`, { method: "POST", body: JSON.stringify(input) }); }
   async recordGoalCheckIn(goalId: string, date: string, indicatorId: string, outcome: GoalCheckInOutcome, detail?: { note?: string; photo?: GoalCheckInPhotoInput; audio?: GoalCheckInAudioInput }): Promise<ChildGoal> { return this.request(`/child-goals/${goalId}/check-ins/${date}`, { method: "PUT", body: JSON.stringify({ indicatorId, outcome, ...detail }) }); }
   async recordGoalCheckInBatch(goalId: string, date: string, checkIns: GoalCheckInBatchInput[]): Promise<ChildGoal> { return this.request(`/child-goals/${goalId}/check-ins/${date}/batch`, { method: "PUT", body: JSON.stringify({ checkIns }) }); }
@@ -468,10 +468,10 @@ export class ApiClient {
     const query = params.toString();
     return this.request(`/children${query ? `?${query}` : ""}`, organizationId ? { headers: { "X-Organization-Id": organizationId } } : undefined);
   }
-  async childAbsenceRequests(input: { childId?: string; branchId?: string } = {}): Promise<ChildAbsenceRequest[]> { const params = new URLSearchParams(); if (input.childId) params.set("childId", input.childId); if (input.branchId) params.set("branchId", input.branchId); return this.request(`/child-absence-requests${params.size ? `?${params.toString()}` : ""}`); }
-  async createChildAbsenceRequest(input: CreateChildAbsenceRequestInput): Promise<ChildAbsenceRequest> { return this.request("/child-absence-requests", { method: "POST", body: JSON.stringify(input) }); }
-  async decideChildAbsenceRequest(requestId: string, input: { approved: boolean; rejectionReason?: string }): Promise<ChildAbsenceRequest> { return this.request(`/child-absence-requests/${requestId}/decision`, { method: "POST", body: JSON.stringify(input) }); }
-  async cancelChildAbsenceRequest(requestId: string): Promise<ChildAbsenceRequest> { return this.request(`/child-absence-requests/${requestId}/cancel`, { method: "POST" }); }
+  async childAbsenceRequests(input: { childId?: string; branchId?: string } = {}, organizationId?: string): Promise<ChildAbsenceRequest[]> { const params = new URLSearchParams(); if (input.childId) params.set("childId", input.childId); if (input.branchId) params.set("branchId", input.branchId); return this.request(`/child-absence-requests${params.size ? `?${params.toString()}` : ""}`, this.orgOverride(organizationId)); }
+  async createChildAbsenceRequest(input: CreateChildAbsenceRequestInput, organizationId?: string): Promise<ChildAbsenceRequest> { return this.request("/child-absence-requests", { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async decideChildAbsenceRequest(requestId: string, input: { approved: boolean; rejectionReason?: string }, organizationId?: string): Promise<ChildAbsenceRequest> { return this.request(`/child-absence-requests/${requestId}/decision`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async cancelChildAbsenceRequest(requestId: string, organizationId?: string): Promise<ChildAbsenceRequest> { return this.request(`/child-absence-requests/${requestId}/cancel`, { method: "POST", ...this.orgOverride(organizationId) }); }
   async createChild(input: ChildInput): Promise<Child> { return this.request("/children", { method: "POST", body: JSON.stringify(input) }); }
   async childProfile(childId: string): Promise<ChildProfile> { return this.request(`/children/${childId}`); }
   async childProgramsSummary(): Promise<ChildProgramSummary> { return this.request("/children/programs-summary"); }
@@ -499,81 +499,81 @@ export class ApiClient {
     return this.request(`/children/${childId}/attendance`, { method: "POST", body: JSON.stringify(command) });
   }
 
-  async pickupAuthorizations(childId: string): Promise<PickupAuthorization[]> { return this.request(`/children/${childId}/pickup-authorizations`); }
-  async createPickupAuthorization(childId: string, input: CreatePickupAuthorizationInput): Promise<PickupAuthorization> { return this.request(`/children/${childId}/pickup-authorizations`, { method: "POST", body: JSON.stringify(input) }); }
-  async activatePickupAuthorization(childId: string, authorizationId: string): Promise<PickupAuthorization> { return this.request(`/children/${childId}/pickup-authorizations/${authorizationId}/activate`, { method: "POST" }); }
-  async revokePickupAuthorization(childId: string, authorizationId: string, reason: string): Promise<PickupAuthorization> { return this.request(`/children/${childId}/pickup-authorizations/${authorizationId}/revoke`, { method: "POST", body: JSON.stringify({ reason }) }); }
-  async emergencyContacts(childId: string): Promise<EmergencyContact[]> { return this.request(`/children/${childId}/emergency-contacts`); }
-  async createEmergencyContact(childId: string, input: CreateEmergencyContactInput): Promise<EmergencyContact> { return this.request(`/children/${childId}/emergency-contacts`, { method: "POST", body: JSON.stringify(input) }); }
-  async removeEmergencyContact(childId: string, contactId: string): Promise<void> { await this.request<void>(`/children/${childId}/emergency-contacts/${contactId}`, { method: "DELETE" }); }
-  async revokeEmergencyContact(childId: string, contactId: string, reason: string): Promise<EmergencyContact> { return this.request(`/children/${childId}/emergency-contacts/${contactId}/revoke`, { method: "POST", body: JSON.stringify({ reason }) }); }
+  async pickupAuthorizations(childId: string, organizationId?: string): Promise<PickupAuthorization[]> { return this.request(`/children/${childId}/pickup-authorizations`, this.orgOverride(organizationId)); }
+  async createPickupAuthorization(childId: string, input: CreatePickupAuthorizationInput, organizationId?: string): Promise<PickupAuthorization> { return this.request(`/children/${childId}/pickup-authorizations`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async activatePickupAuthorization(childId: string, authorizationId: string, organizationId?: string): Promise<PickupAuthorization> { return this.request(`/children/${childId}/pickup-authorizations/${authorizationId}/activate`, { method: "POST", ...this.orgOverride(organizationId) }); }
+  async revokePickupAuthorization(childId: string, authorizationId: string, reason: string, organizationId?: string): Promise<PickupAuthorization> { return this.request(`/children/${childId}/pickup-authorizations/${authorizationId}/revoke`, { method: "POST", body: JSON.stringify({ reason }), ...this.orgOverride(organizationId) }); }
+  async emergencyContacts(childId: string, organizationId?: string): Promise<EmergencyContact[]> { return this.request(`/children/${childId}/emergency-contacts`, this.orgOverride(organizationId)); }
+  async createEmergencyContact(childId: string, input: CreateEmergencyContactInput, organizationId?: string): Promise<EmergencyContact> { return this.request(`/children/${childId}/emergency-contacts`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async removeEmergencyContact(childId: string, contactId: string, organizationId?: string): Promise<void> { await this.request<void>(`/children/${childId}/emergency-contacts/${contactId}`, { method: "DELETE", ...this.orgOverride(organizationId) }); }
+  async revokeEmergencyContact(childId: string, contactId: string, reason: string, organizationId?: string): Promise<EmergencyContact> { return this.request(`/children/${childId}/emergency-contacts/${contactId}/revoke`, { method: "POST", body: JSON.stringify({ reason }), ...this.orgOverride(organizationId) }); }
   async consentDefinitions(): Promise<ConsentDefinition[]> { return this.request("/consent-definitions"); }
   async managedConsentDefinitions(): Promise<ConsentDefinition[]> { return this.request("/consent-definitions/manage"); }
   async createConsentDefinition(input: CreateConsentDefinitionInput): Promise<ConsentDefinition> { return this.request("/consent-definitions", { method: "POST", body: JSON.stringify(input) }); }
   async reviseConsentDefinition(definitionId: string, input: ReviseConsentDefinitionInput): Promise<ConsentDefinition> { return this.request(`/consent-definitions/${definitionId}`, { method: "PUT", body: JSON.stringify(input) }); }
   async setConsentDefinitionActive(definitionId: string, active: boolean, expectedRevision: number): Promise<ConsentDefinition> { return this.request(`/consent-definitions/${definitionId}/active`, { method: "POST", body: JSON.stringify({ active, expectedRevision }) }); }
-  async childConsents(childId: string): Promise<ParentConsent[]> { return this.request(`/children/${childId}/consents`); }
-  async decideConsent(childId: string, definitionId: string, granted: boolean): Promise<ConsentRecord> { return this.request(`/children/${childId}/consents`, { method: "POST", body: JSON.stringify({ definitionId, granted }) }); }
-  async withdrawConsent(childId: string, definitionId: string): Promise<ConsentRecord> { return this.request(`/children/${childId}/consents/${definitionId}/withdraw`, { method: "POST" }); }
+  async childConsents(childId: string, organizationId?: string): Promise<ParentConsent[]> { return this.request(`/children/${childId}/consents`, this.orgOverride(organizationId)); }
+  async decideConsent(childId: string, definitionId: string, granted: boolean, organizationId?: string): Promise<ConsentRecord> { return this.request(`/children/${childId}/consents`, { method: "POST", body: JSON.stringify({ definitionId, granted }), ...this.orgOverride(organizationId) }); }
+  async withdrawConsent(childId: string, definitionId: string, organizationId?: string): Promise<ConsentRecord> { return this.request(`/children/${childId}/consents/${definitionId}/withdraw`, { method: "POST", ...this.orgOverride(organizationId) }); }
 
-  async issueAttendanceQr(childId: string): Promise<{ token: string; expiresAt: string }> {
-    return this.request(`/children/${childId}/attendance-qr`);
+  async issueAttendanceQr(childId: string, organizationId?: string): Promise<{ token: string; expiresAt: string }> {
+    return this.request(`/children/${childId}/attendance-qr`, this.orgOverride(organizationId));
   }
 
-  async developmentEntries(childId: string): Promise<DevelopmentEntry[]> {
-    return this.request(`/children/${childId}/development-entries`);
+  async developmentEntries(childId: string, organizationId?: string): Promise<DevelopmentEntry[]> {
+    return this.request(`/children/${childId}/development-entries`, this.orgOverride(organizationId));
   }
 
-  async developmentEntryPhoto(childId: string, entryId: string): Promise<DevelopmentEntryPhoto> {
-    return this.request(`/children/${childId}/development-entries/${entryId}/photo`);
+  async developmentEntryPhoto(childId: string, entryId: string, organizationId?: string): Promise<DevelopmentEntryPhoto> {
+    return this.request(`/children/${childId}/development-entries/${entryId}/photo`, this.orgOverride(organizationId));
   }
 
-  async developmentEntryMedia(childId: string, entryId: string, mediaId: string): Promise<DevelopmentEntryMediaContent> {
-    return this.request(`/children/${childId}/development-entries/${entryId}/media/${mediaId}`);
+  async developmentEntryMedia(childId: string, entryId: string, mediaId: string, organizationId?: string): Promise<DevelopmentEntryMediaContent> {
+    return this.request(`/children/${childId}/development-entries/${entryId}/media/${mediaId}`, this.orgOverride(organizationId));
   }
 
-  async childHealthRecord(childId: string): Promise<ChildHealthRecord | null> {
-    return this.request(`/children/${childId}/health-record`);
+  async childHealthRecord(childId: string, organizationId?: string): Promise<ChildHealthRecord | null> {
+    return this.request(`/children/${childId}/health-record`, this.orgOverride(organizationId));
   }
 
-  async upsertChildHealthRecord(childId: string, input: UpsertChildHealthRecordInput): Promise<ChildHealthRecord> {
-    return this.request(`/children/${childId}/health-record`, { method: "PUT", body: JSON.stringify(input) });
+  async upsertChildHealthRecord(childId: string, input: UpsertChildHealthRecordInput, organizationId?: string): Promise<ChildHealthRecord> {
+    return this.request(`/children/${childId}/health-record`, { method: "PUT", body: JSON.stringify(input), ...this.orgOverride(organizationId) });
   }
 
-  async childHealthNotes(childId: string): Promise<ChildHealthNote[]> {
-    return this.request(`/children/${childId}/health-notes`);
+  async childHealthNotes(childId: string, organizationId?: string): Promise<ChildHealthNote[]> {
+    return this.request(`/children/${childId}/health-notes`, this.orgOverride(organizationId));
   }
 
-  async createChildHealthNote(childId: string, input: CreateChildHealthNoteInput): Promise<ChildHealthNote> {
-    return this.request(`/children/${childId}/health-notes`, { method: "POST", body: JSON.stringify(input) });
+  async createChildHealthNote(childId: string, input: CreateChildHealthNoteInput, organizationId?: string): Promise<ChildHealthNote> {
+    return this.request(`/children/${childId}/health-notes`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) });
   }
 
-  async childIncidentReports(childId: string): Promise<ChildIncidentReport[]> {
-    return this.request(`/children/${childId}/incident-reports`);
+  async childIncidentReports(childId: string, organizationId?: string): Promise<ChildIncidentReport[]> {
+    return this.request(`/children/${childId}/incident-reports`, this.orgOverride(organizationId));
   }
 
-  async createChildIncidentReport(childId: string, input: CreateChildIncidentInput): Promise<ChildIncidentReport> {
-    return this.request(`/children/${childId}/incident-reports`, { method: "POST", body: JSON.stringify(input) });
+  async createChildIncidentReport(childId: string, input: CreateChildIncidentInput, organizationId?: string): Promise<ChildIncidentReport> {
+    return this.request(`/children/${childId}/incident-reports`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) });
   }
 
-  async acknowledgeChildIncidentReport(childId: string, incidentId: string): Promise<ChildIncidentReport> {
-    return this.request(`/children/${childId}/incident-reports/${incidentId}/acknowledge`, { method: "POST" });
+  async acknowledgeChildIncidentReport(childId: string, incidentId: string, organizationId?: string): Promise<ChildIncidentReport> {
+    return this.request(`/children/${childId}/incident-reports/${incidentId}/acknowledge`, { method: "POST", ...this.orgOverride(organizationId) });
   }
 
-  async childIncidentReportPhoto(childId: string, incidentId: string): Promise<ChildIncidentPhoto> {
-    return this.request(`/children/${childId}/incident-reports/${incidentId}/photo`);
+  async childIncidentReportPhoto(childId: string, incidentId: string, organizationId?: string): Promise<ChildIncidentPhoto> {
+    return this.request(`/children/${childId}/incident-reports/${incidentId}/photo`, this.orgOverride(organizationId));
   }
 
-  async childMessages(childId: string): Promise<ChildMessage[]> {
-    return this.request(`/children/${childId}/messages`);
+  async childMessages(childId: string, organizationId?: string): Promise<ChildMessage[]> {
+    return this.request(`/children/${childId}/messages`, this.orgOverride(organizationId));
   }
 
-  async sendChildMessage(childId: string, body: string): Promise<ChildMessage> {
-    return this.request(`/children/${childId}/messages`, { method: "POST", body: JSON.stringify({ body }) });
+  async sendChildMessage(childId: string, body: string, organizationId?: string): Promise<ChildMessage> {
+    return this.request(`/children/${childId}/messages`, { method: "POST", body: JSON.stringify({ body }), ...this.orgOverride(organizationId) });
   }
 
-  async markChildMessagesRead(childId: string): Promise<void> {
-    await this.request<void>(`/children/${childId}/messages/read`, { method: "POST" });
+  async markChildMessagesRead(childId: string, organizationId?: string): Promise<void> {
+    await this.request<void>(`/children/${childId}/messages/read`, { method: "POST", ...this.orgOverride(organizationId) });
   }
 
   async analyticsOccupancy(): Promise<BranchOccupancy[]> { return this.request("/analytics/occupancy"); }
@@ -607,7 +607,7 @@ export class ApiClient {
     return this.request(`/children/${childId}/development-entries`, { method: "POST", body: JSON.stringify(input) });
   }
 
-  async servicePlans(): Promise<ServicePlan[]> { return this.request("/service-plans"); }
+  async servicePlans(organizationId?: string): Promise<ServicePlan[]> { return this.request("/service-plans", this.orgOverride(organizationId)); }
   async createServicePlan(input: Omit<ServicePlan, "id">): Promise<ServicePlan> { return this.request("/service-plans", { method: "POST", body: JSON.stringify(input) }); }
   async branchCapacities(): Promise<BranchCapacity[]> { return this.request("/branch-capacities"); }
   async setBranchCapacity(branchId: string, dailyCapacity: number): Promise<BranchCapacity> { return this.request(`/branches/${branchId}/capacity`, { method: "PUT", body: JSON.stringify({ dailyCapacity }) }); }
@@ -618,10 +618,10 @@ export class ApiClient {
   async createServicePlanTemplate(input: UpsertServicePlanTemplateInput): Promise<ServicePlanTemplate> { return this.request("/service-plan-templates", { method: "POST", body: JSON.stringify(input) }); }
   async updateServicePlanTemplate(templateId: string, input: UpsertServicePlanTemplateInput): Promise<ServicePlanTemplate> { return this.request(`/service-plan-templates/${templateId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async deleteServicePlanTemplate(templateId: string): Promise<void> { await this.request<void>(`/service-plan-templates/${templateId}`, { method: "DELETE" }); }
-  async purchaseService(input: PurchaseServiceInput): Promise<{ entitlement: ServiceEntitlement; invoice: Invoice; bookings: Booking[] }> { return this.request("/service-purchases", { method: "POST", body: JSON.stringify(input) }); }
-  async entitlements(filter: BranchListFilter = {}): Promise<ServiceEntitlement[]> { return this.request(withBranchFilter("/service-entitlements", filter)); }
-  async bookEntitlement(entitlementId: string, bookingDates: string[]): Promise<Booking[]> { return this.request(`/service-entitlements/${entitlementId}/bookings`, { method: "POST", body: JSON.stringify({ bookingDates }) }); }
-  async bookings(filter: BranchListFilter = {}): Promise<Booking[]> { return this.request(withBranchFilter("/bookings", filter)); }
+  async purchaseService(input: PurchaseServiceInput, organizationId?: string): Promise<{ entitlement: ServiceEntitlement; invoice: Invoice; bookings: Booking[] }> { return this.request("/service-purchases", { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async entitlements(filter: BranchListFilter = {}, organizationId?: string): Promise<ServiceEntitlement[]> { return this.request(withBranchFilter("/service-entitlements", filter), this.orgOverride(organizationId)); }
+  async bookEntitlement(entitlementId: string, bookingDates: string[], organizationId?: string): Promise<Booking[]> { return this.request(`/service-entitlements/${entitlementId}/bookings`, { method: "POST", body: JSON.stringify({ bookingDates }), ...this.orgOverride(organizationId) }); }
+  async bookings(filter: BranchListFilter = {}, organizationId?: string): Promise<Booking[]> { return this.request(withBranchFilter("/bookings", filter), this.orgOverride(organizationId)); }
   async pendingBookings(filter: BranchListFilter = {}, search?: string): Promise<Booking[]> { return this.request(withBranchAndSearchFilter("/bookings/pending-approval", filter, search)); }
   async approveBooking(bookingId: string, approved: boolean): Promise<Booking> { return this.request(`/bookings/${bookingId}/approval`, { method: "POST", body: JSON.stringify({ approved }) }); }
   async invoices(filter: BranchListFilter = {}, search?: string, organizationId?: string): Promise<Invoice[]> { return this.request(withBranchAndSearchFilter("/invoices", filter, search), organizationId ? { headers: { "X-Organization-Id": organizationId } } : undefined); }
@@ -630,6 +630,13 @@ export class ApiClient {
   async paymentProof(invoiceId: string): Promise<PaymentProofImage> { return this.request(`/invoices/${invoiceId}/payment-proof`); }
   async reviewPaymentProof(invoiceId: string, approved: boolean, rejectionReason?: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/payment-proof/review`, { method: "POST", body: JSON.stringify({ approved, rejectionReason }) }); }
   async markInvoicePaid(invoiceId: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/mark-paid`, { method: "POST" }); }
+
+  // Overrides X-Organization-Id for one call without switching the client's ambient
+  // organization — safe for GET or a mutation alike, since authorizedFetch merges
+  // init.headers last regardless of method (see authorizedFetch below).
+  private orgOverride(organizationId?: string): RequestInit {
+    return organizationId ? { headers: { "X-Organization-Id": organizationId } } : {};
+  }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await this.authorizedFetch(path, init);

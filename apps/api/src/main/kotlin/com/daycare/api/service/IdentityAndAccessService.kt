@@ -110,14 +110,19 @@ class AccessService(
     }
 
     @Transactional
-    fun require(jwt: Jwt, organizationId: UUID, allowedRoles: Set<Role>, requiredCapability: InstitutionCapability? = null, readOnly: Boolean = false): AccessScope {
+    fun require(jwt: Jwt, organizationId: UUID, allowedRoles: Set<Role>, requiredCapability: InstitutionCapability? = null, readOnly: Boolean = false, allowSubscriptionRestrictedForRoles: Set<Role> = emptySet()): AccessScope {
         val user = identityService.sync(jwt)
         val membership = memberships.findAllByUserIdAndOrganizationId(user.id, organizationId).sortedByDescending { it.active }.firstOrNull { (it.active || readOnly) && it.role in allowedRoles }
             ?: throw AccessDeniedException("You do not have permission for this organization")
         val subscription = subscriptions.findByOrganizationId(organizationId)
         if (subscription != null) {
             if (subscription.status == TenantSubscriptionStatus.TRIAL && subscription.trialEndsAt?.isBefore(java.time.LocalDate.now()) == true) subscription.status = TenantSubscriptionStatus.PENDING_PAYMENT
-            if (subscription.status !in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL)) throw AccessDeniedException("Tenant subscription is not active")
+            // See docs/business-rules.md §13.12 TENANT_SUBSCRIPTION_RESTRICTED: a narrow,
+            // explicitly allowlisted exception (currently just a Parent's own child list) stays
+            // readable when the tenant's own subscription lapses; every other route still blocks.
+            if (subscription.status !in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL) && membership.role !in allowSubscriptionRestrictedForRoles) {
+                throw AccessDeniedException("Tenant subscription is not active")
+            }
         }
         val capabilities = organizationCapabilities.forOrganization(organizationId)
         if (requiredCapability != null) {

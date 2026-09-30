@@ -21,8 +21,9 @@ const defaultForm = (): FormState => ({ severity: "MINOR", category: "INJURY", d
 
 export default function IncidentReportsScreen() {
   const router = useRouter();
-  const { childId } = useLocalSearchParams<{ childId?: string }>();
-  const { api, profile, organizationId } = useAuth();
+  const { childId, organizationId: routeOrganizationId } = useLocalSearchParams<{ childId?: string; organizationId?: string }>();
+  const { api, profile, organizationId: activeOrganizationId } = useAuth();
+  const organizationId = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
   const { t, formatDateTime } = useI18n();
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
@@ -37,18 +38,18 @@ export default function IncidentReportsScreen() {
   const [photo, setPhoto] = useState<PickedImage | null>(null);
   const [photoEntry, setPhotoEntry] = useState<ChildIncidentReport | null>(null);
 
-  const reports = useQuery({ queryKey: ["child-incident-reports", organizationId, childId], queryFn: () => api.childIncidentReports(childId!), enabled: Boolean(organizationId && childId && membership) });
+  const reports = useQuery({ queryKey: ["child-incident-reports", organizationId, childId], queryFn: () => api.childIncidentReports(childId!, organizationId), enabled: Boolean(organizationId && childId && membership) });
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["child-incident-reports", organizationId, childId] });
   const create = useMutation({
     mutationFn: async (input: FormState) => api.createChildIncidentReport(childId!, {
       severity: input.severity, category: input.category, description: input.description.trim(), actionTaken: input.actionTaken.trim() || undefined,
       occurredAt: new Date().toISOString(),
       photo: photo ? { contentType: photo.mimeType === "image/png" ? "image/png" : "image/jpeg", dataBase64: await encodeLocalFileBase64(photo.uri) } : undefined,
-    }),
+    }, organizationId),
     onSuccess: () => { invalidate(); setForm(null); setPhoto(null); },
   });
-  const acknowledge = useMutation({ mutationFn: (incidentId: string) => api.acknowledgeChildIncidentReport(childId!, incidentId), onSuccess: invalidate });
-  const photoQuery = useQuery({ queryKey: ["child-incident-report-photo", organizationId, childId, photoEntry?.id], queryFn: () => api.childIncidentReportPhoto(childId!, photoEntry!.id), enabled: Boolean(childId && photoEntry) });
+  const acknowledge = useMutation({ mutationFn: (incidentId: string) => api.acknowledgeChildIncidentReport(childId!, incidentId, organizationId), onSuccess: invalidate });
+  const photoQuery = useQuery({ queryKey: ["child-incident-report-photo", organizationId, childId, photoEntry?.id], queryFn: () => api.childIncidentReportPhoto(childId!, photoEntry!.id, organizationId), enabled: Boolean(childId && photoEntry) });
 
   if (!profile) return null;
   if ((!isParent && !isStaff && !isStaffAdmin) || !childId) return <Redirect href="/home" />;

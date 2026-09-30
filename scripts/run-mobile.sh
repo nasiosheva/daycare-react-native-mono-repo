@@ -490,6 +490,8 @@ run_client() {
     web)
       if [ "$environment" = "local" ]; then
         run_web_local_client
+      elif [ "${DAYCARE_WEB_CLEAR_CACHE:-false}" = "true" ]; then
+        corepack pnpm --filter @daycare/app exec expo start --web --clear
       else
         corepack pnpm --filter @daycare/app exec expo start --web
       fi

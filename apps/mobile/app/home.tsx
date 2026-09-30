@@ -119,16 +119,21 @@ function StaffHome({ displayName, organizationName, managedChildren, tasksByChil
 
 function ParentHome({ displayName, organizationName, hasDaycareOperations, subscriptionActive }: { displayName: string; organizationName: string; hasDaycareOperations: boolean; subscriptionActive: boolean }) {
   const router = useRouter();
-  const { api, organizationId, profile, selectOrganization } = useAuth();
+  const { api, organizationId, profile } = useAuth();
   const { t, formatCurrency, formatDate } = useI18n();
   const access = useUiAccessContext(subscriptionActive);
   const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
-  const parentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT" && membership.active && hasOperationalTenantSubscription(membership.subscriptionStatus));
+  // A Parent's own children list stays visible even once their tenant's subscription lapses
+  // (docs/business-rules.md §13.12 TENANT_SUBSCRIPTION_RESTRICTED) — unlike every other
+  // tenant-scoped query on this screen, which still requires an operational subscription.
+  const parentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT" && membership.active);
   const showsTenantLabel = parentMemberships.length > 1;
   const children = useParentChildrenAcrossTenants(parentMemberships, true);
+  // Every one of these destinations resolves organizationId from this route param before falling
+  // back to the active tenant, so opening a non-active tenant's child action never needs a
+  // selectOrganization() switch (which used to clear the entire React Query cache on every tap).
   const openChild = (childOrganizationId: string, pathname: string, params: Record<string, string>) => {
-    selectOrganization(childOrganizationId);
-    router.push({ pathname, params } as never);
+    router.push({ pathname, params: { ...params, organizationId: childOrganizationId } } as never);
   };
   const entitlements = useEntitlements(hasDaycareOperations && subscriptionActive);
   const invoices = useInvoices(subscriptionActive);
@@ -163,26 +168,31 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations, subsc
             <View style={styles.childCardHeading}>
               <AppText variant="h5">{child.fullName}</AppText>
               {showsTenantLabel && <AppText variant="caption" tone="muted">{child.organizationName}</AppText>}
-              <Badge tone={isCheckedIn ? "success" : "neutral"} icon={isCheckedIn ? "checkmark-circle" : child.todayCheckedOutAt ? "home-outline" : "time-outline"} label={t(statusKey)} />
+              {child.tenantSubscriptionRestricted ? <AppText variant="caption" tone="danger">{t("tenantReadiness.issueSubscription")}</AppText> : <Badge tone={isCheckedIn ? "success" : "neutral"} icon={isCheckedIn ? "checkmark-circle" : child.todayCheckedOutAt ? "home-outline" : "time-outline"} label={t(statusKey)} />}
             </View>
           </View>
-          {hasDaycareOperations && isActiveTenant && (servicesUnavailable ? <AppText variant="caption" tone="muted">{t("home.parentSummaryLoading")}</AppText> : <View style={styles.entitlementsRow}>
-            {activeEntitlements.length === 0 && <AppText variant="caption" tone="muted">{t("home.parentNoActiveServices")}</AppText>}
-            {activeEntitlements.map((entitlement) => <View key={entitlement.id} style={styles.entitlementPill}>
-              <Ionicons name="ribbon-outline" size={14} color={colors.primary} />
-              <View>
-                <AppText variant="caption" style={styles.entitlementPlanText}>{entitlement.planName}</AppText>
-                <AppText variant="caption" tone="muted">{entitlement.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: entitlement.remainingCredits })} · {t("booking.validUntil", { date: formatDate(entitlement.validUntil) })}</AppText>
-              </View>
+          {/* A subscription-restricted tenant only allows this Parent's own child list to stay
+              readable (see the useParentChildrenAcrossTenants note above) — every other route for
+              that tenant, including this card's usual actions, still 403s, so none render here. */}
+          {!child.tenantSubscriptionRestricted && <>
+            {hasDaycareOperations && isActiveTenant && (servicesUnavailable ? <AppText variant="caption" tone="muted">{t("home.parentSummaryLoading")}</AppText> : <View style={styles.entitlementsRow}>
+              {activeEntitlements.length === 0 && <AppText variant="caption" tone="muted">{t("home.parentNoActiveServices")}</AppText>}
+              {activeEntitlements.map((entitlement) => <View key={entitlement.id} style={styles.entitlementPill}>
+                <Ionicons name="ribbon-outline" size={14} color={colors.primary} />
+                <View>
+                  <AppText variant="caption" style={styles.entitlementPlanText}>{entitlement.planName}</AppText>
+                  <AppText variant="caption" tone="muted">{entitlement.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: entitlement.remainingCredits })} · {t("booking.validUntil", { date: formatDate(entitlement.validUntil) })}</AppText>
+                </View>
+              </View>)}
             </View>)}
-          </View>)}
-          <View style={styles.parentActions}>
-            <Button variant="secondary" leadingIcon={<Ionicons name="person-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-child-profile", { childId: child.id })}>{t("children.parentProfile")}</Button>
-            <Button variant="secondary" leadingIcon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/development", { childId: child.id })}>{t("development.title")}</Button>
-            {/* For a non-active tenant we don't know its daycare capability without switching first; parent-qr's own LegacyDaycareRouteGuard re-checks it after openChild switches context, so it's safe to just try. */}
-            {(isActiveTenant ? hasDaycareOperations : true) && <Button variant="secondary" leadingIcon={<Ionicons name="qr-code-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-qr", { childId: child.id })}>{t("qr.title")}</Button>}
-            <Button variant="secondary" leadingIcon={<Ionicons name="calendar-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/absence-requests", { childId: child.id })}>{t("absence.menu")}</Button>
-          </View>
+            <View style={styles.parentActions}>
+              <Button variant="secondary" leadingIcon={<Ionicons name="person-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-child-profile", { childId: child.id })}>{t("children.parentProfile")}</Button>
+              <Button variant="secondary" leadingIcon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/development", { childId: child.id })}>{t("development.title")}</Button>
+              {/* For a non-active tenant we don't know its daycare capability without switching the whole app's context first, which openChild no longer does; parent-qr's own LegacyDaycareRouteGuard re-checks it for that tenant, so it's safe to just try. */}
+              {(isActiveTenant ? hasDaycareOperations : true) && <Button variant="secondary" leadingIcon={<Ionicons name="qr-code-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-qr", { childId: child.id })}>{t("qr.title")}</Button>}
+              <Button variant="secondary" leadingIcon={<Ionicons name="calendar-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/absence-requests", { childId: child.id })}>{t("absence.menu")}</Button>
+            </View>
+          </>}
         </View>;
       })}
       {!childrenUnavailable && summary.children.length === 0 && <EmptyState icon="happy-outline" title={t("children.empty")} description={t("parentEnrollment.startDescription")} action={{ label: t("parentEnrollment.newTenant"), onPress: () => router.push("/parent-enrollment-form") }} />}

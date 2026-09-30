@@ -65,7 +65,7 @@ class AttendanceService(
 ) {
     @Transactional
     fun listChildren(jwt: Jwt, organizationId: UUID, filter: ChildListFilter = ChildListFilter()): List<ChildResponse> {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet())
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), allowSubscriptionRestrictedForRoles = setOf(Role.PARENT))
         if (filter.guardianStatus != null && scope.membership.role != Role.STAFF_ADMIN) throw AccessDeniedException("Guardian status filtering is only available to Staff Admin")
         validateFilter(organizationId, filter)
         val scopedChildren = childScopes.visibleChildren(scope, organizationId).filter { child -> matchesFilter(child, filter) }

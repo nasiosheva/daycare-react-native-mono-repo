@@ -15,16 +15,19 @@ import { hasBranchOfferingCapability, useUiAccessContext } from "@/education/use
 
 export default function ParentChildProfileScreen() {
   const router = useRouter();
-  const { childId: rawChildId } = useLocalSearchParams<{ childId?: string }>();
+  const { childId: rawChildId, organizationId: routeOrganizationId } = useLocalSearchParams<{ childId?: string; organizationId?: string }>();
   const childId = typeof rawChildId === "string" ? rawChildId : null;
-  const { api, organizationId, profile } = useAuth();
+  const { api, organizationId: activeOrganizationId, profile } = useAuth();
+  // The Parent may be viewing a child at a tenant that isn't the active one; every query, the
+  // membership lookup, and every onward navigation below use this resolved value instead.
+  const organizationId = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const access = useUiAccessContext(Boolean(membership));
-  const childProfile = useQuery({ queryKey: ["parent-child-profile", organizationId, childId], queryFn: () => api.parentChildProfile(childId!), enabled: Boolean(childId && membership?.role === "PARENT") });
+  const access = useUiAccessContext(Boolean(membership), organizationId);
+  const childProfile = useQuery({ queryKey: ["parent-child-profile", organizationId, childId], queryFn: () => api.parentChildProfile(childId!, organizationId), enabled: Boolean(childId && membership?.role === "PARENT") });
   const hasDaycarePickupOperations = hasBranchOfferingCapability(access.data, childProfile.data?.child.branchId, "DAYCARE_OPERATIONS");
-  const feedback = useMutation({ mutationFn: ({ programId, note }: { programId: string; note: string }) => api.addParentChildProgramFeedback(childId!, programId, note), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["parent-child-profile", organizationId, childId] }) });
+  const feedback = useMutation({ mutationFn: ({ programId, note }: { programId: string; note: string }) => api.addParentChildProgramFeedback(childId!, programId, note, organizationId), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["parent-child-profile", organizationId, childId] }) });
   const [feedbackProgramId, setFeedbackProgramId] = useState<string | null>(null);
   const [feedbackNote, setFeedbackNote] = useState("");
   if (!profile) return null;
@@ -59,10 +62,10 @@ export default function ParentChildProfileScreen() {
         {childProfile.data.branch.googleMapsUrl && <Button variant="secondary" leadingIcon={<Ionicons name="map-outline" size={18} color={colors.primary} />} onPress={() => void openMaps()}>{t("branch.openGoogleMaps")}</Button>}
       </Card>
       <MenuSection title={t("children.safetySection")}>
-        <MenuItem icon="chatbubbles-outline" title={t("childMessage.menuTitle")} description={t("childMessage.menuDescription")} onPress={() => router.push({ pathname: "/child-messages", params: { childId } } as never)} />
-        <MenuItem icon="call-outline" title={t("emergencyContacts.title")} description={t("emergencyContacts.manage")} onPress={() => router.push({ pathname: "/emergency-contacts", params: { childId } } as never)} />
-        {hasDaycarePickupOperations && <MenuItem icon="car-outline" title={t("pickup.title")} description={t("pickup.manage")} onPress={() => router.push({ pathname: "/pickup-authorizations", params: { childId } } as never)} />}
-        {hasDaycarePickupOperations && <MenuItem icon="shield-checkmark-outline" title={t("consent.title")} description={t("consent.parentDescription")} onPress={() => router.push({ pathname: "/child-consents", params: { childId } } as never)} />}
+        <MenuItem icon="chatbubbles-outline" title={t("childMessage.menuTitle")} description={t("childMessage.menuDescription")} onPress={() => router.push({ pathname: "/child-messages", params: { childId, organizationId } } as never)} />
+        <MenuItem icon="call-outline" title={t("emergencyContacts.title")} description={t("emergencyContacts.manage")} onPress={() => router.push({ pathname: "/emergency-contacts", params: { childId, organizationId } } as never)} />
+        {hasDaycarePickupOperations && <MenuItem icon="car-outline" title={t("pickup.title")} description={t("pickup.manage")} onPress={() => router.push({ pathname: "/pickup-authorizations", params: { childId, organizationId } } as never)} />}
+        {hasDaycarePickupOperations && <MenuItem icon="shield-checkmark-outline" title={t("consent.title")} description={t("consent.parentDescription")} onPress={() => router.push({ pathname: "/child-consents", params: { childId, organizationId } } as never)} />}
       </MenuSection>
       <Card icon="grid-outline" title={t("children.classroom")}>{childProfile.data.placement ? <InfoRow label={childProfile.data.placement.learningLevelName ?? t("common.noData")} value={childProfile.data.placement.classroomName} /> : <AppText tone="muted">{t("common.noData")}</AppText>}</Card>
       <Card icon="heart-outline" title={t("children.programs")}>{childProfile.data.programs.map((program) => <View key={program.id} style={styles.item}><View style={styles.itemHeader}><AppText variant="label" style={styles.grow}>{program.name}</AppText><Badge tone={statusTone(program.status)} label={statusLabel(program.status)} /></View>{program.parentSummary && <AppText tone="muted">{program.parentSummary}</AppText>}{program.homeGuidance && <><AppText variant="label">{t("children.homeGuidance")}</AppText><AppText tone="muted">{program.homeGuidance}</AppText></>}{program.steps.map((step) => <View key={step.id} style={styles.step}><AppText variant="label">{step.title}</AppText>{step.homeGuidance && <AppText tone="muted">{step.homeGuidance}</AppText>}</View>)}{program.steps.length === 0 && !program.homeGuidance && <AppText tone="muted">{t("children.noSteps")}</AppText>}{program.feedback.map((item) => <View key={item.id} style={styles.feedbackNote}><Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.muted} /><AppText style={styles.grow}>{item.note}</AppText></View>)}<Button variant="secondary" leadingIcon={<Ionicons name="create-outline" size={18} color={colors.primary} />} onPress={() => setFeedbackProgramId(program.id)}>{t("children.addFeedback")}</Button></View>)}{childProfile.data.programs.length === 0 && <EmptyState compact icon="heart-outline" title={t("children.noPrograms")} />}</Card>

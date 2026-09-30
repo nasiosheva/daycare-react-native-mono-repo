@@ -8,7 +8,7 @@ import { notify } from "@/notify/notify";
 import { AppScreen } from "@/navigation/AppScreen";
 import { can } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
-import { useChildren } from "@/attendance/useAttendance";
+import { useChildren, useParentChildrenAcrossTenants } from "@/attendance/useAttendance";
 import { useCreateDevelopmentEntry, useDevelopmentCategories, useDevelopmentEntries, useDevelopmentEntryMedia, useDevelopmentEntryPhoto } from "@/development/useDevelopment";
 import { groupDevelopmentEntries } from "@/development/history";
 import { resolveSelectedChildId } from "@/development/selectedChild";
@@ -22,17 +22,25 @@ import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAcce
 
 export default function DevelopmentScreen() {
   const router = useRouter();
-  const { childId: routeChildId } = useLocalSearchParams<{ childId?: string }>();
-  const { profile, organizationId } = useAuth();
+  const { childId: routeChildId, organizationId: routeOrganizationId } = useLocalSearchParams<{ childId?: string; organizationId?: string }>();
+  const { profile, organizationId: activeOrganizationId } = useAuth();
+  // A Parent always reaches this screen with a fixed childId, which may belong to a tenant other
+  // than the active one; Staff/Staff Admin never pass this param, so their own tenant-wide
+  // multi-child picker below keeps resolving to the active tenant as before.
+  const organizationId = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
-  const access = useUiAccessContext(Boolean(membership));
+  const isParent = membership?.role === "PARENT";
+  const access = useUiAccessContext(Boolean(membership), organizationId);
   const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
   const hasFixedChild = typeof routeChildId === "string";
   const [filterVisible, setFilterVisible] = useState(false);
   const [childFilter, setChildFilter] = useState<ChildListFilter>({});
-  const children = useChildren(isStaffAdmin ? childFilter : {});
+  const children = useChildren(isStaffAdmin ? childFilter : {}, !isParent);
+  const parentMemberships = (profile?.memberships ?? []).filter((item) => item.role === "PARENT" && item.active);
+  const parentChildren = useParentChildrenAcrossTenants(parentMemberships, isParent);
+  const availableChildren = useMemo(() => isParent ? parentChildren.data : children.data ?? [], [isParent, parentChildren.data, children.data]);
   const [childId, setChildId] = useState<string | null>(typeof routeChildId === "string" ? routeChildId : null);
   const [category, setCategory] = useState("OBSERVATION");
   const [title, setTitle] = useState("");
@@ -42,16 +50,16 @@ export default function DevelopmentScreen() {
   const [entryVisible, setEntryVisible] = useState(false);
   const imagePicker = useImagePicker();
   const audioRecording = useAudioRecording();
-  const selectedChild = useMemo(() => children.data?.find((child) => child.id === childId) ?? null, [children.data, childId]);
-  const entries = useDevelopmentEntries(childId);
+  const selectedChild = useMemo(() => availableChildren.find((child) => child.id === childId) ?? null, [availableChildren, childId]);
+  const entries = useDevelopmentEntries(childId, organizationId);
   const developmentCategories = useDevelopmentCategories();
   const createEntry = useCreateDevelopmentEntry(childId);
   const canRecord = membership ? can(membership.role, "recordDevelopment") && membership.active : false;
   const canManageCategories = membership?.active && (membership.role === "STAFF_ADMIN" || (membership.role === "STAFF" && membership.canManageDevelopmentCategories));
 
   useEffect(() => {
-    setChildId((currentChildId) => resolveSelectedChildId(children.data ?? [], currentChildId, hasFixedChild ? routeChildId : undefined, hasFixedChild));
-  }, [children.data, hasFixedChild, routeChildId]);
+    setChildId((currentChildId) => resolveSelectedChildId(availableChildren, currentChildId, hasFixedChild ? routeChildId : undefined, hasFixedChild));
+  }, [availableChildren, hasFixedChild, routeChildId]);
 
   useEffect(() => {
     if (!developmentCategories.data?.length) return;
@@ -100,6 +108,7 @@ export default function DevelopmentScreen() {
   const removePhoto = (index: number) => setPhotos((current) => current.filter((_, itemIndex) => itemIndex !== index));
 
   const hasChildFilter = Boolean(childFilter.branchId || childFilter.learningLevelId || childFilter.classroomId);
+  const childrenFetching = isParent ? parentChildren.isFetching : children.isFetching;
   return <AppScreen showBottomNavigation={false} title={t("development.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={selectedChild && canRecord ? <FloatingActionButton icon="create-outline" accessibilityLabel={t("development.record", { name: selectedChild.fullName })} onPress={openEntry}>{t("development.recordShort")}</FloatingActionButton> : undefined}>
     <AppText tone="muted">{t("development.subtitle")}</AppText>
     {membership?.active === false && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
@@ -107,18 +116,18 @@ export default function DevelopmentScreen() {
       <AppText variant="label" style={styles.grow}>{t("development.chooseChild")}</AppText>
       {isStaffAdmin && <Button variant={hasChildFilter ? "primary" : "secondary"} accessibilityLabel={t(hasChildFilter ? "children.filterActive" : "children.filter")} leadingIcon={<Ionicons name="options-outline" size={18} color={hasChildFilter ? colors.onPrimary : colors.primary} />} onPress={() => setFilterVisible(true)}>{t("children.filter")}</Button>}
     </View>}
-    {!hasFixedChild && children.isFetching && <ShimmerList variant="tile" />}
-    {!hasFixedChild && !children.isFetching && <ChipGroup accessibilityLabel={t("development.chooseChild")}>
-      {children.data?.map((child) => <Chip key={child.id} label={child.fullName} selected={child.id === childId} onPress={() => selectChild(child.id)} />)}
+    {!hasFixedChild && childrenFetching && <ShimmerList variant="tile" />}
+    {!hasFixedChild && !childrenFetching && <ChipGroup accessibilityLabel={t("development.chooseChild")}>
+      {availableChildren.map((child) => <Chip key={child.id} label={child.fullName} selected={child.id === childId} onPress={() => selectChild(child.id)} />)}
     </ChipGroup>}
-    {!children.isLoading && !children.data?.length && <EmptyState icon="happy-outline" title={t("children.empty")} />}
-    {hasFixedChild && !children.isLoading && Boolean(children.data?.length) && !selectedChild && <EmptyState icon="happy-outline" title={t("children.empty")} />}
+    {!childrenFetching && !availableChildren.length && <EmptyState icon="happy-outline" title={t("children.empty")} />}
+    {hasFixedChild && !childrenFetching && Boolean(availableChildren.length) && !selectedChild && <EmptyState icon="happy-outline" title={t("children.empty")} />}
     {selectedChild && <Card>
       <View style={styles.childHeader}><Avatar name={selectedChild.fullName} /><AppText variant="h5" style={styles.grow}>{selectedChild.fullName}</AppText></View>
       <View style={styles.quickLinks}>
-        {hasAcademicOffering && <QuickLink icon="flag-outline" label={t("goals.title")} onPress={() => router.push({ pathname: "/goals", params: { childId: selectedChild.id } })} />}
-        <QuickLink icon="medkit-outline" label={t("health.title")} onPress={() => router.push({ pathname: "/child-health", params: { childId: selectedChild.id } })} />
-        <QuickLink icon="bandage-outline" label={t("incident.title")} onPress={() => router.push({ pathname: "/incident-reports", params: { childId: selectedChild.id } })} />
+        {hasAcademicOffering && <QuickLink icon="flag-outline" label={t("goals.title")} onPress={() => router.push({ pathname: "/goals", params: { childId: selectedChild.id, organizationId } })} />}
+        <QuickLink icon="medkit-outline" label={t("health.title")} onPress={() => router.push({ pathname: "/child-health", params: { childId: selectedChild.id, organizationId } })} />
+        <QuickLink icon="bandage-outline" label={t("incident.title")} onPress={() => router.push({ pathname: "/incident-reports", params: { childId: selectedChild.id, organizationId } })} />
       </View>
     </Card>}
     {canManageCategories && <MenuItem icon="pricetags-outline" title={t("development.categories")} onPress={() => router.push("/development-categories")} />}
@@ -151,7 +160,7 @@ export default function DevelopmentScreen() {
         {audioRecording.error && <AppText tone="muted" variant="caption">{audioRecording.error.message}</AppText>}
       </View>
     </BottomSheet>
-    {selectedChild && <DevelopmentHistory entries={entries} />}
+    {selectedChild && <DevelopmentHistory entries={entries} organizationId={organizationId} />}
     {isStaffAdmin && <ChildFilterSheet visible={filterVisible} filter={childFilter} onClose={() => setFilterVisible(false)} onApply={(filter) => { setChildFilter(filter); setFilterVisible(false); }} />}
   </AppScreen>;
 }
@@ -163,11 +172,11 @@ function QuickLink({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyph
   </Pressable>;
 }
 
-function DevelopmentHistory({ entries }: { entries: ReturnType<typeof useDevelopmentEntries> }) {
+function DevelopmentHistory({ entries, organizationId }: { entries: ReturnType<typeof useDevelopmentEntries>; organizationId?: string }) {
   const { t, formatDateTime } = useI18n();
   const groups = groupDevelopmentEntries(entries.data ?? []);
   const [photoEntry, setPhotoEntry] = useState<{ id: string; childId: string; title: string } | null>(null);
-  const photo = useDevelopmentEntryPhoto(photoEntry?.childId ?? null, photoEntry?.id ?? null);
+  const photo = useDevelopmentEntryPhoto(photoEntry?.childId ?? null, photoEntry?.id ?? null, organizationId);
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
   return <View style={styles.section}>
     <SectionHeader title={t("development.history")} />
@@ -178,8 +187,8 @@ function DevelopmentHistory({ entries }: { entries: ReturnType<typeof useDevelop
       {group.entries.map((entry) => <View key={entry.id} style={styles.entry}>
         <AppText variant="h6">{entry.title}</AppText>
         <AppText>{entry.content}</AppText>
-        {entry.hasPhoto && <DevelopmentPhotoThumbnail childId={entry.childId} entryId={entry.id} title={entry.title} onPress={() => setPhotoEntry({ id: entry.id, childId: entry.childId, title: entry.title })} />}
-        {entry.media.length > 0 && <View style={styles.selector}>{entry.media.map((item) => <DevelopmentMediaItem key={item.id} childId={entry.childId} entryId={entry.id} media={item} title={entry.title} activeAudioId={activeAudioId} onAudioActivate={setActiveAudioId} />)}</View>}
+        {entry.hasPhoto && <DevelopmentPhotoThumbnail childId={entry.childId} entryId={entry.id} title={entry.title} organizationId={organizationId} onPress={() => setPhotoEntry({ id: entry.id, childId: entry.childId, title: entry.title })} />}
+        {entry.media.length > 0 && <View style={styles.selector}>{entry.media.map((item) => <DevelopmentMediaItem key={item.id} childId={entry.childId} entryId={entry.id} media={item} title={entry.title} organizationId={organizationId} activeAudioId={activeAudioId} onAudioActivate={setActiveAudioId} />)}</View>}
         <AppText variant="caption" tone="muted">{formatDateTime(entry.recordedAt)} · {entry.recordedBy}</AppText>
       </View>)}
     </View>)}
@@ -192,11 +201,11 @@ function DevelopmentHistory({ entries }: { entries: ReturnType<typeof useDevelop
   </View>;
 }
 
-function DevelopmentMediaItem({ childId, entryId, media, title, activeAudioId, onAudioActivate }: { childId: string; entryId: string; media: DevelopmentEntryMedia; title: string; activeAudioId: string | null; onAudioActivate: (mediaId: string) => void }) {
+function DevelopmentMediaItem({ childId, entryId, media, title, organizationId, activeAudioId, onAudioActivate }: { childId: string; entryId: string; media: DevelopmentEntryMedia; title: string; organizationId?: string; activeAudioId: string | null; onAudioActivate: (mediaId: string) => void }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
-  const content = useDevelopmentEntryMedia(childId, entryId, expanded ? media.id : null);
+  const content = useDevelopmentEntryMedia(childId, entryId, expanded ? media.id : null, organizationId);
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const playback = useAudioPlayback(audioUri);
 
@@ -236,9 +245,9 @@ function DevelopmentMediaItem({ childId, entryId, media, title, activeAudioId, o
   </>;
 }
 
-function DevelopmentPhotoThumbnail({ childId, entryId, title, onPress }: { childId: string; entryId: string; title: string; onPress: () => void }) {
+function DevelopmentPhotoThumbnail({ childId, entryId, title, organizationId, onPress }: { childId: string; entryId: string; title: string; organizationId?: string; onPress: () => void }) {
   const { t } = useI18n();
-  const photo = useDevelopmentEntryPhoto(childId, entryId);
+  const photo = useDevelopmentEntryPhoto(childId, entryId, organizationId);
 
   if (photo.isLoading) return <View accessibilityLabel={t("development.photoLoading")} style={styles.thumbnailPlaceholder} />;
   if (!photo.data) return <Button variant="secondary" onPress={onPress}>{t("development.viewPhoto")}</Button>;
