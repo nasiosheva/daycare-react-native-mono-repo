@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { createParentHomeSummary } from "./parentHomeSummary";
+import { combineProgramSummaries, createParentHomeSummary } from "./parentHomeSummary";
+
+describe("combineProgramSummaries", () => {
+  it("sums active programs across tenants and opens the first child that has one in its own tenant", () => {
+    const combined = combineProgramSummaries([
+      { tenant: { organizationId: "tenant-a" }, data: { activePrograms: 0, feedbackCount: 0, childIds: [] } },
+      { tenant: { organizationId: "tenant-b" }, data: { activePrograms: 2, feedbackCount: 0, childIds: ["child-b"] } },
+      { tenant: { organizationId: "tenant-c" }, data: undefined },
+      { tenant: { organizationId: "tenant-d" }, data: { activePrograms: 1, feedbackCount: 0, childIds: ["child-d"] } },
+    ]);
+
+    expect(combined).toEqual({ activePrograms: 3, firstChild: { childId: "child-b", organizationId: "tenant-b" } });
+    expect(combineProgramSummaries([{ tenant: { organizationId: "tenant-a" }, data: undefined }])).toEqual({ activePrograms: 0, firstChild: null });
+  });
+});
 
 describe("createParentHomeSummary", () => {
   it("groups active services by child and keeps only invoices that need attention", () => {

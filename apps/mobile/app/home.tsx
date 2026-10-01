@@ -7,19 +7,21 @@ import { useQueries, useQuery, useQueryClient, type QueryKey } from "@tanstack/r
 import { AppText, Badge, Button, EmptyState, ErrorState, FloatingActionButton, MenuItem, MenuSection, NavigationCard, SearchField, SectionHeader, ShimmerList, colors, radius, shadows, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren, useParentChildrenAcrossTenants } from "@/attendance/useAttendance";
-import { useBookings, useEntitlements, useInvoices } from "@/booking/useBooking";
+import { useBookings, useEntitlements, useInvoices, useParentEntitlementsAcrossTenants, useParentInvoicesAcrossTenants } from "@/booking/useBooking";
 import { createStaffAdminSummary } from "@/home/staffAdminSummary";
+import { TenantLoadFailureBanner } from "@/tenants/TenantLoadFailureBanner";
+import { useAcrossTenants } from "@/tenants/acrossTenants";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useI18n } from "@/i18n/I18nProvider";
 import { invoiceSourceKey, roleKey, tenantPaymentStatusKey, tenantReadinessIssueKey, tenantSubscriptionPlanKey } from "@/i18n/translations";
 import { useStaffDailyTasks } from "@/home/useStaffDailyTasks";
-import { createParentHomeSummary } from "@/home/parentHomeSummary";
+import { combineProgramSummaries, createParentHomeSummary } from "@/home/parentHomeSummary";
 import { authErrorMessage } from "@/auth/authErrorMessage";
 import { unreadNotificationBadge, unreadNotificationCount } from "@/notifications/unreadBadge";
 import { useInboxNotifications } from "@/notifications/useInboxNotifications";
 import { parentEnrollmentQueryKey } from "@/parent-enrollment/queryKeys";
 import { isInactiveStaffMembership } from "@/navigation/inactiveStaffRouteAccess";
-import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
+import { hasOfferingCapability, useOfferingCapabilitiesByTenant, useUiAccessContext } from "@/education/useUiAccessContext";
 import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
 
 export default function HomeScreen() {
@@ -47,7 +49,7 @@ export default function HomeScreen() {
   const isStaff = membership.role === "STAFF";
   if (isStaffAdmin) return <StaffAdminHome displayName={profile.displayName} organizationName={membership.organizationName} hasDaycareOperations={hasDaycareOperations} subscriptionActive={tenantSubscriptionActive} />;
   if (isStaff) return <StaffHome displayName={profile.displayName} organizationName={membership.organizationName} managedChildren={staffChildren} tasksByChildId={staffDailyTasks} subscriptionActive={tenantSubscriptionActive} />;
-  return <ParentHome displayName={profile.displayName} organizationName={membership.organizationName} hasDaycareOperations={hasDaycareOperations} subscriptionActive={tenantSubscriptionActive} />;
+  return <ParentHome displayName={profile.displayName} organizationName={membership.organizationName} subscriptionActive={tenantSubscriptionActive} />;
 }
 
 function useHomeRefresh(queryKeys: readonly QueryKey[]) {
@@ -118,39 +120,48 @@ function StaffHome({ displayName, organizationName, managedChildren, tasksByChil
   </View></AppScreen>;
 }
 
-function ParentHome({ displayName, organizationName, hasDaycareOperations, subscriptionActive }: { displayName: string; organizationName: string; hasDaycareOperations: boolean; subscriptionActive: boolean }) {
+function ParentHome({ displayName, organizationName, subscriptionActive }: { displayName: string; organizationName: string; subscriptionActive: boolean }) {
   const router = useRouter();
   const { api, organizationId, profile } = useAuth();
   const { t, formatCurrency, formatDate } = useI18n();
-  const access = useUiAccessContext(subscriptionActive);
-  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
-  // A Parent's own children list stays visible even once their tenant's subscription lapses
-  // (docs/business-rules.md §13.12 TENANT_SUBSCRIPTION_RESTRICTED) — unlike every other
-  // tenant-scoped query on this screen, which still requires an operational subscription.
+  // Every section aggregates the Parent's tenants and acts in each child's or invoice's own tenant
+  // (per-action tenant resolution, docs/business-rules.md §1); only pull-to-refresh stays on the
+  // active tenant (§1 Home rule). A Parent's own children list stays visible even once a tenant's
+  // subscription lapses (§13.12 TENANT_SUBSCRIPTION_RESTRICTED); every other per-tenant query skips
+  // such tenants, and each capability gate uses the published offerings of that child's tenant.
   const parentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT" && membership.active);
+  const operationalMemberships = parentMemberships.filter((membership) => hasOperationalTenantSubscription(membership.subscriptionStatus));
   const showsTenantLabel = parentMemberships.length > 1;
   const children = useParentChildrenAcrossTenants(parentMemberships, true);
+  const offerings = useOfferingCapabilitiesByTenant(operationalMemberships, true);
+  const hasDaycareOperations = (tenantId: string) => offerings.hasCapability(tenantId, "DAYCARE_OPERATIONS");
   // Every one of these destinations resolves organizationId from this route param before falling
   // back to the active tenant, so opening a non-active tenant's child action never needs a
   // selectOrganization() switch (which used to clear the entire React Query cache on every tap).
   const openChild = (childOrganizationId: string, pathname: string, params: Record<string, string>) => {
     router.push({ pathname, params: { ...params, organizationId: childOrganizationId } } as never);
   };
-  const entitlements = useEntitlements(hasDaycareOperations && subscriptionActive);
-  const invoices = useInvoices(subscriptionActive);
+  const entitlements = useParentEntitlementsAcrossTenants(operationalMemberships.filter((membership) => hasDaycareOperations(membership.organizationId)), true);
+  const invoices = useParentInvoicesAcrossTenants(parentMemberships, true);
   const privateTutoringServices = useQueries({
-    queries: (children.data ?? []).map((child) => ({
-      queryKey: ["private-tutoring-services", organizationId, child.id],
-      queryFn: () => api.parentPrivateTutoringServices(child.id),
-      enabled: Boolean(organizationId && subscriptionActive && hasAcademicOffering),
+    queries: children.data.map((child) => ({
+      queryKey: ["private-tutoring-services", child.organizationId, child.id],
+      queryFn: () => api.parentPrivateTutoringServices(child.id, child.organizationId),
+      enabled: !child.tenantSubscriptionRestricted && offerings.hasCapability(child.organizationId, "ACADEMIC_CURRICULUM"),
     })),
   });
   const hasPrivateTutoring = privateTutoringServices.some((query) => (query.data?.length ?? 0) > 0);
-  const programsSummary = useQuery({ queryKey: ["parent-child-profile", organizationId, "programs-summary"], queryFn: () => api.parentChildProgramsSummary(), enabled: Boolean(organizationId && subscriptionActive) });
-  const summary = createParentHomeSummary(subscriptionActive ? children.data ?? [] : [], subscriptionActive ? entitlements.data ?? [] : [], subscriptionActive ? invoices.data ?? [] : []);
-  const childrenUnavailable = children.isFetching || children.isError;
-  const servicesUnavailable = hasDaycareOperations && (entitlements.isFetching || entitlements.isError);
-  const paymentsUnavailable = invoices.isFetching || invoices.isError;
+  const programSummaries = useAcrossTenants({
+    tenants: operationalMemberships,
+    queryKey: (membership) => ["parent-child-profile", membership.organizationId, "programs-summary"],
+    queryFn: (membership) => api.parentChildProgramsSummary(membership.organizationId),
+    enabled: true,
+  });
+  const programs = combineProgramSummaries(programSummaries.results);
+  const programsChild = programs.activePrograms > 0 ? programs.firstChild : null;
+  const summary = createParentHomeSummary(children.data, entitlements.data, invoices.data);
+  const childrenUnavailable = children.isFetching || children.allFailed;
+  const paymentsUnavailable = invoices.isFetching || invoices.allFailed;
   const homeRefresh = useHomeRefresh([["ui-access-context", organizationId], ["children", organizationId], ["entitlements", organizationId], ["invoices", organizationId], ["private-tutoring-services", organizationId], ["parent-child-profile", organizationId]]);
 
   return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
@@ -158,11 +169,13 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations, subsc
     {!subscriptionActive && <AppText tone="danger">{t("tenantReadiness.issueSubscription")}</AppText>}
     <SummarySection title={t("home.parentChildren")}>
       {children.isFetching && <ShimmerList />}
-      {children.isError && !children.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void children.refetch()} />}
+      {children.allFailed && !children.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={children.retryFailed} />}
+      {!childrenUnavailable && <TenantLoadFailureBanner failedTenants={children.failedTenants} onRetry={children.retryFailed} />}
       {!childrenUnavailable && summary.children.map(({ child, activeEntitlements }) => {
         const isCheckedIn = Boolean(child.todayCheckedInAt) && !child.todayCheckedOutAt;
         const statusKey = child.todayCheckedOutAt ? "attendance.statusCheckedOut" : child.todayCheckedInAt ? "attendance.statusCheckedIn" : "attendance.statusNotYet";
-        const isActiveTenant = child.organizationId === organizationId;
+        const childHasDaycareOperations = hasDaycareOperations(child.organizationId);
+        const entitlementsFailed = entitlements.failedTenants.some((tenant) => tenant.organizationId === child.organizationId);
         return <View key={child.id} style={styles.childCard}>
           <View style={styles.childCardHeader}>
             <View style={styles.avatar}><AppText variant="h6" style={styles.avatarText}>{child.fullName.trim().charAt(0).toUpperCase() || "?"}</AppText></View>
@@ -176,7 +189,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations, subsc
               readable (see the useParentChildrenAcrossTenants note above) — every other route for
               that tenant, including this card's usual actions, still 403s, so none render here. */}
           {!child.tenantSubscriptionRestricted && <>
-            {hasDaycareOperations && isActiveTenant && (servicesUnavailable ? <AppText variant="caption" tone="muted">{t("home.parentSummaryLoading")}</AppText> : <View style={styles.entitlementsRow}>
+            {childHasDaycareOperations && (entitlements.isFetching ? <AppText variant="caption" tone="muted">{t("home.parentSummaryLoading")}</AppText> : entitlementsFailed ? <AppText variant="caption" tone="danger">{t("common.loadFailed")}</AppText> : <View style={styles.entitlementsRow}>
               {activeEntitlements.length === 0 && <AppText variant="caption" tone="muted">{t("home.parentNoActiveServices")}</AppText>}
               {activeEntitlements.map((entitlement) => <View key={entitlement.id} style={styles.entitlementPill}>
                 <Ionicons name="ribbon-outline" size={14} color={colors.primary} />
@@ -189,25 +202,25 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations, subsc
             <View style={styles.parentActions}>
               <Button variant="secondary" leadingIcon={<Ionicons name="person-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-child-profile", { childId: child.id })}>{t("children.parentProfile")}</Button>
               <Button variant="secondary" leadingIcon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/development", { childId: child.id })}>{t("development.title")}</Button>
-              {/* For a non-active tenant we don't know its daycare capability without switching the whole app's context first, which openChild no longer does; parent-qr's own LegacyDaycareRouteGuard re-checks it for that tenant, so it's safe to just try. */}
-              {(isActiveTenant ? hasDaycareOperations : true) && <Button variant="secondary" leadingIcon={<Ionicons name="qr-code-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-qr", { childId: child.id })}>{t("qr.title")}</Button>}
+              {childHasDaycareOperations && <Button variant="secondary" leadingIcon={<Ionicons name="qr-code-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-qr", { childId: child.id })}>{t("qr.title")}</Button>}
               <Button variant="secondary" leadingIcon={<Ionicons name="calendar-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/absence-requests", { childId: child.id })}>{t("absence.menu")}</Button>
             </View>
           </>}
         </View>;
       })}
-      {!childrenUnavailable && summary.children.length === 0 && <EmptyState icon="happy-outline" title={t("children.empty")} description={t("parentEnrollment.startDescription")} action={{ label: t("parentEnrollment.newTenant"), onPress: () => router.push("/parent-enrollment-form") }} />}
+      {!childrenUnavailable && children.failedTenants.length === 0 && summary.children.length === 0 && <EmptyState icon="happy-outline" title={t("children.empty")} description={t("parentEnrollment.startDescription")} action={{ label: t("parentEnrollment.newTenant"), onPress: () => router.push("/parent-enrollment-form") }} />}
     </SummarySection>
     <SummarySection title={t("home.parentPayments")}>
       {invoices.isFetching && <ShimmerList />}
-      {invoices.isError && !invoices.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void invoices.refetch()} />}
+      {invoices.allFailed && !invoices.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={invoices.retryFailed} />}
+      {!paymentsUnavailable && <TenantLoadFailureBanner failedTenants={invoices.failedTenants} onRetry={invoices.retryFailed} />}
       {!paymentsUnavailable && summary.actionableInvoices.map((invoice) => {
         const isPending = invoice.status === "PENDING";
         return <View key={invoice.id} style={styles.invoiceCard}>
           <View style={styles.invoiceHeader}>
             <View style={styles.childCardHeading}>
               <AppText variant="heading">{invoice.invoiceNumber}</AppText>
-              <AppText tone="muted" variant="caption">{invoice.childName}</AppText>
+              <AppText tone="muted" variant="caption">{showsTenantLabel ? `${invoice.childName} · ${invoice.organizationName}` : invoice.childName}</AppText>
             </View>
             <Badge tone={isPending ? "warning" : "info"} label={t(`status.${invoice.status}` as Parameters<typeof t>[0])} />
           </View>
@@ -219,14 +232,14 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations, subsc
             <Ionicons name="calendar-outline" size={14} color={colors.muted} />
             <AppText tone="muted" variant="caption">{t("tenant.dueDate", { date: formatDate(invoice.dueDate) })}</AppText>
           </View>
-          {isPending ? <Button leadingIcon={<Ionicons name="card-outline" size={16} color={colors.onPrimary} />} onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: invoice.id, ...(organizationId ? { organizationId } : {}) } })}>{t("parentEnrollment.pay")}</Button> : <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
+          {isPending ? <Button leadingIcon={<Ionicons name="card-outline" size={16} color={colors.onPrimary} />} onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: invoice.id, organizationId: invoice.organizationId } })}>{t("parentEnrollment.pay")}</Button> : <AppText variant="caption" tone="muted">{t("paymentProof.awaitingReview")}</AppText>}
         </View>;
       })}
-      {!paymentsUnavailable && summary.actionableInvoices.length === 0 && <EmptyState compact icon="checkmark-done-outline" title={t("home.noActionablePayments")} />}
+      {!paymentsUnavailable && invoices.failedTenants.length === 0 && summary.actionableInvoices.length === 0 && <EmptyState compact icon="checkmark-done-outline" title={t("home.noActionablePayments")} />}
     </SummarySection>
     <MenuSection title={t("home.quickActions")}>
       <MenuItem icon="receipt-outline" title={t("paymentHistory.title")} description={t("paymentHistory.description")} onPress={() => router.push("/payment-history" as never)} />
-      {Boolean(programsSummary.data?.activePrograms) && programsSummary.data!.childIds[0] && <MenuItem icon="heart-outline" title={t("children.programs")} description={t("children.programsSummary", { count: programsSummary.data!.activePrograms })} onPress={() => router.push({ pathname: "/parent-child-profile", params: { childId: programsSummary.data!.childIds[0] } })} />}
+      {programsChild && <MenuItem icon="heart-outline" title={t("children.programs")} description={t("children.programsSummary", { count: programs.activePrograms })} onPress={() => router.push({ pathname: "/parent-child-profile", params: { childId: programsChild.childId, organizationId: programsChild.organizationId } })} />}
       {hasPrivateTutoring && <MenuItem icon="school-outline" title={t("privateTutoring.menu")} description={t("privateTutoring.description")} onPress={() => router.push("/private-tutoring")} />}
       <MenuItem icon="add-circle-outline" title={t("parentEnrollment.newTenant")} description={t("parentEnrollment.startDescription")} onPress={() => router.push("/parent-enrollment-form")} />
       <MenuItem icon="chatbox-ellipses-outline" title={t("tenantFeedback.title")} description={t("tenantFeedback.description")} onPress={() => router.push("/tenant-feedback" as never)} />

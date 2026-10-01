@@ -1,8 +1,16 @@
-import type { Child, Invoice, ServiceEntitlement } from "@daycare/api-client";
+import type { Child, ChildProgramSummary, Invoice, ServiceEntitlement } from "@daycare/api-client";
+
+// The Home "Programs" shortcut sums every tenant's active programs and opens the first child that
+// has one, together with that child's own tenant (per-action tenant resolution).
+export function combineProgramSummaries(results: readonly { tenant: { organizationId: string }; data: ChildProgramSummary | undefined }[]) {
+  const activePrograms = results.reduce((total, { data }) => total + (data?.activePrograms ?? 0), 0);
+  const first = results.find(({ data }) => Boolean(data?.childIds[0]));
+  return { activePrograms, firstChild: first?.data ? { childId: first.data.childIds[0], organizationId: first.tenant.organizationId } : null };
+}
 
 export type ParentChildSummary<TChild extends Child = Child> = { child: TChild; activeEntitlements: ServiceEntitlement[] };
 
-export function createParentHomeSummary<TChild extends Child>(children: TChild[], entitlements: ServiceEntitlement[], invoices: Invoice[]) {
+export function createParentHomeSummary<TChild extends Child, TInvoice extends Invoice>(children: TChild[], entitlements: ServiceEntitlement[], invoices: TInvoice[]) {
   const activeEntitlementsByChildId = new Map<string, ServiceEntitlement[]>();
   entitlements.filter((entitlement) => entitlement.status === "ACTIVE").forEach((entitlement) => {
     activeEntitlementsByChildId.set(entitlement.childId, [...(activeEntitlementsByChildId.get(entitlement.childId) ?? []), entitlement]);

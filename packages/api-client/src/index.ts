@@ -475,7 +475,7 @@ export class ApiClient {
   async createChild(input: ChildInput): Promise<Child> { return this.request("/children", { method: "POST", body: JSON.stringify(input) }); }
   async childProfile(childId: string): Promise<ChildProfile> { return this.request(`/children/${childId}`); }
   async childProgramsSummary(): Promise<ChildProgramSummary> { return this.request("/children/programs-summary"); }
-  async parentChildProgramsSummary(): Promise<ChildProgramSummary> { return this.request("/parent/children/programs-summary"); }
+  async parentChildProgramsSummary(organizationId?: string): Promise<ChildProgramSummary> { return this.request("/parent/children/programs-summary", this.orgOverride(organizationId)); }
   async updateChild(childId: string, input: UpdateChildInput): Promise<Child> { return this.request(`/children/${childId}`, { method: "PATCH", body: JSON.stringify(input) }); }
   async deactivateChild(childId: string): Promise<Child> { return this.request(`/children/${childId}/deactivate`, { method: "POST" }); }
   async addChildProgram(childId: string, input: CreateChildProgramInput): Promise<ChildProgram> { return this.request(`/children/${childId}/programs`, { method: "POST", body: JSON.stringify(input) }); }

@@ -1,5 +1,5 @@
-import { useQueries } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
+import { useAcrossTenants } from "@/tenants/acrossTenants";
 import { inboxTenants, mergeInboxNotifications } from "./inboxTenants";
 
 // One single-tenant query per inbox tenant, keyed by that tenant's organizationId, so realtime and
@@ -8,22 +8,18 @@ import { inboxTenants, mergeInboxNotifications } from "./inboxTenants";
 export function useInboxNotifications(search = "", enabled = true) {
   const { api, profile, organizationId } = useAuth();
   const tenants = inboxTenants(profile, organizationId);
-  const queries = useQueries({
-    queries: tenants.map((tenant) => ({
-      queryKey: ["notifications", tenant.organizationId, search],
-      queryFn: () => api.notifications(search || undefined, tenant.organizationId),
-      enabled,
-    })),
+  const aggregate = useAcrossTenants({
+    tenants,
+    queryKey: (tenant) => ["notifications", tenant.organizationId, search],
+    queryFn: (tenant) => api.notifications(search || undefined, tenant.organizationId),
+    enabled,
   });
-  const data = mergeInboxNotifications(queries.map((query, index) => ({ tenant: tenants[index], notifications: query.data })));
-  const failedTenants = tenants.filter((_, index) => queries[index].isError);
-  const retryFailed = () => queries.forEach((query) => { if (query.isError) void query.refetch(); });
   return {
-    data,
-    failedTenants,
-    allFailed: tenants.length > 0 && failedTenants.length === tenants.length,
-    isFetching: queries.some((query) => query.isFetching),
+    data: mergeInboxNotifications(aggregate.results.map(({ tenant, data }) => ({ tenant, notifications: data }))),
+    failedTenants: aggregate.failedTenants,
+    allFailed: aggregate.allFailed,
+    isFetching: aggregate.isFetching,
     showsTenantLabel: tenants.length > 1,
-    retryFailed,
+    retryFailed: aggregate.retryFailed,
   };
 }
