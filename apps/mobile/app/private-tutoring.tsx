@@ -22,7 +22,7 @@ export default function PrivateTutoringScreen() {
   const router = useRouter(); const { api, profile } = useAuth(); const { t, formatCurrency, formatDate } = useI18n(); const client = useQueryClient();
   // A Parent's children can belong to different tenants; the child picked below decides which
   // tenant's services/requests load and which tenant a request targets — no active-tenant switch
-  // is needed for any of it (see docs/business-rules.md §13.1, same convention as booking.tsx).
+  // is needed for any of it (per-action tenant resolution, docs/business-rules.md §1).
   const parentMemberships = (profile?.memberships ?? []).filter((item) => item.role === "PARENT" && item.active);
   const showsTenantLabel = parentMemberships.length > 1;
   const children = useParentChildrenAcrossTenants(parentMemberships, true);
