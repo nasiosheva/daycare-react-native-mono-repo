@@ -27,7 +27,7 @@ function BookingScreenContent() {
   const { profile } = useAuth();
   // A Parent's children can belong to different tenants; the child picked below decides which
   // tenant's plans/entitlements/bookings/invoices load and which tenant a purchase targets — no
-  // active-tenant switch is needed for any of it (see docs/business-rules.md §13.1).
+  // active-tenant switch is needed for any of it (per-action tenant resolution, docs/business-rules.md §1).
   const parentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT" && membership.active);
   const showsTenantLabel = parentMemberships.length > 1;
   const children = useParentChildrenAcrossTenants(parentMemberships, true);

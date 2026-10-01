@@ -58,5 +58,30 @@ describe("canOpenNotificationRoute", () => {
 
     expect(canOpenNotificationRoute(inactiveParent, "tenant-a", "/absence-requests?childId=child-a")).toBe(false);
     expect(canOpenNotificationRoute(inactiveParent, "tenant-a", "/incident-reports?childId=child-a")).toBe(false);
+    expect(canOpenNotificationRoute(inactiveParent, "tenant-a", "/child-health?childId=child-a")).toBe(false);
+    expect(canOpenNotificationRoute(inactiveParent, "tenant-a", "/child-messages?childId=child-a")).toBe(false);
+  });
+
+  it("opens a non-active tenant's notification only on routes that resolve their tenant per action", () => {
+    const parent = profile("PARENT");
+    const twoTenantParent: CurrentUser = { ...parent, memberships: [...parent.memberships, { ...parent.memberships[0], organizationId: "tenant-b", organizationName: "Tenant B" }] };
+
+    expect(canOpenNotificationRoute(twoTenantParent, "tenant-b", "/absence-requests?childId=child-b", false, "tenant-a")).toBe(true);
+    expect(canOpenNotificationRoute(twoTenantParent, "tenant-b", "/booking", true, "tenant-a")).toBe(true);
+    expect(notificationRouteWithOrganizationId("/absence-requests?childId=child-b", "tenant-b")).toBe("/absence-requests?childId=child-b&organizationId=tenant-b");
+    expect(notificationRouteWithOrganizationId("/booking", "tenant-b")).toBe("/booking");
+
+    const staff = profile("STAFF");
+    const twoTenantStaff: CurrentUser = { ...staff, memberships: [...staff.memberships, { ...staff.memberships[0], organizationId: "tenant-b", organizationName: "Tenant B" }] };
+    expect(canOpenNotificationRoute(twoTenantStaff, "tenant-b", "/goals?childId=child-b", false, "tenant-a")).toBe(false);
+    expect(canOpenNotificationRoute(twoTenantStaff, "tenant-a", "/goals?childId=child-a", false, "tenant-a")).toBe(true);
+    expect(canOpenNotificationRoute(twoTenantStaff, "tenant-b", "/goals?childId=child-b")).toBe(true);
+  });
+
+  it("opens the health-update and new-message action paths the API sends to guardians and Staff", () => {
+    expect(canOpenNotificationRoute(profile("PARENT"), "tenant-a", "/child-health?childId=child-a")).toBe(true);
+    expect(canOpenNotificationRoute(profile("PARENT"), "tenant-a", "/child-messages?childId=child-a")).toBe(true);
+    expect(canOpenNotificationRoute(profile("STAFF"), "tenant-a", "/child-messages?childId=child-a")).toBe(true);
+    expect(canOpenNotificationRoute(profile("STAFF_ADMIN"), "tenant-a", "/child-messages?childId=child-a")).toBe(true);
   });
 });
