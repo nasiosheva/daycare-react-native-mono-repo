@@ -16,6 +16,7 @@ import { useStaffDailyTasks } from "@/home/useStaffDailyTasks";
 import { createParentHomeSummary } from "@/home/parentHomeSummary";
 import { authErrorMessage } from "@/auth/authErrorMessage";
 import { unreadNotificationBadge, unreadNotificationCount } from "@/notifications/unreadBadge";
+import { useInboxNotifications } from "@/notifications/useInboxNotifications";
 import { parentEnrollmentQueryKey } from "@/parent-enrollment/queryKeys";
 import { isInactiveStaffMembership } from "@/navigation/inactiveStaffRouteAccess";
 import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
@@ -153,7 +154,7 @@ function ParentHome({ displayName, organizationName, hasDaycareOperations, subsc
   const homeRefresh = useHomeRefresh([["ui-access-context", organizationId], ["children", organizationId], ["entitlements", organizationId], ["invoices", organizationId], ["private-tutoring-services", organizationId], ["parent-child-profile", organizationId]]);
 
   return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
-    <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.PARENT")}</AppText></View><NotificationBellButton enabled={subscriptionActive} /><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
+    <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.PARENT")}</AppText></View><NotificationBellButton /><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
     {!subscriptionActive && <AppText tone="danger">{t("tenantReadiness.issueSubscription")}</AppText>}
     <SummarySection title={t("home.parentChildren")}>
       {children.isFetching && <ShimmerList />}
@@ -348,10 +349,11 @@ function ProfileToolbarButton({ label, onPress }: { label: string; onPress: () =
 
 function NotificationBellButton({ enabled = true }: { enabled?: boolean }) {
   const router = useRouter();
-  const { api, organizationId } = useAuth();
   const { t } = useI18n();
-  const notifications = useQuery({ queryKey: ["notifications", organizationId], queryFn: () => api.notifications(), enabled: Boolean(organizationId && enabled) });
-  const unreadNotificationsCount = unreadNotificationCount(notifications.data ?? []);
+  // Same per-tenant queries as the inbox: a Parent's badge counts unread items across every Parent
+  // tenant, every other role counts only the active tenant (docs/business-rules.md §8).
+  const notifications = useInboxNotifications("", enabled);
+  const unreadNotificationsCount = unreadNotificationCount(notifications.data);
   const unreadNotificationBadgeLabel = unreadNotificationBadge(unreadNotificationsCount);
   const unreadNotificationsLabel = unreadNotificationBadgeLabel ? t("notifications.unreadCount", { count: unreadNotificationsCount }) : t("notifications.title");
   return <Pressable accessibilityRole="button" accessibilityLabel={unreadNotificationsLabel} hitSlop={spacing.sm} onPress={() => router.push("/notifications")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}>

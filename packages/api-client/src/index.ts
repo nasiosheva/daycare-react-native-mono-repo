@@ -387,8 +387,8 @@ export class ApiClient {
   async registerDevice(input: { token: string; platform: "ios" | "android"; installationId: string; timeZone: string }): Promise<void> { await this.request<void>("/device-tokens", { method: "POST", body: JSON.stringify(input) }); }
   async deviceNotificationPreference(installationId: string): Promise<DeviceNotificationPreference> { return this.request(`/device-notification-preference?${new URLSearchParams({ installationId }).toString()}`); }
   async updateDeviceNotificationPreference(input: { installationId: string; muteDuration: PushNotificationMuteDuration | null }): Promise<DeviceNotificationPreference> { return this.request("/device-notification-preference", { method: "PATCH", body: JSON.stringify(input) }); }
-  async notifications(search?: string): Promise<AppNotification[]> { const query = search?.trim(); return this.request(`/notifications${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
-  async markNotificationRead(notificationId: string): Promise<AppNotification> { return this.request(`/notifications/${notificationId}/read`, { method: "PATCH" }); }
+  async notifications(search?: string, organizationId?: string): Promise<AppNotification[]> { const query = search?.trim(); return this.request(`/notifications${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`, this.orgOverride(organizationId)); }
+  async markNotificationRead(notificationId: string, organizationId?: string): Promise<AppNotification> { return this.request(`/notifications/${notificationId}/read`, { method: "PATCH", ...this.orgOverride(organizationId) }); }
   async staffReminders(): Promise<StaffReminder[]> { return this.request("/staff-reminders"); }
   async createStaffReminder(input: UpsertStaffReminderInput): Promise<StaffReminder> { return this.request("/staff-reminders", { method: "POST", body: JSON.stringify(input) }); }
   async updateStaffReminder(reminderId: string, input: UpsertStaffReminderInput): Promise<StaffReminder> { return this.request(`/staff-reminders/${reminderId}`, { method: "PATCH", body: JSON.stringify(input) }); }

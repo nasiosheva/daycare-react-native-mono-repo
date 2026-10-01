@@ -12,13 +12,15 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { getDeviceInstallationId } from "@/device/installationId";
 import { notificationMuteDurationKeys, notificationMuteDurations, notificationPreferenceQueryKey } from "@/notifications/mutePreferences";
 import { browserNotificationMutedUntil, muteBrowserNotifications, requestBrowserNotificationPermission, unmuteBrowserNotifications } from "../src/notifications/browserNotifications";
-import { canOpenNotificationRoute, notificationRouteWithOrganizationId } from "@/navigation/notificationRouteAccess";
-import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
+import { canOpenNotificationRoute, isSelfServiceNotificationRoute, notificationRouteRequiresDaycareCapability, notificationRouteWithOrganizationId } from "@/navigation/notificationRouteAccess";
+import { hasOfferingCapability } from "@/education/useUiAccessContext";
+import { useInboxNotifications } from "@/notifications/useInboxNotifications";
+import { unreadNotificationCount } from "@/notifications/unreadBadge";
+import type { NotificationWithTenant } from "@/notifications/inboxTenants";
 
 export default function NotificationsScreen() {
   const router = useRouter();
   const { api, organizationId, profile } = useAuth();
-  const access = useUiAccessContext(Boolean(profile && organizationId));
   const { t, formatDateTime } = useI18n();
   const client = useQueryClient();
   const [settingsVisible, setSettingsVisible] = useState(false);
@@ -31,18 +33,34 @@ export default function NotificationsScreen() {
   const [selectedMuteDuration, setSelectedMuteDuration] = useState<PushNotificationMuteDuration | null | undefined>(undefined);
   const [browserMutedUntil, setBrowserMutedUntil] = useState<string | undefined>(() => browserNotificationMutedUntil());
   const isNative = Platform.OS !== "web";
-  const notifications = useQuery({ queryKey: ["notifications", organizationId, debouncedSearch], queryFn: () => api.notifications(debouncedSearch || undefined), enabled: Boolean(organizationId) });
+  // A Parent sees one merged inbox across every Parent tenant (docs/business-rules.md §8); every
+  // mark-read and opened action below uses the notification's own tenant, not the active one.
+  const inbox = useInboxNotifications(debouncedSearch);
   const notificationPreference = useQuery({ queryKey: notificationPreferenceQueryKey(organizationId), queryFn: async () => api.deviceNotificationPreference(await getDeviceInstallationId()), enabled: isNative && Boolean(organizationId) });
-  const markRead = useMutation({ mutationFn: api.markNotificationRead.bind(api), onSuccess: () => void client.invalidateQueries({ queryKey: ["notifications", organizationId] }) });
+  const markRead = useMutation({ mutationFn: (item: NotificationWithTenant) => api.markNotificationRead(item.id, item.organizationId), onSuccess: (_, item) => void client.invalidateQueries({ queryKey: ["notifications", item.organizationId] }) });
   const updatePreference = useMutation({ mutationFn: async (muteDuration: PushNotificationMuteDuration | null) => api.updateDeviceNotificationPreference({ installationId: await getDeviceInstallationId(), muteDuration }), onSuccess: () => { void client.invalidateQueries({ queryKey: notificationPreferenceQueryKey(organizationId) }); setSettingsVisible(false); } });
 
-  const openAction = (actionPath?: string | null) => {
-    if (!actionPath || !canOpenNotificationRoute(profile, organizationId, actionPath, hasOfferingCapability(access.data, "DAYCARE_OPERATIONS"))) return;
-    router.push(notificationRouteWithOrganizationId(actionPath, organizationId) as never);
+  // The action path is re-validated against the notification's own tenant on every open
+  // (§13.14), including a fresh capability read for that tenant; a failed read fails closed.
+  const tenantHasDaycareOperations = async (tenantId: string) => {
+    try {
+      const context = await client.fetchQuery({ queryKey: ["ui-access-context", tenantId], queryFn: () => api.uiAccessContext(tenantId) });
+      return hasOfferingCapability(context, "DAYCARE_OPERATIONS");
+    } catch {
+      return false;
+    }
   };
-  const open = async (id: string, actionPath?: string | null) => {
-    try { await markRead.mutateAsync(id); }
-    finally { openAction(actionPath); }
+  const openAction = async (item: NotificationWithTenant) => {
+    const actionPath = item.actionPath;
+    if (!actionPath) return;
+    const targetOrganizationId = isSelfServiceNotificationRoute(actionPath) ? null : item.organizationId;
+    const hasDaycareOperations = targetOrganizationId && notificationRouteRequiresDaycareCapability(actionPath) ? await tenantHasDaycareOperations(targetOrganizationId) : false;
+    if (!canOpenNotificationRoute(profile, targetOrganizationId, actionPath, hasDaycareOperations, organizationId)) return;
+    router.push(notificationRouteWithOrganizationId(actionPath, item.organizationId) as never);
+  };
+  const open = async (item: NotificationWithTenant) => {
+    try { await markRead.mutateAsync(item); }
+    finally { await openAction(item); }
   };
   const updateMutePreference = async (muteDuration: PushNotificationMuteDuration | null) => {
     if (!isNative) {
@@ -77,27 +95,29 @@ export default function NotificationsScreen() {
     void updateMutePreference(selectedMuteDuration);
   };
 
-  const unreadCount = notifications.data?.filter((item) => !item.readAt).length ?? 0;
+  const unreadCount = unreadNotificationCount(inbox.data);
+  const failedTenantNames = inbox.failedTenants.map((tenant) => tenant.organizationName).join(", ");
 
   return <AppScreen showBottomNavigation={false} title={t("notifications.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} headerAction={<Pressable accessibilityRole="button" accessibilityLabel={t("notifications.settings")} hitSlop={spacing.sm} onPress={openSettings} style={({ pressed }) => [styles.settingsButton, pressed && styles.settingsButtonPressed]}><Ionicons name="settings-outline" size={24} color={colors.primary} /></Pressable>}>
     <SearchField accessibilityLabel={t("notifications.search")} placeholder={t("notifications.search")} clearAccessibilityLabel={t("common.clearSearch")} value={search} onChangeText={setSearch} />
     {mutedUntil && <Banner tone="info" title={t("notifications.mutedUntil", { date: formatDateTime(mutedUntil) })} action={<Button variant="secondary" onPress={openSettings}>{t("notifications.settings")}</Button>} />}
-    {!notifications.isFetching && Boolean(notifications.data?.length) && <AppText variant="label" tone={unreadCount > 0 ? "default" : "muted"}>{unreadCount > 0 ? t("notifications.unreadSummary", { count: unreadCount }) : t("notifications.allRead")}</AppText>}
-    {notifications.isError && !notifications.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void notifications.refetch()} />}
-    {notifications.isFetching ? <ShimmerList /> : notifications.data?.map((item) => <View key={item.id} style={[styles.card, !item.readAt && styles.unread]}>
+    {!inbox.isFetching && inbox.data.length > 0 && <AppText variant="label" tone={unreadCount > 0 ? "default" : "muted"}>{unreadCount > 0 ? t("notifications.unreadSummary", { count: unreadCount }) : t("notifications.allRead")}</AppText>}
+    {inbox.allFailed && !inbox.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={inbox.retryFailed} />}
+    {!inbox.allFailed && inbox.failedTenants.length > 0 && !inbox.isFetching && <Banner tone="warning" title={t("notifications.tenantLoadFailed", { tenants: failedTenantNames })} action={<Button variant="secondary" onPress={inbox.retryFailed}>{t("common.retry")}</Button>} />}
+    {inbox.isFetching ? <ShimmerList /> : inbox.data.map((item) => <View key={item.id} style={[styles.card, !item.readAt && styles.unread]}>
       <View style={styles.cardHeader}>
         <View style={[styles.icon, !item.readAt && styles.iconUnread]}><Ionicons name={item.readAt ? "notifications-outline" : "notifications"} size={18} color={item.readAt ? colors.muted : colors.onPrimary} /></View>
         <View style={styles.grow}>
           <AppText variant="h6">{item.title}</AppText>
-          <AppText variant="caption" tone="muted">{formatDateTime(item.createdAt)}</AppText>
+          <AppText variant="caption" tone="muted">{inbox.showsTenantLabel ? `${formatDateTime(item.createdAt)} · ${item.organizationName}` : formatDateTime(item.createdAt)}</AppText>
         </View>
         {!item.readAt && <View accessibilityLabel={t("notifications.unread")} style={styles.dot} />}
       </View>
       <AppText>{item.body}</AppText>
-      {!item.readAt && <Button variant={item.actionPath ? "primary" : "secondary"} loading={markRead.isPending} onPress={() => void open(item.id, item.actionPath)}>{t(item.actionPath ? "notifications.open" : "notifications.markRead")}</Button>}
-      {item.readAt && item.actionPath && <Button variant="ghost" onPress={() => openAction(item.actionPath)}>{t("notifications.open")}</Button>}
+      {!item.readAt && <Button variant={item.actionPath ? "primary" : "secondary"} loading={markRead.isPending} onPress={() => void open(item)}>{t(item.actionPath ? "notifications.open" : "notifications.markRead")}</Button>}
+      {item.readAt && item.actionPath && <Button variant="ghost" onPress={() => void openAction(item)}>{t("notifications.open")}</Button>}
     </View>)}
-    {!notifications.isFetching && !notifications.isError && notifications.data?.length === 0 && <EmptyState icon="notifications-off-outline" title={debouncedSearch ? t("common.noResults") : t("notifications.empty")} />}
+    {!inbox.isFetching && inbox.failedTenants.length === 0 && inbox.data.length === 0 && <EmptyState icon="notifications-off-outline" title={debouncedSearch ? t("common.noResults") : t("notifications.empty")} />}
     <BottomSheet visible={settingsVisible} onClose={closeSettings} closeAccessibilityLabel={t("common.close")} title={t("notifications.settings")} negativeAction={{ label: t("common.close"), onPress: closeSettings }} positiveAction={{ label: t("notifications.apply"), loading: updatePreference.isPending, disabled: selectedMuteDuration === undefined, onPress: applyMutePreference }}>
       <AppText tone="muted">{t("notifications.muteDescription")}</AppText>
       {mutedUntil && <Banner tone="info" title={t("notifications.mutedUntil", { date: formatDateTime(mutedUntil) })} />}
