@@ -58,5 +58,14 @@ describe("canOpenNotificationRoute", () => {
 
     expect(canOpenNotificationRoute(inactiveParent, "tenant-a", "/absence-requests?childId=child-a")).toBe(false);
     expect(canOpenNotificationRoute(inactiveParent, "tenant-a", "/incident-reports?childId=child-a")).toBe(false);
+    expect(canOpenNotificationRoute(inactiveParent, "tenant-a", "/child-health?childId=child-a")).toBe(false);
+    expect(canOpenNotificationRoute(inactiveParent, "tenant-a", "/child-messages?childId=child-a")).toBe(false);
+  });
+
+  it("opens the health-update and new-message action paths the API sends to guardians and Staff", () => {
+    expect(canOpenNotificationRoute(profile("PARENT"), "tenant-a", "/child-health?childId=child-a")).toBe(true);
+    expect(canOpenNotificationRoute(profile("PARENT"), "tenant-a", "/child-messages?childId=child-a")).toBe(true);
+    expect(canOpenNotificationRoute(profile("STAFF"), "tenant-a", "/child-messages?childId=child-a")).toBe(true);
+    expect(canOpenNotificationRoute(profile("STAFF_ADMIN"), "tenant-a", "/child-messages?childId=child-a")).toBe(true);
   });
 });
