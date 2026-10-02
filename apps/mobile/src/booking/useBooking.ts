@@ -1,7 +1,9 @@
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PurchaseServiceInput } from "@daycare/core";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { PurchaseServiceInput, TenantSubscriptionStatus } from "@daycare/core";
 import type { BranchListFilter, Invoice, ServicePlan } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
+import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
+import { useAcrossTenants } from "@/tenants/acrossTenants";
 
 export function useServicePlans(organizationId?: string) { const { api, organizationId: activeOrganizationId } = useAuth(); const resolvedOrganizationId = organizationId ?? activeOrganizationId; return useQuery({ queryKey: ["service-plans", resolvedOrganizationId], queryFn: () => api.servicePlans(resolvedOrganizationId ?? undefined), enabled: Boolean(resolvedOrganizationId) }); }
 export function useEntitlements(filterOrEnabled: BranchListFilter | boolean = {}, enabled = true, organizationId?: string) { const { api, organizationId: activeOrganizationId } = useAuth(); const filter = typeof filterOrEnabled === "boolean" ? {} : filterOrEnabled; const queryEnabled = typeof filterOrEnabled === "boolean" ? filterOrEnabled : enabled; const resolvedOrganizationId = organizationId ?? activeOrganizationId; return useQuery({ queryKey: ["entitlements", resolvedOrganizationId, filter], queryFn: () => api.entitlements(filter, resolvedOrganizationId ?? undefined), enabled: Boolean(resolvedOrganizationId) && queryEnabled }); }
@@ -10,20 +12,34 @@ export function useInvoices(filterOrEnabled: BranchListFilter | boolean = {}, en
 
 export type InvoiceWithTenant = Invoice & { organizationId: string; organizationName: string };
 
-export function useParentInvoicesAcrossTenants(memberships: readonly { organizationId: string; organizationName: string }[], enabled: boolean) {
+type ParentTenant = { organizationId: string; organizationName: string; subscriptionStatus?: TenantSubscriptionStatus | null };
+
+// Invoices are skipped for a tenant whose subscription is not operational: the server rejects them
+// there (only the child list is allowlisted, docs/business-rules.md §13.12).
+export function useParentInvoicesAcrossTenants(memberships: readonly ParentTenant[], enabled: boolean) {
   const { api } = useAuth();
-  const queries = useQueries({
-    queries: memberships.map((membership) => ({
-      queryKey: ["invoices", membership.organizationId, {}],
-      queryFn: () => api.invoices({}, undefined, membership.organizationId),
-      enabled,
-    })),
+  const aggregate = useAcrossTenants({
+    tenants: memberships.filter((membership) => hasOperationalTenantSubscription(membership.subscriptionStatus)),
+    queryKey: (membership) => ["invoices", membership.organizationId, {}],
+    queryFn: (membership) => api.invoices({}, undefined, membership.organizationId),
+    enabled,
   });
-  const isFetching = queries.some((query) => query.isFetching);
-  const isError = queries.some((query) => query.isError);
-  const data: InvoiceWithTenant[] = queries.flatMap((query, index) => (query.data ?? []).map((invoice) => ({ ...invoice, organizationId: memberships[index].organizationId, organizationName: memberships[index].organizationName })));
-  const refetch = () => queries.forEach((query) => void query.refetch());
-  return { data, isFetching, isError, refetch };
+  const data: InvoiceWithTenant[] = aggregate.results.flatMap(({ tenant, data: invoices }) => (invoices ?? []).map((invoice) => ({ ...invoice, organizationId: tenant.organizationId, organizationName: tenant.organizationName })));
+  return { data, isFetching: aggregate.isFetching, failedTenants: aggregate.failedTenants, allFailed: aggregate.allFailed, retryFailed: aggregate.retryFailed };
+}
+
+// The caller passes only tenants whose published offerings include DAYCARE_OPERATIONS, which the
+// entitlements endpoint requires.
+export function useParentEntitlementsAcrossTenants(memberships: readonly ParentTenant[], enabled: boolean) {
+  const { api } = useAuth();
+  const aggregate = useAcrossTenants({
+    tenants: memberships,
+    queryKey: (membership) => ["entitlements", membership.organizationId, {}],
+    queryFn: (membership) => api.entitlements({}, membership.organizationId),
+    enabled,
+  });
+  const data = aggregate.results.flatMap(({ data: entitlements }) => entitlements ?? []);
+  return { data, isFetching: aggregate.isFetching, failedTenants: aggregate.failedTenants, retryFailed: aggregate.retryFailed };
 }
 
 // A mutation targeting a non-active tenant (organizationId passed explicitly by the caller,

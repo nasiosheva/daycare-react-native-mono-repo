@@ -1,8 +1,9 @@
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AttendanceAction, AttendanceMethod, TenantSubscriptionStatus } from "@daycare/core";
 import type { Child, ChildListFilter } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
 import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
+import { useAcrossTenants } from "@/tenants/acrossTenants";
 
 export function useChildren(filterOrEnabled: ChildListFilter | boolean = {}, enabled = true) {
   const { api, organizationId } = useAuth();
@@ -15,21 +16,17 @@ export type ChildWithTenant = Child & { organizationName: string; tenantSubscrip
 
 export function useParentChildrenAcrossTenants(memberships: readonly { organizationId: string; organizationName: string; subscriptionStatus?: TenantSubscriptionStatus | null }[], enabled: boolean) {
   const { api } = useAuth();
-  const queries = useQueries({
-    queries: memberships.map((membership) => ({
-      queryKey: ["children", membership.organizationId, {}],
-      // A restricted tenant's own child list stays readable through the server's explicit
-      // allowlist exception (see docs/business-rules.md §13.12 TENANT_SUBSCRIPTION_RESTRICTED) —
-      // every other tenant-scoped query keeps excluding these tenants as before.
-      queryFn: () => api.children({}, membership.organizationId),
-      enabled,
-    })),
+  const aggregate = useAcrossTenants({
+    tenants: memberships,
+    queryKey: (membership) => ["children", membership.organizationId, {}],
+    // A restricted tenant's own child list stays readable through the server's explicit
+    // allowlist exception (see docs/business-rules.md §13.12 TENANT_SUBSCRIPTION_RESTRICTED) —
+    // every other tenant-scoped query keeps excluding these tenants as before.
+    queryFn: (membership) => api.children({}, membership.organizationId),
+    enabled,
   });
-  const isFetching = queries.some((query) => query.isFetching);
-  const isError = queries.some((query) => query.isError);
-  const data: ChildWithTenant[] = queries.flatMap((query, index) => (query.data ?? []).map((child) => ({ ...child, organizationName: memberships[index].organizationName, tenantSubscriptionRestricted: !hasOperationalTenantSubscription(memberships[index].subscriptionStatus) })));
-  const refetch = () => queries.forEach((query) => void query.refetch());
-  return { data, isFetching, isError, refetch };
+  const data: ChildWithTenant[] = aggregate.results.flatMap(({ tenant, data: children }) => (children ?? []).map((child) => ({ ...child, organizationName: tenant.organizationName, tenantSubscriptionRestricted: !hasOperationalTenantSubscription(tenant.subscriptionStatus) })));
+  return { data, isFetching: aggregate.isFetching, failedTenants: aggregate.failedTenants, allFailed: aggregate.allFailed, retryFailed: aggregate.retryFailed };
 }
 
 function createIdempotencyKey(): string {
