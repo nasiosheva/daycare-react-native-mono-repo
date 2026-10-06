@@ -24,7 +24,7 @@ Claude Code has no SSH/VPS/production-DB credentials in this sandbox, so none of
 
 3. **Upload the new jar to the VPS release you're activating**, replacing the preserved-artifact behavior in `scripts/production/activate-release.sh` (that script normally copies forward the *previous* `api.jar` — you specifically want a new one this time):
    ```bash
-   scp apps/api/build/libs/api.jar <vps-user>@<vps-host>:/opt/umur-emas/releases/<release-id>/api.jar
+   scp apps/api/build/libs/api.jar <vps-user>@<vps-host>:/opt/usia-emas/releases/<release-id>/api.jar
    ```
 
 4. **Wipe the production schema** (irreversible — this is the actual reset):
@@ -34,12 +34,12 @@ Claude Code has no SSH/VPS/production-DB credentials in this sandbox, so none of
 
 5. **Restart the API service** — Flyway runs automatically on Spring Boot startup and will apply the single `V1` migration against the now-empty schema:
    ```bash
-   ssh <vps-user>@<vps-host> "sudo systemctl restart umur-emas-api"
+   ssh <vps-user>@<vps-host> "sudo systemctl restart usia-emas-api"
    ```
 
 6. **Verify** — tail the service logs for `Started DaycareApplicationKt` with no `ERROR`/`SchemaManagementException`, matching what was already verified locally:
    ```bash
-   ssh <vps-user>@<vps-host> "journalctl -u umur-emas-api -n 100 --no-pager"
+   ssh <vps-user>@<vps-host> "journalctl -u usia-emas-api -n 100 --no-pager"
    ```
 
 ## Local dev database

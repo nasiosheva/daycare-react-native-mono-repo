@@ -4,7 +4,7 @@
 
 - The production deployment workflow now detects changes under `apps/api/`.
 - An API change restores the Gradle cache, runs the Spring API test suite, builds the Spring Boot JAR using the tracked Gradle 8.14.2 wrapper and Temurin JDK 21, uploads it with the immutable web release, activates the release, and waits for the API health endpoint.
-- A web-only change preserves the current API artifact and does not restart `umur-emas-api`.
+- A web-only change preserves the current API artifact and does not restart `usia-emas-api`.
 - The API Gradle Wrapper is now tracked so GitHub-hosted runners can perform the same deterministic API build without depending on a preinstalled Gradle version.
 - A failed API activation or health check invokes the activation script's `--rollback` mode, restores the immediately preceding web/API release, and verifies that API health before marking the workflow failed.
 
@@ -16,7 +16,7 @@
 
 ## Verification
 
-- Reviewed workflow conditions and release activation behavior: API JAR upload controls whether the activation script restarts `umur-emas-api`, and the previous release is retained for rollback.
+- Reviewed workflow conditions and release activation behavior: API JAR upload controls whether the activation script restarts `usia-emas-api`, and the previous release is retained for rollback.
 - Verified the tracked wrapper points to Gradle 8.14.2.
 
 ## Follow-up
