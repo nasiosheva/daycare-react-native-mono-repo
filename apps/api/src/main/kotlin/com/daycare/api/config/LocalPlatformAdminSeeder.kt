@@ -1,6 +1,5 @@
 package com.daycare.api.config
 
-import com.daycare.api.persistence.PlatformAdministrator
 import com.daycare.api.persistence.PlatformAdministratorRepository
 import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.UserProfileRepository
@@ -42,8 +41,8 @@ class LocalPlatformAdminSeeder(
             user.localPasswordHash = passwordEncoder.encode(password)
         }
         val savedUser = users.save(user)
-        if (!platformAdministrators.existsById(savedUser.id)) {
-            platformAdministrators.save(PlatformAdministrator(userId = savedUser.id))
+        if (!platformAdministrators.existsById(savedUser.id) && platformAdministrators.count() == 0L) {
+            platformAdministrators.insertIfAbsent(savedUser.id)
         }
     }
 }

@@ -15,8 +15,6 @@ import com.daycare.api.persistence.Organization
 import com.daycare.api.persistence.OrganizationRepository
 import com.daycare.api.persistence.OrganizationTypeAssignment
 import com.daycare.api.persistence.OrganizationTypeAssignmentRepository
-import com.daycare.api.persistence.PlatformAdministrator
-import com.daycare.api.persistence.PlatformAdministratorRepository
 import com.daycare.api.persistence.TenantPayment
 import com.daycare.api.persistence.TenantPaymentRepository
 import com.daycare.api.persistence.TenantSubscription
@@ -93,7 +91,6 @@ data class CreatePlatformAdminRequest(
     @field:NotBlank @field:Size(min = 2, max = 100) val username: String,
     @field:Size(min = 6, max = 128) val password: String,
 )
-
 @Service
 class PlatformAdministrationService(
     private val platformAccess: PlatformAccessService,
@@ -106,7 +103,6 @@ class PlatformAdministrationService(
     private val invitations: InvitationRepository,
     private val memberships: MembershipRepository,
     private val users: UserProfileRepository,
-    private val platformAdministrators: PlatformAdministratorRepository,
     private val tenantUserAccounts: TenantUserAccountService,
     private val institutionTypeCatalog: InstitutionTypeCatalogService,
     private val defaultCurriculumActivities: TenantDefaultCurriculumActivitySeeder,
@@ -156,6 +152,12 @@ class PlatformAdministrationService(
         val staffAdmin = tenantUserAccounts.create(request.staffAdminName, request.staffAdminEmail, request.staffAdminPassword, request.staffAdminUsername)
         memberships.save(Membership(userId = staffAdmin.id, organizationId = organization.id, role = Role.STAFF_ADMIN, primaryStaffAdmin = true))
         return tenantResponse(organization)
+    }
+
+    @Transactional
+    fun createPlatformAdmin(jwt: Jwt, request: CreatePlatformAdminRequest): UUID {
+        platformAccess.requirePlatformAdmin(jwt)
+        throw IllegalStateException(PlatformAdminError.SINGLETON)
     }
 
     @Transactional
@@ -239,15 +241,6 @@ class PlatformAdministrationService(
         if (status == TenantSubscriptionStatus.ACTIVE) require(subscription.status == TenantSubscriptionStatus.SUSPENDED) { "Only a suspended subscription can be reactivated manually" }
         subscription.status = status
         return tenantResponse(organization)
-    }
-
-    @Transactional
-    fun createPlatformAdmin(jwt: Jwt, request: CreatePlatformAdminRequest): UUID {
-        platformAccess.requirePlatformAdmin(jwt)
-        val email = request.email.trim().lowercase()
-        val username = request.username.trim()
-        val user = tenantUserAccounts.create(username, email, request.password, username)
-        return platformAdministrators.save(PlatformAdministrator(userId = user.id)).userId
     }
 
     @Transactional

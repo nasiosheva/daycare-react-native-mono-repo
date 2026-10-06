@@ -14,11 +14,11 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { LanguageSelectField } from "@/profile/LanguageSelectField";
 import { capitalizeWords } from "@/text/capitalizeWords";
 
-type ProfileSheet = "profile" | "password" | "admin" | null;
+type ProfileSheet = "profile" | "password" | null;
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { api, user, profile, organizationId, signOut, updateDisplayName, updateUsername, updatePersonalDetails, changePassword, usesPassword, selectOrganization } = useAuth();
+  const { user, profile, organizationId, signOut, updateDisplayName, updateUsername, updatePersonalDetails, changePassword, usesPassword, selectOrganization } = useAuth();
   const { t, formatDate } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
@@ -29,12 +29,8 @@ export default function ProfileScreen() {
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
-  const [adminEmail, setAdminEmail] = useState("");
-  const [adminUsername, setAdminUsername] = useState("");
-  const [adminPassword, setAdminPassword] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
-  const [creatingAdmin, setCreatingAdmin] = useState(false);
   const [profileSheet, setProfileSheet] = useState<ProfileSheet>(null);
   const [tenantSheetOpen, setTenantSheetOpen] = useState(false);
   const [logoutSheetVisible, setLogoutSheetVisible] = useState(false);
@@ -75,21 +71,6 @@ export default function ProfileScreen() {
     } catch (error) { notify(t("password.changeFailed"), error instanceof Error ? error.message : t("password.reauthenticate"), "danger"); }
     finally { setSavingPassword(false); }
   };
-  const createAdmin = async () => {
-    if (!adminEmail.trim() || !adminUsername.trim() || !adminPassword) return notify(t("profile.adminRequired"), undefined, "warning");
-    if (adminPassword.length < 6) return notify(t("password.minLength"), undefined, "warning");
-    try {
-      setCreatingAdmin(true);
-      await api.createPlatformAdmin({ email: adminEmail.trim(), username: adminUsername.trim(), password: adminPassword });
-      setAdminEmail("");
-      setAdminUsername("");
-      setAdminPassword("");
-      setProfileSheet(null);
-      notify(t("profile.adminCreated"), t("profile.adminCreatedDescription"), "success");
-    } catch (error) { notify(t("profile.adminCreateFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
-    finally { setCreatingAdmin(false); }
-  };
-
   return <AppScreen showBottomNavigation={false} title={t("profile.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <Card>
       <View style={styles.hero}>
@@ -119,7 +100,6 @@ export default function ProfileScreen() {
     <MenuSection title={t("profile.accountSection")}>
       <MenuItem icon="person-outline" title={t("profile.savePersonal")} onPress={() => setProfileSheet("profile")} />
       {usesPassword && <MenuItem icon="lock-closed-outline" title={t("profile.changePassword")} onPress={() => setProfileSheet("password")} />}
-      {profile?.isPlatformAdmin && <MenuItem icon="person-add-outline" title={t("profile.addAdmin")} onPress={() => setProfileSheet("admin")} />}
       {profile?.isPlatformAdmin && <MenuItem icon="keypad-outline" title={t("profile.changePin")} onPress={() => router.push("/admin-pin")} />}
     </MenuSection>
     <Card><LanguageSelectField /></Card>
@@ -170,20 +150,6 @@ export default function ProfileScreen() {
       <PasswordInput value={newPassword} onChangeText={setNewPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
       <AppText variant="label">{t("password.confirm")}</AppText>
       <PasswordInput value={passwordConfirmation} onChangeText={setPasswordConfirmation} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
-    </BottomSheet>
-    <BottomSheet
-      visible={profileSheet === "admin"}
-      onClose={() => setProfileSheet(null)}
-      closeAccessibilityLabel={t("common.close")}
-      title={t("profile.addAdmin")}
-      negativeAction={{ label: t("common.cancel"), onPress: () => setProfileSheet(null) }}
-      positiveAction={{ label: t("profile.createAdmin"), loading: creatingAdmin, disabled: !adminEmail.trim() || !adminUsername.trim() || !adminPassword, onPress: () => void createAdmin() }}
-    >
-      <AppText variant="caption" tone="muted">{t("profile.addAdminDescription")}</AppText>
-      <TextField label={t("profile.adminEmail")} required leadingIcon="mail-outline" autoCapitalize="none" autoCorrect={false} keyboardType="email-address" value={adminEmail} onChangeText={setAdminEmail} />
-      <TextField label={t("profile.adminUsername")} required leadingIcon="at-outline" autoCapitalize="none" value={adminUsername} onChangeText={setAdminUsername} />
-      <AppText variant="label">{t("password.new")}</AppText>
-      <PasswordInput value={adminPassword} onChangeText={setAdminPassword} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
     </BottomSheet>
   </AppScreen>;
 }

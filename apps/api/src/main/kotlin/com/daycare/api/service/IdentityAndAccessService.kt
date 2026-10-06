@@ -10,7 +10,6 @@ import com.daycare.api.persistence.InvitationRepository
 import com.daycare.api.persistence.Membership
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.OrganizationRepository
-import com.daycare.api.persistence.PlatformAdministrator
 import com.daycare.api.persistence.PlatformAdministratorRepository
 import com.daycare.api.persistence.ParentFamilyProfileRepository
 import com.daycare.api.persistence.TenantSubscriptionRepository
@@ -159,6 +158,10 @@ class AccessService(
     }
 }
 
+object PlatformAdminError {
+    const val SINGLETON = "Only one Platform Admin is allowed"
+}
+
 @Service
 class PlatformAccessService(
     private val identityService: IdentityService,
@@ -174,7 +177,9 @@ class PlatformAccessService(
 
     fun isPlatformAdmin(user: UserProfile): Boolean {
         val configuredEmails = bootstrapEmails.split(',').map { it.trim() }.filter { it.isNotBlank() }.map { it.lowercase() }.toSet()
-        if (user.email?.lowercase() in configuredEmails && !administrators.existsById(user.id)) administrators.save(PlatformAdministrator(userId = user.id))
+        if (user.email?.lowercase() in configuredEmails && !administrators.existsById(user.id) && administrators.count() == 0L) {
+            administrators.insertIfAbsent(user.id)
+        }
         return administrators.existsById(user.id)
     }
 }

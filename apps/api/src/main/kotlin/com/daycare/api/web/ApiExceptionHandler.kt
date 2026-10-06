@@ -15,6 +15,7 @@ import com.daycare.api.service.TenantPaymentInstructionError
 import com.daycare.api.service.StaffLeaveRequestError
 import com.daycare.api.service.TenantFeedbackError
 import com.daycare.api.service.ChildAttendanceReportError
+import com.daycare.api.service.PlatformAdminError
 import org.springframework.context.MessageSource
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -119,6 +120,7 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             "Tenant subscription is not active" to "error.subscriptionInactive",
             "This feature is not enabled for the institution" to "error.featureUnavailable",
             "You do not have platform administrator access" to "error.platformAdminAccess",
+            PlatformAdminError.SINGLETON to "error.platformAdminSingleton",
             "Platform administrators do not have tenant child access" to "error.platformChildAccess",
             "Child belongs to a different branch" to "error.childBranch", "You cannot access this child" to "error.childAccess", "Child belongs to a different organization" to "error.childOrganization",
             "Child is already checked in" to "error.alreadyCheckedIn", "Attendance for this operational day is closed" to "error.attendanceClosed", "Child must be checked in before check-out" to "error.checkInRequired",
