@@ -138,6 +138,11 @@ EOF
   echo "Wrote $env_file with generated database, local-auth JWT, and QR signing secrets."
 fi
 sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname = '$database_name'" | grep -q 1 || sudo -u postgres createdb -O "$database_user" "$database_name"
+# The consolidated Flyway baseline seeds UUIDs with gen_random_uuid(). Keep this
+# database-level prerequisite explicit so a fresh VPS can run V1 without a
+# manual PostgreSQL intervention.
+sudo -u postgres psql -v ON_ERROR_STOP=1 -q -d "$database_name" \
+  -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto;'
 if [[ -n "$firebase_service_account" ]]; then
   install -m 640 -o root -g "$service_user" "$firebase_service_account" "$firebase_file"
   echo "Installed the Firebase service account at $firebase_file."
