@@ -10,7 +10,9 @@ import com.daycare.api.persistence.ChildStaffAssignmentRepository
 import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.UserProfileRepository
+import com.daycare.api.realtime.ChildMessageRealtimePayload
 import com.daycare.api.realtime.RealtimeFlag
+import com.daycare.api.realtime.RealtimePublisher
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.springframework.security.oauth2.jwt.Jwt
@@ -42,6 +44,7 @@ class ChildMessageService(
     private val memberships: MembershipRepository,
     private val users: UserProfileRepository,
     private val notifications: NotificationService,
+    private val realtime: RealtimePublisher,
 ) {
     @Transactional(readOnly = true)
     fun list(jwt: Jwt, organizationId: UUID, childId: UUID): List<ChildMessageResponse> {
@@ -93,10 +96,23 @@ class ChildMessageService(
             val recipients = assignedStaffUserIds.ifEmpty {
                 memberships.findAllByOrganizationId(child.organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.map { it.userId }.distinct()
             }
-            recipients.forEach { userId -> notifications.notify(child.organizationId, userId, title, body, path, setOf(RealtimeFlag.CHILD_MESSAGES)) }
+            recipients.forEach { userId -> notifyRecipient(child, userId, title, body, path, message) }
         } else {
             guardians.findAllByChildId(child.id).map { it.userId }.distinct()
-                .forEach { userId -> notifications.notify(child.organizationId, userId, title, body, path, setOf(RealtimeFlag.CHILD_MESSAGES)) }
+                .forEach { userId -> notifyRecipient(child, userId, title, body, path, message) }
         }
+    }
+
+    private fun notifyRecipient(child: Child, userId: UUID, title: String, body: String, path: String, message: ChildMessage) {
+        // Persisted notification and push delivery remain separate from the chat
+        // event. The WebSocket event contains identifiers only; the client must
+        // refetch the authorized thread over REST.
+        notifications.notify(child.organizationId, userId, title, body, path)
+        realtime.publishToUser(
+            child.organizationId,
+            userId,
+            setOf(RealtimeFlag.CHILD_MESSAGES),
+            ChildMessageRealtimePayload(child.id, message.id),
+        )
     }
 }

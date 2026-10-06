@@ -14,7 +14,9 @@ import com.daycare.api.persistence.Membership
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.UserProfileRepository
+import com.daycare.api.realtime.ChildMessageRealtimePayload
 import com.daycare.api.realtime.RealtimeFlag
+import com.daycare.api.realtime.RealtimePublisher
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
@@ -39,7 +41,8 @@ private class ChildMessageServiceFixture {
     val memberships = mock(MembershipRepository::class.java)
     val users = mock(UserProfileRepository::class.java)
     val notifications = mock(NotificationService::class.java)
-    val service = ChildMessageService(access, childScopes, messages, reads, guardians, staffAssignments, memberships, users, notifications)
+    val realtime = mock(RealtimePublisher::class.java)
+    val service = ChildMessageService(access, childScopes, messages, reads, guardians, staffAssignments, memberships, users, notifications, realtime)
 
     fun scope(user: UserProfile, organizationId: UUID, role: Role) = AccessScope(user, Membership(organizationId = organizationId, userId = user.id, role = role, active = true), emptySet(), emptySet())
 }
@@ -66,7 +69,10 @@ class ChildMessageServiceTest {
         assertEquals("Anak saya belum makan siang", response.body)
         assertEquals(Role.PARENT, response.senderRole)
         assertEquals(true, response.mine)
-        verify(fixture.notifications).notify(organizationId, assignedStaffId, "Pesan baru dari Budi", "Anak saya belum makan siang", "/child-messages?childId=${child.id}", setOf(RealtimeFlag.CHILD_MESSAGES))
+        verify(fixture.notifications).notify(organizationId, assignedStaffId, "Pesan baru dari Budi", "Anak saya belum makan siang", "/child-messages?childId=${child.id}")
+        val saved = ArgumentCaptor.forClass(ChildMessage::class.java)
+        verify(fixture.messages).save(saved.capture())
+        verify(fixture.realtime).publishToUser(organizationId, assignedStaffId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, saved.value.id))
         verifyNoInteractions(fixture.guardians)
     }
 
@@ -91,7 +97,10 @@ class ChildMessageServiceTest {
 
         fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest("Halo"))
 
-        verify(fixture.notifications).notify(organizationId, activeStaffAdminId, "Pesan baru dari Budi", "Halo", "/child-messages?childId=${child.id}", setOf(RealtimeFlag.CHILD_MESSAGES))
+        verify(fixture.notifications).notify(organizationId, activeStaffAdminId, "Pesan baru dari Budi", "Halo", "/child-messages?childId=${child.id}")
+        val saved = ArgumentCaptor.forClass(ChildMessage::class.java)
+        verify(fixture.messages).save(saved.capture())
+        verify(fixture.realtime).publishToUser(organizationId, activeStaffAdminId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, saved.value.id))
         org.mockito.Mockito.verifyNoMoreInteractions(fixture.notifications)
     }
 
@@ -112,7 +121,10 @@ class ChildMessageServiceTest {
         val response = fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest("Hari ini ceria sekali"))
 
         assertEquals(Role.STAFF, response.senderRole)
-        verify(fixture.notifications).notify(organizationId, guardianId, "Pesan baru dari Bu Sari", "Hari ini ceria sekali", "/child-messages?childId=${child.id}", setOf(RealtimeFlag.CHILD_MESSAGES))
+        verify(fixture.notifications).notify(organizationId, guardianId, "Pesan baru dari Bu Sari", "Hari ini ceria sekali", "/child-messages?childId=${child.id}")
+        val saved = ArgumentCaptor.forClass(ChildMessage::class.java)
+        verify(fixture.messages).save(saved.capture())
+        verify(fixture.realtime).publishToUser(organizationId, guardianId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, saved.value.id))
         verifyNoInteractions(fixture.staffAssignments)
     }
 

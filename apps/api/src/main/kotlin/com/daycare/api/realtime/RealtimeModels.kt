@@ -49,6 +49,15 @@ data class RealtimeEvent(
     val occurredAt: Instant = Instant.now(),
 )
 
+/**
+ * A chat event is only a hint to refetch the protected REST resource. The
+ * message body and sender details never travel over the realtime channel.
+ */
+data class ChildMessageRealtimePayload(
+    val childId: UUID,
+    val messageId: UUID,
+)
+
 data class RealtimeConnectedResponse(
     val type: String = "CONNECTED",
     val organizationId: UUID? = null,

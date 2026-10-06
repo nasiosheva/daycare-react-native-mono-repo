@@ -170,7 +170,7 @@ export default function ChildDetailScreen() {
         {hasAcademicOffering && <MenuItem icon="flag-outline" title={t("goals.title")} description={t("goals.menuDescription")} onPress={() => router.push({ pathname: "/goals", params: { childId } })} />}
         <MenuItem icon="medkit-outline" title={t("health.title")} onPress={() => router.push({ pathname: "/child-health", params: { childId } })} />
         <MenuItem icon="bandage-outline" title={t("incident.title")} onPress={() => router.push({ pathname: "/incident-reports", params: { childId } })} />
-        <MenuItem icon="chatbubbles-outline" title={t("childMessage.menuTitle")} onPress={() => router.push({ pathname: "/child-messages", params: { childId } })} />
+        <MenuItem icon="chatbubbles-outline" title={t("childMessage.menuTitle")} onPress={() => router.push({ pathname: "/child-messages", params: { childId, organizationId } })} />
       </MenuSection>
       <MenuSection title={t("children.classAndCare")}>
         {canAccessLegacyClasses && <MenuItem icon="grid-outline" title={t("learning.placements")} description={placements.data?.length ? t("learning.placementsSummary", { count: placements.data.length }) : t("learning.noPlacements")} onPress={() => setPlacementsOpen(true)} />}
