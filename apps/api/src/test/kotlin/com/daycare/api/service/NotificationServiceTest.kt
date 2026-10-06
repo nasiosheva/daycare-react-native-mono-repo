@@ -12,6 +12,7 @@ import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.spy
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import java.time.Instant
 import java.util.UUID
@@ -35,5 +36,48 @@ class NotificationServiceTest {
         verify(notifications).save(any(Notification::class.java))
         verify(realtime).publishToUser(organizationId, recipientUserId, setOf(RealtimeFlag.NOTIFICATIONS), mapOf("notificationId" to notification.id, "actionPath" to null))
         verify(service, never()).sendPush(mutedDevice, organizationId, notification.title, notification.body)
+    }
+
+    @Test
+    fun `push-only notification skips inbox and generic realtime event`() {
+        val notifications = mock(NotificationRepository::class.java)
+        val devices = mock(DeviceTokenRepository::class.java)
+        val realtime = mock(RealtimePublisher::class.java)
+        val organizationId = UUID.randomUUID()
+        val recipientUserId = UUID.randomUUID()
+        val device = DeviceToken(organizationId = organizationId, userId = recipientUserId, token = "ExponentPushToken[chat]", platform = "android")
+        val actionPath = "/child-messages?childId=${UUID.randomUUID()}"
+        `when`(devices.findAllByUserIdAndOrganizationId(recipientUserId, organizationId)).thenReturn(listOf(device))
+        val service = spy(NotificationService(notifications, devices, realtime, "http://127.0.0.1:1"))
+
+        service.notifyPushOnly(organizationId, recipientUserId, "Pesan baru", "Ada pesan baru di chat anak.", actionPath)
+
+        verify(notifications, never()).save(any(Notification::class.java))
+        verifyNoInteractions(realtime)
+        verify(service).sendPush(device, organizationId, "Pesan baru", "Ada pesan baru di chat anak.", actionPath)
+    }
+
+    @Test
+    fun `push-only notification respects the device mute window`() {
+        val notifications = mock(NotificationRepository::class.java)
+        val devices = mock(DeviceTokenRepository::class.java)
+        val realtime = mock(RealtimePublisher::class.java)
+        val organizationId = UUID.randomUUID()
+        val recipientUserId = UUID.randomUUID()
+        val mutedDevice = DeviceToken(
+            organizationId = organizationId,
+            userId = recipientUserId,
+            token = "ExponentPushToken[muted-chat]",
+            platform = "android",
+            pushMutedUntil = Instant.now().plusSeconds(3_600),
+        )
+        val actionPath = "/child-messages?childId=${UUID.randomUUID()}"
+        `when`(devices.findAllByUserIdAndOrganizationId(recipientUserId, organizationId)).thenReturn(listOf(mutedDevice))
+        val service = spy(NotificationService(notifications, devices, realtime, "http://127.0.0.1:1"))
+
+        service.notifyPushOnly(organizationId, recipientUserId, "Pesan baru", "Ada pesan baru di chat anak.", actionPath)
+
+        verify(service, never()).sendPush(mutedDevice, organizationId, "Pesan baru", "Ada pesan baru di chat anak.", actionPath)
+        verifyNoInteractions(notifications, realtime)
     }
 }

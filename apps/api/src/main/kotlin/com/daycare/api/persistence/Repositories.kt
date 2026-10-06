@@ -165,8 +165,23 @@ interface ChildIncidentAcknowledgementRepository : JpaRepository<ChildIncidentAc
 }
 interface InvitationRepository : JpaRepository<Invitation, UUID> { fun findAllByStatus(status: InvitationStatus): List<Invitation>; fun findAllByOrganizationIdAndStatus(organizationId: UUID, status: InvitationStatus): List<Invitation> }
 interface NotificationRepository : JpaRepository<Notification, UUID> {
-    fun findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDescIdDesc(recipientUserId: UUID, organizationId: UUID, pageable: Pageable): Page<Notification>
-    fun countByRecipientUserIdAndOrganizationIdAndReadAtIsNull(recipientUserId: UUID, organizationId: UUID): Long
+    @Query("""
+        select notification from Notification notification
+        where notification.recipientUserId = :recipientUserId
+          and notification.organizationId = :organizationId
+          and (notification.actionPath is null or notification.actionPath not like '/child-messages%')
+        order by notification.createdAt desc, notification.id desc
+    """)
+    fun findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDescIdDesc(@Param("recipientUserId") recipientUserId: UUID, @Param("organizationId") organizationId: UUID, pageable: Pageable): Page<Notification>
+
+    @Query("""
+        select count(notification) from Notification notification
+        where notification.recipientUserId = :recipientUserId
+          and notification.organizationId = :organizationId
+          and notification.readAt is null
+          and (notification.actionPath is null or notification.actionPath not like '/child-messages%')
+    """)
+    fun countByRecipientUserIdAndOrganizationIdAndReadAtIsNull(@Param("recipientUserId") recipientUserId: UUID, @Param("organizationId") organizationId: UUID): Long
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
@@ -175,12 +190,14 @@ interface NotificationRepository : JpaRepository<Notification, UUID> {
         where notification.recipientUserId = :recipientUserId
           and notification.organizationId = :organizationId
           and notification.readAt is null
+          and (notification.actionPath is null or notification.actionPath not like '/child-messages%')
     """)
     fun markAllUnreadByRecipientUserIdAndOrganizationId(@Param("recipientUserId") recipientUserId: UUID, @Param("organizationId") organizationId: UUID, @Param("readAt") readAt: Instant): Int
 
     @Query("""
         select notification from Notification notification
         where notification.recipientUserId = :recipientUserId and notification.organizationId = :organizationId
+          and (notification.actionPath is null or notification.actionPath not like '/child-messages%')
           and (lower(notification.title) like lower(concat('%', :query, '%'))
             or lower(notification.body) like lower(concat('%', :query, '%')))
         order by notification.createdAt desc, notification.id desc

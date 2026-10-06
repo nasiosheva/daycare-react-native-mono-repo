@@ -26,6 +26,19 @@ class NotificationService(
     fun notify(organizationId: UUID, recipientUserId: UUID, title: String, body: String, actionPath: String? = null, realtimeFlags: Set<RealtimeFlag> = emptySet()) {
         val notification = notifications.save(Notification(organizationId = organizationId, recipientUserId = recipientUserId, title = title, body = body, actionPath = actionPath))
         realtime.publishToUser(organizationId, recipientUserId, realtimeFlags + RealtimeFlag.NOTIFICATIONS, mapOf("notificationId" to notification.id, "actionPath" to actionPath))
+        push(organizationId, recipientUserId, title, body, actionPath)
+    }
+
+    /**
+     * Delivers an ephemeral native push without creating an inbox item or a
+     * generic NOTIFICATIONS realtime event. Callers that have their own
+     * realtime flag (for example CHILD_MESSAGES) can keep that signal separate.
+     */
+    fun notifyPushOnly(organizationId: UUID, recipientUserId: UUID, title: String, body: String, actionPath: String? = null) {
+        push(organizationId, recipientUserId, title, body, actionPath)
+    }
+
+    private fun push(organizationId: UUID, recipientUserId: UUID, title: String, body: String, actionPath: String?) {
         val now = Instant.now()
         deviceTokens.findAllByUserIdAndOrganizationId(recipientUserId, organizationId)
             .filter { token -> token.pushMutedUntil?.isAfter(now) != true }

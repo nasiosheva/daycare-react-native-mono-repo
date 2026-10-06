@@ -26,6 +26,7 @@ import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
+import org.mockito.Mockito.verifyNoMoreInteractions
 import org.mockito.Mockito.`when`
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.oauth2.jwt.Jwt
@@ -71,7 +72,8 @@ class ChildMessageServiceTest {
         assertEquals("Anak saya belum makan siang", response.body)
         assertEquals(Role.PARENT, response.senderRole)
         assertEquals(true, response.mine)
-        verify(fixture.notifications).notify(organizationId, assignedStaffId, "Pesan baru dari Budi", "Anak saya belum makan siang", "/child-messages?childId=${child.id}")
+        verify(fixture.notifications).notifyPushOnly(organizationId, assignedStaffId, "Pesan baru", "Ada pesan baru di chat anak.", "/child-messages?childId=${child.id}")
+        verifyNoMoreInteractions(fixture.notifications)
         val saved = ArgumentCaptor.forClass(ChildMessage::class.java)
         verify(fixture.messages).save(saved.capture())
         verify(fixture.realtime).publishToUser(organizationId, assignedStaffId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, saved.value.id))
@@ -142,7 +144,7 @@ class ChildMessageServiceTest {
 
         fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest("Halo"))
 
-        verify(fixture.notifications).notify(organizationId, activeStaffAdminId, "Pesan baru dari Budi", "Halo", "/child-messages?childId=${child.id}")
+        verify(fixture.notifications).notifyPushOnly(organizationId, activeStaffAdminId, "Pesan baru", "Ada pesan baru di chat anak.", "/child-messages?childId=${child.id}")
         val saved = ArgumentCaptor.forClass(ChildMessage::class.java)
         verify(fixture.messages).save(saved.capture())
         verify(fixture.realtime).publishToUser(organizationId, activeStaffAdminId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, saved.value.id))
@@ -166,7 +168,7 @@ class ChildMessageServiceTest {
         val response = fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest("Hari ini ceria sekali"))
 
         assertEquals(Role.STAFF, response.senderRole)
-        verify(fixture.notifications).notify(organizationId, guardianId, "Pesan baru dari Bu Sari", "Hari ini ceria sekali", "/child-messages?childId=${child.id}")
+        verify(fixture.notifications).notifyPushOnly(organizationId, guardianId, "Pesan baru", "Ada pesan baru di chat anak.", "/child-messages?childId=${child.id}")
         val saved = ArgumentCaptor.forClass(ChildMessage::class.java)
         verify(fixture.messages).save(saved.capture())
         verify(fixture.realtime).publishToUser(organizationId, guardianId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, saved.value.id))

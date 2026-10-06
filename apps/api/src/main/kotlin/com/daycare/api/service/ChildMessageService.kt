@@ -154,8 +154,8 @@ class ChildMessageService(
     // Staff Admins when no Staff is assigned yet. A Staff/Staff Admin's message always notifies every
     // guardian, mirroring ChildIncidentService.notifyGuardians.
     private fun notifyOtherSide(child: Child, senderRole: Role, senderName: String, message: ChildMessage) {
-        val title = "Pesan baru dari $senderName"
-        val body = message.body.take(200)
+        val title = "Pesan baru"
+        val body = "Ada pesan baru di chat anak."
         val path = "/child-messages?childId=${child.id}"
         notificationRecipientUserIds(child, senderRole).forEach { userId -> notifyRecipient(child, userId, title, body, path, message) }
     }
@@ -182,10 +182,11 @@ class ChildMessageService(
             .minOrNull()
 
     private fun notifyRecipient(child: Child, userId: UUID, title: String, body: String, path: String, message: ChildMessage) {
-        // Persisted notification and push delivery remain separate from the chat
-        // event. The WebSocket event contains identifiers only; the client must
-        // refetch the authorized thread over REST.
-        notifications.notify(child.organizationId, userId, title, body, path)
+        // Chat notifications are ephemeral native pushes. The WebSocket event
+        // contains identifiers only; the client must refetch the authorized
+        // thread over REST. No inbox row or generic NOTIFICATIONS event is
+        // created for chat.
+        notifications.notifyPushOnly(child.organizationId, userId, title, body, path)
         realtime.publishToUser(
             child.organizationId,
             userId,
