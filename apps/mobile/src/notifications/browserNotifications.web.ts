@@ -1,9 +1,9 @@
 import type { AppNotification, PushNotificationMuteDuration } from "@daycare/api-client";
-import { browserNotificationMuteUntilStorageKey, notificationMuteDurationMilliseconds } from "./mutePreferences";
+import { browserNotificationMuteUntilStorageKey, isMuteActive, notificationMuteDurationMilliseconds } from "./mutePreferences";
 
 export function browserNotificationMutedUntil(): string | undefined {
   const value = readMutedUntil();
-  if (!value || Number.isNaN(Date.parse(value)) || Date.parse(value) <= Date.now()) {
+  if (!isMuteActive(value)) {
     removeMutedUntil();
     return undefined;
   }

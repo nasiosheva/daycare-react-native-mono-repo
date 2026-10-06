@@ -6,11 +6,13 @@ import com.daycare.api.persistence.ChildMessage
 import com.daycare.api.persistence.ChildMessageRead
 import com.daycare.api.persistence.ChildMessageReadRepository
 import com.daycare.api.persistence.ChildMessageRepository
+import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.ChildStaffAssignmentRepository
 import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.UserProfileRepository
+import com.daycare.api.realtime.ChildMessageRealtimeEvent
 import com.daycare.api.realtime.ChildMessageRealtimePayload
 import com.daycare.api.realtime.RealtimeFlag
 import com.daycare.api.realtime.RealtimePublisher
@@ -28,6 +30,8 @@ object ChildMessageError {
 }
 enum class ChildMessageDeliveryStatus { SENT, READ }
 data class ChildMessageSummaryResponse(val unreadCount: Int)
+data class ChildMessageChildUnreadCount(val childId: UUID, val unreadCount: Int)
+data class ChildMessageUnreadSummaryResponse(val totalUnreadCount: Int, val children: List<ChildMessageChildUnreadCount>)
 data class ChildMessageReplyResponse(
     val id: UUID,
     val senderName: String,
@@ -56,6 +60,7 @@ class ChildMessageService(
     private val reads: ChildMessageReadRepository,
     private val guardians: GuardianLinkRepository,
     private val staffAssignments: ChildStaffAssignmentRepository,
+    private val children: ChildRepository,
     private val memberships: MembershipRepository,
     private val users: UserProfileRepository,
     private val notifications: NotificationService,
@@ -74,6 +79,33 @@ class ChildMessageService(
             val readAt = readAtFor(message, recipientIdsBySenderRole[message.senderRole].orEmpty(), readAtByUserId)
             response(message, namesByUserId[message.senderUserId]?.displayName ?: "Unknown", scope.user.id, readAt, messagesById, namesByUserId)
         }
+    }
+
+    /**
+     * Staff-side unread badge across the threads where the caller is a new-message
+     * recipient: children directly assigned to them, plus, for a Staff Admin, every
+     * active child without an assigned Staff (the notification fallback). Only
+     * children with unread messages are listed.
+     */
+    @Transactional(readOnly = true)
+    fun unreadSummary(jwt: Jwt, organizationId: UUID): ChildMessageUnreadSummaryResponse {
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF, Role.STAFF_ADMIN))
+        val childIds = recipientChildIds(scope, organizationId)
+        if (childIds.isEmpty()) return ChildMessageUnreadSummaryResponse(0, emptyList())
+        val counts = messages.countUnreadByChild(organizationId, childIds, scope.user.id)
+            .filter { it.unreadCount > 0 }
+            .map { ChildMessageChildUnreadCount(it.childId, it.unreadCount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()) }
+            .sortedBy { it.childId }
+        val total = counts.sumOf { it.unreadCount.toLong() }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        return ChildMessageUnreadSummaryResponse(total, counts)
+    }
+
+    private fun recipientChildIds(scope: AccessScope, organizationId: UUID): Set<UUID> {
+        val directlyAssigned = staffAssignments.findAllByOrganizationIdAndUserId(organizationId, scope.user.id).map { it.childId }.toSet()
+        if (scope.membership.role != Role.STAFF_ADMIN) return directlyAssigned
+        val childrenWithStaff = staffAssignments.findAllByOrganizationId(organizationId).map { it.childId }.toSet()
+        val unassigned = children.findAllByOrganizationId(organizationId).filter { it.active && it.id !in childrenWithStaff }.map { it.id }
+        return directlyAssigned + unassigned
     }
 
     @Transactional(readOnly = true)
@@ -114,7 +146,7 @@ class ChildMessageService(
             .lastOrNull { it.senderUserId != scope.user.id }
         if (latestIncoming != null) {
             readRecipientUserIds(child, scope.membership.role).forEach { userId ->
-                realtime.publishToUser(organizationId, userId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, latestIncoming.id))
+                realtime.publishToUser(organizationId, userId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, latestIncoming.id, ChildMessageRealtimeEvent.MESSAGE_READ))
             }
         }
     }
@@ -182,16 +214,15 @@ class ChildMessageService(
             .minOrNull()
 
     private fun notifyRecipient(child: Child, userId: UUID, title: String, body: String, path: String, message: ChildMessage) {
-        // Chat notifications are ephemeral native pushes. The WebSocket event
-        // contains identifiers only; the client must refetch the authorized
-        // thread over REST. No inbox row or generic NOTIFICATIONS event is
-        // created for chat.
-        notifications.notifyPushOnly(child.organizationId, userId, title, body, path)
+        // WebSocket is the active chat transport. The event contains
+        // identifiers only; the client must refetch the authorized thread over
+        // REST. No inbox row or generic NOTIFICATIONS event is created.
+        notifications.notifyChat(child.organizationId, userId, title, body, path)
         realtime.publishToUser(
             child.organizationId,
             userId,
             setOf(RealtimeFlag.CHILD_MESSAGES),
-            ChildMessageRealtimePayload(child.id, message.id),
+            ChildMessageRealtimePayload(child.id, message.id, ChildMessageRealtimeEvent.MESSAGE_CREATED),
         )
     }
 }

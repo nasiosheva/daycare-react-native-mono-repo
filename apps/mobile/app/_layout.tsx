@@ -10,7 +10,6 @@ import { I18nProvider } from "@/i18n/I18nProvider";
 import { bottomNavigationPaths } from "@/navigation/RoleBottomNavigation";
 import { canOpenNotificationRoute, isSelfServiceNotificationRoute, notificationRouteWithOrganizationId } from "@/navigation/notificationRouteAccess";
 import { RealtimeConnection } from "@/realtime/RealtimeConnection";
-import { getDeviceInstallationId } from "@/device/installationId";
 import { publishInlineFeedback } from "@daycare/ui";
 import { BrandedSplash } from "@/splash/BrandedSplash";
 import { InactiveStaffRouteBoundary } from "@/navigation/InactiveStaffRouteBoundary";
@@ -20,6 +19,7 @@ import { ParentSelfServiceRouteBoundary } from "@/navigation/ParentSelfServiceRo
 import { ProfileContextRouteBoundary } from "@/navigation/ProfileContextRouteBoundary";
 import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
+import { getNativeNotificationPermission, nativeNotificationPlatform, registerNativePushDevice, requestNativeNotificationPermission, type NativeNotificationPermission } from "@/notifications/nativePush";
 
 if (Platform.OS !== "web") {
   SplashScreen.setOptions({ duration: 250, fade: true });
@@ -83,29 +83,58 @@ function NotificationRouteHandler() {
 
 function NativeNotificationRegistration() {
   const { api, organizationId, profile, user } = useAuth();
+  const pathname = usePathname();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const subscriptionActive = hasOperationalTenantSubscription(membership?.subscriptionStatus);
+  const [permissionStatus, setPermissionStatus] = useState<NativeNotificationPermission | null>(null);
+  const promptedPath = useRef<string | null>(null);
 
   useEffect(() => {
-    const platform = Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : null;
+    // This coordinator is intentionally native-only. Web permission is not
+    // requested here: browsers require a user gesture and use the separate
+    // Notification.requestPermission() adapter from the Notifications screen.
+    const platform = nativeNotificationPlatform();
+    if (!platform || (pathname !== "/sign-in" && pathname !== "/home") || promptedPath.current === pathname) return;
+    promptedPath.current = pathname;
+    let cancelled = false;
+    const requestPermission = async () => {
+      try {
+        const requested = await requestNativeNotificationPermission();
+        if (!cancelled && requested) setPermissionStatus(requested);
+        if (requested) console.info(`[notifications] Native permission status: ${requested.status}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[notifications] Native permission request failed: ${message}`);
+      }
+    };
+    void requestPermission();
+    return () => { cancelled = true; };
+  }, [pathname]);
+
+  useEffect(() => {
+    const platform = nativeNotificationPlatform();
     if (!platform || !organizationId || !profile || !user || !subscriptionActive) return;
     let cancelled = false;
     const register = async () => {
       try {
-        if (platform === "android") await Notifications.setNotificationChannelAsync("default", { name: "Default", importance: Notifications.AndroidImportance.DEFAULT });
-        const permission = await Notifications.getPermissionsAsync();
-        const status = permission.status === "granted" ? permission.status : (await Notifications.requestPermissionsAsync()).status;
-        if (status !== "granted" || cancelled) return;
-        const [token, installationId] = await Promise.all([Notifications.getExpoPushTokenAsync(), getDeviceInstallationId()]);
-        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-        if (!cancelled) await api.registerDevice({ token: token.data, platform, installationId, timeZone });
-      } catch {
-        // A device may not support push tokens (for example, a simulator). The in-app inbox remains available.
+        const permission = permissionStatus ?? await getNativeNotificationPermission();
+        if (!permission) return;
+        if (permission.status !== "granted") {
+          if (!permissionStatus && !cancelled) setPermissionStatus(permission);
+          return;
+        }
+        if (cancelled) return;
+        await registerNativePushDevice(api, permission);
+      } catch (error) {
+        // A simulator may not support push tokens, but configuration and API
+        // failures must remain visible instead of silently disabling push.
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[notifications] Native push registration skipped: ${message}`);
       }
     };
     void register();
     return () => { cancelled = true; };
-  }, [api, organizationId, profile, subscriptionActive, user]);
+  }, [api, organizationId, permissionStatus, profile, subscriptionActive, user]);
 
   return null;
 }
@@ -162,10 +191,19 @@ function BottomNavigationBackHandler({ children }: PropsWithChildren) {
 }
 
 export default function RootLayout() {
-  return <Providers><ProfileContextRouteBoundary><OrganizationContextRouteBoundary><ParentSelfServiceRouteBoundary><InactiveStaffRouteBoundary><InactiveParentRouteBoundary><BottomNavigationBackHandler><Stack initialRouteName="home" screenOptions={{ headerShown: false }}>
-    {bottomNavigationScreenNames.map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none" }} />)}
-    {[
-      "tenant-readiness", "absence-requests", "staff-leave-requests", "staff-leave-approvals", "tenant-feedback", "tenant-feedback-inbox", "payment-history", "parent-family-profile", "parent-child-profile", "pickup-authorizations", "emergency-contacts", "child-consents", "consent-definitions", "consent-information", "add-tenant", "institution-types", "branches", "branch-operating-hours", "overtime-charges", "global-curriculum", "global-development-programs", "global-learning-levels", "goals", "child-messages", "development-categories", "notifications", "staff-reminders", "payment-instructions", "parent-enrollment-form", "parent-payment", "context-selection", "sign-up", "verify-phone",
-    ].map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none" }} />)}
-  </Stack></BottomNavigationBackHandler></InactiveParentRouteBoundary></InactiveStaffRouteBoundary></ParentSelfServiceRouteBoundary></OrganizationContextRouteBoundary></ProfileContextRouteBoundary></Providers>;
+  return <Providers>
+    <BottomNavigationBackHandler><Stack initialRouteName="home" screenOptions={{ headerShown: false }}>
+      {bottomNavigationScreenNames.map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none" }} />)}
+      {[
+        "tenant-readiness", "absence-requests", "staff-leave-requests", "staff-leave-approvals", "tenant-feedback", "tenant-feedback-inbox", "payment-history", "parent-family-profile", "parent-child-profile", "pickup-authorizations", "emergency-contacts", "child-consents", "consent-definitions", "consent-information", "add-tenant", "institution-types", "branches", "branch-operating-hours", "overtime-charges", "global-curriculum", "global-development-programs", "global-learning-levels", "goals", "child-messages", "development-categories", "notifications", "staff-reminders", "payment-instructions", "parent-enrollment-form", "parent-payment", "context-selection", "sign-up", "verify-phone",
+      ].map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none" }} />)}
+    </Stack></BottomNavigationBackHandler>
+    {/* Keep Stack mounted while guards dispatch redirects. Unmounting it here
+        makes router.replace('/home') target a navigator that no longer exists. */}
+    <ProfileContextRouteBoundary><></></ProfileContextRouteBoundary>
+    <OrganizationContextRouteBoundary><></></OrganizationContextRouteBoundary>
+    <ParentSelfServiceRouteBoundary><></></ParentSelfServiceRouteBoundary>
+    <InactiveStaffRouteBoundary><></></InactiveStaffRouteBoundary>
+    <InactiveParentRouteBoundary><></></InactiveParentRouteBoundary>
+  </Providers>;
 }

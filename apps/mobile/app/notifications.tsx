@@ -3,13 +3,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PushNotificationMuteDuration } from "@daycare/api-client";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { AppText, BackButton, Banner, BottomSheet, Button, Chip, ChipGroup, EmptyState, ErrorState, SearchField, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { notify } from "@/notify/notify";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { getDeviceInstallationId } from "@/device/installationId";
+import { deviceNotificationPreferenceQuery } from "@/notifications/deviceNotificationPreference";
 import { notificationMuteDurationKeys, notificationMuteDurations, notificationPreferenceQueryKey } from "@/notifications/mutePreferences";
 import { browserNotificationMutedUntil, muteBrowserNotifications, requestBrowserNotificationPermission, unmuteBrowserNotifications } from "../src/notifications/browserNotifications";
 import { canOpenNotificationRoute, isSelfServiceNotificationRoute, notificationRouteRequiresDaycareCapability, notificationRouteWithOrganizationId } from "@/navigation/notificationRouteAccess";
@@ -17,6 +18,8 @@ import { hasOfferingCapability } from "@/education/useUiAccessContext";
 import { useInboxNotifications } from "@/notifications/useInboxNotifications";
 import { pendingActionState } from "@/ui/pendingAction";
 import type { NotificationWithTenant } from "@/notifications/inboxTenants";
+import { nativeNotificationPlatform, registerNativePushDevice, requestNativeNotificationPermission } from "@/notifications/nativePush";
+import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
 
 export default function NotificationsScreen() {
   const router = useRouter();
@@ -34,11 +37,33 @@ export default function NotificationsScreen() {
   useEffect(() => setPage(0), [debouncedSearch]);
   const [selectedMuteDuration, setSelectedMuteDuration] = useState<PushNotificationMuteDuration | null | undefined>(undefined);
   const [browserMutedUntil, setBrowserMutedUntil] = useState<string | undefined>(() => browserNotificationMutedUntil());
-  const isNative = Platform.OS !== "web";
+  const isNative = nativeNotificationPlatform() !== null;
+  const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const subscriptionActive = hasOperationalTenantSubscription(membership?.subscriptionStatus);
+  useEffect(() => {
+    if (!isNative) return;
+    let cancelled = false;
+    const requestNativePermission = async () => {
+      try {
+        const requested = await requestNativeNotificationPermission();
+        if (!cancelled && requested) {
+          console.info(`[notifications] Native permission status: ${requested.status}`);
+          if (requested.status === "granted" && organizationId && profile && subscriptionActive) {
+            await registerNativePushDevice(api, requested);
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[notifications] Native permission request failed: ${message}`);
+      }
+    };
+    void requestNativePermission();
+    return () => { cancelled = true; };
+  }, [api, isNative, organizationId, profile, subscriptionActive]);
   // A Parent sees one merged inbox across every Parent tenant (docs/business-rules.md §8); every
   // mark-read and opened action below uses the notification's own tenant, not the active one.
   const inbox = useInboxNotifications(debouncedSearch, page);
-  const notificationPreference = useQuery({ queryKey: notificationPreferenceQueryKey(organizationId), queryFn: async () => api.deviceNotificationPreference(await getDeviceInstallationId()), enabled: isNative && Boolean(organizationId) });
+  const notificationPreference = useQuery({ ...deviceNotificationPreferenceQuery(api, organizationId), enabled: isNative && Boolean(organizationId) });
   const markRead = useMutation({ mutationFn: (item: NotificationWithTenant) => api.markNotificationRead(item.id, item.organizationId), onSuccess: (_, item) => void client.invalidateQueries({ queryKey: ["notifications", item.organizationId] }) });
   const markAllRead = useMutation({
     mutationFn: async () => {

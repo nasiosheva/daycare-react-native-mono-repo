@@ -227,12 +227,26 @@ Status minimum lifecycle Platform Knowledge adalah `CANDIDATE`, `APPROVED`, `PUB
 - Layar Catatan Perkembangan menampilkan pemilih daftar anak hanya ketika layar dibuka tanpa `childId` tetap pada route (mis. dari hub umum), mengikuti pola yang sama seperti layar Goal (§6.3). Memilih anak dari daftar tersebut hanya mengubah state lokal layar dan tidak menuliskan `childId` ke parameter route, sehingga pemilih tetap tampil dan Staff dapat berpindah anak berulang kali tanpa meninggalkan layar. Ketika layar dibuka dengan `childId` tetap (mis. dari Profil Anak/detail anak), konteks anak sudah pasti sehingga pemilih daftar tidak ditampilkan sama sekali.
 - Layar Catatan Perkembangan hanya menampilkan tombol pintasan **Goals** untuk anak terpilih ketika cabang memiliki offering `ACADEMIC_CURRICULUM`, karena layar Goal itu sendiri mensyaratkan rantai Program Kurikulum (§6.3) dan mengalihkan ke Beranda bila offering itu tidak tersedia. Tombol yang tetap tampil tanpa offering tersebut hanya akan membuat Staff terdampar di Beranda tanpa penjelasan.
 - Setiap notifikasi inbox disimpan per penerima dan tetap tersedia walaupun push perangkat dimatikan.
-- Notifikasi pesan chat adalah pengecualian push-only: pengiriman pesan tidak membuat record inbox,
-  tidak menambah unread badge, dan tidak ikut aksi **Tandai semua sudah dibaca**. Android/iOS menerima
-  Expo push bila ada perangkat native yang terdaftar dan tidak sedang mute; push membawa action path
-  ke thread anak. Web tidak membuat inbox atau browser notification untuk chat, tetapi tetap menerima
-  invalidation realtime saat halaman tersambung. Record inbox chat lama yang masih ada disembunyikan
-  dari daftar, pencarian, jumlah unread, pagination, dan mark-all tanpa menghapus histori database.
+- Pada native Android/iOS, aplikasi memeriksa dan meminta permission notifikasi ketika berada di
+  `/sign-in`, `/home`, atau `/notifications` jika status permission belum `granted`; permission tetap dikendalikan oleh
+  OS (Android 12 dapat langsung berstatus granted tanpa menampilkan dialog, sedangkan Android 13+
+  biasanya menampilkan dialog pada permintaan pertama). Setelah user, tenant, subscription, dan
+  Expo project ID tersedia, device token didaftarkan secara scoped ke tenant. Permission yang ditolak
+  tidak menghalangi login, WebSocket, inbox, atau penggunaan aplikasi.
+- Web tidak memanggil `expo-notifications.requestPermissionsAsync`. Permission web memakai
+  `Notification.requestPermission()` melalui pengaturan notifikasi dengan aksi user, karena browser
+  umumnya menolak prompt otomatis tanpa user gesture; inbox web tetap tersedia walau permission web
+  tidak diberikan.
+- Notifikasi pesan chat adalah pengecualian dari inbox: pengiriman pesan tidak membuat record inbox,
+  tidak menambah unread badge, dan tidak ikut aksi **Tandai semua sudah dibaca**. Penerima yang
+  tersambung menerima invalidation WebSocket `CHILD_MESSAGES`. Di Android/iOS, event pesan baru
+  (`MESSAGE_CREATED`) dari WebSocket itu memicu **local notification** OS di perangkat penerima; backend
+  secara default (`CHAT_NOTIFICATION_TRANSPORT=WEBSOCKET`) tidak mengirim push server untuk chat. Local
+  notification hanya muncul selama proses aplikasi dan koneksi WebSocket masih hidup (foreground atau
+  baru saja ke background); ketika OS memutus koneksi atau aplikasi mati, tidak ada pemberitahuan chat.
+  `CHAT_NOTIFICATION_TRANSPORT=EXPO` dapat menambahkan push Expo server sebagai opsi eksplisit.
+  Record inbox chat lama yang masih ada disembunyikan dari daftar, pencarian, jumlah unread, pagination,
+  dan mark-all tanpa menghapus histori database.
 - Ketika tenant aktif dibuka sebagai Parent, inbox dan badge belum dibaca di Home menggabungkan notifikasi dari setiap tenant tempat pengguna memiliki membership `PARENT`—aktif maupun nonaktif, karena inbox hanya dibaca—kecuali tenant yang langganannya tidak operasional, yang memang ditolak server (§13.12). Inbox gabungan ini adalah agregasi client per tenant sesuai §1 dan §13.2: setiap item menampilkan nama tenant asalnya bila tenant lebih dari satu, daftar diurutkan terbaru lebih dulu lintas tenant, dan pencarian dijalankan pada setiap tenant. Menandai dibaca dan membuka action path selalu memakai tenant asal notifikasi: action path direvalidasi terhadap membership, status, dan capability tenant asal itu (§13.14), lalu dibuka dengan resolusi tenant per aksi (§1); route yang belum mendukung resolusi per aksi tidak dapat dibuka dari notifikasi tenant non-aktif. Bila inbox satu tenant gagal dimuat, item tenant lain tetap tampil disertai pemberitahuan tenant yang gagal dan tombol coba lagi; empty state hanya tampil bila tidak ada tenant yang gagal. Invalidation realtime dan push Expo saat ini hanya mencakup tenant aktif (perangkat terdaftar pada satu tenant), sehingga notifikasi tenant lain baru tampil saat inbox atau Home dimuat ulang. Staff dan Staff Admin tetap melihat inbox tenant aktif saja.
 - Inbox menyediakan aksi **Tandai semua sudah dibaca** yang mengirim mutasi terpisah untuk setiap tenant yang legal di inbox pengguna. Server tetap memeriksa recipient, membership, status tenant, dan scope pada setiap mutasi; aksi hanya mengubah notifikasi milik pengguna yang masih unread, tidak menghapus item, tidak memengaruhi push mute, dan tidak menandai tenant yang gagal diproses sebagai berhasil. Setelah server selesai, cache notifikasi per tenant di-invalidasi agar badge Home ikut diperbarui.
 - Inbox menggunakan pagination server-side dengan ukuran standar **10 item per halaman**. Endpoint mengembalikan item halaman, jumlah total, jumlah unread, dan penanda halaman berikutnya; pencarian juga dipaginasi dan dimulai kembali dari halaman pertama ketika query berubah. Pada Parent multi-tenant, client tetap memanggil endpoint secara terpisah untuk setiap tenant legal, mengambil halaman tenant yang diperlukan, menggabungkan hasil secara lokal berdasarkan waktu terbaru, lalu menampilkan tepat 10 item pada halaman gabungan. Kegagalan satu tenant tidak membatalkan tenant lain atau mengubah otorisasi; penghitung total/unread berasal dari scope server tenant masing-masing.
@@ -277,15 +291,37 @@ Status minimum lifecycle Platform Knowledge adalah `CANDIDATE`, `APPROVED`, `PUB
 
 - **Satu thread per anak** (`ChildMessage`, append-only, tanpa edit/hapus) — bukan percakapan 1-on-1 per pasangan Parent–Staff. Semua wali anak yang terhubung dan semua Staff dalam scope anak itu (`ChildScopeService.requireStaffManagedChild`/`requireParentLinkedChild`, sama seperti insiden dan catatan kesehatan) berbagi satu riwayat pesan.
 - **Staff Admin** selalu punya akses baca-tulis ke thread anak manapun dalam tenant (mengikuti `requireStaffManagedChild` yang selalu `true` untuk `STAFF_ADMIN`), untuk keperluan supervisi bila ada komplain — tetapi **tidak** menerima notifikasi push/inbox untuk setiap pesan Parent–Staff, supaya inboxnya tidak kebanjiran dari seluruh anak tenant.
-- **Penerima notifikasi pesan baru**: bila pengirim Parent, dinotifikasi Staff yang secara langsung di-assign ke anak itu (`ChildStaffAssignment`); bila tidak ada Staff yang di-assign, jatuh ke seluruh Staff Admin aktif tenant (fallback, bukan default). Bila pengirim Staff/Staff Admin, dinotifikasi seluruh wali anak yang terhubung — sama seperti pola `ChildIncidentService.notifyGuardians`.
-- Notifikasi pesan baru dikirim sebagai push-only pada perangkat native yang eligible. Push memakai teks
-  generik untuk menjaga privasi dan membawa action path `/child-messages?childId=...`; saat ditekan,
-  aplikasi memvalidasi ulang tenant, membership, capability, dan child scope sebelum membuka thread.
-  Pengiriman ini tidak menyimpan `Notification` dan tidak menerbitkan flag realtime `NOTIFICATIONS`.
+- **Penerima event pesan baru**: bila pengirim Parent, event dikirim ke Staff yang secara langsung
+  di-assign ke anak itu (`ChildStaffAssignment`); bila tidak ada Staff yang di-assign, jatuh ke seluruh
+  Staff Admin aktif tenant (fallback, bukan default). Bila pengirim Staff/Staff Admin, event dikirim ke
+  seluruh wali anak yang terhubung — sama seperti pola `ChildIncidentService.notifyGuardians`.
+- Transport chat selalu menerbitkan invalidation WebSocket `CHILD_MESSAGES`; event hanya berisi
+  identifier agar client memuat ulang thread melalui REST yang tetap terotorisasi. Event tidak
+  menyimpan `Notification`, tidak menerbitkan flag realtime `NOTIFICATIONS`, dan tidak menambah
+  unread inbox. Payload event membawa `childId`, `messageId`, dan `event`: `MESSAGE_CREATED` untuk pesan
+  baru dan `MESSAGE_READ` untuk tanda dibaca. Hanya `MESSAGE_CREATED` yang memicu local notification
+  native; tanda dibaca hanya me-refresh status. Local notification memakai teks generik terlokalisasi
+  (tanpa isi pesan) dan action path `/child-messages?childId=...` dengan `organizationId` event; ketika
+  ditekan, aplikasi memvalidasi ulang tenant, membership, capability, dan child scope sebelum membuka
+  thread. Local notification tidak ditampilkan bila permission OS belum `granted`, perangkat sedang
+  mute (`pushMutedUntil` preferensi perangkat), atau penerima sedang membuka thread anak yang sama di
+  foreground; satu `messageId` hanya diberitahukan sekali. Web tidak menampilkan notifikasi chat.
+- Backend memiliki switch `CHAT_NOTIFICATION_TRANSPORT` dengan nilai default `WEBSOCKET`. Nilai
+  `WEBSOCKET` hanya menerbitkan event realtime (sumber local notification), sedangkan `EXPO` menambahkan
+  push melalui `EXPO_PUSH_URL` ke device token yang terdaftar dan tidak mute; mengaktifkannya dapat
+  menghasilkan notifikasi ganda selama aplikasi hidup. Kegagalan atau ketiadaan token push tidak
+  menggagalkan penyimpanan pesan maupun event WebSocket. Nilai `FIREBASE` dipertahankan
+  sebagai alias kompatibilitas ke jalur device token Expo; implementasi ini belum menggunakan FCM
+  token mentah. Push chat tetap bukan record inbox dan tidak ikut aksi **Tandai semua sudah dibaca**.
+- Saat thread dibuka dan sudah memiliki riwayat pesan, UI memulai posisi scroll pada pesan terbaru
+  (bagian paling bawah). Setelah itu, pesan masuk dari lawan chat tidak memaksa scroll bila pengguna
+  sedang membaca riwayat lama; UI menampilkan aksi menuju pesan terbaru. Pesan yang dikirim sendiri
+  tetap otomatis menggulir ke bawah.
 - **Akses saat anak nonaktif**: fitur ini **tidak punya pengecualian read-only**. Begitu `Child.active = false`, `requireParentLinkedChild`/`requireStaffManagedChild` menolak total (termasuk membaca riwayat), persis seperti Goals, catatan kesehatan, insiden, dan consent — bukan pola `GuardianAuthority` target di §13.12 yang belum dibangun.
 - V1 hanya mendukung teks (maksimum 2.000 karakter); lampiran foto belum ada.
 - Parent membuka thread dari floating action **Pesan** pada profil anak; badge menampilkan jumlah pesan masuk yang belum dibaca untuk tenant + anak tersebut. Membuka thread menandai pesan masuk terbaca dan memperbarui badge setelah server menyimpan `ChildMessageRead`.
 - Staff dan Staff Admin membuka Pesan dari floating action pada layar operasional, memilih anak dari daftar anak yang sudah dibatasi server sesuai scope mereka, lalu masuk ke thread anak tersebut. Entry point ini tidak membuat daftar anak baru atau memperluas scope akses.
+- Floating action **Pesan** Staff/Staff Admin menampilkan badge jumlah total pesan masuk yang belum dibaca, dan daftar pilih anak pada mode Pesan menampilkan badge jumlah per anak. Cakupan hitungan mengikuti penerima pesan baru, bukan seluruh thread yang dapat dibaca: Staff menghitung anak yang di-assign langsung kepadanya (`ChildStaffAssignment`); Staff Admin menghitung anak yang di-assign langsung kepadanya ditambah setiap anak aktif tenant tanpa Staff yang di-assign (fallback penerima). Thread anak yang sudah punya Staff lain tidak menambah badge Staff Admin walaupun tetap dapat dibuka untuk supervisi. "Belum dibaca" memakai aturan yang sama dengan badge Parent: pesan dari pengirim lain yang dibuat setelah `ChildMessageRead.lastReadAt` milik pembaca. Data berasal dari `GET /api/v1/child-messages/unread-summary` (tenant aktif, hanya Staff/Staff Admin aktif) dan diperbarui oleh event realtime `CHILD_MESSAGES` serta setelah thread ditandai terbaca.
 - Pengguna dapat membalas pesan yang sudah ada pada thread yang sama. Pesan balasan menyimpan `replyToMessageId` yang wajib menunjuk pesan pada tenant dan anak yang sama; server mengembalikan preview pengirim, isi, dan waktu pesan asal. Balasan tetap append-only dan tidak mengubah atau menghapus pesan asal.
 - Bubble pesan menampilkan preview pesan yang dibalas. Menekan preview tersebut menggeser thread ke bubble pesan asal; bila target belum tersedia di cache/lifecycle UI, aksi tidak mengubah data dan thread tetap aman.
 - **Status percakapan**: pesan yang sudah tersimpan ditampilkan sebagai `SENT`/Terkirim. Status berubah menjadi `READ`/Dibaca ketika setidaknya satu pihak lawan yang berwenang membuka thread dan menjalankan `markRead`; status ini tidak berasal dari asumsi client. WebSocket hanya mengirim invalidation identifier, sedangkan status dan riwayat selalu dihitung ulang dari API REST yang scoped tenant + anak.

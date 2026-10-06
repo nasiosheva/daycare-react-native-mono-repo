@@ -52,10 +52,15 @@ data class RealtimeEvent(
 /**
  * A chat event is only a hint to refetch the protected REST resource. The
  * message body and sender details never travel over the realtime channel.
+ * [event] lets the recipient distinguish a new message, which may trigger a
+ * local OS notification, from a read receipt, which only refreshes state.
  */
+enum class ChildMessageRealtimeEvent { MESSAGE_CREATED, MESSAGE_READ }
+
 data class ChildMessageRealtimePayload(
     val childId: UUID,
     val messageId: UUID,
+    val event: ChildMessageRealtimeEvent,
 )
 
 data class RealtimeConnectedResponse(

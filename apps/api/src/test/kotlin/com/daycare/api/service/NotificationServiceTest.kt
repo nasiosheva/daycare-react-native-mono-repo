@@ -80,4 +80,35 @@ class NotificationServiceTest {
         verify(service, never()).sendPush(mutedDevice, organizationId, "Pesan baru", "Ada pesan baru di chat anak.", actionPath)
         verifyNoInteractions(notifications, realtime)
     }
+
+    @Test
+    fun `chat Expo transport sends push without inbox when explicitly enabled`() {
+        val notifications = mock(NotificationRepository::class.java)
+        val devices = mock(DeviceTokenRepository::class.java)
+        val realtime = mock(RealtimePublisher::class.java)
+        val organizationId = UUID.randomUUID()
+        val recipientUserId = UUID.randomUUID()
+        val device = DeviceToken(organizationId = organizationId, userId = recipientUserId, token = "ExponentPushToken[chat]", platform = "android")
+        val actionPath = "/child-messages?childId=${UUID.randomUUID()}"
+        `when`(devices.findAllByUserIdAndOrganizationId(recipientUserId, organizationId)).thenReturn(listOf(device))
+        val service = spy(NotificationService(notifications, devices, realtime, "http://127.0.0.1:1", "EXPO"))
+
+        service.notifyChat(organizationId, recipientUserId, "Pesan baru", "Ada pesan baru di chat anak.", actionPath)
+
+        verify(service).sendPush(device, organizationId, "Pesan baru", "Ada pesan baru di chat anak.", actionPath)
+    }
+
+    @Test
+    fun `chat uses WebSocket transport by default without native push`() {
+        val notifications = mock(NotificationRepository::class.java)
+        val devices = mock(DeviceTokenRepository::class.java)
+        val realtime = mock(RealtimePublisher::class.java)
+        val organizationId = UUID.randomUUID()
+        val recipientUserId = UUID.randomUUID()
+        val service = spy(NotificationService(notifications, devices, realtime, "http://127.0.0.1:1"))
+
+        service.notifyChat(organizationId, recipientUserId, "Pesan baru", "Ada pesan baru di chat anak.")
+
+        verifyNoInteractions(notifications, devices, realtime)
+    }
 }

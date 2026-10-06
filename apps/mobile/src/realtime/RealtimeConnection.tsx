@@ -1,11 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { realtimeUrl, type RealtimeConnectRequest, type RealtimeEvent } from "@daycare/api-client";
 import { Platform } from "react-native";
 import { useAuth } from "@/auth/AuthProvider";
 import { env } from "@/config/env";
+import { useI18n } from "@/i18n/I18nProvider";
 import { allRealtimeFlags, invalidateRealtimeFlags } from "./queryInvalidation";
 import { showBrowserNotification } from "../notifications/browserNotifications";
+import { presentChildMessageLocalNotification } from "../notifications/childMessageLocalNotification";
+import { loadDeviceNotificationMutedUntil } from "../notifications/deviceNotificationPreference";
 
 const INITIAL_RECONNECT_DELAY_MILLIS = 1_000;
 const MAX_RECONNECT_DELAY_MILLIS = 30_000;
@@ -15,6 +18,10 @@ export function RealtimeConnection() {
   const { api, getRealtimeToken, organizationId, profile, refreshProfile, user } = useAuth();
   const hasProfile = Boolean(profile);
   const userId = user?.uid ?? null;
+  const { t } = useI18n();
+  // Read through a ref so a locale change does not reconnect the socket.
+  const translateRef = useRef(t);
+  translateRef.current = t;
 
   useEffect(() => {
     if (!hasProfile) return;
@@ -29,6 +36,13 @@ export function RealtimeConnection() {
     const processEvent = (event: RealtimeEvent) => {
       invalidateRealtimeFlags(queryClient, event.flags, event.organizationId ?? organizationId, userId, event.payload);
       if (Platform.OS === "web" && event.flags.includes("NOTIFICATIONS")) void showBrowserNotification(() => api.notifications().then((page) => page.items), notificationId(event));
+      if (Platform.OS !== "web") {
+        void presentChildMessageLocalNotification(event, {
+          title: translateRef.current("childMessage.localNotificationTitle"),
+          body: translateRef.current("childMessage.localNotificationBody"),
+          loadMutedUntil: () => loadDeviceNotificationMutedUntil(queryClient, api, organizationId),
+        }).catch((error: unknown) => console.warn(`[notifications] Chat local notification skipped: ${error instanceof Error ? error.message : String(error)}`));
+      }
     };
 
     const revalidateConnectedProfile = () => {

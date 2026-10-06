@@ -781,6 +781,8 @@ const childMessageTranslations = {
     "childMessage.selectChildDescription": "Pilih anak untuk membuka percakapan Pesan.",
     "childMessage.emptyChildren": "Belum ada anak dalam scope Anda.",
     "childMessage.newMessages": "{count} pesan baru",
+    "childMessage.localNotificationTitle": "Pesan baru",
+    "childMessage.localNotificationBody": "Ada pesan baru di chat anak.",
   },
   en: {
     "childMessage.menuTitle": "Messages",
@@ -803,6 +805,8 @@ const childMessageTranslations = {
     "childMessage.selectChildDescription": "Select a child to open the Messages conversation.",
     "childMessage.emptyChildren": "No children are available in your scope.",
     "childMessage.newMessages": "{count} new messages",
+    "childMessage.localNotificationTitle": "New message",
+    "childMessage.localNotificationBody": "There is a new message in a child chat.",
   },
   zh: {
     "childMessage.menuTitle": "消息",
@@ -825,6 +829,8 @@ const childMessageTranslations = {
     "childMessage.selectChildDescription": "选择孩子以打开消息对话。",
     "childMessage.emptyChildren": "您的权限范围内暂无孩子。",
     "childMessage.newMessages": "{count} 条新消息",
+    "childMessage.localNotificationTitle": "新消息",
+    "childMessage.localNotificationBody": "孩子聊天中有一条新消息。",
   },
   fr: {
     "childMessage.menuTitle": "Messages",
@@ -847,6 +853,8 @@ const childMessageTranslations = {
     "childMessage.selectChildDescription": "Choisissez un enfant pour ouvrir la conversation Messages.",
     "childMessage.emptyChildren": "Aucun enfant n'est disponible dans votre périmètre.",
     "childMessage.newMessages": "{count} nouveaux messages",
+    "childMessage.localNotificationTitle": "Nouveau message",
+    "childMessage.localNotificationBody": "Un nouveau message est arrivé dans la discussion d'un enfant.",
   },
   pt: {
     "childMessage.menuTitle": "Mensagens",
@@ -869,6 +877,8 @@ const childMessageTranslations = {
     "childMessage.selectChildDescription": "Selecione uma criança para abrir a conversa de Mensagens.",
     "childMessage.emptyChildren": "Nenhuma criança está disponível no seu escopo.",
     "childMessage.newMessages": "{count} novas mensagens",
+    "childMessage.localNotificationTitle": "Nova mensagem",
+    "childMessage.localNotificationBody": "Há uma nova mensagem no chat de uma criança.",
   },
   es: {
     "childMessage.menuTitle": "Mensajes",
@@ -891,6 +901,8 @@ const childMessageTranslations = {
     "childMessage.selectChildDescription": "Seleccione un niño para abrir la conversación de Mensajes.",
     "childMessage.emptyChildren": "No hay niños disponibles en su ámbito.",
     "childMessage.newMessages": "{count} mensajes nuevos",
+    "childMessage.localNotificationTitle": "Mensaje nuevo",
+    "childMessage.localNotificationBody": "Hay un mensaje nuevo en el chat de un niño.",
   },
   ru: {
     "childMessage.menuTitle": "Сообщения",
@@ -913,6 +925,8 @@ const childMessageTranslations = {
     "childMessage.selectChildDescription": "Выберите ребёнка, чтобы открыть переписку.",
     "childMessage.emptyChildren": "В вашей области доступа нет доступных детей.",
     "childMessage.newMessages": "Новых сообщений: {count}",
+    "childMessage.localNotificationTitle": "Новое сообщение",
+    "childMessage.localNotificationBody": "В чате ребёнка новое сообщение.",
   },
 } as const;
 
