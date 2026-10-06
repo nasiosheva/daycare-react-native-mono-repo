@@ -436,6 +436,17 @@ local_metro_ready() {
 run_android_local_client_through_adb() {
   # The API server is mounted at /api and all mobile routes are versioned under /v1.
   export EXPO_PUBLIC_API_URL="http://localhost:8080/api/v1"
+
+  # Reuse a healthy Metro instance when another launcher already owns port
+  # 8081. Starting a second Expo process only produces an interactive
+  # "Use port 8082 instead?" prompt; in non-interactive launcher mode Expo
+  # skips the dev server and leaves the session with ambiguous bundle state.
+  if local_metro_ready; then
+    echo "Reusing the Metro server already running on localhost:8081."
+    adb shell am start -W -a android.intent.action.VIEW -d "exp+children-platform://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081" >/dev/null
+    return
+  fi
+
   corepack pnpm --filter @daycare/app exec expo start --dev-client --clear --localhost &
   started_metro_pid=$!
 

@@ -164,7 +164,7 @@ class AttendanceService(
     @Transactional
     fun issueQr(jwt: Jwt, organizationId: UUID, childId: UUID): IssuedQr {
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT))
-        val child = childScopes.requireParentLinkedChild(scope, childId, organizationId)
+        val child = childScopes.requireParentOperationalChild(scope, childId, organizationId)
         return qr.issue(child.id, child.fullName())
     }
 

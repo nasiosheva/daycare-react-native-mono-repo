@@ -692,6 +692,9 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @GetMapping("/children/{childId}/messages")
     fun listChildMessages(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childMessages.list(jwt, organizationId, childId)
 
+    @GetMapping("/children/{childId}/messages/summary")
+    fun childMessageSummary(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childMessages.summary(jwt, organizationId, childId)
+
     @PostMapping("/children/{childId}/messages") @ResponseStatus(HttpStatus.CREATED)
     fun sendChildMessage(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: SendChildMessageRequest) = childMessages.send(jwt, organizationId, childId, request)
 
@@ -900,10 +903,13 @@ class InstitutionController(private val attendance: AttendanceService, private v
     fun updateDeviceNotificationPreference(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpdateDeviceNotificationPreferenceRequest) = administration.updateDeviceNotificationPreference(jwt, organizationId, request)
 
     @GetMapping("/notifications")
-    fun notifications(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) search: String?) = administration.notifications(jwt, organizationId, search)
+    fun notifications(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) search: String?, @RequestParam(defaultValue = "0") page: Int, @RequestParam(defaultValue = "10") size: Int) = administration.notifications(jwt, organizationId, search, page, size)
 
     @PatchMapping("/notifications/{notificationId}/read")
     fun markNotificationRead(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable notificationId: UUID) = administration.markNotificationRead(jwt, organizationId, notificationId)
+
+    @PatchMapping("/notifications/read-all") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun markAllNotificationsRead(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = administration.markAllNotificationsRead(jwt, organizationId)
 
     @GetMapping("/staff-reminders")
     fun staffReminders(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = staffReminders.list(jwt, organizationId)
@@ -1007,13 +1013,13 @@ class BillingController(private val billing: BillingService, private val overtim
     fun invoices(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?, @RequestParam(required = false) search: String?) = billing.invoices(jwt, organizationId, BranchListFilter(branchId), search)
 
     @GetMapping("/invoices/{invoiceId}")
-    fun invoice(@AuthenticationPrincipal jwt: Jwt, @PathVariable invoiceId: UUID) = billing.invoice(jwt, invoiceId)
+    fun invoice(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID) = billing.invoice(jwt, organizationId, invoiceId)
 
     @PostMapping("/invoices/{invoiceId}/payment-proof")
-    fun submitPaymentProof(@AuthenticationPrincipal jwt: Jwt, @PathVariable invoiceId: UUID, @Valid @RequestBody request: com.daycare.api.service.SubmitPaymentProofRequest) = billing.submitPaymentProof(jwt, invoiceId, request)
+    fun submitPaymentProof(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID, @Valid @RequestBody request: com.daycare.api.service.SubmitPaymentProofRequest) = billing.submitPaymentProof(jwt, organizationId, invoiceId, request)
 
     @GetMapping("/invoices/{invoiceId}/payment-proof")
-    fun paymentProof(@AuthenticationPrincipal jwt: Jwt, @PathVariable invoiceId: UUID) = billing.paymentProof(jwt, invoiceId)
+    fun paymentProof(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID) = billing.paymentProof(jwt, organizationId, invoiceId)
 
     @PostMapping("/invoices/{invoiceId}/payment-proof/review")
     fun reviewPaymentProof(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID, @Valid @RequestBody request: com.daycare.api.service.ReviewPaymentProofRequest) = billing.reviewPaymentProof(jwt, organizationId, invoiceId, request)

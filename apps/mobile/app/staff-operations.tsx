@@ -4,6 +4,7 @@ import { AppText, MenuItem, MenuSection } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
+import { StaffChatFloatingAction } from "@/chat/StaffChatFloatingAction";
 
 export default function StaffOperationsScreen() {
   const router = useRouter();
@@ -14,7 +15,7 @@ export default function StaffOperationsScreen() {
   if (!profile) return null;
   if (membership?.role !== "STAFF") return <Redirect href="/home" />;
 
-  return <AppScreen>
+  return <AppScreen floatingAction={<StaffChatFloatingAction />}>
     <AppText variant="title">{t("staffOperations.title")}</AppText>
     <AppText tone="muted">{t("staffOperations.subtitle")}</AppText>
     <MenuSection title={t("menu.groupDaily")}>

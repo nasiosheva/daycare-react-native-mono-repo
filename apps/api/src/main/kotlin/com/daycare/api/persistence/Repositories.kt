@@ -3,6 +3,8 @@ package com.daycare.api.persistence
 import com.daycare.api.domain.ChildProgramStatus
 import com.daycare.api.domain.InvitationStatus
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import org.springframework.data.jpa.repository.Modifying
@@ -119,8 +121,16 @@ interface ChildProgramTemplateRepository : JpaRepository<ChildProgramTemplate, U
 interface ChildProgramTemplateStepRepository : JpaRepository<ChildProgramTemplateStep, UUID> { fun findAllByOrganizationIdAndChildProgramTemplateIdOrderByDisplayOrderAscCreatedAtAsc(organizationId: UUID, childProgramTemplateId: UUID): List<ChildProgramTemplateStep>; fun deleteAllByChildProgramTemplateId(childProgramTemplateId: UUID) }
 interface ChildHealthRecordRepository : JpaRepository<ChildHealthRecord, UUID> { fun findByOrganizationIdAndChildId(organizationId: UUID, childId: UUID): ChildHealthRecord? }
 interface ChildHealthNoteRepository : JpaRepository<ChildHealthNote, UUID> { fun findAllByOrganizationIdAndChildIdOrderByRecordedAtDesc(organizationId: UUID, childId: UUID): List<ChildHealthNote> }
-interface ChildMessageRepository : JpaRepository<ChildMessage, UUID> { fun findAllByOrganizationIdAndChildIdOrderByCreatedAtAsc(organizationId: UUID, childId: UUID): List<ChildMessage> }
-interface ChildMessageReadRepository : JpaRepository<ChildMessageRead, UUID> { fun findByChildIdAndUserId(childId: UUID, userId: UUID): ChildMessageRead? }
+interface ChildMessageRepository : JpaRepository<ChildMessage, UUID> {
+    fun findAllByOrganizationIdAndChildIdOrderByCreatedAtAsc(organizationId: UUID, childId: UUID): List<ChildMessage>
+    fun findByIdAndOrganizationIdAndChildId(id: UUID, organizationId: UUID, childId: UUID): ChildMessage?
+    fun countByOrganizationIdAndChildIdAndSenderUserIdNot(organizationId: UUID, childId: UUID, senderUserId: UUID): Long
+    fun countByOrganizationIdAndChildIdAndSenderUserIdNotAndCreatedAtAfter(organizationId: UUID, childId: UUID, senderUserId: UUID, createdAt: java.time.Instant): Long
+}
+interface ChildMessageReadRepository : JpaRepository<ChildMessageRead, UUID> {
+    fun findByChildIdAndUserId(childId: UUID, userId: UUID): ChildMessageRead?
+    fun findAllByChildId(childId: UUID): List<ChildMessageRead>
+}
 interface ChildStaffAssignmentRepository : JpaRepository<ChildStaffAssignment, UUID> {
     fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<ChildStaffAssignment>
     fun findAllByOrganizationIdAndUserId(organizationId: UUID, userId: UUID): List<ChildStaffAssignment>
@@ -155,16 +165,27 @@ interface ChildIncidentAcknowledgementRepository : JpaRepository<ChildIncidentAc
 }
 interface InvitationRepository : JpaRepository<Invitation, UUID> { fun findAllByStatus(status: InvitationStatus): List<Invitation>; fun findAllByOrganizationIdAndStatus(organizationId: UUID, status: InvitationStatus): List<Invitation> }
 interface NotificationRepository : JpaRepository<Notification, UUID> {
-    fun findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDesc(recipientUserId: UUID, organizationId: UUID): List<Notification>
+    fun findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDescIdDesc(recipientUserId: UUID, organizationId: UUID, pageable: Pageable): Page<Notification>
+    fun countByRecipientUserIdAndOrganizationIdAndReadAtIsNull(recipientUserId: UUID, organizationId: UUID): Long
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+        update Notification notification
+        set notification.readAt = :readAt
+        where notification.recipientUserId = :recipientUserId
+          and notification.organizationId = :organizationId
+          and notification.readAt is null
+    """)
+    fun markAllUnreadByRecipientUserIdAndOrganizationId(@Param("recipientUserId") recipientUserId: UUID, @Param("organizationId") organizationId: UUID, @Param("readAt") readAt: Instant): Int
 
     @Query("""
         select notification from Notification notification
         where notification.recipientUserId = :recipientUserId and notification.organizationId = :organizationId
           and (lower(notification.title) like lower(concat('%', :query, '%'))
             or lower(notification.body) like lower(concat('%', :query, '%')))
-        order by notification.createdAt desc
+        order by notification.createdAt desc, notification.id desc
     """)
-    fun searchByRecipientUserIdAndOrganizationId(@Param("recipientUserId") recipientUserId: UUID, @Param("organizationId") organizationId: UUID, @Param("query") query: String): List<Notification>
+    fun searchByRecipientUserIdAndOrganizationId(@Param("recipientUserId") recipientUserId: UUID, @Param("organizationId") organizationId: UUID, @Param("query") query: String, pageable: Pageable): Page<Notification>
 }
 interface DeviceTokenRepository : JpaRepository<DeviceToken, UUID> { fun findAllByUserIdAndOrganizationId(userId: UUID, organizationId: UUID): List<DeviceToken>; fun findAllByUserIdIn(userIds: Collection<UUID>): List<DeviceToken>; fun findByToken(token: String): DeviceToken?; fun findByInstallationId(installationId: String): DeviceToken? }
 interface StaffReminderRepository : JpaRepository<StaffReminder, UUID> { fun findAllByOrganizationIdAndUserIdOrderByCreatedAtDesc(organizationId: UUID, userId: UUID): List<StaffReminder>; fun findAllByActiveTrue(): List<StaffReminder> }

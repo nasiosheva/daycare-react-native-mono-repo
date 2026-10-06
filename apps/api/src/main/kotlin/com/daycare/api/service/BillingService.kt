@@ -269,9 +269,10 @@ class BillingService(
     }
 
     @Transactional
-    fun submitPaymentProof(jwt: Jwt, invoiceId: UUID, request: SubmitPaymentProofRequest): InvoiceResponse {
-        val parent = identity.sync(jwt)
+    fun submitPaymentProof(jwt: Jwt, organizationId: UUID, invoiceId: UUID, request: SubmitPaymentProofRequest): InvoiceResponse {
+        val parent = requireRegisteredParent(identity.sync(jwt))
         val invoice = invoices.findById(invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }
+        require(invoice.organizationId == organizationId) { "Invoice belongs to a different organization" }
         require(invoice.payerUserId == parent.id) { "Invoice is not available" }
         reconcileExpiredInvoices(invoice.organizationId)
         require(invoice.status == InvoiceStatus.PENDING) { "Invoice is not awaiting payment" }
@@ -317,18 +318,22 @@ class BillingService(
     }
 
     @Transactional(readOnly = true)
-    fun invoice(jwt: Jwt, invoiceId: UUID): InvoiceResponse {
+    fun invoice(jwt: Jwt, organizationId: UUID, invoiceId: UUID): InvoiceResponse {
         val user = identity.sync(jwt)
         val invoice = invoices.findById(invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }
-        if (invoice.payerUserId != user.id) access.require(jwt, invoice.organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
+        require(invoice.organizationId == organizationId) { "Invoice belongs to a different organization" }
+        if (invoice.payerUserId == user.id) requireRegisteredParent(user)
+        else access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
         return invoiceResponse(invoice)
     }
 
     @Transactional(readOnly = true)
-    fun paymentProof(jwt: Jwt, invoiceId: UUID): PaymentProofImageResponse {
+    fun paymentProof(jwt: Jwt, organizationId: UUID, invoiceId: UUID): PaymentProofImageResponse {
         val user = identity.sync(jwt)
         val invoice = invoices.findById(invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }
-        if (invoice.payerUserId != user.id) access.require(jwt, invoice.organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
+        require(invoice.organizationId == organizationId) { "Invoice belongs to a different organization" }
+        if (invoice.payerUserId == user.id) requireRegisteredParent(user)
+        else access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)
         val proof = paymentProofs.findByInvoiceId(invoice.id) ?: throw IllegalArgumentException("Payment proof was not found")
         return PaymentProofImageResponse(proof.fileName, proof.contentType, Base64.getEncoder().encodeToString(proof.imageData), proof.note)
     }
@@ -398,7 +403,14 @@ class BillingService(
 
     @Transactional
     fun invoices(jwt: Jwt, organizationId: UUID, filter: BranchListFilter = BranchListFilter(), search: String? = null): List<InvoiceResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT), readOnly = true)
+        val scope = access.require(
+            jwt,
+            organizationId,
+            setOf(Role.STAFF_ADMIN, Role.PARENT),
+            readOnly = true,
+            allowSubscriptionRestrictedForRoles = setOf(Role.PARENT),
+            allowInactiveRoles = setOf(Role.PARENT),
+        )
         branchFilters.validate(organizationId, filter)
         reconcileExpiredInvoices(organizationId)
         val query = search?.trim().orEmpty()

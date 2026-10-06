@@ -8,7 +8,7 @@ import { isInactiveStaffMembership } from "./inactiveStaffRouteAccess";
 
 type Props = PropsWithChildren<ScreenProps & { showBottomNavigation?: boolean }>;
 
-export function AppScreen({ children, showBottomNavigation = true, ...screenProps }: Props) {
+export function AppScreen({ children, showBottomNavigation = true, footer: customFooter, ...screenProps }: Props) {
   const { profile, organizationId } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
@@ -20,6 +20,7 @@ export function AppScreen({ children, showBottomNavigation = true, ...screenProp
     : membership?.role === "PARENT" && !membership.active
       ? "PARENT_ONBOARDING"
       : membership?.role ?? (profile?.registrationRole === "PARENT" ? "PARENT_ONBOARDING" : null);
-  const footer = showBottomNavigation && role ? <RoleBottomNavigation role={role} /> : undefined;
+  const navigationFooter = showBottomNavigation && role ? <RoleBottomNavigation role={role} /> : undefined;
+  const footer = customFooter || navigationFooter ? <>{customFooter}{navigationFooter}</> : undefined;
   return <Screen feedbackDismissLabel={t("common.close")} {...screenProps} footer={footer}>{children}</Screen>;
 }

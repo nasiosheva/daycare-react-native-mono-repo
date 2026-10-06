@@ -1,6 +1,10 @@
 package com.daycare.api.service
 
+import com.daycare.api.domain.ChildEnrollmentStatus
 import com.daycare.api.domain.Role
+import com.daycare.api.persistence.Child
+import com.daycare.api.persistence.ChildRepository
+import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.domain.TenantFeedbackCategory
 import com.daycare.api.domain.TenantFeedbackStatus
 import com.daycare.api.persistence.Membership
@@ -27,21 +31,26 @@ class TenantFeedbackServiceTest {
         val feedback = mock(TenantFeedbackRepository::class.java)
         val users = mock(UserProfileRepository::class.java)
         val memberships = mock(MembershipRepository::class.java)
+        val children = mock(ChildRepository::class.java)
+        val guardians = mock(GuardianLinkRepository::class.java)
         val notifications = mock(NotificationService::class.java)
         val jwt = mock(Jwt::class.java)
         val organizationId = UUID.randomUUID()
-        val parent = UserProfile(displayName = "Budi")
+        val parent = UserProfile(displayName = "Budi", registrationRole = com.daycare.api.domain.RegistrationRole.PARENT)
         val scope = AccessScope(parent, Membership(), emptySet(), emptySet())
         val activeStaffAdminId = UUID.randomUUID()
         val inactiveStaffAdminId = UUID.randomUUID()
         `when`(access.require(jwt, organizationId, setOf(Role.PARENT))).thenReturn(scope)
+        val child = Child(organizationId = organizationId, enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        `when`(children.findAllByOrganizationId(organizationId)).thenReturn(listOf(child))
+        `when`(guardians.existsByChildIdAndUserId(child.id, parent.id)).thenReturn(true)
         `when`(feedback.save(any(TenantFeedback::class.java))).thenAnswer { it.arguments[0] }
         `when`(memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(
             Membership(organizationId = organizationId, userId = activeStaffAdminId, role = Role.STAFF_ADMIN, active = true),
             Membership(organizationId = organizationId, userId = inactiveStaffAdminId, role = Role.STAFF_ADMIN, active = false),
             Membership(organizationId = organizationId, userId = UUID.randomUUID(), role = Role.STAFF, active = true),
         ))
-        val service = TenantFeedbackService(access, feedback, users, memberships, notifications)
+        val service = TenantFeedbackService(access, feedback, users, memberships, children, guardians, notifications)
 
         val response = service.create(jwt, organizationId, CreateTenantFeedbackRequest(category = TenantFeedbackCategory.SUGGESTION, message = "Tolong tambah jam operasional"))
 
@@ -60,6 +69,8 @@ class TenantFeedbackServiceTest {
         val feedback = mock(TenantFeedbackRepository::class.java)
         val users = mock(UserProfileRepository::class.java)
         val memberships = mock(MembershipRepository::class.java)
+        val children = mock(ChildRepository::class.java)
+        val guardians = mock(GuardianLinkRepository::class.java)
         val notifications = mock(NotificationService::class.java)
         val jwt = mock(Jwt::class.java)
         val organizationId = UUID.randomUUID()
@@ -69,7 +80,7 @@ class TenantFeedbackServiceTest {
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(scope)
         `when`(feedback.findById(item.id)).thenReturn(Optional.of(item))
         `when`(users.findById(submitter.id)).thenReturn(Optional.of(submitter))
-        val service = TenantFeedbackService(access, feedback, users, memberships, notifications)
+        val service = TenantFeedbackService(access, feedback, users, memberships, children, guardians, notifications)
 
         val response = service.updateStatus(jwt, organizationId, item.id, UpdateTenantFeedbackStatusRequest(status = TenantFeedbackStatus.RESOLVED))
 

@@ -37,7 +37,7 @@ class ChildAbsenceServiceTest {
         val scope = fixture.scope(organizationId, parentId, Role.PARENT)
         val tomorrow = LocalDate.now().plusDays(1)
         `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT))).thenReturn(scope)
-        `when`(fixture.childScopes.requireParentLinkedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.childScopes.requireParentOperationalChild(scope, child.id, organizationId)).thenReturn(child)
         `when`(fixture.branches.findById(child.branchId)).thenReturn(Optional.of(Branch(id = child.branchId, organizationId = organizationId)))
         `when`(fixture.requests.findAllByChildIdAndStatusIn(child.id, listOf(ChildAbsenceRequestStatus.PENDING, ChildAbsenceRequestStatus.APPROVED))).thenReturn(emptyList())
         `when`(fixture.requests.save(org.mockito.ArgumentMatchers.any(ChildAbsenceRequest::class.java))).thenAnswer { it.arguments[0] }
@@ -58,7 +58,7 @@ class ChildAbsenceServiceTest {
         val scope = fixture.scope(organizationId, UUID.randomUUID(), Role.PARENT)
         val tomorrow = LocalDate.now().plusDays(1)
         `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT))).thenReturn(scope)
-        `when`(fixture.childScopes.requireParentLinkedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.childScopes.requireParentOperationalChild(scope, child.id, organizationId)).thenReturn(child)
         `when`(fixture.branches.findById(child.branchId)).thenReturn(Optional.of(Branch(id = child.branchId, organizationId = organizationId)))
 
         val error = assertThrows(IllegalArgumentException::class.java) {

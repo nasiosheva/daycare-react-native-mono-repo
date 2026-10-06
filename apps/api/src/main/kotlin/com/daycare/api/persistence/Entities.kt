@@ -646,6 +646,7 @@ class ChildMessage(
     @Column(name = "sender_user_id", nullable = false) var senderUserId: UUID = UUID.randomUUID(),
     @Enumerated(EnumType.STRING) @Column(name = "sender_role", nullable = false) var senderRole: Role = Role.PARENT,
     @Column(nullable = false, length = 2_000) var body: String = "",
+    @Column(name = "reply_to_message_id") var replyToMessageId: UUID? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 

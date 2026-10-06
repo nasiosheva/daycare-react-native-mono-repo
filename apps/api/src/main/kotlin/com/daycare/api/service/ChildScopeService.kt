@@ -2,14 +2,17 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.ChildEnrollmentStatus
+import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.ChildStaffAssignmentRepository
 import com.daycare.api.persistence.ClassroomStaffAssignmentRepository
 import com.daycare.api.persistence.ChildPlacementRepository
 import com.daycare.api.persistence.GuardianLinkRepository
+import com.daycare.api.persistence.ServiceEntitlementRepository
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
+import java.time.LocalDate
 import java.util.UUID
 
 @Service
@@ -19,6 +22,7 @@ class ChildScopeService(
     private val staffAssignments: ChildStaffAssignmentRepository,
     private val classroomAssignments: ClassroomStaffAssignmentRepository,
     private val placements: ChildPlacementRepository,
+    private val entitlements: ServiceEntitlementRepository,
 ) {
     fun visibleChildren(scope: AccessScope, organizationId: UUID): List<Child> = (when (scope.membership.role) {
         Role.STAFF_ADMIN -> children.findAllByOrganizationId(organizationId)
@@ -61,6 +65,20 @@ class ChildScopeService(
     fun requireParentLinkedChild(scope: AccessScope, childId: UUID, organizationId: UUID): Child {
         val child = requireOrganizationChild(childId, organizationId)
         if (!guardians.existsByChildIdAndUserId(childId, scope.user.id)) throw AccessDeniedException("You cannot access this child")
+        return child
+    }
+
+    /**
+     * Daycare mutations need an active service entitlement in addition to a
+     * GuardianLink. Direct/offline linking intentionally creates no entitlement
+     * and therefore remains read-only for these actions.
+     */
+    fun requireParentOperationalChild(scope: AccessScope, childId: UUID, organizationId: UUID): Child {
+        val child = requireParentLinkedChild(scope, childId, organizationId)
+        if (scope.membership.role == Role.PARENT && entitlements.findAllByOrganizationIdAndChildId(organizationId, child.id)
+                .none { it.ownerUserId == scope.user.id && it.status == EntitlementStatus.ACTIVE && !it.validUntil.isBefore(LocalDate.now()) }) {
+            throw AccessDeniedException("An active service entitlement is required for this Parent action")
+        }
         return child
     }
 

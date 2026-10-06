@@ -12,6 +12,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate } from "@/date-picker/date";
+import { useParentOperationalChild } from "@/parent/useParentOperationalChild";
 
 type FormState = { purpose: ChildAbsencePurpose; startDate: string; endDate: string; note: string };
 type DecisionState = { request: ChildAbsenceRequest; approved: boolean };
@@ -43,6 +44,8 @@ export default function AbsenceRequestsScreen() {
   const isStaffAdmin = membership?.role === "STAFF_ADMIN";
   const isStaff = membership?.role === "STAFF";
   const readOnly = membership?.active === false;
+  const { hasActiveEntitlement } = useParentOperationalChild(childId, organizationId);
+  const parentCanMutate = isParent && !readOnly && hasActiveEntitlement;
   const [form, setForm] = useState<FormState | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [decision, setDecision] = useState<DecisionState | null>(null);
@@ -88,14 +91,14 @@ export default function AbsenceRequestsScreen() {
     try { await cancel.mutateAsync(cancelRequest); }
     catch (error) { setCancelError(error instanceof Error ? error.message : t("absence.cancelFailed")); }
   };
-  return <AppScreen showBottomNavigation={false} title={t("absence.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={isParent && !readOnly ? <FloatingActionButton icon="add" accessibilityLabel={t("absence.add")} onPress={openForm}>{t("absence.add")}</FloatingActionButton> : undefined}>
+  return <AppScreen showBottomNavigation={false} title={t("absence.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={parentCanMutate ? <FloatingActionButton icon="add" accessibilityLabel={t("absence.add")} onPress={openForm}>{t("absence.add")}</FloatingActionButton> : undefined}>
     <AppText tone="muted">{t("absence.description")}</AppText>
     {readOnly && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
     {isStaffAdmin && <TabBar accessibilityLabel={t("absence.allBranches")} selected={filterBranchId ?? ""} onSelect={(key) => setFilterBranchId(key || undefined)} items={[{ key: "", label: t("absence.allBranches") }, ...(branches.data?.filter((branch) => branch.active).map((branch) => ({ key: branch.id, label: branch.name })) ?? [])]} />}
     {requests.isLoading && <ShimmerList />}
     {requests.isError && !requests.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void requests.refetch()} />}
-    {!requests.isLoading && !requests.isError && requests.data?.map((request) => <RequestCard key={request.id} request={request} formatDate={formatDate} purposeLabel={t(purposeKeys[request.purpose])} statusLabel={t(`status.${request.status}` as Parameters<typeof t>[0])} statusTone={statusTone(request.status)} cancelLabel={t("absence.cancelRequest")} approveLabel={t("absence.approve")} rejectLabel={t("absence.reject")} isParent={isParent} canCancel={isParent && !readOnly} canDecide={!readOnly && (isStaff || isStaffAdmin)} onCancel={() => { setCancelRequest(request); setCancelError(null); }} onApprove={() => openDecision(request, true)} onReject={() => openDecision(request, false)} />)}
-    {!requests.isLoading && !requests.isError && requests.data?.length === 0 && <EmptyState icon="calendar-outline" title={isParent ? t("absence.empty") : t("absence.noPending")} action={isParent && !readOnly ? { label: t("absence.add"), onPress: openForm } : undefined} />}
+    {!requests.isLoading && !requests.isError && requests.data?.map((request) => <RequestCard key={request.id} request={request} formatDate={formatDate} purposeLabel={t(purposeKeys[request.purpose])} statusLabel={t(`status.${request.status}` as Parameters<typeof t>[0])} statusTone={statusTone(request.status)} cancelLabel={t("absence.cancelRequest")} approveLabel={t("absence.approve")} rejectLabel={t("absence.reject")} isParent={isParent} canCancel={parentCanMutate} canDecide={!readOnly && (isStaff || isStaffAdmin)} onCancel={() => { setCancelRequest(request); setCancelError(null); }} onApprove={() => openDecision(request, true)} onReject={() => openDecision(request, false)} />)}
+    {!requests.isLoading && !requests.isError && requests.data?.length === 0 && <EmptyState icon="calendar-outline" title={isParent ? t("absence.empty") : t("absence.noPending")} action={parentCanMutate ? { label: t("absence.add"), onPress: openForm } : undefined} />}
 
     <BottomSheet visible={form !== null} onClose={() => setForm(null)} closeAccessibilityLabel={t("common.close")} title={t("absence.add")} negativeAction={{ label: t("common.cancel"), onPress: () => setForm(null) }} positiveAction={{ label: t("absence.submit"), loading: create.isPending, onPress: () => void submit() }}>
       {formError && <Banner tone="danger" title={formError} />}

@@ -179,6 +179,24 @@ class AttendanceServiceTest {
         }
     }
 
+    @Test
+    fun `Parent QR requires an operational entitlement in addition to the guardian link`() {
+        val fixtures = Fixtures()
+        val parentScope = AccessScope(
+            UserProfile(registrationRole = RegistrationRole.PARENT),
+            Membership(organizationId = fixtures.organizationId, role = Role.PARENT),
+            emptySet(),
+            emptySet(),
+        )
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.PARENT))).thenReturn(parentScope)
+        `when`(fixtures.childScopes.requireParentOperationalChild(parentScope, child.id, fixtures.organizationId)).thenThrow(org.springframework.security.access.AccessDeniedException("entitlement required"))
+
+        assertThrows(org.springframework.security.access.AccessDeniedException::class.java) {
+            fixtures.service.issueQr(fixtures.jwt, fixtures.organizationId, child.id)
+        }
+    }
+
     private class Fixtures {
         val organizationId: UUID = UUID.randomUUID()
         val jwt: Jwt = mock(Jwt::class.java)
@@ -190,6 +208,7 @@ class AttendanceServiceTest {
         val levels: LearningLevelRepository = mock(LearningLevelRepository::class.java)
         val classrooms: ClassroomRepository = mock(ClassroomRepository::class.java)
         val attendance: AttendanceRepository = mock(AttendanceRepository::class.java)
+        val qr: AttendanceQrService = mock(AttendanceQrService::class.java)
         val branch = Branch(organizationId = organizationId)
         val level = LearningLevel(organizationId = organizationId)
         val classroom = Classroom(organizationId = organizationId, branchId = branch.id, learningLevelId = level.id)
@@ -204,7 +223,7 @@ class AttendanceServiceTest {
             classrooms,
             attendance,
             mock(AuditLogRepository::class.java),
-            mock(AttendanceQrService::class.java),
+            qr,
             mock(NotificationService::class.java),
             mock(BookingEligibilityService::class.java),
             mock(PickupAuthorizationService::class.java),

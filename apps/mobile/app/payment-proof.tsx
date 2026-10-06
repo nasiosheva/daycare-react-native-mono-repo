@@ -30,12 +30,12 @@ export default function PaymentProofScreen() {
   const imagePicker = useImagePicker();
   const [image, setImage] = useState<PickedImage | null>(null);
   const [note, setNote] = useState("");
-  const invoice = useQuery({ queryKey: ["invoice", invoiceScope, invoiceId], queryFn: () => api.invoice(invoiceId), enabled: Boolean(invoiceId) });
+  const invoice = useQuery({ queryKey: ["invoice", invoiceScope, invoiceId], queryFn: () => api.invoice(invoiceId, paymentOrganizationId ?? undefined), enabled: Boolean(invoiceId && paymentOrganizationId) });
   const submit = useMutation({
     mutationFn: async () => {
       if (!image) throw new Error(t("paymentProof.imageRequired"));
       const contentType = acceptedTypes.has(image.mimeType ?? "") ? image.mimeType as "image/jpeg" | "image/png" : "image/jpeg";
-      return api.submitPaymentProof(invoiceId, { fileName: image.fileName ?? "payment-proof.jpg", contentType, imageBase64: await encodePaymentProofImage(image), note: note.trim() || undefined });
+      return api.submitPaymentProof(invoiceId, { fileName: image.fileName ?? "payment-proof.jpg", contentType, imageBase64: await encodePaymentProofImage(image), note: note.trim() || undefined }, paymentOrganizationId ?? undefined);
     },
     onSuccess: () => {
       if (paymentOrganizationId) void client.invalidateQueries({ queryKey: ["invoices", paymentOrganizationId] });

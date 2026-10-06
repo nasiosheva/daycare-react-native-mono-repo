@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import type { Child, ChildGuardianStatus, ChildListFilter } from "@daycare/api-client";
 import type { ChildGender } from "@daycare/core";
 import { AppText, Avatar, Badge, BackButton, BottomSheet, Button, Card, EmptyState, ErrorState, FloatingActionButton, NavigationCard, SearchField, ShimmerList, TextField, colors, spacing, type Tone } from "@daycare/ui";
@@ -21,6 +21,8 @@ import { capitalizeWords } from "@/text/capitalizeWords";
 
 export default function ChildrenScreen() {
   const router = useRouter();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const chatMode = mode === "messages";
   const { t } = useI18n();
   const { api, profile, organizationId } = useAuth();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
@@ -63,18 +65,21 @@ export default function ChildrenScreen() {
       } else notify(t("children.created"), undefined, "success");
     } catch (error) { notify(t("children.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
-  const openChild = (childId: string) => router.push({ pathname: "/child-detail", params: { childId} });
-  return <AppScreen showBottomNavigation={isStaffAdmin} title={isStaffAdmin ? undefined : t("children.title")} header={isStaffAdmin ? undefined : <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton icon="add" accessibilityLabel={t("children.add")} onPress={() => setAddVisible(true)}>{t("children.add")}</FloatingActionButton> : undefined}>
-    {isStaffAdmin && <AppText variant="title">{t("children.title")}</AppText>}
-    <AppText variant="bodySmall" tone="muted">{t("children.menuDescription")}</AppText>
+  const openChild = (childId: string) => chatMode
+    ? router.push({ pathname: "/child-messages", params: { childId, organizationId } } as never)
+    : router.push({ pathname: "/child-detail", params: { childId } });
+  const floatingAction = !chatMode && canManage ? <FloatingActionButton icon="add" accessibilityLabel={t("children.add")} onPress={() => setAddVisible(true)}>{t("children.add")}</FloatingActionButton> : undefined;
+  return <AppScreen showBottomNavigation={isStaffAdmin} title={isStaffAdmin || chatMode ? undefined : t("children.title")} header={isStaffAdmin ? undefined : <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={floatingAction}>
+    {(isStaffAdmin || chatMode) && <AppText variant="title">{chatMode ? t("childMessage.selectChildTitle") : t("children.title")}</AppText>}
+    <AppText variant="bodySmall" tone="muted">{chatMode ? t("childMessage.selectChildDescription") : t("children.menuDescription")}</AppText>
     <View style={styles.searchRow}>
       <SearchField containerStyle={styles.grow} accessibilityLabel={t("attendance.searchChild")} placeholder={t("attendance.searchChild")} clearAccessibilityLabel={t("common.clearSearch")} value={search} onChangeText={setSearch} />
       {isStaffAdmin && <Button variant={hasActiveChildFilter ? "primary" : "secondary"} accessibilityLabel={t(hasActiveChildFilter ? "children.filterActive" : "children.filter")} leadingIcon={<Ionicons name="options-outline" size={18} color={hasActiveChildFilter ? colors.onPrimary : colors.primary} />} onPress={() => setFilterVisible(true)}>{t("children.filter")}</Button>}
     </View>
-    {canOpenDetail && <ChildrenReportActions canExport={canExport} filter={childFilter} />}
+    {canOpenDetail && !chatMode && <ChildrenReportActions canExport={canExport} filter={childFilter} />}
     {!children.isFetching && Boolean(children.data?.length) && <AppText variant="label">{t("children.countSummary", { count: children.data!.length })}</AppText>}
     {children.isError && !children.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void children.refetch()} />}
-    {!children.isFetching && !children.isError && children.data?.length === 0 && <EmptyState icon="happy-outline" title={t("children.empty")} action={canManage ? { label: t("children.add"), onPress: () => setAddVisible(true) } : undefined} />}
+    {!children.isFetching && !children.isError && children.data?.length === 0 && <EmptyState icon="happy-outline" title={t(chatMode ? "childMessage.emptyChildren" : "children.empty")} action={canManage && !chatMode ? { label: t("children.add"), onPress: () => setAddVisible(true) } : undefined} />}
     {!children.isFetching && Boolean(children.data?.length) && visibleChildren.length === 0 && <EmptyState compact icon="search-outline" title={t("common.noResults")} />}
     {children.isFetching ? <ShimmerList /> : visibleChildren.map((child) => <ChildListItem key={child.id} child={child} canOpenDetail={canOpenDetail} showGuardianStatus={isStaffAdmin} accessibilityLabel={t("children.view")} guardianStatusLabel={(status) => guardianStatusLabel(status, t)} onPress={() => openChild(child.id)} />)}
     {isStaffAdmin && <ChildFilterSheet visible={filterVisible} filter={childFilter} onClose={() => setFilterVisible(false)} onApply={(filter) => { setChildFilter(filter); setFilterVisible(false); }} showGuardianStatus />}

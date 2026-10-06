@@ -141,7 +141,9 @@ export type CreateChildHealthNoteInput = { note: string };
 export type IncidentSeverity = "MINOR" | "MODERATE" | "SERIOUS";
 export type IncidentCategory = "INJURY" | "ILLNESS" | "BEHAVIOR" | "OTHER";
 export type ChildIncidentReport = { id: string; childId: string; severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string | null; occurredAt: string; hasPhoto: boolean; acknowledgedByMe: boolean; createdAt: string };
-export type ChildMessage = { id: string; childId: string; senderUserId: string; senderName: string; senderRole: Role; body: string; createdAt: string; mine: boolean };
+export type ChildMessageReply = { id: string; senderName: string; body: string; createdAt: string };
+export type ChildMessage = { id: string; childId: string; senderUserId: string; senderName: string; senderRole: Role; body: string; createdAt: string; mine: boolean; deliveryStatus: "SENT" | "READ"; readAt?: string | null; replyTo?: ChildMessageReply | null };
+export type ChildMessageSummary = { unreadCount: number };
 export type IncidentPhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
 export type CreateChildIncidentInput = { severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string; occurredAt: string; photo?: IncidentPhotoInput };
 export type ChildIncidentPhoto = { contentType: string; dataBase64: string };
@@ -244,7 +246,9 @@ export type UpsertPrivateTutorInput = { type: PrivateTutorType; staffUserId?: st
 export type PrivateTutoringRequest = { id: string; childId: string; childName: string; serviceName: string; providerName?: string | null; durationMinutes: number; price: number; pricingType: ServicePlanType; preferredAt?: string | null; scheduledAt?: string | null; note?: string | null; decisionReason?: string | null; status: PrivateTutoringRequestStatus; invoiceId?: string | null; invoiceStatus?: InvoiceStatus | null; createdAt: string };
 export type PaymentInstruction = { id: string; name: string; accountHolder: string; accountNumber: string; note?: string | null; active: boolean; displayOrder: number };
 export type UpsertPaymentInstructionInput = Omit<PaymentInstruction, "id">;
+export const NOTIFICATIONS_PAGE_SIZE = 10;
 export type AppNotification = { id: string; title: string; body: string; actionPath?: string | null; createdAt: string; readAt?: string | null };
+export type NotificationPage = { items: AppNotification[]; page: number; pageSize: number; totalCount: number; unreadCount: number; hasNext: boolean };
 export type PushNotificationMuteDuration = "ONE_HOUR" | "ONE_WEEK" | "ONE_MONTH";
 export type DeviceNotificationPreference = { pushMutedUntil?: string | null };
 export type DownloadedReport = { fileName: string; contentType: string; dataBase64: string };
@@ -387,8 +391,14 @@ export class ApiClient {
   async registerDevice(input: { token: string; platform: "ios" | "android"; installationId: string; timeZone: string }): Promise<void> { await this.request<void>("/device-tokens", { method: "POST", body: JSON.stringify(input) }); }
   async deviceNotificationPreference(installationId: string): Promise<DeviceNotificationPreference> { return this.request(`/device-notification-preference?${new URLSearchParams({ installationId }).toString()}`); }
   async updateDeviceNotificationPreference(input: { installationId: string; muteDuration: PushNotificationMuteDuration | null }): Promise<DeviceNotificationPreference> { return this.request("/device-notification-preference", { method: "PATCH", body: JSON.stringify(input) }); }
-  async notifications(search?: string, organizationId?: string): Promise<AppNotification[]> { const query = search?.trim(); return this.request(`/notifications${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`, this.orgOverride(organizationId)); }
+  async notifications(search?: string, organizationId?: string, page = 0, size = NOTIFICATIONS_PAGE_SIZE): Promise<NotificationPage> {
+    const params = new URLSearchParams({ page: String(page), size: String(size) });
+    const query = search?.trim();
+    if (query) params.set("search", query);
+    return this.request(`/notifications?${params.toString()}`, this.orgOverride(organizationId));
+  }
   async markNotificationRead(notificationId: string, organizationId?: string): Promise<AppNotification> { return this.request(`/notifications/${notificationId}/read`, { method: "PATCH", ...this.orgOverride(organizationId) }); }
+  async markAllNotificationsRead(organizationId?: string): Promise<void> { await this.request<void>("/notifications/read-all", { method: "PATCH", ...this.orgOverride(organizationId) }); }
   async staffReminders(): Promise<StaffReminder[]> { return this.request("/staff-reminders"); }
   async createStaffReminder(input: UpsertStaffReminderInput): Promise<StaffReminder> { return this.request("/staff-reminders", { method: "POST", body: JSON.stringify(input) }); }
   async updateStaffReminder(reminderId: string, input: UpsertStaffReminderInput): Promise<StaffReminder> { return this.request(`/staff-reminders/${reminderId}`, { method: "PATCH", body: JSON.stringify(input) }); }
@@ -568,8 +578,12 @@ export class ApiClient {
     return this.request(`/children/${childId}/messages`, this.orgOverride(organizationId));
   }
 
-  async sendChildMessage(childId: string, body: string, organizationId?: string): Promise<ChildMessage> {
-    return this.request(`/children/${childId}/messages`, { method: "POST", body: JSON.stringify({ body }), ...this.orgOverride(organizationId) });
+  async childMessageSummary(childId: string, organizationId?: string): Promise<ChildMessageSummary> {
+    return this.request(`/children/${childId}/messages/summary`, this.orgOverride(organizationId));
+  }
+
+  async sendChildMessage(childId: string, body: string, organizationId?: string, replyToMessageId?: string): Promise<ChildMessage> {
+    return this.request(`/children/${childId}/messages`, { method: "POST", body: JSON.stringify({ body, ...(replyToMessageId ? { replyToMessageId } : {}) }), ...this.orgOverride(organizationId) });
   }
 
   async markChildMessagesRead(childId: string, organizationId?: string): Promise<void> {
@@ -625,9 +639,9 @@ export class ApiClient {
   async pendingBookings(filter: BranchListFilter = {}, search?: string): Promise<Booking[]> { return this.request(withBranchAndSearchFilter("/bookings/pending-approval", filter, search)); }
   async approveBooking(bookingId: string, approved: boolean): Promise<Booking> { return this.request(`/bookings/${bookingId}/approval`, { method: "POST", body: JSON.stringify({ approved }) }); }
   async invoices(filter: BranchListFilter = {}, search?: string, organizationId?: string): Promise<Invoice[]> { return this.request(withBranchAndSearchFilter("/invoices", filter, search), organizationId ? { headers: { "X-Organization-Id": organizationId } } : undefined); }
-  async invoice(invoiceId: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}`); }
-  async submitPaymentProof(invoiceId: string, input: SubmitPaymentProofInput): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/payment-proof`, { method: "POST", body: JSON.stringify(input) }); }
-  async paymentProof(invoiceId: string): Promise<PaymentProofImage> { return this.request(`/invoices/${invoiceId}/payment-proof`); }
+  async invoice(invoiceId: string, organizationId?: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}`, this.orgOverride(organizationId)); }
+  async submitPaymentProof(invoiceId: string, input: SubmitPaymentProofInput, organizationId?: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/payment-proof`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async paymentProof(invoiceId: string, organizationId?: string): Promise<PaymentProofImage> { return this.request(`/invoices/${invoiceId}/payment-proof`, this.orgOverride(organizationId)); }
   async reviewPaymentProof(invoiceId: string, approved: boolean, rejectionReason?: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/payment-proof/review`, { method: "POST", body: JSON.stringify({ approved, rejectionReason }) }); }
   async markInvoicePaid(invoiceId: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/mark-paid`, { method: "POST" }); }
 

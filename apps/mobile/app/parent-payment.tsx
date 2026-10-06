@@ -19,7 +19,7 @@ export default function ParentPaymentScreen() {
   const paymentOrganizationId = routeOrganizationId;
   const invoiceScope = paymentOrganizationId ?? user?.uid ?? "payer-self";
   const { t, formatCurrency, formatDate } = useI18n();
-  const invoice = useQuery({ queryKey: ["invoice", invoiceScope, invoiceId], queryFn: () => api.invoice(invoiceId), enabled: Boolean(invoiceId) });
+  const invoice = useQuery({ queryKey: ["invoice", invoiceScope, invoiceId], queryFn: () => api.invoice(invoiceId, paymentOrganizationId ?? undefined), enabled: Boolean(invoiceId && paymentOrganizationId) });
   const instructions = useQuery({ queryKey: ["payment-instructions", paymentOrganizationId, "payer"], queryFn: () => api.paymentInstructions(paymentOrganizationId!), enabled: Boolean(paymentOrganizationId && invoiceId) });
   return <AppScreen showBottomNavigation={false} title={t("parentEnrollment.pay")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.content}>
     <PaymentSteps current={paymentStepForInvoice(invoice.data?.status, "instructions")} labels={[t("parentEnrollment.payStepTransfer"), t("parentEnrollment.payStepUpload"), t("parentEnrollment.payStepVerify")]} />

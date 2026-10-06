@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ChildProgramStatus } from "@daycare/api-client";
-import { AppText, Badge, BackButton, BottomSheet, Button, Card, EmptyState, ErrorState, InfoRow, MenuItem, MenuSection, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Badge, BackButton, BottomSheet, Button, Card, EmptyState, ErrorState, FloatingActionButton, InfoRow, MenuItem, MenuSection, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { statusTone } from "@/ui/statusTone";
 import { AppScreen } from "@/navigation/AppScreen";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
@@ -26,6 +26,7 @@ export default function ParentChildProfileScreen() {
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const access = useUiAccessContext(Boolean(membership), organizationId);
   const childProfile = useQuery({ queryKey: ["parent-child-profile", organizationId, childId], queryFn: () => api.parentChildProfile(childId!, organizationId), enabled: Boolean(childId && membership?.role === "PARENT") });
+  const unreadMessages = useQuery({ queryKey: ["child-message-summary", organizationId, childId], queryFn: () => api.childMessageSummary(childId!, organizationId), enabled: Boolean(childId && organizationId && membership?.active && membership.role === "PARENT") });
   const hasDaycarePickupOperations = hasBranchOfferingCapability(access.data, childProfile.data?.child.branchId, "DAYCARE_OPERATIONS");
   const feedback = useMutation({ mutationFn: ({ programId, note }: { programId: string; note: string }) => api.addParentChildProgramFeedback(childId!, programId, note, organizationId), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["parent-child-profile", organizationId, childId] }) });
   const [feedbackProgramId, setFeedbackProgramId] = useState<string | null>(null);
@@ -45,7 +46,12 @@ export default function ParentChildProfileScreen() {
     try { await feedback.mutateAsync({ programId: feedbackProgramId, note: feedbackNote.trim() }); setFeedbackNote(""); setFeedbackProgramId(null); notify(t("children.feedbackSent"), undefined, "success"); }
     catch (error) { notify(t("children.feedbackFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
-  return <AppScreen showBottomNavigation={false} title={t("children.parentProfile")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.content}>
+  const unreadCount = unreadMessages.data?.unreadCount ?? 0;
+  const chatAction = <View style={styles.floatingChat}>
+    <FloatingActionButton icon="chatbubbles-outline" accessibilityLabel={unreadCount > 0 ? t("childMessage.unreadCount", { count: unreadCount }) : t("childMessage.menuTitle")} onPress={() => router.push({ pathname: "/child-messages", params: { childId, organizationId } } as never)}>{t("childMessage.menuTitle")}</FloatingActionButton>
+    {unreadCount > 0 && <Badge tone="danger" icon="chatbubble-ellipses-outline" label={String(unreadCount)} style={styles.unreadBadge} />}
+  </View>;
+  return <AppScreen showBottomNavigation={false} title={t("children.parentProfile")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={chatAction}><View style={styles.content}>
     {childProfile.isLoading && <ShimmerList variant="tile" />}
     {childProfile.isError && !childProfile.isFetching && <ErrorState title={t("auth.profileLoadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void childProfile.refetch()} />}
     {childProfile.data && <>
@@ -62,7 +68,6 @@ export default function ParentChildProfileScreen() {
         {childProfile.data.branch.googleMapsUrl && <Button variant="secondary" leadingIcon={<Ionicons name="map-outline" size={18} color={colors.primary} />} onPress={() => void openMaps()}>{t("branch.openGoogleMaps")}</Button>}
       </Card>
       <MenuSection title={t("children.safetySection")}>
-        <MenuItem icon="chatbubbles-outline" title={t("childMessage.menuTitle")} description={t("childMessage.menuDescription")} onPress={() => router.push({ pathname: "/child-messages", params: { childId, organizationId } } as never)} />
         <MenuItem icon="call-outline" title={t("emergencyContacts.title")} description={t("emergencyContacts.manage")} onPress={() => router.push({ pathname: "/emergency-contacts", params: { childId, organizationId } } as never)} />
         {hasDaycarePickupOperations && <MenuItem icon="car-outline" title={t("pickup.title")} description={t("pickup.manage")} onPress={() => router.push({ pathname: "/pickup-authorizations", params: { childId, organizationId } } as never)} />}
         {hasDaycarePickupOperations && <MenuItem icon="shield-checkmark-outline" title={t("consent.title")} description={t("consent.parentDescription")} onPress={() => router.push({ pathname: "/child-consents", params: { childId, organizationId } } as never)} />}
@@ -86,4 +91,6 @@ const styles = StyleSheet.create({
   grow: { flex: 1 },
   step: { gap: spacing.xs, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
   feedbackNote: { flexDirection: "row", alignItems: "flex-start", gap: spacing.xs, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
+  floatingChat: { position: "relative" },
+  unreadBadge: { position: "absolute", top: -6, right: -6, zIndex: 1 },
 });

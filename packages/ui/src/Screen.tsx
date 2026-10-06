@@ -1,5 +1,5 @@
-import { useEffect, useState, type PropsWithChildren, type ReactNode } from "react";
-import { Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
+import { useEffect, useState, type PropsWithChildren, type ReactNode, type RefObject } from "react";
+import { Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { backgroundGradient, colors, radius, shadows, spacing, toneColors, toneIcons } from "./theme";
@@ -7,9 +7,9 @@ import { AppText } from "./AppText";
 import { appBrandName } from "./brand";
 import { inlineFeedbackDuration, subscribeInlineFeedback, type InlineFeedback } from "./InlineFeedback";
 
-export type ScreenProps = PropsWithChildren<{ title?: string; header?: ReactNode; headerAction?: ReactNode; footer?: ReactNode; floatingAction?: ReactNode; showAppBar?: boolean; refreshing?: boolean; onRefresh?: () => void; feedbackDismissLabel?: string }>;
+export type ScreenProps = PropsWithChildren<{ title?: string; header?: ReactNode; headerAction?: ReactNode; footer?: ReactNode; floatingAction?: ReactNode; scrollViewRef?: RefObject<ScrollView | null>; onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void; showAppBar?: boolean; refreshing?: boolean; onRefresh?: () => void; feedbackDismissLabel?: string }>;
 
-export function Screen({ children, title, header, headerAction, footer, floatingAction, showAppBar, refreshing = false, onRefresh, feedbackDismissLabel = "Close" }: ScreenProps) {
+export function Screen({ children, title, header, headerAction, footer, floatingAction, scrollViewRef, onScroll, showAppBar, refreshing = false, onRefresh, feedbackDismissLabel = "Close" }: ScreenProps) {
   const shouldShowAppBar = showAppBar ?? Boolean(title || header);
   const [feedback, setFeedback] = useState<InlineFeedback>();
 
@@ -28,7 +28,10 @@ export function Screen({ children, title, header, headerAction, footer, floating
         {headerAction && <View style={styles.headerAction}>{headerAction}</View>}
       </View>}
       <ScrollView
+        ref={scrollViewRef}
         style={styles.scroll}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         contentContainerStyle={[styles.content, floatingAction ? styles.contentWithFloatingAction : undefined]}
         refreshControl={onRefresh && Platform.OS !== "web" ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} /> : undefined}
       >

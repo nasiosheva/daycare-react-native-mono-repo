@@ -28,11 +28,16 @@ const queryKeysByFlag: Record<RealtimeFlag, readonly string[]> = {
   PRIVATE_TUTORING: ["private-tutoring-services", "private-tutoring-requests", "private-tutoring-admin-services", "private-tutoring-tutors", "private-tutoring-admin-requests"],
   CHILD_PROGRAMS: ["child-profile", "parent-child-profile"],
   TENANT_FEEDBACK: ["tenant-feedback-mine", "tenant-feedback-inbox"],
-  CHILD_MESSAGES: ["child-messages"],
+  CHILD_MESSAGES: ["child-messages", "child-message-summary"],
 };
 
-export function invalidateRealtimeFlags(queryClient: QueryClient, flags: readonly RealtimeFlag[], organizationId?: string | null, userId?: string | null): void {
+export function invalidateRealtimeFlags(queryClient: QueryClient, flags: readonly RealtimeFlag[], organizationId?: string | null, userId?: string | null, payload?: unknown): void {
+  const childMessageChildId = flags.includes("CHILD_MESSAGES") ? readChildMessageChildId(payload) : undefined;
   new Set(flags.flatMap((flag) => queryKeysByFlag[flag])).forEach((key) => {
+    if ((key === "child-messages" || key === "child-message-summary") && organizationId && childMessageChildId) {
+      void queryClient.invalidateQueries({ queryKey: [key, organizationId, childMessageChildId] });
+      return;
+    }
     if (key === "parent-enrollments") {
       if (organizationId) void queryClient.invalidateQueries({ queryKey: [key, organizationId] });
       if (userId) void queryClient.invalidateQueries({ queryKey: [key, "self", userId] });
@@ -51,6 +56,12 @@ export function invalidateRealtimeFlags(queryClient: QueryClient, flags: readonl
     }
     void queryClient.invalidateQueries({ queryKey: organizationId ? [key, organizationId] : [key] });
   });
+}
+
+function readChildMessageChildId(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const childId = (payload as { childId?: unknown }).childId;
+  return typeof childId === "string" && childId.length > 0 ? childId : undefined;
 }
 
 export const allRealtimeFlags = Object.keys(queryKeysByFlag) as RealtimeFlag[];

@@ -38,6 +38,21 @@ describe("invalidateRealtimeFlags", () => {
     expect(client.getQueryState(["private-tutoring-admin-requests", "tenant-a"])?.isInvalidated).toBe(true);
   });
 
+  it("invalidates only the child message thread named by the WebSocket payload", () => {
+    const client = new QueryClient();
+    client.setQueryData(["child-messages", "tenant-a", "child-a"], []);
+    client.setQueryData(["child-messages", "tenant-a", "child-b"], []);
+    client.setQueryData(["child-message-summary", "tenant-a", "child-a"], { unreadCount: 1 });
+    client.setQueryData(["child-message-summary", "tenant-a", "child-b"], { unreadCount: 2 });
+
+    invalidateRealtimeFlags(client, ["CHILD_MESSAGES"], "tenant-a", undefined, { childId: "child-a", messageId: "message-a" });
+
+    expect(client.getQueryState(["child-messages", "tenant-a", "child-a"])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(["child-messages", "tenant-a", "child-b"])?.isInvalidated).toBe(false);
+    expect(client.getQueryState(["child-message-summary", "tenant-a", "child-a"])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(["child-message-summary", "tenant-a", "child-b"])?.isInvalidated).toBe(false);
+  });
+
   it("does not invalidate another tenant's cache", () => {
     const client = new QueryClient();
     client.setQueryData(["invoices", "tenant-a"], []);

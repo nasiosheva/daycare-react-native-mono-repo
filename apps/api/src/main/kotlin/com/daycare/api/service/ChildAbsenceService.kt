@@ -64,7 +64,7 @@ class ChildAbsenceService(
     fun create(jwt: Jwt, organizationId: UUID, request: CreateChildAbsenceRequest): ChildAbsenceResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT))
         access.requireWritable(scope)
-        val child = childScopes.requireParentLinkedChild(scope, request.childId, organizationId)
+        val child = childScopes.requireParentOperationalChild(scope, request.childId, organizationId)
         validateDates(child, request.startDate, request.endDate)
         val note = request.note?.trim()?.ifBlank { null }
         require(request.purpose != ChildAbsencePurpose.OTHER || note != null) { "A note is required when the purpose is OTHER" }
@@ -120,7 +120,7 @@ class ChildAbsenceService(
         access.requireWritable(scope)
         val request = requireRequest(requestId, organizationId)
         require(request.status == ChildAbsenceRequestStatus.PENDING) { "Only pending absence requests can be cancelled" }
-        val child = childScopes.requireParentLinkedChild(scope, request.childId, organizationId)
+        val child = childScopes.requireParentOperationalChild(scope, request.childId, organizationId)
         require(request.requesterUserId == scope.user.id) { "Only the requesting Parent can cancel this absence request" }
         request.status = ChildAbsenceRequestStatus.CANCELLED
         notifyApprovers(child, "Pengajuan tidak masuk dibatalkan", "Pengajuan tidak masuk ${child.fullName()} telah dibatalkan oleh Parent.")

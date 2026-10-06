@@ -67,6 +67,8 @@ Parent yang memiliki anak **aktif** di satu tenant dapat mengajukan pindah anak 
 
 Selain jalur aplikasi di atas, Staff Admin dapat menautkan langsung akun Parent yang **sudah ada** ke seorang anak dari layar detail anak (atau sekaligus saat membuat anak baru), dengan mencari username atau email persis (salah satu wajib diisi; akun yang tidak ditemukan ditolak). Akun target **wajib** memiliki `UserProfile.registrationRole=PARENT`; membership tenant berperan `PARENT`, akun Staff/Admin, atau akun lama tanpa registration role tidak dapat ditautkan sebagai wali baru. Penautan ini tidak membuat akun Parent baru, undangan, aplikasi, invoice, maupun entitlement layanan apa pun — hanya membuat (atau mengaktifkan kembali) membership `PARENT` pada tenant tersebut dan relasi wali-anak bila belum ada. Staff Admin juga dapat memutus relasi ini; tindakan tersebut hanya menghapus relasi wali-anak dan tidak menonaktifkan membership secara otomatis. Anak yang belum memiliki Parent tetap dapat dikelola dalam operasi tenant.
 
+Jalur direct-link tersebut menghasilkan state **`LINKED_READ_ONLY`** selama membership dan relasi wali masih aktif. Parent boleh membaca informasi anak, perkembangan, Goal, kesehatan, keselamatan, pesan, consent, dan informasi cabang yang memang diizinkan capability tenant, tetapi tidak memperoleh entitlement layanan, booking, QR kehadiran, atau hak mutasi operasional hanya karena relasi itu dibuat. UI harus menyembunyikan action layanan yang memerlukan entitlement (termasuk QR), sedangkan server tetap memvalidasi entitlement dan capability pada setiap request. Jika membership atau relasi dicabut, state berubah menjadi `GUARDIAN_REVOKED` dan akses resource anak berhenti; membership tidak boleh dianggap sebagai bukti entitlement.
+
 Daftar **Anak** Staff Admin menghitung status wali dari relasi yang sudah berada dalam child scope server dan hanya mengirimkannya kepada Staff Admin: `LINKED` bila setidaknya satu relasi dan seluruh akun target adalah Parent terdaftar, `UNLINKED` bila belum ada relasi, dan `REVIEW_REQUIRED` bila relasi lama mengarah ke akun yang hilang, bukan Parent, atau tanpa registration role. Staff Admin dapat memfilter ketiga status tersebut; filter memakai Bottom Sheet draf dan baru memengaruhi daftar maupun ekspor laporan Anak setelah **OK**. Relasi lama yang perlu diperiksa tidak dicabut, dikonversi, atau diberi membership otomatis; Staff Admin meninjaunya pada detail anak dan dapat melepas relasi yang salah secara manual. Status, filter, penanda peringatan, dan daftar wali pada detail ini tidak dikirim kepada Staff, Parent, atau Platform Admin. Jalur ini ditujukan untuk anak yang datanya sudah diinput langsung oleh Staff Admin (mis. migrasi data atau pendaftaran luring), sebagai pelengkap—bukan pengganti—alur persetujuan enrollment Parent di atas.
 
 ### Les privat
@@ -226,6 +228,8 @@ Status minimum lifecycle Platform Knowledge adalah `CANDIDATE`, `APPROVED`, `PUB
 - Layar Catatan Perkembangan hanya menampilkan tombol pintasan **Goals** untuk anak terpilih ketika cabang memiliki offering `ACADEMIC_CURRICULUM`, karena layar Goal itu sendiri mensyaratkan rantai Program Kurikulum (§6.3) dan mengalihkan ke Beranda bila offering itu tidak tersedia. Tombol yang tetap tampil tanpa offering tersebut hanya akan membuat Staff terdampar di Beranda tanpa penjelasan.
 - Setiap notifikasi inbox disimpan per penerima dan tetap tersedia walaupun push perangkat dimatikan.
 - Ketika tenant aktif dibuka sebagai Parent, inbox dan badge belum dibaca di Home menggabungkan notifikasi dari setiap tenant tempat pengguna memiliki membership `PARENT`—aktif maupun nonaktif, karena inbox hanya dibaca—kecuali tenant yang langganannya tidak operasional, yang memang ditolak server (§13.12). Inbox gabungan ini adalah agregasi client per tenant sesuai §1 dan §13.2: setiap item menampilkan nama tenant asalnya bila tenant lebih dari satu, daftar diurutkan terbaru lebih dulu lintas tenant, dan pencarian dijalankan pada setiap tenant. Menandai dibaca dan membuka action path selalu memakai tenant asal notifikasi: action path direvalidasi terhadap membership, status, dan capability tenant asal itu (§13.14), lalu dibuka dengan resolusi tenant per aksi (§1); route yang belum mendukung resolusi per aksi tidak dapat dibuka dari notifikasi tenant non-aktif. Bila inbox satu tenant gagal dimuat, item tenant lain tetap tampil disertai pemberitahuan tenant yang gagal dan tombol coba lagi; empty state hanya tampil bila tidak ada tenant yang gagal. Invalidation realtime dan push Expo saat ini hanya mencakup tenant aktif (perangkat terdaftar pada satu tenant), sehingga notifikasi tenant lain baru tampil saat inbox atau Home dimuat ulang. Staff dan Staff Admin tetap melihat inbox tenant aktif saja.
+- Inbox menyediakan aksi **Tandai semua sudah dibaca** yang mengirim mutasi terpisah untuk setiap tenant yang legal di inbox pengguna. Server tetap memeriksa recipient, membership, status tenant, dan scope pada setiap mutasi; aksi hanya mengubah notifikasi milik pengguna yang masih unread, tidak menghapus item, tidak memengaruhi push mute, dan tidak menandai tenant yang gagal diproses sebagai berhasil. Setelah server selesai, cache notifikasi per tenant di-invalidasi agar badge Home ikut diperbarui.
+- Inbox menggunakan pagination server-side dengan ukuran standar **10 item per halaman**. Endpoint mengembalikan item halaman, jumlah total, jumlah unread, dan penanda halaman berikutnya; pencarian juga dipaginasi dan dimulai kembali dari halaman pertama ketika query berubah. Pada Parent multi-tenant, client tetap memanggil endpoint secara terpisah untuk setiap tenant legal, mengambil halaman tenant yang diperlukan, menggabungkan hasil secara lokal berdasarkan waktu terbaru, lalu menampilkan tepat 10 item pada halaman gabungan. Kegagalan satu tenant tidak membatalkan tenant lain atau mengubah otorisasi; penghitung total/unread berasal dari scope server tenant masing-masing.
 - Pengajuan anak tidak masuk mengirim notifikasi inbox, invalidasi realtime, dan push Expo native bila perangkat penerima terdaftar: Parent memberi tahu Staff Admin dan Staff yang berada dalam scope anak; keputusan Staff memberi tahu seluruh wali anak yang terhubung; pembatalan Parent memberi tahu pihak operasional yang sama.
 - Daftar pengajuan anak tidak masuk untuk `STAFF_ADMIN` memakai tab cabang horizontal yang langsung menerapkan filter; daftar tersebut tidak menggunakan filter draft atau Bottom Sheet. Tab hanya mempersempit data yang sudah diizinkan backend.
 - Staff aktif dapat membuat pengajuan `LEAVE` atau `SICK` untuk dirinya sendiri dari Profile. Alasan dan rentang tanggal (mulai hari ini atau masa depan) wajib diisi; satu gambar bukti JPEG/PNG maksimal 5 MB bersifat opsional. Rentang tanggal inklusif yang bertumpang tindih dengan pengajuan milik Staff yang masih `PENDING` atau `APPROVED` ditolak. Staff hanya dapat membatalkan pengajuannya sendiri selama masih `PENDING` dan tidak dapat mengubah pengajuan yang sudah dikirim.
@@ -270,6 +274,12 @@ Status minimum lifecycle Platform Knowledge adalah `CANDIDATE`, `APPROVED`, `PUB
 - **Penerima notifikasi pesan baru**: bila pengirim Parent, dinotifikasi Staff yang secara langsung di-assign ke anak itu (`ChildStaffAssignment`); bila tidak ada Staff yang di-assign, jatuh ke seluruh Staff Admin aktif tenant (fallback, bukan default). Bila pengirim Staff/Staff Admin, dinotifikasi seluruh wali anak yang terhubung — sama seperti pola `ChildIncidentService.notifyGuardians`.
 - **Akses saat anak nonaktif**: fitur ini **tidak punya pengecualian read-only**. Begitu `Child.active = false`, `requireParentLinkedChild`/`requireStaffManagedChild` menolak total (termasuk membaca riwayat), persis seperti Goals, catatan kesehatan, insiden, dan consent — bukan pola `GuardianAuthority` target di §13.12 yang belum dibangun.
 - V1 hanya mendukung teks (maksimum 2.000 karakter); lampiran foto belum ada.
+- Parent membuka thread dari floating action **Pesan** pada profil anak; badge menampilkan jumlah pesan masuk yang belum dibaca untuk tenant + anak tersebut. Membuka thread menandai pesan masuk terbaca dan memperbarui badge setelah server menyimpan `ChildMessageRead`.
+- Staff dan Staff Admin membuka Pesan dari floating action pada layar operasional, memilih anak dari daftar anak yang sudah dibatasi server sesuai scope mereka, lalu masuk ke thread anak tersebut. Entry point ini tidak membuat daftar anak baru atau memperluas scope akses.
+- Pengguna dapat membalas pesan yang sudah ada pada thread yang sama. Pesan balasan menyimpan `replyToMessageId` yang wajib menunjuk pesan pada tenant dan anak yang sama; server mengembalikan preview pengirim, isi, dan waktu pesan asal. Balasan tetap append-only dan tidak mengubah atau menghapus pesan asal.
+- Bubble pesan menampilkan preview pesan yang dibalas. Menekan preview tersebut menggeser thread ke bubble pesan asal; bila target belum tersedia di cache/lifecycle UI, aksi tidak mengubah data dan thread tetap aman.
+- **Status percakapan**: pesan yang sudah tersimpan ditampilkan sebagai `SENT`/Terkirim. Status berubah menjadi `READ`/Dibaca ketika setidaknya satu pihak lawan yang berwenang membuka thread dan menjalankan `markRead`; status ini tidak berasal dari asumsi client. WebSocket hanya mengirim invalidation identifier, sedangkan status dan riwayat selalu dihitung ulang dari API REST yang scoped tenant + anak.
+- Saat pesan baru dari lawan chat masuk ketika pengguna sedang membaca riwayat (posisi scroll tidak berada di ujung thread), UI menampilkan floating action terlokalisasi berbentuk ikon panah bawah dengan jumlah pesan baru yang tersedia melalui label aksesibilitas. Menekan action menggeser ke pesan terakhir dan menghapus penghitung; bila posisi pengguna sudah di ujung, pesan lawan diikuti otomatis tanpa action tambahan. Pesan yang dikirim pengguna sendiri selalu memicu auto-scroll ke pesan terakhir dan tidak menampilkan action tersebut. Ini hanya bantuan navigasi dan tidak mengubah status `READ`/`SENT` atau otorisasi thread.
 
 ## 11. Dokumentasi perubahan
 
@@ -1833,20 +1843,32 @@ pendidikan dan context gabungan):
 | `NO_MEMBERSHIP` | Profile global, katalog publik, draft/application sendiri melalui `APPLICATION_SELF_SERVICE` | Signup, buat/ubah draft sendiri bila offering terbuka | Data anak tenant, QR, booking, kelas, perkembangan, invoice yang bukan miliknya. |
 | `APPLICATION_IN_PROGRESS` | Application, dokumen, decision, invoice/proof sendiri melalui grant application | Submit/batalkan/upload dokumen atau proof sesuai lifecycle | Data operasional anak, placement, QR, booking, attendance, development. |
 | `ACTIVE_GUARDIAN` | Semua resource anak yang diizinkan relation, offering, consent, dan capability | Aksi Parent yang diberi grant, mis. booking, izin, upload proof, manage pickup/consent | Data siswa/wali lain, konfigurasi tenant, mutasi operasional Staff. |
+| `LINKED_READ_ONLY` | Informasi anak dan riwayat read-only yang diizinkan relasi, offering, dan capability | Tidak ada mutasi layanan; hanya membaca resource yang diizinkan | Booking, QR, entitlement, pembayaran baru, perubahan child, pickup/consent/absence yang memerlukan action grant. |
 | `BILLING_LIMITED` | Invoice/receipt sendiri, safety card, insiden yang ditujukan, status attendance/check-out saat ini sesuai guardian grant | Hanya `allowedActions` per resource—mis. bayar/upload proof jika invoice masih payable, acknowledge insiden, atau tarik pickup/consent untuk masa depan | Booking baru, QR, future service, perubahan finansial selain penyelesaian invoice, activation pickup baru. |
 | `GUARDIAN_REVOKED` atau `CHILD_WITHDRAWN` | Invoice/dokumen milik actor menurut retensi eksplisit | Tidak ada kecuali tindakan finance yang masih diizinkan | Data anak baru, attendance, development, health, safety feed baru, pickup, consent. |
-| `TENANT_SUBSCRIPTION_RESTRICTED` | Inbox safety yang telah ditujukan, invoice sendiri, dan daftar anak miliknya sendiri (read-only) sesuai exception server | Tidak ada operasi baru kecuali penyelesaian invoice yang diizinkan | Semua route normal yang tidak berada pada allowlist exception, termasuk profil/development/QR/absence anak yang sama. |
+| `TENANT_SUBSCRIPTION_RESTRICTED` | Invoice sendiri dan daftar anak miliknya sendiri (read-only) sesuai exception server; inbox safety tetap hanya bila endpoint memberi grant eksplisit | Tidak ada operasi baru kecuali penyelesaian invoice yang diizinkan | Semua route normal yang tidak berada pada allowlist exception, termasuk profil/development/QR/absence anak yang sama. |
 
-- Berbeda dari seluruh baris lain pada tabel ini (masih **target**, menunggu
-  `GuardianAuthority`/`reasonCode`/`allowedActions`), bagian `TENANT_SUBSCRIPTION_RESTRICTED`
-  untuk daftar anak sudah **diimplementasikan**: `AccessService.require()`
-  menerima `allowSubscriptionRestrictedForRoles`, dan `GET /children` untuk
-  `PARENT` memakainya sehingga anak tetap muncul di Home walau subscription
-  tenant `SUSPENDED`/`PENDING_PAYMENT`/`EXPIRED`. Exception ini sengaja sempit:
-  hanya endpoint daftar anak yang dibuka; membuka profil/development/QR/absence
-  anak yang sama tetap `403` karena endpoint-endpoint itu belum memakai
-  parameter yang sama. Invoice sendiri dan inbox safety yang ditujukan pada
-  baris ini masih target, belum dibuka lewat mekanisme serupa.
+- Bagian `TENANT_SUBSCRIPTION_RESTRICTED` yang sudah diimplementasikan masih
+  berupa exception endpoint yang eksplisit, bukan pengganti
+  `GuardianAuthority`: `AccessService.require()` menerima
+  `allowSubscriptionRestrictedForRoles`, dan `GET /children` untuk `PARENT`
+  memakainya sehingga anak tetap muncul di Home walau subscription tenant
+  `SUSPENDED`/`PENDING_PAYMENT`/`EXPIRED`. `GET /billing/invoices` juga membuka
+  daftar invoice milik Parent sendiri untuk pembayaran yang masih diizinkan,
+  termasuk saat membership Parent tidak aktif; detail invoice dan upload proof
+  memvalidasi `organizationId` serta pemilik invoice. Exception ini sengaja
+  sempit: membuka profil/development/QR/absence anak yang sama tetap `403`, dan
+  inbox safety untuk tenant yang subscription-nya restricted belum dibuka tanpa
+  grant resource khusus.
+
+- Untuk kompatibilitas direct-link, `LINKED_READ_ONLY` saat ini ditegakkan
+  sebagai policy server: endpoint baca tetap memakai `GuardianLink`, sedangkan
+  mutasi absence, consent, pickup authorization, dan emergency contact Parent
+  wajib menemukan entitlement layanan berstatus `ACTIVE` milik Parent yang sama
+  dengan masa berlaku yang belum lewat.
+  UI menyembunyikan action tersebut jika entitlement tidak ada. Ini belum
+  mengklaim `GuardianAuthority`/`accessMode` penuh; grant per-resource,
+  `reasonCode`, dan `allowedActions` tetap target terpisah.
 
 - `GuardianAuthority` target adalah grant terpisah dari `GuardianLink` dan
   `Membership`. Ia memiliki `guardianLinkId`, `learnerId`, scope offering bila

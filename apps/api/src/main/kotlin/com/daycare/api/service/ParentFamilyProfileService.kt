@@ -2,11 +2,9 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.ParentIncomeRange
 import com.daycare.api.domain.ParentOccupation
-import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.persistence.ParentFamilyProfile
 import com.daycare.api.persistence.ParentFamilyProfileRepository
 import jakarta.validation.constraints.PastOrPresent
-import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -58,9 +56,7 @@ class ParentFamilyProfileService(
         return profiles.save(profile).toResponse()
     }
 
-    private fun requireParent(jwt: Jwt) = identity.sync(jwt).also { user ->
-        if (user.registrationRole != RegistrationRole.PARENT) throw AccessDeniedException("Parent family profile is only available to Parent accounts")
-    }
+    private fun requireParent(jwt: Jwt) = requireRegisteredParent(identity.sync(jwt))
 
     private fun requireDateIsNotFuture(value: LocalDate?) {
         require(value == null || !value.isAfter(LocalDate.now())) { "Date of birth cannot be in the future" }
