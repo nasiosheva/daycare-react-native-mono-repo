@@ -4,12 +4,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ChildProgramStatus } from "@daycare/api-client";
-import { AppText, Badge, BackButton, BottomSheet, Button, Card, EmptyState, ErrorState, FloatingActionButton, InfoRow, MenuItem, MenuSection, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Badge, BackButton, BottomSheet, Button, Card, EmptyState, ErrorState, InfoRow, MenuItem, MenuSection, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { statusTone } from "@/ui/statusTone";
 import { AppScreen } from "@/navigation/AppScreen";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
+import { ChatFloatingAction } from "@/chat/ChatFloatingAction";
 import { notify } from "@/notify/notify";
 import { hasBranchOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
@@ -47,10 +48,7 @@ export default function ParentChildProfileScreen() {
     catch (error) { notify(t("children.feedbackFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
   const unreadCount = unreadMessages.data?.unreadCount ?? 0;
-  const chatAction = <View style={styles.floatingChat}>
-    <FloatingActionButton icon="chatbubbles-outline" accessibilityLabel={unreadCount > 0 ? t("childMessage.unreadCount", { count: unreadCount }) : t("childMessage.menuTitle")} onPress={() => router.push({ pathname: "/child-messages", params: { childId, organizationId } } as never)}>{t("childMessage.menuTitle")}</FloatingActionButton>
-    {unreadCount > 0 && <Badge tone="danger" icon="chatbubble-ellipses-outline" label={String(unreadCount)} style={styles.unreadBadge} />}
-  </View>;
+  const chatAction = <ChatFloatingAction label={t("childMessage.menuTitle")} unreadCount={unreadCount} onPress={() => router.push({ pathname: "/child-messages", params: { childId, organizationId } } as never)} />;
   return <AppScreen showBottomNavigation={false} title={t("children.parentProfile")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={chatAction}><View style={styles.content}>
     {childProfile.isLoading && <ShimmerList variant="tile" />}
     {childProfile.isError && !childProfile.isFetching && <ErrorState title={t("auth.profileLoadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void childProfile.refetch()} />}
@@ -91,6 +89,4 @@ const styles = StyleSheet.create({
   grow: { flex: 1 },
   step: { gap: spacing.xs, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
   feedbackNote: { flexDirection: "row", alignItems: "flex-start", gap: spacing.xs, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
-  floatingChat: { position: "relative" },
-  unreadBadge: { position: "absolute", top: -6, right: -6, zIndex: 1 },
 });

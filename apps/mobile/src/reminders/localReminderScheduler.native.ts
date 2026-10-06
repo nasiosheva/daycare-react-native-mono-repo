@@ -1,4 +1,5 @@
 import * as Notifications from "expo-notifications";
+import { cancelLocalNotification, scheduleLocalNotification } from "@/notifications/localNotification";
 import * as SecureStore from "expo-secure-store";
 import type { StaffReminder } from "@daycare/api-client";
 
@@ -16,7 +17,7 @@ export async function reconcileLocalReminderSchedules(reminders: readonly StaffR
   const next: StoredSchedules = {};
   const acknowledgements: ReminderScheduleAcknowledgement[] = [];
   const reminderIds = new Set(reminders.map((reminder) => reminder.id));
-  await Promise.all(Object.entries(stored).filter(([reminderId]) => !reminderIds.has(reminderId)).flatMap(([, schedule]) => schedule.notificationIds.map((notificationId) => Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => undefined))));
+  await Promise.all(Object.entries(stored).filter(([reminderId]) => !reminderIds.has(reminderId)).flatMap(([, schedule]) => schedule.notificationIds.map((notificationId) => cancelLocalNotification(notificationId).catch(() => undefined))));
   for (const reminder of reminders) {
     const previous = stored[reminder.id];
     const unchanged = reminder.active && previous?.ruleVersion === reminder.ruleVersion;
@@ -25,16 +26,16 @@ export async function reconcileLocalReminderSchedules(reminders: readonly StaffR
       acknowledgements.push({ reminderId: reminder.id, ruleVersion: reminder.ruleVersion, scheduled: true });
       continue;
     }
-    await Promise.all((previous?.notificationIds ?? []).map((notificationId) => Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => undefined)));
+    await Promise.all((previous?.notificationIds ?? []).map((notificationId) => cancelLocalNotification(notificationId).catch(() => undefined)));
     if (!reminder.active) {
       acknowledgements.push({ reminderId: reminder.id, ruleVersion: reminder.ruleVersion, scheduled: false });
       continue;
     }
     try {
-      const notificationIds = await Promise.all(reminder.weekdays.map((weekday) => Notifications.scheduleNotificationAsync({
-        content: { title: reminder.title, body: reminder.description, sound: "default", data: { actionPath: reminderPath(reminder.target), organizationId } },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday, hour: reminder.hour, minute: reminder.minute },
-      })));
+      const notificationIds = await Promise.all(reminder.weekdays.map((weekday) => scheduleLocalNotification(
+        { title: reminder.title, body: reminder.description, actionPath: reminderPath(reminder.target), organizationId },
+        { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday, hour: reminder.hour, minute: reminder.minute },
+      )));
       next[reminder.id] = { ruleVersion: reminder.ruleVersion, notificationIds };
       acknowledgements.push({ reminderId: reminder.id, ruleVersion: reminder.ruleVersion, scheduled: true });
     } catch {

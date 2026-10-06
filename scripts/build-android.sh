@@ -234,6 +234,27 @@ verify_release_signature() {
   fi
 }
 
+clean_release_native_cmake_caches() {
+  # A failed incremental New Architecture link can leave Expo's generated
+  # Fabric archive out of sync with the CMake graph (for example,
+  # `src/fabric/libfabric.a` is missing at the final link step). These are all
+  # generated caches; dependencies and source files remain untouched.
+  for generated_directory in "$android_root/.cxx" "$android_root/app/.cxx"; do
+    if [ -d "$generated_directory" ]; then
+      echo "Removing generated native cache $generated_directory" >&2
+      rm -rf "$generated_directory"
+    fi
+  done
+
+  expo_package_json=$(node -e 'process.stdout.write(require.resolve("expo/package.json", { paths: [process.argv[1]] }))' "$mobile_root")
+  expo_modules_core_package_json=$(node -e 'process.stdout.write(require.resolve("expo-modules-core/package.json", { paths: [process.argv[1]] }))' "$(dirname "$expo_package_json")")
+  expo_modules_core_cmake_directory="$(dirname "$expo_modules_core_package_json")/android/.cxx"
+  if [ -d "$expo_modules_core_cmake_directory" ]; then
+    echo "Removing generated native cache $expo_modules_core_cmake_directory" >&2
+    rm -rf "$expo_modules_core_cmake_directory"
+  fi
+}
+
 create_release_signing_init_script() {
   release_signing_init_script=$(mktemp "${TMPDIR:-/tmp}/umur-emas-release-signing.XXXXXX")
   trap 'rm -f "$release_signing_init_script"' EXIT HUP INT TERM
@@ -278,21 +299,36 @@ if [ ! -f "$repository_root/node_modules/.modules.yaml" ]; then
   (cd "$repository_root" && corepack pnpm install --frozen-lockfile)
 fi
 
-echo "Building $build_type Android $artifact_label against the $chosen_environment environment${release_architectures:+ for: $release_architectures}"
-(
-  cd "$android_root"
-  if [ "$build_type" = "release" ]; then
+run_release_gradle_build() {
+  (
+    cd "$android_root"
     export NODE_ENV=production
     ./gradlew "$gradle_task" --no-daemon \
       --init-script "$release_signing_init_script" \
       "-PreactNativeArchitectures=$release_architectures" \
       -Pandroid.enableProguardInReleaseBuilds=true \
       -Pandroid.enableShrinkResourcesInReleaseBuilds=true
-  else
+  )
+}
+
+run_debug_gradle_build() {
+  (
+    cd "$android_root"
     export NODE_ENV=development
     ./gradlew "$gradle_task" --no-daemon
+  )
+}
+
+echo "Building $build_type Android $artifact_label against the $chosen_environment environment${release_architectures:+ for: $release_architectures}"
+if [ "$build_type" = "release" ]; then
+  if ! run_release_gradle_build; then
+    echo "Release build failed; clearing generated native CMake caches and retrying once." >&2
+    clean_release_native_cmake_caches
+    run_release_gradle_build
   fi
-)
+else
+  run_debug_gradle_build
+fi
 
 [ -s "$artifact_path" ] || fail "Gradle completed without producing $artifact_path."
 if [ "$build_type" = "release" ]; then

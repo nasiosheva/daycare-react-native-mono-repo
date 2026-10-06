@@ -38,19 +38,19 @@ Place the Firebase Android configuration at `apps/mobile/google-services.json`. 
 The Android Gradle project expects its ignored local signing configuration in `apps/mobile/android/gradle.properties`:
 
 ```properties
-MYAPP_RELEASE_STORE_FILE=release.keystore
+MYAPP_RELEASE_STORE_FILE=release.jks
 MYAPP_RELEASE_STORE_PASSWORD=<keystore-password>
 MYAPP_RELEASE_KEY_ALIAS=<key-alias>
 MYAPP_RELEASE_KEY_PASSWORD=<key-password>
 ```
 
-`MYAPP_RELEASE_STORE_FILE` is resolved relative to `apps/mobile/android/app/`; for the example above, the keystore must be at `apps/mobile/android/app/release.keystore`.
+`MYAPP_RELEASE_STORE_FILE` is resolved relative to `apps/mobile/android/app/`; for the example above, the keystore must be at `apps/mobile/android/app/release.jks`.
 
 If no release keystore exists yet, create it once on the secure developer machine:
 
 ```sh
 keytool -genkeypair \
-  -keystore apps/mobile/android/app/release.keystore \
+  -keystore apps/mobile/android/app/release.jks \
   -alias usia-emas-release \
   -keyalg RSA \
   -keysize 2048 \

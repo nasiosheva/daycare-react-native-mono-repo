@@ -43,6 +43,12 @@ backend_log_file=""
 stop_mobile_session() {
   if [ -n "$run_mobile_pid" ] && kill -0 "$run_mobile_pid" >/dev/null 2>&1; then
     kill -INT "$run_mobile_pid" >/dev/null 2>&1 || true
+    # A background shell can inherit an ignored SIGINT disposition. Fall back
+    # to TERM so the child runner's shutdown trap still gets a chance to clean
+    # up Metro and logcat before we wait for it.
+    if kill -0 "$run_mobile_pid" >/dev/null 2>&1; then
+      kill -TERM "$run_mobile_pid" >/dev/null 2>&1 || true
+    fi
     wait "$run_mobile_pid" >/dev/null 2>&1 || true
   fi
   run_mobile_pid=""
@@ -334,9 +340,28 @@ reload_frontend() {
     return
   fi
 
+  if [ -n "$run_mobile_pid" ]; then
+    echo "Restarting the Android frontend and Metro bundle..." >&2
+    stop_mobile_session
+    start_debug_mobile_session
+    return
+  fi
+
   echo "Reloading the Android frontend..." >&2
   adb -s "$selected_android_serial" shell am force-stop "$application_id" >/dev/null 2>&1 || true
   adb -s "$selected_android_serial" shell monkey -p "$application_id" -c android.intent.category.LAUNCHER 1 >/dev/null
+}
+
+stop_project_metro() {
+  metro_pids=$(lsof -t -iTCP:8081 -sTCP:LISTEN 2>/dev/null || true)
+  for metro_pid in $metro_pids; do
+    metro_cwd=$(lsof -a -p "$metro_pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' || true)
+    case "$metro_cwd" in
+      "$repository_root/apps/mobile"|"$repository_root/apps/mobile"/*)
+        kill "$metro_pid" >/dev/null 2>&1 || true
+        ;;
+    esac
+  done
 }
 
 reload_backend() {
@@ -392,9 +417,19 @@ run_hotkey_session() {
   fi
 }
 
-run_debug_session() {
+start_debug_mobile_session() {
+  # A reused Metro process keeps the environment that existed when it was
+  # started. Restart this repository's own server before every debug session
+  # so new public configuration (for example EXPO_PUBLIC_EXPO_PROJECT_ID) is
+  # actually present in the bundle sent to the device. Processes belonging to
+  # another checkout are left untouched by stop_project_metro().
+  stop_project_metro
   "$script_dir/run-mobile.sh" android "$selected_environment" </dev/null &
   run_mobile_pid=$!
+}
+
+run_debug_session() {
+  start_debug_mobile_session
   run_hotkey_session
 }
 

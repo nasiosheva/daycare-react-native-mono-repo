@@ -18,11 +18,14 @@ import { formatIsoDate, isIsoDate } from "@/date-picker/date";
 import { ChildrenReportActions } from "@/document-export/ChildrenReportActions";
 import { ChildFilterSheet } from "@/children/ChildFilterSheet";
 import { capitalizeWords } from "@/text/capitalizeWords";
+import { ChatUnreadBadge } from "@/chat/ChatFloatingAction";
+import { useChildMessageUnreadSummary } from "@/chat/useChildMessageUnreadSummary";
 
 export default function ChildrenScreen() {
   const router = useRouter();
   const { mode } = useLocalSearchParams<{ mode?: string }>();
   const chatMode = mode === "messages";
+  const { unreadByChildId } = useChildMessageUnreadSummary();
   const { t } = useI18n();
   const { api, profile, organizationId } = useAuth();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
@@ -81,7 +84,7 @@ export default function ChildrenScreen() {
     {children.isError && !children.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void children.refetch()} />}
     {!children.isFetching && !children.isError && children.data?.length === 0 && <EmptyState icon="happy-outline" title={t(chatMode ? "childMessage.emptyChildren" : "children.empty")} action={canManage && !chatMode ? { label: t("children.add"), onPress: () => setAddVisible(true) } : undefined} />}
     {!children.isFetching && Boolean(children.data?.length) && visibleChildren.length === 0 && <EmptyState compact icon="search-outline" title={t("common.noResults")} />}
-    {children.isFetching ? <ShimmerList /> : visibleChildren.map((child) => <ChildListItem key={child.id} child={child} canOpenDetail={canOpenDetail} showGuardianStatus={isStaffAdmin} accessibilityLabel={t("children.view")} guardianStatusLabel={(status) => guardianStatusLabel(status, t)} onPress={() => openChild(child.id)} />)}
+    {children.isFetching ? <ShimmerList /> : visibleChildren.map((child) => <ChildListItem key={child.id} child={child} canOpenDetail={canOpenDetail} showGuardianStatus={isStaffAdmin} accessibilityLabel={t("children.view")} guardianStatusLabel={(status) => guardianStatusLabel(status, t)} unreadCount={chatMode ? unreadByChildId.get(child.id) ?? 0 : 0} unreadLabel={(count) => t("childMessage.unreadCount", { count })} onPress={() => openChild(child.id)} />)}
     {isStaffAdmin && <ChildFilterSheet visible={filterVisible} filter={childFilter} onClose={() => setFilterVisible(false)} onApply={(filter) => { setChildFilter(filter); setFilterVisible(false); }} showGuardianStatus />}
     <BottomSheet
       visible={addVisible}
@@ -103,10 +106,10 @@ export default function ChildrenScreen() {
 
 const guardianTones: Record<ChildGuardianStatus, Tone> = { LINKED: "success", UNLINKED: "neutral", REVIEW_REQUIRED: "danger" };
 
-function ChildListItem({ child, canOpenDetail, showGuardianStatus, accessibilityLabel, guardianStatusLabel, onPress }: { child: Child; canOpenDetail: boolean; showGuardianStatus: boolean; accessibilityLabel: string; guardianStatusLabel: (status: ChildGuardianStatus) => string; onPress: () => void }) {
-  const content = <View style={styles.childBody}><AppText variant="h6">{child.fullName}</AppText><AppText variant="bodySmall" tone="muted">{child.dateOfBirth}</AppText>{showGuardianStatus && child.guardianStatus && <Badge tone={guardianTones[child.guardianStatus]} label={guardianStatusLabel(child.guardianStatus)} />}</View>;
+function ChildListItem({ child, canOpenDetail, showGuardianStatus, accessibilityLabel, guardianStatusLabel, unreadCount, unreadLabel, onPress }: { child: Child; canOpenDetail: boolean; showGuardianStatus: boolean; accessibilityLabel: string; guardianStatusLabel: (status: ChildGuardianStatus) => string; unreadCount: number; unreadLabel: (count: number) => string; onPress: () => void }) {
+  const content = <View style={styles.childBody}><AppText variant="h6">{child.fullName}</AppText><AppText variant="bodySmall" tone="muted">{child.dateOfBirth}</AppText>{showGuardianStatus && child.guardianStatus && <Badge tone={guardianTones[child.guardianStatus]} label={guardianStatusLabel(child.guardianStatus)} />}{unreadCount > 0 && <ChatUnreadBadge count={unreadCount} />}</View>;
   if (!canOpenDetail) return <Card><View style={styles.childRow}><Avatar name={child.fullName} />{content}</View></Card>;
-  return <NavigationCard accessibilityLabel={`${accessibilityLabel}: ${child.fullName}`} onPress={onPress} leading={<Avatar name={child.fullName} />}>{content}</NavigationCard>;
+  return <NavigationCard accessibilityLabel={`${accessibilityLabel}: ${child.fullName}${unreadCount > 0 ? `, ${unreadLabel(unreadCount)}` : ""}`} onPress={onPress} leading={<Avatar name={child.fullName} />}>{content}</NavigationCard>;
 }
 
 function guardianStatusLabel(status: ChildGuardianStatus, t: ReturnType<typeof useI18n>["t"]) {

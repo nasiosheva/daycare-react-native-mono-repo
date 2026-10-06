@@ -6,6 +6,9 @@ function required(value: string | undefined, name: string): string {
 export const env = {
   apiUrl: required(process.env.EXPO_PUBLIC_API_URL, "EXPO_PUBLIC_API_URL"),
   realtimeUrl: process.env.EXPO_PUBLIC_REALTIME_URL,
+  // Expo SDK 53 requires the EAS/Expo project UUID when requesting an Expo
+  // push token. It is public configuration, not a credential.
+  expoProjectId: process.env.EXPO_PUBLIC_EXPO_PROJECT_ID ?? "",
   isProduction: process.env.EXPO_PUBLIC_APP_ENV === "production",
   firebase: {
     apiKey: required(process.env.EXPO_PUBLIC_FIREBASE_API_KEY, "EXPO_PUBLIC_FIREBASE_API_KEY"),

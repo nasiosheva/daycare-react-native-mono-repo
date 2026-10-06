@@ -53,6 +53,17 @@ describe("invalidateRealtimeFlags", () => {
     expect(client.getQueryState(["child-message-summary", "tenant-a", "child-b"])?.isInvalidated).toBe(false);
   });
 
+  it("refreshes the tenant's Staff unread chat summary on every chat event", () => {
+    const client = new QueryClient();
+    client.setQueryData(["child-message-unread-summary", "tenant-a"], { totalUnreadCount: 1, children: [] });
+    client.setQueryData(["child-message-unread-summary", "tenant-b"], { totalUnreadCount: 1, children: [] });
+
+    invalidateRealtimeFlags(client, ["CHILD_MESSAGES"], "tenant-a", undefined, { childId: "child-a", messageId: "message-a", event: "MESSAGE_READ" });
+
+    expect(client.getQueryState(["child-message-unread-summary", "tenant-a"])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(["child-message-unread-summary", "tenant-b"])?.isInvalidated).toBe(false);
+  });
+
   it("does not invalidate another tenant's cache", () => {
     const client = new QueryClient();
     client.setQueryData(["invoices", "tenant-a"], []);

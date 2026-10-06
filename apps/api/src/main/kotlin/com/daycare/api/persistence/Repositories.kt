@@ -126,6 +126,19 @@ interface ChildMessageRepository : JpaRepository<ChildMessage, UUID> {
     fun findByIdAndOrganizationIdAndChildId(id: UUID, organizationId: UUID, childId: UUID): ChildMessage?
     fun countByOrganizationIdAndChildIdAndSenderUserIdNot(organizationId: UUID, childId: UUID, senderUserId: UUID): Long
     fun countByOrganizationIdAndChildIdAndSenderUserIdNotAndCreatedAtAfter(organizationId: UUID, childId: UUID, senderUserId: UUID, createdAt: java.time.Instant): Long
+
+    /** Unread incoming messages per child for one reader, using the same "after last read" rule as the per-child summary. */
+    @Query(
+        "select m.childId as childId, count(m) as unreadCount from ChildMessage m " +
+            "where m.organizationId = :organizationId and m.childId in :childIds and m.senderUserId <> :userId " +
+            "and not exists (select r.id from ChildMessageRead r where r.childId = m.childId and r.userId = :userId and r.lastReadAt >= m.createdAt) " +
+            "group by m.childId",
+    )
+    fun countUnreadByChild(@Param("organizationId") organizationId: UUID, @Param("childIds") childIds: Collection<UUID>, @Param("userId") userId: UUID): List<ChildMessageUnreadCount>
+}
+interface ChildMessageUnreadCount {
+    val childId: UUID
+    val unreadCount: Long
 }
 interface ChildMessageReadRepository : JpaRepository<ChildMessageRead, UUID> {
     fun findByChildIdAndUserId(childId: UUID, userId: UUID): ChildMessageRead?
@@ -136,6 +149,7 @@ interface ChildStaffAssignmentRepository : JpaRepository<ChildStaffAssignment, U
     fun findAllByOrganizationIdAndUserId(organizationId: UUID, userId: UUID): List<ChildStaffAssignment>
     fun existsByOrganizationIdAndChildIdAndUserId(organizationId: UUID, childId: UUID, userId: UUID): Boolean
     fun existsByChildIdAndUserId(childId: UUID, userId: UUID): Boolean
+    fun findAllByOrganizationId(organizationId: UUID): List<ChildStaffAssignment>
 }
 interface GuardianLinkRepository : JpaRepository<GuardianLink, UUID> { fun findAllByUserId(userId: UUID): List<GuardianLink>; fun existsByChildIdAndUserId(childId: UUID, userId: UUID): Boolean; fun findAllByChildId(childId: UUID): List<GuardianLink>; fun findAllByChildIdIn(childIds: Collection<UUID>): List<GuardianLink> }
 interface AttendanceRepository : JpaRepository<AttendanceRecord, UUID> {
@@ -165,8 +179,23 @@ interface ChildIncidentAcknowledgementRepository : JpaRepository<ChildIncidentAc
 }
 interface InvitationRepository : JpaRepository<Invitation, UUID> { fun findAllByStatus(status: InvitationStatus): List<Invitation>; fun findAllByOrganizationIdAndStatus(organizationId: UUID, status: InvitationStatus): List<Invitation> }
 interface NotificationRepository : JpaRepository<Notification, UUID> {
-    fun findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDescIdDesc(recipientUserId: UUID, organizationId: UUID, pageable: Pageable): Page<Notification>
-    fun countByRecipientUserIdAndOrganizationIdAndReadAtIsNull(recipientUserId: UUID, organizationId: UUID): Long
+    @Query("""
+        select notification from Notification notification
+        where notification.recipientUserId = :recipientUserId
+          and notification.organizationId = :organizationId
+          and (notification.actionPath is null or notification.actionPath not like '/child-messages%')
+        order by notification.createdAt desc, notification.id desc
+    """)
+    fun findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDescIdDesc(@Param("recipientUserId") recipientUserId: UUID, @Param("organizationId") organizationId: UUID, pageable: Pageable): Page<Notification>
+
+    @Query("""
+        select count(notification) from Notification notification
+        where notification.recipientUserId = :recipientUserId
+          and notification.organizationId = :organizationId
+          and notification.readAt is null
+          and (notification.actionPath is null or notification.actionPath not like '/child-messages%')
+    """)
+    fun countByRecipientUserIdAndOrganizationIdAndReadAtIsNull(@Param("recipientUserId") recipientUserId: UUID, @Param("organizationId") organizationId: UUID): Long
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
@@ -175,12 +204,14 @@ interface NotificationRepository : JpaRepository<Notification, UUID> {
         where notification.recipientUserId = :recipientUserId
           and notification.organizationId = :organizationId
           and notification.readAt is null
+          and (notification.actionPath is null or notification.actionPath not like '/child-messages%')
     """)
     fun markAllUnreadByRecipientUserIdAndOrganizationId(@Param("recipientUserId") recipientUserId: UUID, @Param("organizationId") organizationId: UUID, @Param("readAt") readAt: Instant): Int
 
     @Query("""
         select notification from Notification notification
         where notification.recipientUserId = :recipientUserId and notification.organizationId = :organizationId
+          and (notification.actionPath is null or notification.actionPath not like '/child-messages%')
           and (lower(notification.title) like lower(concat('%', :query, '%'))
             or lower(notification.body) like lower(concat('%', :query, '%')))
         order by notification.createdAt desc, notification.id desc

@@ -3,6 +3,7 @@ import { requiresOrganizationSelection } from "../auth/organizationContext";
 import { parentSelfServicePaths, parentUnscopedReadOnlyPaths } from "./parentSelfServiceRouteAccess";
 
 const unscopedPaths = new Set([
+  "/",
   "/home",
   "/profile",
   "/context-selection",

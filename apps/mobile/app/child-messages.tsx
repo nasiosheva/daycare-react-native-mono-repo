@@ -9,6 +9,9 @@ import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
+import { childMessageNotificationScope } from "@/notifications/childMessageLocalNotificationPolicy";
+import { useLocalNotificationScope } from "@/notifications/useLocalNotificationScope";
+import { childMessageUnreadSummaryQueryKey } from "@/chat/useChildMessageUnreadSummary";
 
 export default function ChildMessagesScreen() {
   const router = useRouter();
@@ -27,8 +30,11 @@ export default function ChildMessagesScreen() {
   const bubbleRelativeOffsets = useRef<Record<string, number>>({});
   const bubbleOffsets = useRef<Record<string, number>>({});
   const knownMessageIds = useRef<Set<string> | null>(null);
+  const initialScrollThreadKey = useRef<string | null>(null);
   const isAtBottom = useRef(true);
   const [newMessageCount, setNewMessageCount] = useState(0);
+  const threadKey = `${organizationId ?? ""}:${childId ?? ""}`;
+  useLocalNotificationScope(organizationId && typeof childId === "string" ? childMessageNotificationScope(organizationId, childId) : null);
 
   const messages = useQuery({ queryKey: ["child-messages", organizationId, childId], queryFn: () => api.childMessages(childId!, organizationId), enabled: Boolean(organizationId && childId && canUse) });
   const send = useMutation({
@@ -36,6 +42,15 @@ export default function ChildMessagesScreen() {
     onSuccess: () => { setDraft(""); setReplyTo(null); setSendError(null); void queryClient.invalidateQueries({ queryKey: ["child-messages", organizationId, childId] }); },
     onError: (error: unknown) => setSendError(error instanceof Error ? error.message : t("childMessage.sendFailed")),
   });
+
+  useEffect(() => {
+    knownMessageIds.current = null;
+    initialScrollThreadKey.current = null;
+    bubbleRelativeOffsets.current = {};
+    bubbleOffsets.current = {};
+    isAtBottom.current = true;
+    setNewMessageCount(0);
+  }, [threadKey]);
 
   useEffect(() => {
     const nextMessages = messages.data;
@@ -68,11 +83,14 @@ export default function ChildMessagesScreen() {
     }
   }, [messages.data]);
 
-  // Marking messages read is bookkeeping for a future unread badge; a failure here is not worth surfacing to the viewer.
+  // Marking messages read refreshes the Parent and Staff unread badges; a failure here is not worth surfacing to the viewer.
   useEffect(() => {
     if (messages.isSuccess && childId) {
       void api.markChildMessagesRead(childId, organizationId)
-        .then(() => queryClient.invalidateQueries({ queryKey: ["child-message-summary", organizationId, childId] }))
+        .then(() => Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["child-message-summary", organizationId, childId] }),
+          queryClient.invalidateQueries({ queryKey: childMessageUnreadSummaryQueryKey(organizationId) }),
+        ]))
         .catch(() => undefined);
     }
   }, [api, childId, messages.isSuccess, organizationId, queryClient]);
@@ -97,6 +115,13 @@ export default function ChildMessagesScreen() {
     const nextIsAtBottom = distanceFromBottom <= spacing.lg;
     isAtBottom.current = nextIsAtBottom;
     if (nextIsAtBottom) setNewMessageCount(0);
+  };
+
+  const handleContentSizeChange = () => {
+    if (!messages.data?.length || initialScrollThreadKey.current === threadKey) return;
+    initialScrollThreadKey.current = threadKey;
+    isAtBottom.current = true;
+    requestAnimationFrame(() => scrollViewRef.current?.scrollToEnd({ animated: false }));
   };
 
   const scrollToLatest = () => {
@@ -127,7 +152,7 @@ export default function ChildMessagesScreen() {
     ? <FloatingActionButton icon="chevron-down" iconOnly variant="surface" accessibilityLabel={t("childMessage.newMessages", { count: newMessageCount })} onPress={scrollToLatest}>{t("childMessage.newMessages", { count: newMessageCount })}</FloatingActionButton>
     : undefined;
 
-  return <AppScreen showBottomNavigation={false} title={t("childMessage.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} footer={composer} floatingAction={newMessagesAction} scrollViewRef={scrollViewRef} onScroll={handleScroll}>
+  return <AppScreen showBottomNavigation={false} title={t("childMessage.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} footer={composer} floatingAction={newMessagesAction} scrollViewRef={scrollViewRef} onScroll={handleScroll} onContentSizeChange={handleContentSizeChange}>
     <AppText tone="muted">{t("childMessage.subtitle")}</AppText>
     {messages.isLoading && <ShimmerList />}
     {messages.isError && !messages.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void messages.refetch()} />}

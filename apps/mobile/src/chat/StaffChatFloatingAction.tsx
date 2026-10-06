@@ -1,13 +1,15 @@
 import { useRouter } from "expo-router";
-import { FloatingActionButton } from "@daycare/ui";
 import { useI18n } from "@/i18n/I18nProvider";
+import { ChatFloatingAction } from "./ChatFloatingAction";
+import { useChildMessageUnreadSummary } from "./useChildMessageUnreadSummary";
 
 export function StaffChatFloatingAction() {
   const router = useRouter();
   const { t } = useI18n();
-  return <FloatingActionButton
-    icon="chatbubbles-outline"
-    accessibilityLabel={t("childMessage.staffEntry")}
+  const { totalUnreadCount } = useChildMessageUnreadSummary();
+  return <ChatFloatingAction
+    label={t("childMessage.staffEntry")}
+    unreadCount={totalUnreadCount}
     onPress={() => router.push({ pathname: "/children", params: { mode: "messages" } } as never)}
-  >{t("childMessage.staffEntry")}</FloatingActionButton>;
+  />;
 }

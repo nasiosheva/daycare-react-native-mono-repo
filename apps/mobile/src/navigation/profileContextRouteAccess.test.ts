@@ -8,6 +8,7 @@ describe("profile context route access", () => {
   });
 
   it("keeps the retry Home and identity-registration routes available", () => {
+    expect(shouldRedirectUntilProfileLoaded(true, false, "/")).toBe(false);
     expect(shouldRedirectUntilProfileLoaded(true, false, "/home")).toBe(false);
     expect(shouldRedirectUntilProfileLoaded(true, false, "/sign-up")).toBe(false);
     expect(shouldRedirectUntilProfileLoaded(false, false, "/booking")).toBe(false);

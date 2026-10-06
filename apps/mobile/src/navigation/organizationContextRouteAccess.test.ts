@@ -27,6 +27,7 @@ describe("organization context route access", () => {
   });
 
   it("keeps global and Parent self-service routes available before selection", () => {
+    expect(shouldRedirectToOrganizationSelection(profile, null, "/")).toBe(false);
     expect(shouldRedirectToOrganizationSelection(profile, null, "/profile")).toBe(false);
     expect(shouldRedirectToOrganizationSelection(profile, null, "/parent-enrollment")).toBe(false);
     expect(shouldRedirectToOrganizationSelection(profile, null, "/parent-payment")).toBe(false);

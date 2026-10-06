@@ -20,3 +20,10 @@ export const notificationMuteDurationKeys: Record<PushNotificationMuteDuration, 
 export function notificationPreferenceQueryKey(organizationId?: string | null) {
   return ["device-notification-preference", organizationId] as const;
 }
+
+/** True while a mute window (ISO timestamp) is still in the future; invalid or past values are not muted. */
+export function isMuteActive(mutedUntil: string | null | undefined, now: Date = new Date()): boolean {
+  if (!mutedUntil) return false;
+  const until = Date.parse(mutedUntil);
+  return Number.isFinite(until) && until > now.getTime();
+}

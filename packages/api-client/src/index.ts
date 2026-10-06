@@ -144,6 +144,8 @@ export type ChildIncidentReport = { id: string; childId: string; severity: Incid
 export type ChildMessageReply = { id: string; senderName: string; body: string; createdAt: string };
 export type ChildMessage = { id: string; childId: string; senderUserId: string; senderName: string; senderRole: Role; body: string; createdAt: string; mine: boolean; deliveryStatus: "SENT" | "READ"; readAt?: string | null; replyTo?: ChildMessageReply | null };
 export type ChildMessageSummary = { unreadCount: number };
+/** Staff-side unread totals across the threads where the caller receives new messages; only children with unread messages are listed. */
+export type ChildMessageUnreadSummary = { totalUnreadCount: number; children: Array<{ childId: string; unreadCount: number }> };
 export type IncidentPhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
 export type CreateChildIncidentInput = { severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string; occurredAt: string; photo?: IncidentPhotoInput };
 export type ChildIncidentPhoto = { contentType: string; dataBase64: string };
@@ -264,6 +266,8 @@ export type GlobalCurriculumSeedResult = { alreadySeeded: boolean; learningLevel
 export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "INCIDENT_REPORTS" | "HEALTH" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS" | "PRIVATE_TUTORING" | "CHILD_PROGRAMS" | "TENANT_FEEDBACK" | "CHILD_MESSAGES";
 export type RealtimeEvent<TPayload = unknown> = { type: "EVENT"; id: string; organizationId?: string | null; flags: RealtimeFlag[]; payload?: TPayload | null; occurredAt: string };
 export type RealtimeConnectRequest = { type: "CONNECT"; token: string; organizationId?: string | null };
+export type ChildMessageRealtimeEvent = "MESSAGE_CREATED" | "MESSAGE_READ";
+export type ChildMessageRealtimePayload = { childId: string; messageId: string; event?: ChildMessageRealtimeEvent };
 
 function withBranchFilter(path: string, filter: BranchListFilter) {
   if (!filter.branchId) return path;
@@ -580,6 +584,10 @@ export class ApiClient {
 
   async childMessageSummary(childId: string, organizationId?: string): Promise<ChildMessageSummary> {
     return this.request(`/children/${childId}/messages/summary`, this.orgOverride(organizationId));
+  }
+
+  async childMessageUnreadSummary(organizationId?: string): Promise<ChildMessageUnreadSummary> {
+    return this.request("/child-messages/unread-summary", this.orgOverride(organizationId));
   }
 
   async sendChildMessage(childId: string, body: string, organizationId?: string, replyToMessageId?: string): Promise<ChildMessage> {

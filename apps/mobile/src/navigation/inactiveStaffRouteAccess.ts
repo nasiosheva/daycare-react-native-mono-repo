@@ -2,7 +2,7 @@ import type { CurrentUser } from "@daycare/core";
 
 type Membership = CurrentUser["memberships"][number];
 
-const inactiveStaffAllowedPaths = new Set(["/home", "/profile", "/context-selection"]);
+const inactiveStaffAllowedPaths = new Set(["/", "/home", "/profile", "/context-selection"]);
 
 export function isInactiveStaffMembership(membership: Membership | undefined): membership is Membership & { active: false; role: "STAFF" | "STAFF_ADMIN" } {
   return membership?.active === false && (membership.role === "STAFF" || membership.role === "STAFF_ADMIN");
