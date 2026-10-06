@@ -18,7 +18,6 @@ import com.daycare.api.persistence.NotificationRepository
 import com.daycare.api.persistence.Organization
 import com.daycare.api.persistence.OrganizationRepository
 import com.daycare.api.persistence.OrganizationTypeAssignmentRepository
-import com.daycare.api.persistence.PlatformAdministratorRepository
 import com.daycare.api.persistence.TenantPaymentRepository
 import com.daycare.api.persistence.TenantSubscription
 import com.daycare.api.persistence.TenantSubscriptionRepository
@@ -131,7 +130,6 @@ class TenantAccountProvisioningTest {
         val invitations = mock(InvitationRepository::class.java)
         val memberships = mock(MembershipRepository::class.java)
         val users = mock(UserProfileRepository::class.java)
-        val platformAdministrators = mock(PlatformAdministratorRepository::class.java)
         val tenantAccounts = mock(TenantUserAccountService::class.java)
         val institutionTypes = mock(InstitutionTypeCatalogService::class.java)
         val defaultCurriculumActivities = mock(TenantDefaultCurriculumActivitySeeder::class.java)
@@ -152,7 +150,7 @@ class TenantAccountProvisioningTest {
         `when`(branches.findFirstByOrganizationId(organization.id)).thenReturn(Branch(organizationId = organization.id, name = "Cabang Utama"))
         `when`(invitations.findAllByOrganizationIdAndStatus(organization.id, InvitationStatus.PENDING)).thenReturn(emptyList())
         `when`(payments.findAllByOrganizationIdOrderByCreatedAtDesc(organization.id)).thenReturn(emptyList())
-        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, tenantAccounts, institutionTypes, defaultCurriculumActivities, mock(com.daycare.api.persistence.EducationOfferingRepository::class.java))
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, tenantAccounts, institutionTypes, defaultCurriculumActivities, mock(com.daycare.api.persistence.EducationOfferingRepository::class.java))
 
         val response = service.createTenant(jwt, CreateTenantRequest("Tenant Baru", "Cabang Utama", setOf(InstitutionTypeCodes.DAYCARE), TenantSubscriptionPlan.STARTER, null, 1, "Owner Tenant", "owner@tenant.test", "123123"))
 
@@ -177,7 +175,6 @@ class TenantAccountProvisioningTest {
         val invitations = mock(InvitationRepository::class.java)
         val memberships = mock(MembershipRepository::class.java)
         val users = mock(UserProfileRepository::class.java)
-        val platformAdministrators = mock(PlatformAdministratorRepository::class.java)
         val tenantAccounts = mock(TenantUserAccountService::class.java)
         val institutionTypes = mock(InstitutionTypeCatalogService::class.java)
         val defaultCurriculumActivities = mock(TenantDefaultCurriculumActivitySeeder::class.java)
@@ -187,7 +184,7 @@ class TenantAccountProvisioningTest {
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
         `when`(organizations.findById(organization.id)).thenReturn(Optional.of(organization))
         `when`(memberships.findById(primaryMembership.id)).thenReturn(Optional.of(primaryMembership))
-        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, tenantAccounts, institutionTypes, defaultCurriculumActivities, mock(com.daycare.api.persistence.EducationOfferingRepository::class.java))
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, tenantAccounts, institutionTypes, defaultCurriculumActivities, mock(com.daycare.api.persistence.EducationOfferingRepository::class.java))
 
         assertThrows(IllegalArgumentException::class.java) { service.removeTenantStaffAdmin(jwt, organization.id, primaryMembership.id) }
         assertTrue(primaryMembership.active)
@@ -205,7 +202,6 @@ class TenantAccountProvisioningTest {
         val invitations = mock(InvitationRepository::class.java)
         val memberships = mock(MembershipRepository::class.java)
         val users = mock(UserProfileRepository::class.java)
-        val platformAdministrators = mock(PlatformAdministratorRepository::class.java)
         val tenantAccounts = mock(TenantUserAccountService::class.java)
         val institutionTypes = mock(InstitutionTypeCatalogService::class.java)
         val defaultCurriculumActivities = mock(TenantDefaultCurriculumActivitySeeder::class.java)
@@ -215,7 +211,7 @@ class TenantAccountProvisioningTest {
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
         `when`(organizations.findById(organization.id)).thenReturn(Optional.of(organization))
         `when`(subscriptions.findByOrganizationId(organization.id)).thenReturn(subscription)
-        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, platformAdministrators, tenantAccounts, institutionTypes, defaultCurriculumActivities, mock(com.daycare.api.persistence.EducationOfferingRepository::class.java))
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, tenantAccounts, institutionTypes, defaultCurriculumActivities, mock(com.daycare.api.persistence.EducationOfferingRepository::class.java))
 
         assertThrows(IllegalArgumentException::class.java) {
             service.updateTenant(jwt, organization.id, UpdateTenantRequest("Tenant Trial", setOf(InstitutionTypeCodes.DAYCARE), TenantSubscriptionPlan.STARTER, BigDecimal("100000")))

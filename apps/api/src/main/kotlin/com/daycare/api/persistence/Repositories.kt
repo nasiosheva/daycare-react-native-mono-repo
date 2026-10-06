@@ -5,6 +5,7 @@ import com.daycare.api.domain.InvitationStatus
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
+import org.springframework.data.jpa.repository.Modifying
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.Lock
 import java.time.Instant
@@ -73,7 +74,11 @@ interface LearningLevelRepository : JpaRepository<LearningLevel, UUID> {
     fun findAllByOrganizationIdIsNullOrderByDisplayOrderAscNameAsc(): List<LearningLevel>
 }
 interface LearningLevelCurriculumProgramRepository : JpaRepository<LearningLevelCurriculumProgram, UUID> { fun findAllByLearningLevelId(learningLevelId: UUID): List<LearningLevelCurriculumProgram>; fun findAllByCurriculumProgramId(curriculumProgramId: UUID): List<LearningLevelCurriculumProgram>; fun existsByLearningLevelIdAndCurriculumProgramId(learningLevelId: UUID, curriculumProgramId: UUID): Boolean; fun deleteAllByLearningLevelId(learningLevelId: UUID) }
-interface PlatformAdministratorRepository : JpaRepository<PlatformAdministrator, UUID>
+interface PlatformAdministratorRepository : JpaRepository<PlatformAdministrator, UUID> {
+    @Modifying
+    @Query(value = "insert into platform_administrators (user_id, created_at) values (:userId, CURRENT_TIMESTAMP) on conflict do nothing", nativeQuery = true)
+    fun insertIfAbsent(@Param("userId") userId: UUID): Int
+}
 interface TenantSubscriptionRepository : JpaRepository<TenantSubscription, UUID> { fun findByOrganizationId(organizationId: UUID): TenantSubscription? }
 interface TenantPaymentRepository : JpaRepository<TenantPayment, UUID> { fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<TenantPayment> }
 interface BranchRepository : JpaRepository<Branch, UUID> { fun findFirstByOrganizationId(organizationId: UUID): Branch?; fun findByOrganizationIdAndPrimaryTrue(organizationId: UUID): Branch?; fun findAllByOrganizationId(organizationId: UUID): List<Branch>; fun findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId: UUID): List<Branch>; fun findAllByOrganizationIdAndNameContainingIgnoreCase(organizationId: UUID, name: String): List<Branch>; @Lock(LockModeType.PESSIMISTIC_WRITE) fun findWithLockById(id: UUID): Branch? }
