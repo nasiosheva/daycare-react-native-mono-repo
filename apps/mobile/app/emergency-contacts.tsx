@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppText, Badge, BackButton, Banner, BottomSheet, Button, Card, EmptyState, FloatingActionButton, InfoRow, ShimmerList, TextField, spacing } from "@daycare/ui";
 import { statusTone } from "@/ui/statusTone";
+import { pendingActionState } from "@/ui/pendingAction";
 import { AppScreen } from "@/navigation/AppScreen";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
@@ -42,7 +43,7 @@ export default function EmergencyContactsScreen() {
       <InfoRow icon="call-outline" label={t("emergencyContacts.phone")} value={<AppText variant="label" selectable>{item.phoneNumber}</AppText>} />
       {(item.canRevoke || item.canRemove) && <View style={styles.actions}>
         {item.canRevoke && <Button style={styles.action} variant="secondary" onPress={() => { setRevokeId(item.id); setRevokeReason(""); }}>{t("emergencyContacts.revoke")}</Button>}
-        {item.canRemove && <Button style={styles.action} variant="danger" loading={remove.isPending} onPress={() => void remove.mutateAsync(item.id)}>{t("emergencyContacts.remove")}</Button>}
+        {item.canRemove && <Button style={styles.action} variant="danger" {...pendingActionState(remove, (contactId) => contactId === item.id)} onPress={() => void remove.mutateAsync(item.id)}>{t("emergencyContacts.remove")}</Button>}
       </View>}
     </Card>)}
     {!contacts.isLoading && !contacts.data?.length && <EmptyState icon="call-outline" title={t("emergencyContacts.empty")} action={isParent ? { label: t("emergencyContacts.add"), onPress: () => setOpen(true) } : undefined} />}
