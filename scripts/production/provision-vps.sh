@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepares a fresh Ubuntu 24.04 VPS for the release flow in .github/workflows/deploy-production.yml:
+# Prepares a fresh Ubuntu 20.04 or 24.04 VPS for the release flow in .github/workflows/deploy-production.yml:
 # Java 21, PostgreSQL, Caddy, a restricted deployment user, the release root, the activation script,
 # the usia-emas-api service, and its environment file. Safe to re-run: existing users, the database,
 # and an existing environment file (with its secrets) are kept as they are.
@@ -61,7 +61,7 @@ step() { printf '\n==> %s\n' "$*"; }
 [[ -n "$web_domain" && -n "$firebase_project_id" && -n "$platform_admin_emails" && -n "$deploy_public_key" ]] || { usage >&2; exit 1; }
 # shellcheck disable=SC1091
 source /etc/os-release
-[[ "${ID:-}" == "ubuntu" && "${VERSION_ID:-}" == "24.04" ]] || fail "expected Ubuntu 24.04, found ${PRETTY_NAME:-unknown}."
+[[ "${ID:-}" == "ubuntu" && ( "${VERSION_ID:-}" == "20.04" || "${VERSION_ID:-}" == "24.04" ) ]] || fail "expected Ubuntu 20.04 or 24.04, found ${PRETTY_NAME:-unknown}."
 [[ -f "$script_dir/activate-release.sh" ]] || fail "activate-release.sh must be next to this script."
 grep -qE '^(ssh-ed25519|ssh-rsa|ecdsa-sha2-[a-z0-9-]+) ' "$deploy_public_key" || fail "$deploy_public_key is not an SSH public key (.pub)."
 if [[ -n "$firebase_service_account" ]]; then
@@ -71,6 +71,16 @@ fi
 step "Installing Java 21, PostgreSQL, Caddy, rsync, curl, and the firewall"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
+if ! apt-cache show caddy 2>/dev/null | grep -q '^Package: caddy$'; then
+  step "Adding the official Caddy package repository"
+  apt-get install -y -q apt-transport-https ca-certificates curl debian-archive-keyring debian-keyring gnupg
+  install -d -m 755 /usr/share/keyrings
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+    | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+    > /etc/apt/sources.list.d/caddy-stable.list
+  apt-get update -q
+fi
 # rsync receives release uploads and curl serves the workflow's API health check.
 apt-get install -y -q openjdk-21-jre-headless postgresql caddy rsync curl ufw openssl
 
