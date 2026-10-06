@@ -458,6 +458,26 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/parent/children/child-id/programs/program-id/feedback", expect.objectContaining({ method: "POST", body: JSON.stringify({ note: "Sudah dicoba di rumah." }) }));
   });
 
+  it("marks all notifications read through the tenant-scoped batch endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "active-tenant", getLanguage: () => "id" });
+
+    await client.markAllNotificationsRead("source-tenant");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/notifications/read-all", expect.objectContaining({ method: "PATCH", headers: expect.objectContaining({ "X-Organization-Id": "source-tenant" }) }));
+  });
+
+  it("loads notifications in ten-item pages with the source tenant scope", async () => {
+    const page = { items: [], page: 1, pageSize: 10, totalCount: 12, unreadCount: 4, hasNext: false };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => page });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "active-tenant", getLanguage: () => "id" });
+
+    await expect(client.notifications("payment", "source-tenant", 1)).resolves.toEqual(page);
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/notifications?page=1&size=10&search=payment", expect.objectContaining({ headers: expect.objectContaining({ "X-Organization-Id": "source-tenant" }) }));
+  });
+
   it("triggers the global curriculum seed for a Platform Admin", async () => {
     const result = { alreadySeeded: false, learningLevelCount: 4, developmentProgramCount: 24, developmentProgramItemCount: 138 };
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => result });

@@ -28,7 +28,7 @@ export function RealtimeConnection() {
 
     const processEvent = (event: RealtimeEvent) => {
       invalidateRealtimeFlags(queryClient, event.flags, event.organizationId ?? organizationId, userId, event.payload);
-      if (Platform.OS === "web" && event.flags.includes("NOTIFICATIONS")) void showBrowserNotification(() => api.notifications(), notificationId(event));
+      if (Platform.OS === "web" && event.flags.includes("NOTIFICATIONS")) void showBrowserNotification(() => api.notifications().then((page) => page.items), notificationId(event));
     };
 
     const revalidateConnectedProfile = () => {

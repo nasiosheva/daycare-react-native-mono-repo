@@ -246,7 +246,9 @@ export type UpsertPrivateTutorInput = { type: PrivateTutorType; staffUserId?: st
 export type PrivateTutoringRequest = { id: string; childId: string; childName: string; serviceName: string; providerName?: string | null; durationMinutes: number; price: number; pricingType: ServicePlanType; preferredAt?: string | null; scheduledAt?: string | null; note?: string | null; decisionReason?: string | null; status: PrivateTutoringRequestStatus; invoiceId?: string | null; invoiceStatus?: InvoiceStatus | null; createdAt: string };
 export type PaymentInstruction = { id: string; name: string; accountHolder: string; accountNumber: string; note?: string | null; active: boolean; displayOrder: number };
 export type UpsertPaymentInstructionInput = Omit<PaymentInstruction, "id">;
+export const NOTIFICATIONS_PAGE_SIZE = 10;
 export type AppNotification = { id: string; title: string; body: string; actionPath?: string | null; createdAt: string; readAt?: string | null };
+export type NotificationPage = { items: AppNotification[]; page: number; pageSize: number; totalCount: number; unreadCount: number; hasNext: boolean };
 export type PushNotificationMuteDuration = "ONE_HOUR" | "ONE_WEEK" | "ONE_MONTH";
 export type DeviceNotificationPreference = { pushMutedUntil?: string | null };
 export type DownloadedReport = { fileName: string; contentType: string; dataBase64: string };
@@ -389,8 +391,14 @@ export class ApiClient {
   async registerDevice(input: { token: string; platform: "ios" | "android"; installationId: string; timeZone: string }): Promise<void> { await this.request<void>("/device-tokens", { method: "POST", body: JSON.stringify(input) }); }
   async deviceNotificationPreference(installationId: string): Promise<DeviceNotificationPreference> { return this.request(`/device-notification-preference?${new URLSearchParams({ installationId }).toString()}`); }
   async updateDeviceNotificationPreference(input: { installationId: string; muteDuration: PushNotificationMuteDuration | null }): Promise<DeviceNotificationPreference> { return this.request("/device-notification-preference", { method: "PATCH", body: JSON.stringify(input) }); }
-  async notifications(search?: string, organizationId?: string): Promise<AppNotification[]> { const query = search?.trim(); return this.request(`/notifications${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`, this.orgOverride(organizationId)); }
+  async notifications(search?: string, organizationId?: string, page = 0, size = NOTIFICATIONS_PAGE_SIZE): Promise<NotificationPage> {
+    const params = new URLSearchParams({ page: String(page), size: String(size) });
+    const query = search?.trim();
+    if (query) params.set("search", query);
+    return this.request(`/notifications?${params.toString()}`, this.orgOverride(organizationId));
+  }
   async markNotificationRead(notificationId: string, organizationId?: string): Promise<AppNotification> { return this.request(`/notifications/${notificationId}/read`, { method: "PATCH", ...this.orgOverride(organizationId) }); }
+  async markAllNotificationsRead(organizationId?: string): Promise<void> { await this.request<void>("/notifications/read-all", { method: "PATCH", ...this.orgOverride(organizationId) }); }
   async staffReminders(): Promise<StaffReminder[]> { return this.request("/staff-reminders"); }
   async createStaffReminder(input: UpsertStaffReminderInput): Promise<StaffReminder> { return this.request("/staff-reminders", { method: "POST", body: JSON.stringify(input) }); }
   async updateStaffReminder(reminderId: string, input: UpsertStaffReminderInput): Promise<StaffReminder> { return this.request(`/staff-reminders/${reminderId}`, { method: "PATCH", body: JSON.stringify(input) }); }

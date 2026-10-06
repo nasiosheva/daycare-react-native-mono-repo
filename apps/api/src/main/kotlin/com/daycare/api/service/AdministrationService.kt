@@ -19,6 +19,7 @@ import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -32,6 +33,7 @@ data class RegisterDeviceRequest(@field:NotBlank val token: String, @field:NotBl
 data class UpdateDeviceNotificationPreferenceRequest(@field:NotBlank @field:Size(max = 128) val installationId: String, val muteDuration: PushNotificationMuteDuration?)
 data class DeviceNotificationPreferenceResponse(val pushMutedUntil: Instant?)
 data class NotificationResponse(val id: UUID, val title: String, val body: String, val actionPath: String?, val createdAt: java.time.Instant, val readAt: java.time.Instant?)
+data class NotificationPageResponse(val items: List<NotificationResponse>, val page: Int, val pageSize: Int, val totalCount: Long, val unreadCount: Long, val hasNext: Boolean)
 data class TenantUserResponse(val id: UUID, val userId: UUID?, val displayName: String?, val username: String?, val email: String?, val role: Role, val status: String, val branchId: UUID?, val canManageChildPrograms: Boolean, val canManageDevelopmentCategories: Boolean)
 data class ChangeTenantUserPasswordRequest(val password: String)
 data class UpdateTenantUserChildProgramPermissionRequest(val canManageChildPrograms: Boolean)
@@ -212,12 +214,15 @@ class AdministrationService(
     }
 
     @Transactional(readOnly = true)
-    fun notifications(jwt: Jwt, organizationId: UUID, search: String?): List<NotificationResponse> {
+    fun notifications(jwt: Jwt, organizationId: UUID, search: String?, page: Int = 0, size: Int = 10): NotificationPageResponse {
         val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true, allowInactiveRoles = setOf(Role.PARENT))
+        require(page >= 0) { "Notification page must not be negative" }
+        require(size in 1..50) { "Notification page size must be between 1 and 50" }
         val query = search?.trim().orEmpty()
-        val results = if (query.isEmpty()) notifications.findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDesc(scope.user.id, organizationId)
-            else notifications.searchByRecipientUserIdAndOrganizationId(scope.user.id, organizationId, query)
-        return results.map(::notificationResponse)
+        val results = if (query.isEmpty()) notifications.findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDescIdDesc(scope.user.id, organizationId, PageRequest.of(page, size))
+            else notifications.searchByRecipientUserIdAndOrganizationId(scope.user.id, organizationId, query, PageRequest.of(page, size))
+        val unreadCount = notifications.countByRecipientUserIdAndOrganizationIdAndReadAtIsNull(scope.user.id, organizationId)
+        return NotificationPageResponse(results.content.map(::notificationResponse), results.number, results.size, results.totalElements, unreadCount, results.hasNext())
     }
 
     @Transactional
@@ -227,6 +232,12 @@ class AdministrationService(
         require(notification.organizationId == organizationId && notification.recipientUserId == scope.user.id) { "Notification is not available" }
         if (notification.readAt == null) notification.readAt = java.time.Instant.now()
         return notificationResponse(notification)
+    }
+
+    @Transactional
+    fun markAllNotificationsRead(jwt: Jwt, organizationId: UUID) {
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true, allowInactiveRoles = setOf(Role.PARENT))
+        notifications.markAllUnreadByRecipientUserIdAndOrganizationId(scope.user.id, organizationId, Instant.now())
     }
 
     private fun currentDevice(jwt: Jwt, organizationId: UUID, installationId: String): DeviceToken {

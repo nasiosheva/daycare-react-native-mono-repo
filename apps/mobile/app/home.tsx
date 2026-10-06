@@ -17,7 +17,7 @@ import { invoiceSourceKey, roleKey, tenantPaymentStatusKey, tenantReadinessIssue
 import { useStaffDailyTasks } from "@/home/useStaffDailyTasks";
 import { combineProgramSummaries, createParentHomeSummary } from "@/home/parentHomeSummary";
 import { authErrorMessage } from "@/auth/authErrorMessage";
-import { unreadNotificationBadge, unreadNotificationCount } from "@/notifications/unreadBadge";
+import { unreadNotificationBadge } from "@/notifications/unreadBadge";
 import { useInboxNotifications } from "@/notifications/useInboxNotifications";
 import { parentEnrollmentQueryKey } from "@/parent-enrollment/queryKeys";
 import { isInactiveStaffMembership } from "@/navigation/inactiveStaffRouteAccess";
@@ -368,7 +368,7 @@ function NotificationBellButton({ enabled = true }: { enabled?: boolean }) {
   // Same per-tenant queries as the inbox: a Parent's badge counts unread items across every Parent
   // tenant, every other role counts only the active tenant (docs/business-rules.md §8).
   const notifications = useInboxNotifications("", enabled);
-  const unreadNotificationsCount = unreadNotificationCount(notifications.data);
+  const unreadNotificationsCount = notifications.unreadCount;
   const unreadNotificationBadgeLabel = unreadNotificationBadge(unreadNotificationsCount);
   const unreadNotificationsLabel = unreadNotificationBadgeLabel ? t("notifications.unreadCount", { count: unreadNotificationsCount }) : t("notifications.title");
   return <Pressable accessibilityRole="button" accessibilityLabel={unreadNotificationsLabel} hitSlop={spacing.sm} onPress={() => router.push("/notifications")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}>
