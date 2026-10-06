@@ -12,6 +12,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { consentPurposeKey, consentStatusKey } from "@/i18n/translations";
 import { notify } from "@/notify/notify";
 import { hasBranchOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
+import { useParentOperationalChild } from "@/parent/useParentOperationalChild";
 
 export default function ChildConsentsScreen() {
   const router = useRouter();
@@ -24,6 +25,8 @@ export default function ChildConsentsScreen() {
   const access = useUiAccessContext(Boolean(membership), organizationId);
   const childProfile = useQuery({ queryKey: ["parent-child-profile", organizationId, childId], queryFn: () => api.parentChildProfile(childId!, organizationId), enabled: Boolean(childId && membership?.role === "PARENT") });
   const canUseConsents = membership?.role === "PARENT" && hasBranchOfferingCapability(access.data, childProfile.data?.child.branchId, "DAYCARE_OPERATIONS");
+  const { hasActiveEntitlement } = useParentOperationalChild(childId, organizationId);
+  const canDecideConsents = canUseConsents && membership?.active === true && hasActiveEntitlement;
   const consents = useQuery({ queryKey: ["child-consents", organizationId, childId], queryFn: () => api.childConsents(childId!, organizationId), enabled: Boolean(childId && canUseConsents) });
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["child-consents", organizationId, childId] });
   const decide = useMutation({ mutationFn: ({ definitionId, granted }: { definitionId: string; granted: boolean }) => api.decideConsent(childId!, definitionId, granted, organizationId), onSuccess: invalidate, onError: (error) => notify(t("consent.decisionFailed"), error instanceof Error ? error.message : t("auth.tryAgain")) });
@@ -41,10 +44,10 @@ export default function ChildConsentsScreen() {
     {consents.isError && !consents.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void consents.refetch()} />}
     {consents.data?.map((item) => <Card key={item.definition.id} icon="shield-checkmark-outline" title={item.definition.title} subtitle={`${t(consentPurposeKey(item.definition.purpose))} · ${t("consent.revision", { revision: item.definition.revision })}`} trailing={<Badge tone={statusTone(item.status)} label={t(consentStatusKey(item.status))} />}>
       <AppText>{item.definition.content}</AppText>
-      {item.status === "GRANTED" ? <Button variant="danger" onPress={() => setWithdrawTarget({ definitionId: item.definition.id, title: item.definition.title })}>{t("consent.withdraw")}</Button> : <View style={styles.actions}>
+      {canDecideConsents && (item.status === "GRANTED" ? <Button variant="danger" onPress={() => setWithdrawTarget({ definitionId: item.definition.id, title: item.definition.title })}>{t("consent.withdraw")}</Button> : <View style={styles.actions}>
         <Button style={styles.action} variant="secondary" {...pendingActionState(decide, (pending) => pending.definitionId === item.definition.id && !pending.granted)} onPress={() => void decide.mutateAsync({ definitionId: item.definition.id, granted: false })}>{t("consent.decline")}</Button>
         <Button style={styles.action} {...pendingActionState(decide, (pending) => pending.definitionId === item.definition.id && pending.granted)} onPress={() => void decide.mutateAsync({ definitionId: item.definition.id, granted: true })}>{t("consent.grant")}</Button>
-      </View>}
+      </View>)}
     </Card>)}
     {!consents.isLoading && !consents.isError && !consents.data?.length && <EmptyState icon="shield-checkmark-outline" title={t("consent.empty")} />}
   </View>

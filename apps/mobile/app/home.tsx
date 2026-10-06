@@ -129,9 +129,10 @@ function ParentHome({ displayName, organizationName, subscriptionActive }: { dis
   // active tenant (§1 Home rule). A Parent's own children list stays visible even once a tenant's
   // subscription lapses (§13.12 TENANT_SUBSCRIPTION_RESTRICTED); every other per-tenant query skips
   // such tenants, and each capability gate uses the published offerings of that child's tenant.
-  const parentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT" && membership.active);
+  const allParentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT");
+  const parentMemberships = allParentMemberships.filter((membership) => membership.active);
   const operationalMemberships = parentMemberships.filter((membership) => hasOperationalTenantSubscription(membership.subscriptionStatus));
-  const showsTenantLabel = parentMemberships.length > 1;
+  const showsTenantLabel = allParentMemberships.length > 1;
   const children = useParentChildrenAcrossTenants(parentMemberships, true);
   const offerings = useOfferingCapabilitiesByTenant(operationalMemberships, true);
   const hasDaycareOperations = (tenantId: string) => offerings.hasCapability(tenantId, "DAYCARE_OPERATIONS");
@@ -142,7 +143,7 @@ function ParentHome({ displayName, organizationName, subscriptionActive }: { dis
     router.push({ pathname, params: { ...params, organizationId: childOrganizationId } } as never);
   };
   const entitlements = useParentEntitlementsAcrossTenants(operationalMemberships.filter((membership) => hasDaycareOperations(membership.organizationId)), true);
-  const invoices = useParentInvoicesAcrossTenants(parentMemberships, true);
+  const invoices = useParentInvoicesAcrossTenants(allParentMemberships, true);
   const privateTutoringServices = useQueries({
     queries: children.data.map((child) => ({
       queryKey: ["private-tutoring-services", child.organizationId, child.id],
@@ -202,8 +203,8 @@ function ParentHome({ displayName, organizationName, subscriptionActive }: { dis
             <View style={styles.parentActions}>
               <Button variant="secondary" leadingIcon={<Ionicons name="person-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-child-profile", { childId: child.id })}>{t("children.parentProfile")}</Button>
               <Button variant="secondary" leadingIcon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/development", { childId: child.id })}>{t("development.title")}</Button>
-              {childHasDaycareOperations && <Button variant="secondary" leadingIcon={<Ionicons name="qr-code-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-qr", { childId: child.id })}>{t("qr.title")}</Button>}
-              <Button variant="secondary" leadingIcon={<Ionicons name="calendar-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/absence-requests", { childId: child.id })}>{t("absence.menu")}</Button>
+              {childHasDaycareOperations && activeEntitlements.length > 0 && <Button variant="secondary" leadingIcon={<Ionicons name="qr-code-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-qr", { childId: child.id })}>{t("qr.title")}</Button>}
+              {activeEntitlements.length > 0 && <Button variant="secondary" leadingIcon={<Ionicons name="calendar-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/absence-requests", { childId: child.id })}>{t("absence.menu")}</Button>}
             </View>
           </>}
         </View>;

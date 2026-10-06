@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PurchaseServiceInput, TenantSubscriptionStatus } from "@daycare/core";
 import type { BranchListFilter, Invoice, ServicePlan } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
-import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
 import { useAcrossTenants } from "@/tenants/acrossTenants";
 
 export function useServicePlans(organizationId?: string) { const { api, organizationId: activeOrganizationId } = useAuth(); const resolvedOrganizationId = organizationId ?? activeOrganizationId; return useQuery({ queryKey: ["service-plans", resolvedOrganizationId], queryFn: () => api.servicePlans(resolvedOrganizationId ?? undefined), enabled: Boolean(resolvedOrganizationId) }); }
@@ -14,12 +13,13 @@ export type InvoiceWithTenant = Invoice & { organizationId: string; organization
 
 type ParentTenant = { organizationId: string; organizationName: string; subscriptionStatus?: TenantSubscriptionStatus | null };
 
-// Invoices are skipped for a tenant whose subscription is not operational: the server rejects them
-// there (only the child list is allowlisted, docs/business-rules.md §13.12).
+// Invoice self-service is a narrow billing exception: the server can return a Parent's own
+// invoices even when membership or tenant subscription is restricted (docs/business-rules.md
+// §13.12). Other operational queries continue to filter restricted tenants at their call site.
 export function useParentInvoicesAcrossTenants(memberships: readonly ParentTenant[], enabled: boolean) {
   const { api } = useAuth();
   const aggregate = useAcrossTenants({
-    tenants: memberships.filter((membership) => hasOperationalTenantSubscription(membership.subscriptionStatus)),
+    tenants: memberships,
     queryKey: (membership) => ["invoices", membership.organizationId, {}],
     queryFn: (membership) => api.invoices({}, undefined, membership.organizationId),
     enabled,

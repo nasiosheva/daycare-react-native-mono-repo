@@ -86,6 +86,19 @@ class IdentityRegistrationRequiredException : RuntimeException("identity.registr
 
 data class AccessScope(val user: UserProfile, val membership: Membership, val institutionTypes: Set<String>, val capabilities: Set<InstitutionCapability>)
 
+/**
+ * Parent self-service is an account-level capability, not just a tenant role.
+ * A staff account may accidentally retain a PARENT membership during legacy
+ * data migration, so every self-service flow must validate the global
+ * registration role as well.
+ */
+fun requireRegisteredParent(user: UserProfile): UserProfile {
+    if (user.registrationRole != RegistrationRole.PARENT) {
+        throw org.springframework.security.access.AccessDeniedException("Only registered Parent accounts may use Parent self-service")
+    }
+    return user
+}
+
 @Service
 class AccessService(
     private val identityService: IdentityService,
@@ -109,15 +122,17 @@ class AccessService(
     }
 
     @Transactional
-    fun require(jwt: Jwt, organizationId: UUID, allowedRoles: Set<Role>, requiredCapability: InstitutionCapability? = null, readOnly: Boolean = false, allowSubscriptionRestrictedForRoles: Set<Role> = emptySet()): AccessScope {
+    fun require(jwt: Jwt, organizationId: UUID, allowedRoles: Set<Role>, requiredCapability: InstitutionCapability? = null, readOnly: Boolean = false, allowSubscriptionRestrictedForRoles: Set<Role> = emptySet(), allowInactiveRoles: Set<Role> = emptySet()): AccessScope {
         val user = identityService.sync(jwt)
-        val membership = memberships.findAllByUserIdAndOrganizationId(user.id, organizationId).sortedByDescending { it.active }.firstOrNull { (it.active || readOnly) && it.role in allowedRoles }
+        val membership = memberships.findAllByUserIdAndOrganizationId(user.id, organizationId).sortedByDescending { it.active }.firstOrNull {
+            (it.active || (readOnly && (it.role != Role.PARENT || it.role in allowInactiveRoles))) && it.role in allowedRoles
+        }
             ?: throw AccessDeniedException("You do not have permission for this organization")
         val subscription = subscriptions.findByOrganizationId(organizationId)
         if (subscription != null) {
             if (subscription.status == TenantSubscriptionStatus.TRIAL && subscription.trialEndsAt?.isBefore(java.time.LocalDate.now()) == true) subscription.status = TenantSubscriptionStatus.PENDING_PAYMENT
-            // See docs/business-rules.md §13.12 TENANT_SUBSCRIPTION_RESTRICTED: a narrow,
-            // explicitly allowlisted exception (currently just a Parent's own child list) stays
+            // See docs/business-rules.md §13.12 TENANT_SUBSCRIPTION_RESTRICTED: narrow,
+            // explicitly allowlisted exceptions (Parent's own child list and billing) stay
             // readable when the tenant's own subscription lapses; every other route still blocks.
             if (subscription.status !in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL) && membership.role !in allowSubscriptionRestrictedForRoles) {
                 throw AccessDeniedException("Tenant subscription is not active")

@@ -7,6 +7,7 @@ import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.InstitutionTypeCodes
 import com.daycare.api.domain.ParentEnrollmentStatus
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.ServicePlanType
 import com.daycare.api.domain.TenantSubscriptionStatus
 import com.daycare.api.persistence.Branch
@@ -66,7 +67,7 @@ class ParentEnrollmentServiceTest {
         val familyProfileVisibility = mock(ParentFamilyProfileVisibilityService::class.java)
         val organizationId = UUID.randomUUID()
         val branch = Branch(organizationId = organizationId, name = "Cabang Utama")
-        val parent = UserProfile()
+        val parent = UserProfile(registrationRole = RegistrationRole.PARENT)
         val planId = UUID.randomUUID()
         val additionalOrganizationId = UUID.randomUUID()
         val additionalBranch = Branch(organizationId = additionalOrganizationId, name = "Cabang Kedua")
@@ -136,7 +137,7 @@ class ParentEnrollmentServiceTest {
         val paymentInstructions = mock(TenantPaymentInstructionService::class.java)
         val familyProfileVisibility = mock(ParentFamilyProfileVisibilityService::class.java)
         val organizationId = UUID.randomUUID()
-        val parent = UserProfile(displayName = "Parent")
+        val parent = UserProfile(displayName = "Parent", registrationRole = RegistrationRole.PARENT)
         val staffAdmin = UserProfile(displayName = "Staff Admin")
         val staffMembership = Membership(userId = staffAdmin.id, organizationId = organizationId, role = Role.STAFF_ADMIN)
         val scope = AccessScope(staffAdmin, staffMembership, setOf(InstitutionTypeCodes.DAYCARE), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
@@ -201,7 +202,7 @@ class ParentEnrollmentServiceTest {
         val paymentInstructions = mock(TenantPaymentInstructionService::class.java)
         val familyProfileVisibility = mock(ParentFamilyProfileVisibilityService::class.java)
         val organizationId = UUID.randomUUID()
-        val parent = UserProfile()
+        val parent = UserProfile(registrationRole = RegistrationRole.PARENT)
         val staffAdmin = UserProfile()
         val scope = AccessScope(staffAdmin, Membership(userId = staffAdmin.id, organizationId = organizationId, role = Role.STAFF_ADMIN), setOf(InstitutionTypeCodes.DAYCARE), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
         val child = Child(organizationId = organizationId, firstName = "Bima", enrollmentStatus = ChildEnrollmentStatus.PENDING)
@@ -255,7 +256,7 @@ class ParentEnrollmentServiceTest {
         val identity: IdentityService = mock(IdentityService::class.java)
         val children: ChildRepository = mock(ChildRepository::class.java)
         val enrollments: ParentEnrollmentRepository = mock(ParentEnrollmentRepository::class.java)
-        val parent = UserProfile()
+        val parent = UserProfile(registrationRole = RegistrationRole.PARENT)
         val child = Child(organizationId = UUID.randomUUID(), firstName = "Alya", enrollmentStatus = ChildEnrollmentStatus.PENDING)
         val jwt: Jwt = mock(Jwt::class.java)
         val service = ParentEnrollmentService(identity, mock(AccessService::class.java), mock(OrganizationRepository::class.java), mock(TenantSubscriptionRepository::class.java), mock(BranchRepository::class.java), mock(ServicePlanRepository::class.java), children, enrollments, mock(MembershipRepository::class.java), mock(GuardianLinkRepository::class.java), mock(UserProfileRepository::class.java), mock(ServiceEntitlementRepository::class.java), mock(InvoiceRepository::class.java), mock(BillingService::class.java), mock(NotificationService::class.java), mock(BranchListFilterService::class.java), mock(TenantPaymentInstructionService::class.java), mock(ParentFamilyProfileVisibilityService::class.java), mock(PublishedOfferingCapabilityService::class.java))
@@ -290,7 +291,7 @@ class ParentEnrollmentServiceTest {
         val originOrganizationId = UUID.randomUUID()
         val destinationOrganizationId = UUID.randomUUID()
         val destinationBranch = Branch(organizationId = destinationOrganizationId, name = "Cabang Baru")
-        val parent = UserProfile()
+        val parent = UserProfile(registrationRole = RegistrationRole.PARENT)
         val planId = UUID.randomUUID()
         val originChild = Child(organizationId = originOrganizationId, firstName = "Alya", lastName = "Putri", gender = Gender.FEMALE, dateOfBirth = LocalDate.of(2022, 1, 1), enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
         val newChild = Child(organizationId = destinationOrganizationId, branchId = destinationBranch.id, firstName = "Alya", lastName = "Putri", gender = Gender.FEMALE, dateOfBirth = originChild.dateOfBirth, enrollmentStatus = ChildEnrollmentStatus.PENDING)
@@ -345,7 +346,7 @@ class ParentEnrollmentServiceTest {
         val paymentInstructions = mock(TenantPaymentInstructionService::class.java)
         val familyProfileVisibility = mock(ParentFamilyProfileVisibilityService::class.java)
         val organizationId = UUID.randomUUID()
-        val parent = UserProfile()
+        val parent = UserProfile(registrationRole = RegistrationRole.PARENT)
         val originChild = Child(organizationId = organizationId, firstName = "Alya", enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
         val jwt = mock(Jwt::class.java)
         `when`(identity.sync(jwt)).thenReturn(parent)
@@ -383,7 +384,7 @@ class ParentEnrollmentServiceTest {
         val familyProfileVisibility = mock(ParentFamilyProfileVisibilityService::class.java)
         val destinationOrganizationId = UUID.randomUUID()
         val originOrganizationId = UUID.randomUUID()
-        val parent = UserProfile(displayName = "Parent")
+        val parent = UserProfile(displayName = "Parent", registrationRole = RegistrationRole.PARENT)
         val staffAdmin = UserProfile(displayName = "Staff Admin")
         val scope = AccessScope(staffAdmin, Membership(userId = staffAdmin.id, organizationId = destinationOrganizationId, role = Role.STAFF_ADMIN), setOf(InstitutionTypeCodes.DAYCARE), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
         val originChild = Child(organizationId = originOrganizationId, firstName = "Alya", enrollmentStatus = ChildEnrollmentStatus.ACTIVE)

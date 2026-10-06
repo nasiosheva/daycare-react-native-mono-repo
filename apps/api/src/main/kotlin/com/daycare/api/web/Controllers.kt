@@ -1007,13 +1007,13 @@ class BillingController(private val billing: BillingService, private val overtim
     fun invoices(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?, @RequestParam(required = false) search: String?) = billing.invoices(jwt, organizationId, BranchListFilter(branchId), search)
 
     @GetMapping("/invoices/{invoiceId}")
-    fun invoice(@AuthenticationPrincipal jwt: Jwt, @PathVariable invoiceId: UUID) = billing.invoice(jwt, invoiceId)
+    fun invoice(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID) = billing.invoice(jwt, organizationId, invoiceId)
 
     @PostMapping("/invoices/{invoiceId}/payment-proof")
-    fun submitPaymentProof(@AuthenticationPrincipal jwt: Jwt, @PathVariable invoiceId: UUID, @Valid @RequestBody request: com.daycare.api.service.SubmitPaymentProofRequest) = billing.submitPaymentProof(jwt, invoiceId, request)
+    fun submitPaymentProof(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID, @Valid @RequestBody request: com.daycare.api.service.SubmitPaymentProofRequest) = billing.submitPaymentProof(jwt, organizationId, invoiceId, request)
 
     @GetMapping("/invoices/{invoiceId}/payment-proof")
-    fun paymentProof(@AuthenticationPrincipal jwt: Jwt, @PathVariable invoiceId: UUID) = billing.paymentProof(jwt, invoiceId)
+    fun paymentProof(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID) = billing.paymentProof(jwt, organizationId, invoiceId)
 
     @PostMapping("/invoices/{invoiceId}/payment-proof/review")
     fun reviewPaymentProof(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID, @Valid @RequestBody request: com.daycare.api.service.ReviewPaymentProofRequest) = billing.reviewPaymentProof(jwt, organizationId, invoiceId, request)

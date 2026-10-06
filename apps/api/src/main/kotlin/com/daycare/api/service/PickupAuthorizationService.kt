@@ -61,7 +61,7 @@ class PickupAuthorizationService(
     @Transactional
     fun create(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreatePickupAuthorizationRequest): PickupAuthorizationResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT))
-        val child = childScopes.requireParentLinkedChild(scope, childId, organizationId)
+        val child = childScopes.requireParentOperationalChild(scope, childId, organizationId)
         access.requireWritable(scope)
         requireDaycareOffering(child)
         val effectiveFrom = request.effectiveFrom ?: Instant.now()
@@ -99,7 +99,7 @@ class PickupAuthorizationService(
     fun revoke(jwt: Jwt, organizationId: UUID, childId: UUID, authorizationId: UUID, request: RevokePickupAuthorizationRequest): PickupAuthorizationResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT))
         access.requireWritable(scope)
-        requireDaycareOffering(requireVisibleChild(scope, childId, organizationId))
+        requireDaycareOffering(if (scope.membership.role == Role.PARENT) childScopes.requireParentOperationalChild(scope, childId, organizationId) else requireVisibleChild(scope, childId, organizationId))
         val authorization = requireAuthorization(organizationId, childId, authorizationId)
         if (scope.membership.role == Role.PARENT) {
             if (authorization.createdByUserId != scope.user.id) throw AccessDeniedException("Parent hanya dapat mencabut pengajuan penjemput sendiri")

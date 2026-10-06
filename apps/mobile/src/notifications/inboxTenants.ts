@@ -11,7 +11,11 @@ export type NotificationWithTenant = AppNotification & InboxTenant;
 export function inboxTenants(profile: CurrentUser | null | undefined, activeOrganizationId: string | null | undefined): InboxTenant[] {
   const memberships = profile?.memberships ?? [];
   const activeMembership = memberships.find((membership) => membership.organizationId === activeOrganizationId);
-  if (!activeMembership) return [];
+  if (!activeMembership) {
+    return memberships
+      .filter((membership) => membership.role === "PARENT" && hasOperationalTenantSubscription(membership.subscriptionStatus))
+      .map((membership) => ({ organizationId: membership.organizationId, organizationName: membership.organizationName }));
+  }
   if (activeMembership.role !== "PARENT") return [{ organizationId: activeMembership.organizationId, organizationName: activeMembership.organizationName }];
   return memberships
     .filter((membership) => membership.role === "PARENT" && hasOperationalTenantSubscription(membership.subscriptionStatus))

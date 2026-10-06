@@ -67,6 +67,8 @@ Parent yang memiliki anak **aktif** di satu tenant dapat mengajukan pindah anak 
 
 Selain jalur aplikasi di atas, Staff Admin dapat menautkan langsung akun Parent yang **sudah ada** ke seorang anak dari layar detail anak (atau sekaligus saat membuat anak baru), dengan mencari username atau email persis (salah satu wajib diisi; akun yang tidak ditemukan ditolak). Akun target **wajib** memiliki `UserProfile.registrationRole=PARENT`; membership tenant berperan `PARENT`, akun Staff/Admin, atau akun lama tanpa registration role tidak dapat ditautkan sebagai wali baru. Penautan ini tidak membuat akun Parent baru, undangan, aplikasi, invoice, maupun entitlement layanan apa pun — hanya membuat (atau mengaktifkan kembali) membership `PARENT` pada tenant tersebut dan relasi wali-anak bila belum ada. Staff Admin juga dapat memutus relasi ini; tindakan tersebut hanya menghapus relasi wali-anak dan tidak menonaktifkan membership secara otomatis. Anak yang belum memiliki Parent tetap dapat dikelola dalam operasi tenant.
 
+Jalur direct-link tersebut menghasilkan state **`LINKED_READ_ONLY`** selama membership dan relasi wali masih aktif. Parent boleh membaca informasi anak, perkembangan, Goal, kesehatan, keselamatan, pesan, consent, dan informasi cabang yang memang diizinkan capability tenant, tetapi tidak memperoleh entitlement layanan, booking, QR kehadiran, atau hak mutasi operasional hanya karena relasi itu dibuat. UI harus menyembunyikan action layanan yang memerlukan entitlement (termasuk QR), sedangkan server tetap memvalidasi entitlement dan capability pada setiap request. Jika membership atau relasi dicabut, state berubah menjadi `GUARDIAN_REVOKED` dan akses resource anak berhenti; membership tidak boleh dianggap sebagai bukti entitlement.
+
 Daftar **Anak** Staff Admin menghitung status wali dari relasi yang sudah berada dalam child scope server dan hanya mengirimkannya kepada Staff Admin: `LINKED` bila setidaknya satu relasi dan seluruh akun target adalah Parent terdaftar, `UNLINKED` bila belum ada relasi, dan `REVIEW_REQUIRED` bila relasi lama mengarah ke akun yang hilang, bukan Parent, atau tanpa registration role. Staff Admin dapat memfilter ketiga status tersebut; filter memakai Bottom Sheet draf dan baru memengaruhi daftar maupun ekspor laporan Anak setelah **OK**. Relasi lama yang perlu diperiksa tidak dicabut, dikonversi, atau diberi membership otomatis; Staff Admin meninjaunya pada detail anak dan dapat melepas relasi yang salah secara manual. Status, filter, penanda peringatan, dan daftar wali pada detail ini tidak dikirim kepada Staff, Parent, atau Platform Admin. Jalur ini ditujukan untuk anak yang datanya sudah diinput langsung oleh Staff Admin (mis. migrasi data atau pendaftaran luring), sebagai pelengkap—bukan pengganti—alur persetujuan enrollment Parent di atas.
 
 ### Les privat
@@ -1833,20 +1835,32 @@ pendidikan dan context gabungan):
 | `NO_MEMBERSHIP` | Profile global, katalog publik, draft/application sendiri melalui `APPLICATION_SELF_SERVICE` | Signup, buat/ubah draft sendiri bila offering terbuka | Data anak tenant, QR, booking, kelas, perkembangan, invoice yang bukan miliknya. |
 | `APPLICATION_IN_PROGRESS` | Application, dokumen, decision, invoice/proof sendiri melalui grant application | Submit/batalkan/upload dokumen atau proof sesuai lifecycle | Data operasional anak, placement, QR, booking, attendance, development. |
 | `ACTIVE_GUARDIAN` | Semua resource anak yang diizinkan relation, offering, consent, dan capability | Aksi Parent yang diberi grant, mis. booking, izin, upload proof, manage pickup/consent | Data siswa/wali lain, konfigurasi tenant, mutasi operasional Staff. |
+| `LINKED_READ_ONLY` | Informasi anak dan riwayat read-only yang diizinkan relasi, offering, dan capability | Tidak ada mutasi layanan; hanya membaca resource yang diizinkan | Booking, QR, entitlement, pembayaran baru, perubahan child, pickup/consent/absence yang memerlukan action grant. |
 | `BILLING_LIMITED` | Invoice/receipt sendiri, safety card, insiden yang ditujukan, status attendance/check-out saat ini sesuai guardian grant | Hanya `allowedActions` per resource—mis. bayar/upload proof jika invoice masih payable, acknowledge insiden, atau tarik pickup/consent untuk masa depan | Booking baru, QR, future service, perubahan finansial selain penyelesaian invoice, activation pickup baru. |
 | `GUARDIAN_REVOKED` atau `CHILD_WITHDRAWN` | Invoice/dokumen milik actor menurut retensi eksplisit | Tidak ada kecuali tindakan finance yang masih diizinkan | Data anak baru, attendance, development, health, safety feed baru, pickup, consent. |
-| `TENANT_SUBSCRIPTION_RESTRICTED` | Inbox safety yang telah ditujukan, invoice sendiri, dan daftar anak miliknya sendiri (read-only) sesuai exception server | Tidak ada operasi baru kecuali penyelesaian invoice yang diizinkan | Semua route normal yang tidak berada pada allowlist exception, termasuk profil/development/QR/absence anak yang sama. |
+| `TENANT_SUBSCRIPTION_RESTRICTED` | Invoice sendiri dan daftar anak miliknya sendiri (read-only) sesuai exception server; inbox safety tetap hanya bila endpoint memberi grant eksplisit | Tidak ada operasi baru kecuali penyelesaian invoice yang diizinkan | Semua route normal yang tidak berada pada allowlist exception, termasuk profil/development/QR/absence anak yang sama. |
 
-- Berbeda dari seluruh baris lain pada tabel ini (masih **target**, menunggu
-  `GuardianAuthority`/`reasonCode`/`allowedActions`), bagian `TENANT_SUBSCRIPTION_RESTRICTED`
-  untuk daftar anak sudah **diimplementasikan**: `AccessService.require()`
-  menerima `allowSubscriptionRestrictedForRoles`, dan `GET /children` untuk
-  `PARENT` memakainya sehingga anak tetap muncul di Home walau subscription
-  tenant `SUSPENDED`/`PENDING_PAYMENT`/`EXPIRED`. Exception ini sengaja sempit:
-  hanya endpoint daftar anak yang dibuka; membuka profil/development/QR/absence
-  anak yang sama tetap `403` karena endpoint-endpoint itu belum memakai
-  parameter yang sama. Invoice sendiri dan inbox safety yang ditujukan pada
-  baris ini masih target, belum dibuka lewat mekanisme serupa.
+- Bagian `TENANT_SUBSCRIPTION_RESTRICTED` yang sudah diimplementasikan masih
+  berupa exception endpoint yang eksplisit, bukan pengganti
+  `GuardianAuthority`: `AccessService.require()` menerima
+  `allowSubscriptionRestrictedForRoles`, dan `GET /children` untuk `PARENT`
+  memakainya sehingga anak tetap muncul di Home walau subscription tenant
+  `SUSPENDED`/`PENDING_PAYMENT`/`EXPIRED`. `GET /billing/invoices` juga membuka
+  daftar invoice milik Parent sendiri untuk pembayaran yang masih diizinkan,
+  termasuk saat membership Parent tidak aktif; detail invoice dan upload proof
+  memvalidasi `organizationId` serta pemilik invoice. Exception ini sengaja
+  sempit: membuka profil/development/QR/absence anak yang sama tetap `403`, dan
+  inbox safety untuk tenant yang subscription-nya restricted belum dibuka tanpa
+  grant resource khusus.
+
+- Untuk kompatibilitas direct-link, `LINKED_READ_ONLY` saat ini ditegakkan
+  sebagai policy server: endpoint baca tetap memakai `GuardianLink`, sedangkan
+  mutasi absence, consent, pickup authorization, dan emergency contact Parent
+  wajib menemukan entitlement layanan berstatus `ACTIVE` milik Parent yang sama
+  dengan masa berlaku yang belum lewat.
+  UI menyembunyikan action tersebut jika entitlement tidak ada. Ini belum
+  mengklaim `GuardianAuthority`/`accessMode` penuh; grant per-resource,
+  `reasonCode`, dan `allowedActions` tetap target terpisah.
 
 - `GuardianAuthority` target adalah grant terpisah dari `GuardianLink` dan
   `Membership`. Ia memiliki `guardianLinkId`, `learnerId`, scope offering bila

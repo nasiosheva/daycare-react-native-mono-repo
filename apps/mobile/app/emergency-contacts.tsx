@@ -12,6 +12,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { notify } from "@/notify/notify";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate } from "@/date-picker/date";
+import { useParentOperationalChild } from "@/parent/useParentOperationalChild";
 
 export default function EmergencyContactsScreen() {
   const router = useRouter();
@@ -23,6 +24,8 @@ export default function EmergencyContactsScreen() {
   const client = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const isParent = membership?.role === "PARENT";
+  const { hasActiveEntitlement } = useParentOperationalChild(childId ?? undefined, organizationId);
+  const parentCanMutate = isParent && membership?.active === true && hasActiveEntitlement;
   const [open, setOpen] = useState(false);
   const [revokeId, setRevokeId] = useState<string | null>(null);
   const [revokeReason, setRevokeReason] = useState("");
@@ -37,16 +40,16 @@ export default function EmergencyContactsScreen() {
   if (!profile) return null;
   if (!childId || !(isParent || membership?.role === "STAFF_ADMIN")) return <Redirect href="/home" />;
   const submit = async () => { if (!name.trim() || !relationship.trim() || !phoneNumber.trim()) return; try { await create.mutateAsync(); } catch (error) { notify(t("auth.tryAgain"), error instanceof Error ? error.message : undefined, "danger"); } };
-  return <AppScreen showBottomNavigation={false} title={t("emergencyContacts.manage")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={isParent ? <FloatingActionButton icon="add" accessibilityLabel={t("emergencyContacts.add")} onPress={() => setOpen(true)}>{t("emergencyContacts.add")}</FloatingActionButton> : undefined}><View style={styles.content}>
+  return <AppScreen showBottomNavigation={false} title={t("emergencyContacts.manage")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={parentCanMutate ? <FloatingActionButton icon="add" accessibilityLabel={t("emergencyContacts.add")} onPress={() => setOpen(true)}>{t("emergencyContacts.add")}</FloatingActionButton> : undefined}><View style={styles.content}>
     {contacts.isLoading && <ShimmerList variant="tile" />}
     {contacts.data?.map((item) => <Card key={item.id} icon="person-outline" title={item.name} subtitle={item.relationship} trailing={<Badge tone={statusTone(item.status)} label={t(`emergencyContacts.status.${item.status}`)} />}>
       <InfoRow icon="call-outline" label={t("emergencyContacts.phone")} value={<AppText variant="label" selectable>{item.phoneNumber}</AppText>} />
       {(item.canRevoke || item.canRemove) && <View style={styles.actions}>
-        {item.canRevoke && <Button style={styles.action} variant="secondary" onPress={() => { setRevokeId(item.id); setRevokeReason(""); }}>{t("emergencyContacts.revoke")}</Button>}
-        {item.canRemove && <Button style={styles.action} variant="danger" {...pendingActionState(remove, (contactId) => contactId === item.id)} onPress={() => void remove.mutateAsync(item.id)}>{t("emergencyContacts.remove")}</Button>}
+        {item.canRevoke && (!isParent || parentCanMutate) && <Button style={styles.action} variant="secondary" onPress={() => { setRevokeId(item.id); setRevokeReason(""); }}>{t("emergencyContacts.revoke")}</Button>}
+        {item.canRemove && (!isParent || parentCanMutate) && <Button style={styles.action} variant="danger" {...pendingActionState(remove, (contactId) => contactId === item.id)} onPress={() => void remove.mutateAsync(item.id)}>{t("emergencyContacts.remove")}</Button>}
       </View>}
     </Card>)}
-    {!contacts.isLoading && !contacts.data?.length && <EmptyState icon="call-outline" title={t("emergencyContacts.empty")} action={isParent ? { label: t("emergencyContacts.add"), onPress: () => setOpen(true) } : undefined} />}
+    {!contacts.isLoading && !contacts.data?.length && <EmptyState icon="call-outline" title={t("emergencyContacts.empty")} action={parentCanMutate ? { label: t("emergencyContacts.add"), onPress: () => setOpen(true) } : undefined} />}
   </View>
   <BottomSheet visible={open} onClose={() => setOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("emergencyContacts.add")} negativeAction={{ label: t("common.cancel"), onPress: () => setOpen(false) }} positiveAction={{ label: t("common.save"), loading: create.isPending, disabled: !name.trim() || !relationship.trim() || !phoneNumber.trim(), onPress: () => void submit() }}><View style={styles.form}>
     <TextField label={t("emergencyContacts.name")} required autoCapitalize="words" value={name} onChangeText={setName} />

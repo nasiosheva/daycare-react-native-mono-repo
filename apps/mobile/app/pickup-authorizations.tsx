@@ -11,6 +11,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { notify } from "@/notify/notify";
 import { hasBranchOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
+import { useParentOperationalChild } from "@/parent/useParentOperationalChild";
 
 export default function PickupAuthorizationsScreen() {
   const router = useRouter();
@@ -26,13 +27,14 @@ export default function PickupAuthorizationsScreen() {
   const parentChildProfile = useQuery({ queryKey: ["parent-child-profile", organizationId, childId], queryFn: () => api.parentChildProfile(childId!, organizationId), enabled: Boolean(childId && membership?.role === "PARENT") });
   const childBranchId = staffChildProfile.data?.child.branchId ?? parentChildProfile.data?.child.branchId;
   const hasDaycareOperations = hasBranchOfferingCapability(access.data, childBranchId, "DAYCARE_OPERATIONS");
+  const { hasActiveEntitlement } = useParentOperationalChild(childId ?? undefined, organizationId);
   const [open, setOpen] = useState(false);
   const [revokeId, setRevokeId] = useState<string | null>(null);
   const [revokeReason, setRevokeReason] = useState("");
   const [name, setName] = useState("");
   const [relationship, setRelationship] = useState("");
   const canManage = membership?.role === "STAFF_ADMIN" && membership.active && hasDaycareOperations;
-  const canCreate = membership?.role === "PARENT" && membership.active && hasDaycareOperations;
+  const canCreate = membership?.role === "PARENT" && membership.active && hasDaycareOperations && hasActiveEntitlement;
   const pickupContextLoading = access.isLoading || staffChildProfile.isLoading || parentChildProfile.isLoading;
   const authorizations = useQuery({ queryKey: ["pickup-authorizations", organizationId, childId], queryFn: () => api.pickupAuthorizations(childId!, organizationId), enabled: Boolean(childId && hasDaycareOperations && (membership?.role === "PARENT" || membership?.role === "STAFF_ADMIN")) });
   const create = useMutation({ mutationFn: () => api.createPickupAuthorization(childId!, { pickupPersonName: name.trim(), relationship: relationship.trim(), verificationMethod: "PHOTO_ID" }, organizationId), onSuccess: async () => { await client.invalidateQueries({ queryKey: ["pickup-authorizations", organizationId, childId] }); setName(""); setRelationship(""); setOpen(false); } });
@@ -49,7 +51,7 @@ export default function PickupAuthorizationsScreen() {
   };
   return <AppScreen showBottomNavigation={false} title={t("pickup.manage")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canCreate ? <FloatingActionButton icon="add" accessibilityLabel={t("pickup.add")} onPress={() => setOpen(true)}>{t("pickup.add")}</FloatingActionButton> : undefined}><View style={styles.content}>
     {authorizations.isLoading && <ShimmerList variant="tile" />}
-    {authorizations.data?.map((item) => <Card key={item.id} icon="person-outline" title={item.pickupPersonName} subtitle={item.relationship} trailing={<Badge tone={statusTone(item.status)} label={t(`pickup.status.${item.status}`)} />}>{canManage && item.status === "PENDING_VERIFICATION" && <Button variant="secondary" {...pendingActionState(activate, (authorizationId) => authorizationId === item.id)} onPress={() => void activate.mutateAsync(item.id)}>{t("pickup.activate")}</Button>}{item.canRevoke && <Button variant="danger" onPress={() => { setRevokeId(item.id); setRevokeReason(""); }}>{t("pickup.revoke")}</Button>}</Card>)}
+    {authorizations.data?.map((item) => <Card key={item.id} icon="person-outline" title={item.pickupPersonName} subtitle={item.relationship} trailing={<Badge tone={statusTone(item.status)} label={t(`pickup.status.${item.status}`)} />}>{canManage && item.status === "PENDING_VERIFICATION" && <Button variant="secondary" {...pendingActionState(activate, (authorizationId) => authorizationId === item.id)} onPress={() => void activate.mutateAsync(item.id)}>{t("pickup.activate")}</Button>}{item.canRevoke && (membership?.role !== "PARENT" || hasActiveEntitlement) && <Button variant="danger" onPress={() => { setRevokeId(item.id); setRevokeReason(""); }}>{t("pickup.revoke")}</Button>}</Card>)}
     {!authorizations.isLoading && !authorizations.data?.length && <EmptyState icon="car-outline" title={t("pickup.empty")} action={canCreate ? { label: t("pickup.add"), onPress: () => setOpen(true) } : undefined} />}
   </View><BottomSheet visible={open} onClose={() => setOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("pickup.add")} negativeAction={{ label: t("common.cancel"), onPress: () => setOpen(false) }} positiveAction={{ label: t("common.save"), loading: create.isPending, disabled: !name.trim() || !relationship.trim(), onPress: () => void submit() }}><View style={styles.form}><TextField label={t("pickup.name")} required autoCapitalize="words" value={name} onChangeText={setName} /><TextField label={t("pickup.relationship")} required value={relationship} onChangeText={setRelationship} /></View></BottomSheet><BottomSheet visible={Boolean(revokeId)} onClose={() => { setRevokeId(null); setRevokeReason(""); }} closeAccessibilityLabel={t("common.close")} title={t("pickup.revoke")} negativeAction={{ label: t("common.cancel"), onPress: () => { setRevokeId(null); setRevokeReason(""); } }} positiveAction={{ label: t("pickup.revoke"), loading: revoke.isPending, disabled: !revokeReason.trim(), onPress: () => void revoke.mutateAsync() }}><View style={styles.form}><Banner tone="warning" title={t("pickup.revoke")} /><TextField label={t("pickup.revokeReason")} required value={revokeReason} onChangeText={setRevokeReason} multiline /></View></BottomSheet></AppScreen>;
 }

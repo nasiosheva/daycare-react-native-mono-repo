@@ -171,17 +171,17 @@ describe("ApiClient", () => {
     }));
   });
 
-  it("keeps payer invoice and proof requests independent from membership context", async () => {
+  it("pins payer invoice and proof requests to their tenant context", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
     const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
 
-    await client.invoice("invoice-id");
-    await client.paymentProof("invoice-id");
-    await client.submitPaymentProof("invoice-id", { fileName: "proof.jpg", contentType: "image/jpeg", imageBase64: "abc" });
+    await client.invoice("invoice-id", "tenant-id");
+    await client.paymentProof("invoice-id", "tenant-id");
+    await client.submitPaymentProof("invoice-id", { fileName: "proof.jpg", contentType: "image/jpeg", imageBase64: "abc" }, "tenant-id");
 
     for (const [, init] of fetchMock.mock.calls) {
-      expect(init.headers).not.toHaveProperty("X-Organization-Id");
+      expect(init.headers).toHaveProperty("X-Organization-Id", "tenant-id");
     }
   });
 

@@ -213,7 +213,7 @@ class AdministrationService(
 
     @Transactional(readOnly = true)
     fun notifications(jwt: Jwt, organizationId: UUID, search: String?): List<NotificationResponse> {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true, allowInactiveRoles = setOf(Role.PARENT))
         val query = search?.trim().orEmpty()
         val results = if (query.isEmpty()) notifications.findAllByRecipientUserIdAndOrganizationIdOrderByCreatedAtDesc(scope.user.id, organizationId)
             else notifications.searchByRecipientUserIdAndOrganizationId(scope.user.id, organizationId, query)
@@ -222,7 +222,7 @@ class AdministrationService(
 
     @Transactional
     fun markNotificationRead(jwt: Jwt, organizationId: UUID, notificationId: UUID): NotificationResponse {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true, allowInactiveRoles = setOf(Role.PARENT))
         val notification = notifications.findById(notificationId).orElseThrow { IllegalArgumentException("Notification was not found") }
         require(notification.organizationId == organizationId && notification.recipientUserId == scope.user.id) { "Notification is not available" }
         if (notification.readAt == null) notification.readAt = java.time.Instant.now()

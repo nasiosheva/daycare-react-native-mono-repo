@@ -28,16 +28,16 @@ describe("inactive Parent route access", () => {
     expect(shouldBlockInactiveParentRoute(inactiveParent, "tenant-a", "/parent-enrollment")).toBe(false);
     expect(shouldBlockInactiveParentRoute(inactiveParent, "tenant-a", "/parent-payment")).toBe(false);
     expect(shouldBlockInactiveParentRoute(inactiveParent, "tenant-a", "/payment-proof")).toBe(false);
-    expect(shouldBlockInactiveParentRoute(inactiveParent, "tenant-a", "/operational-hours")).toBe(false);
+    expect(shouldBlockInactiveParentRoute(inactiveParent, "tenant-a", "/operational-hours")).toBe(true);
     expect(shouldBlockInactiveParentRoute(inactiveParent, "tenant-a", "/profile")).toBe(false);
   });
 
-  it("blocks inactive Parent access to operational child and notification routes", () => {
+  it("blocks inactive Parent access to operational child routes but keeps notifications", () => {
     const inactiveParent = profile(false);
 
     expect(shouldBlockInactiveParentRoute(inactiveParent, "tenant-a", "/booking")).toBe(true);
     expect(shouldBlockInactiveParentRoute(inactiveParent, "tenant-a", "/incident-reports")).toBe(true);
-    expect(shouldBlockInactiveParentRoute(inactiveParent, "tenant-a", "/notifications")).toBe(true);
+    expect(shouldBlockInactiveParentRoute(inactiveParent, "tenant-a", "/notifications")).toBe(false);
     expect(shouldBlockInactiveParentRoute(profile(true), "tenant-a", "/booking")).toBe(false);
   });
 });

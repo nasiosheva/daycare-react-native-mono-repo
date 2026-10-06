@@ -1,5 +1,6 @@
 package com.daycare.api.service
 
+import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.TenantSubscriptionStatus
 import com.daycare.api.persistence.Membership
@@ -91,5 +92,36 @@ class AccessServiceTest {
         val scope = fixtures.service.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF_ADMIN))
 
         assertEquals(Role.STAFF_ADMIN, scope.membership.role)
+    }
+
+    @Test
+    fun `inactive Parent is blocked from read-only routes unless explicitly allowlisted`() {
+        val fixtures = Fixtures()
+        fixtures.withSubscriptionStatus(TenantSubscriptionStatus.ACTIVE)
+        val membership = Membership(userId = fixtures.user.id, organizationId = fixtures.organizationId, role = Role.PARENT, active = false)
+        `when`(fixtures.memberships.findAllByUserIdAndOrganizationId(fixtures.user.id, fixtures.organizationId)).thenReturn(listOf(membership))
+
+        assertThrows(AccessDeniedException::class.java) {
+            fixtures.service.require(fixtures.jwt, fixtures.organizationId, setOf(Role.PARENT), readOnly = true)
+        }
+
+        val scope = fixtures.service.require(
+            fixtures.jwt,
+            fixtures.organizationId,
+            setOf(Role.PARENT),
+            readOnly = true,
+            allowInactiveRoles = setOf(Role.PARENT),
+        )
+        assertEquals(Role.PARENT, scope.membership.role)
+    }
+
+    @Test
+    fun `only a registered Parent account may use Parent self-service`() {
+        assertThrows(AccessDeniedException::class.java) {
+            requireRegisteredParent(UserProfile(registrationRole = null))
+        }
+
+        val parent = UserProfile(registrationRole = RegistrationRole.PARENT)
+        assertEquals(parent, requireRegisteredParent(parent))
     }
 }

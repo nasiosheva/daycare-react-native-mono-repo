@@ -1,8 +1,11 @@
 package com.daycare.api.service
 
+import com.daycare.api.domain.ChildEnrollmentStatus
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.TenantFeedbackCategory
 import com.daycare.api.domain.TenantFeedbackStatus
+import com.daycare.api.persistence.ChildRepository
+import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.TenantFeedback
 import com.daycare.api.persistence.TenantFeedbackRepository
@@ -41,12 +44,17 @@ class TenantFeedbackService(
     private val feedback: TenantFeedbackRepository,
     private val users: UserProfileRepository,
     private val memberships: MembershipRepository,
+    private val children: ChildRepository,
+    private val guardians: GuardianLinkRepository,
     private val notifications: NotificationService,
 ) {
     @Transactional
     fun create(jwt: Jwt, organizationId: UUID, request: CreateTenantFeedbackRequest): TenantFeedbackResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT))
         access.requireWritable(scope)
+        require(children.findAllByOrganizationId(organizationId).any { child ->
+            child.active && child.enrollmentStatus == ChildEnrollmentStatus.ACTIVE && guardians.existsByChildIdAndUserId(child.id, scope.user.id)
+        }) { "Feedback is only available for a tenant with an active linked child" }
         val saved = feedback.save(TenantFeedback(organizationId = organizationId, submittedByUserId = scope.user.id, category = request.category, message = request.message.trim()))
         notifyStaffAdmins(organizationId, scope.user.displayName, saved)
         return response(saved, scope.user.displayName)

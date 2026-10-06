@@ -152,7 +152,7 @@ class ConsentService(
     fun decide(jwt: Jwt, organizationId: UUID, childId: UUID, request: ConsentDecisionRequest): ConsentRecordResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)
         access.requireWritable(scope)
-        childScopes.requireParentLinkedChild(scope, childId, organizationId)
+        childScopes.requireParentOperationalChild(scope, childId, organizationId)
         val definition = requireDefinition(organizationId, request.definitionId)
         require(definition.active) { "Definisi persetujuan tidak aktif" }
         val expiry = definition.effectiveUntil
@@ -181,7 +181,7 @@ class ConsentService(
     fun withdraw(jwt: Jwt, organizationId: UUID, childId: UUID, definitionId: UUID): ConsentRecordResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)
         access.requireWritable(scope)
-        childScopes.requireParentLinkedChild(scope, childId, organizationId)
+        childScopes.requireParentOperationalChild(scope, childId, organizationId)
         val definition = requireDefinition(organizationId, definitionId)
         require(definition.active) { "Definisi persetujuan tidak aktif" }
         val record = records.findByOrganizationIdAndChildIdAndDefinitionIdAndGuardianUserIdAndDefinitionRevision(

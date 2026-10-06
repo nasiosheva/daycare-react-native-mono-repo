@@ -1,6 +1,7 @@
 package com.daycare.api.service
 
 import com.daycare.api.domain.ChildEnrollmentStatus
+import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildRepository
@@ -12,6 +13,8 @@ import com.daycare.api.persistence.ChildPlacement
 import com.daycare.api.persistence.ClassroomStaffAssignment
 import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.Membership
+import com.daycare.api.persistence.ServiceEntitlement
+import com.daycare.api.persistence.ServiceEntitlementRepository
 import com.daycare.api.persistence.UserProfile
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -30,7 +33,8 @@ class ChildScopeServiceTest {
     private val assignments = mock(ChildStaffAssignmentRepository::class.java)
     private val classroomAssignments = mock(ClassroomStaffAssignmentRepository::class.java)
     private val placements = mock(ChildPlacementRepository::class.java)
-    private val service = ChildScopeService(children, guardians, assignments, classroomAssignments, placements)
+    private val entitlements = mock(ServiceEntitlementRepository::class.java)
+    private val service = ChildScopeService(children, guardians, assignments, classroomAssignments, placements, entitlements)
     private val organizationId = UUID.randomUUID()
     private val staffId = UUID.randomUUID()
     private val scope = AccessScope(UserProfile(id = staffId), Membership(userId = staffId, organizationId = organizationId, role = Role.STAFF), emptySet(), emptySet())
@@ -103,5 +107,48 @@ class ChildScopeServiceTest {
         val adminScope = AccessScope(UserProfile(), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), emptySet())
 
         assertTrue(service.canStaffPlaceChildInClassroom(adminScope, UUID.randomUUID(), UUID.randomUUID(), organizationId))
+    }
+
+    @Test
+    fun `direct linked Parent cannot perform operational child action without active entitlement`() {
+        val parentId = UUID.randomUUID()
+        val parentScope = AccessScope(
+            UserProfile(id = parentId),
+            Membership(userId = parentId, organizationId = organizationId, role = Role.PARENT),
+            emptySet(),
+            emptySet(),
+        )
+        val child = Child(organizationId = organizationId, enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(guardians.existsByChildIdAndUserId(child.id, parentId)).thenReturn(true)
+        `when`(entitlements.findAllByOrganizationIdAndChildId(organizationId, child.id)).thenReturn(emptyList())
+
+        assertThrows(AccessDeniedException::class.java) {
+            service.requireParentOperationalChild(parentScope, child.id, organizationId)
+        }
+    }
+
+    @Test
+    fun `Parent with an active entitlement may perform operational child action`() {
+        val parentId = UUID.randomUUID()
+        val parentScope = AccessScope(
+            UserProfile(id = parentId),
+            Membership(userId = parentId, organizationId = organizationId, role = Role.PARENT),
+            emptySet(),
+            emptySet(),
+        )
+        val child = Child(organizationId = organizationId, enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(guardians.existsByChildIdAndUserId(child.id, parentId)).thenReturn(true)
+        `when`(entitlements.findAllByOrganizationIdAndChildId(organizationId, child.id)).thenReturn(listOf(
+            ServiceEntitlement(
+                organizationId = organizationId,
+                childId = child.id,
+                ownerUserId = parentId,
+                status = EntitlementStatus.ACTIVE,
+            ),
+        ))
+
+        assertEquals(child, service.requireParentOperationalChild(parentScope, child.id, organizationId))
     }
 }

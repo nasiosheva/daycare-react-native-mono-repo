@@ -36,8 +36,8 @@ describe("inboxTenants", () => {
     expect(inboxTenants(user, "a")).toEqual([{ organizationId: "a", organizationName: "Tenant a" }]);
   });
 
-  it("returns no tenant without an active membership", () => {
-    expect(inboxTenants(profile([membership("a")]), null)).toEqual([]);
+  it("still loads operational Parent tenants when no active tenant context is selected", () => {
+    expect(inboxTenants(profile([membership("a"), membership("b", { active: false })]), null).map((tenant) => tenant.organizationId)).toEqual(["a", "b"]);
     expect(inboxTenants(null, "a")).toEqual([]);
   });
 });

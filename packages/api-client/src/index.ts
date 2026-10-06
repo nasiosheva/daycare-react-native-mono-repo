@@ -625,9 +625,9 @@ export class ApiClient {
   async pendingBookings(filter: BranchListFilter = {}, search?: string): Promise<Booking[]> { return this.request(withBranchAndSearchFilter("/bookings/pending-approval", filter, search)); }
   async approveBooking(bookingId: string, approved: boolean): Promise<Booking> { return this.request(`/bookings/${bookingId}/approval`, { method: "POST", body: JSON.stringify({ approved }) }); }
   async invoices(filter: BranchListFilter = {}, search?: string, organizationId?: string): Promise<Invoice[]> { return this.request(withBranchAndSearchFilter("/invoices", filter, search), organizationId ? { headers: { "X-Organization-Id": organizationId } } : undefined); }
-  async invoice(invoiceId: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}`); }
-  async submitPaymentProof(invoiceId: string, input: SubmitPaymentProofInput): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/payment-proof`, { method: "POST", body: JSON.stringify(input) }); }
-  async paymentProof(invoiceId: string): Promise<PaymentProofImage> { return this.request(`/invoices/${invoiceId}/payment-proof`); }
+  async invoice(invoiceId: string, organizationId?: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}`, this.orgOverride(organizationId)); }
+  async submitPaymentProof(invoiceId: string, input: SubmitPaymentProofInput, organizationId?: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/payment-proof`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async paymentProof(invoiceId: string, organizationId?: string): Promise<PaymentProofImage> { return this.request(`/invoices/${invoiceId}/payment-proof`, this.orgOverride(organizationId)); }
   async reviewPaymentProof(invoiceId: string, approved: boolean, rejectionReason?: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/payment-proof/review`, { method: "POST", body: JSON.stringify({ approved, rejectionReason }) }); }
   async markInvoicePaid(invoiceId: string): Promise<Invoice> { return this.request(`/invoices/${invoiceId}/mark-paid`, { method: "POST" }); }
 

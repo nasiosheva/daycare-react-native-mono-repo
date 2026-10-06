@@ -130,7 +130,7 @@ class ParentEnrollmentService(
 
     @Transactional
     fun checkout(jwt: Jwt, request: ParentEnrollmentCheckoutRequest): List<ParentEnrollmentResponse> {
-        val parent = identity.sync(jwt)
+        val parent = requireRegisteredParent(identity.sync(jwt))
         require(memberships.findAllByUserIdAndOrganizationId(parent.id, request.organizationId).none { it.role == Role.PARENT && it.active }) { ParentEnrollmentError.ALREADY_ACTIVE }
         val branch = branches.findById(request.branchId).orElseThrow { IllegalArgumentException("Branch was not found") }
         require(branch.organizationId == request.organizationId && branch.active) { "Branch is not available for this organization" }
@@ -149,7 +149,7 @@ class ParentEnrollmentService(
 
     @Transactional
     fun transferCheckout(jwt: Jwt, request: ParentChildTransferRequest): ParentEnrollmentResponse {
-        val parent = identity.sync(jwt)
+        val parent = requireRegisteredParent(identity.sync(jwt))
         val originChild = children.findById(request.childId).orElseThrow { IllegalArgumentException("Child was not found") }
         require(guardians.existsByChildIdAndUserId(originChild.id, parent.id)) { "You cannot access this child" }
         require(originChild.active && originChild.enrollmentStatus == ChildEnrollmentStatus.ACTIVE) { ParentEnrollmentError.TRANSFER_NOT_ACTIVE }
@@ -169,7 +169,7 @@ class ParentEnrollmentService(
 
     @Transactional(readOnly = true)
     fun mine(jwt: Jwt): List<ParentEnrollmentResponse> {
-        val user = identity.sync(jwt)
+        val user = requireRegisteredParent(identity.sync(jwt))
         return enrollments.findAllByUserIdOrderByCreatedAtDesc(user.id).map(::response)
     }
 
@@ -220,7 +220,7 @@ class ParentEnrollmentService(
 
     @Transactional
     fun retry(jwt: Jwt, enrollmentId: UUID, request: ParentEnrollmentRetryRequest): ParentEnrollmentResponse {
-        val parent = identity.sync(jwt)
+        val parent = requireRegisteredParent(identity.sync(jwt))
         val enrollment = enrollments.findById(enrollmentId).orElseThrow { IllegalArgumentException(ParentEnrollmentError.NOT_FOUND) }
         require(enrollment.userId == parent.id && enrollment.status == ParentEnrollmentStatus.REJECTED) { ParentEnrollmentError.CANNOT_RETRY }
         require(request.bookingDates.isEmpty()) { ParentEnrollmentError.BOOKINGS_NOT_ALLOWED }
@@ -233,7 +233,7 @@ class ParentEnrollmentService(
 
     @Transactional
     fun cancel(jwt: Jwt, enrollmentId: UUID): ParentEnrollmentResponse {
-        val parent = identity.sync(jwt)
+        val parent = requireRegisteredParent(identity.sync(jwt))
         val enrollment = enrollments.findById(enrollmentId).orElseThrow { IllegalArgumentException(ParentEnrollmentError.NOT_FOUND) }
         require(enrollment.userId == parent.id && enrollment.status == ParentEnrollmentStatus.PENDING_APPROVAL) { ParentEnrollmentError.CANNOT_CANCEL }
         children.findById(enrollment.childId).orElseThrow { IllegalArgumentException("Child was not found") }.active = false

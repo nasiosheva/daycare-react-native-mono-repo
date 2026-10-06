@@ -7,7 +7,10 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
 import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAccess";
 import { useAttendanceQr, useParentChildrenAcrossTenants } from "@/attendance/useAttendance";
+import { useParentEntitlementsAcrossTenants } from "@/booking/useBooking";
 import { useAuth } from "@/auth/AuthProvider";
+import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
+import { useOfferingCapabilitiesByTenant } from "@/education/useUiAccessContext";
 import { useI18n } from "@/i18n/I18nProvider";
 
 function ChildQr({ childId, name, organizationId }: { childId: string; name: string; organizationId: string }) {
@@ -29,11 +32,16 @@ function ParentQrScreenContent() {
   const parentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT" && membership.active);
   const showsTenantLabel = parentMemberships.length > 1;
   const children = useParentChildrenAcrossTenants(parentMemberships, true);
+  const operationalMemberships = parentMemberships.filter((membership) => hasOperationalTenantSubscription(membership.subscriptionStatus));
+  const offerings = useOfferingCapabilitiesByTenant(operationalMemberships, true);
+  const daycareMemberships = operationalMemberships.filter((membership) => offerings.hasCapability(membership.organizationId, "DAYCARE_OPERATIONS"));
+  const entitlements = useParentEntitlementsAcrossTenants(daycareMemberships, true);
   const { t } = useI18n();
   // Issuing an attendance QR still requires an operational tenant subscription (unlike the child
   // list itself, see docs/business-rules.md §13.12), so a restricted tenant's child has nothing
   // to do here.
-  const availableChildren = children.data.filter((child) => !child.tenantSubscriptionRestricted);
+  const entitledChildIds = new Set(entitlements.data.filter((item) => item.status === "ACTIVE").map((item) => item.childId));
+  const availableChildren = children.data.filter((child) => !child.tenantSubscriptionRestricted && entitledChildIds.has(child.id));
   const visibleChildren = typeof childId === "string" ? availableChildren.filter((child) => child.id === childId) : availableChildren;
   const [selectedChildId, setSelectedChildId] = useState<string | null>(typeof childId === "string" ? childId : null);
   const selectedChild = visibleChildren.find((child) => child.id === selectedChildId) ?? null;
@@ -41,10 +49,10 @@ function ParentQrScreenContent() {
   return <AppScreen>
     <AppText variant="title">{t("qr.title")}</AppText>
     {!onlyChild && visibleChildren.length > 0 && <AppText tone="muted">{t("qr.chooseChild")}</AppText>}
-    {children.isFetching && <ShimmerList variant="tile" />}
-    {!children.isFetching && onlyChild && <View style={styles.single}><AppText variant="h5">{onlyChild.fullName}</AppText><ChildQr childId={onlyChild.id} name={onlyChild.fullName} organizationId={onlyChild.organizationId} /></View>}
-    {!children.isFetching && !onlyChild && visibleChildren.map((child) => <MenuItem key={child.id} icon="qr-code-outline" title={child.fullName} description={showsTenantLabel ? child.organizationName : t("qr.showQr", { name: child.fullName })} onPress={() => setSelectedChildId(child.id)} />)}
-    {!children.isFetching && visibleChildren.length === 0 && <EmptyState icon="happy-outline" title={t("children.empty")} />}
+    {(children.isFetching || entitlements.isFetching || offerings.isLoading) && <ShimmerList variant="tile" />}
+    {!(children.isFetching || entitlements.isFetching || offerings.isLoading) && onlyChild && <View style={styles.single}><AppText variant="h5">{onlyChild.fullName}</AppText><ChildQr childId={onlyChild.id} name={onlyChild.fullName} organizationId={onlyChild.organizationId} /></View>}
+    {!(children.isFetching || entitlements.isFetching || offerings.isLoading) && !onlyChild && visibleChildren.map((child) => <MenuItem key={child.id} icon="qr-code-outline" title={child.fullName} description={showsTenantLabel ? child.organizationName : t("qr.showQr", { name: child.fullName })} onPress={() => setSelectedChildId(child.id)} />)}
+    {!(children.isFetching || entitlements.isFetching || offerings.isLoading) && visibleChildren.length === 0 && <EmptyState icon="happy-outline" title={t("children.empty")} />}
     {!onlyChild && <BottomSheet visible={Boolean(selectedChild)} onClose={() => setSelectedChildId(null)} closeAccessibilityLabel={t("common.close")} title={selectedChild?.fullName ?? t("qr.title")}>
       {selectedChild && <ChildQr childId={selectedChild.id} name={selectedChild.fullName} organizationId={selectedChild.organizationId} />}
     </BottomSheet>}

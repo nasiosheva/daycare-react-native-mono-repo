@@ -1,5 +1,5 @@
 import type { CurrentUser } from "@daycare/core";
-import { parentSelfServicePaths, parentUnscopedReadOnlyPaths } from "./parentSelfServiceRouteAccess";
+import { parentSelfServicePaths } from "./parentSelfServiceRouteAccess";
 
 type Membership = CurrentUser["memberships"][number];
 
@@ -7,8 +7,8 @@ const inactiveParentAllowedPaths = new Set([
   "/home",
   "/profile",
   "/context-selection",
+  "/notifications",
   ...parentSelfServicePaths,
-  ...parentUnscopedReadOnlyPaths,
 ]);
 
 export function isInactiveParentMembership(membership: Membership | undefined): membership is Membership & { active: false; role: "PARENT" } {
