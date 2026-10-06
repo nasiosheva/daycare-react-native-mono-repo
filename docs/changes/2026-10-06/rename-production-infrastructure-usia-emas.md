@@ -26,5 +26,7 @@ or product-brand path.
 
 The VPS was new and did not contain the previous `umur-emas` service or release
 directory. The validated Firebase service-account JSON was staged at the new
-configuration path with mode `600` and owner `root`. Full provisioning still
-requires Ubuntu 24.04 and must be run with `scripts/production/provision-vps.sh`.
+configuration path with mode `600` and owner `root`. Full provisioning supports
+Ubuntu 20.04 and 24.04 and must be run with `scripts/production/provision-vps.sh`.
+The script adds the official Caddy repository when the base image does not
+provide a Caddy package.

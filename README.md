@@ -414,7 +414,7 @@ For a private repository on GitHub Free, configure these values as repository-le
 | Secret | `VPS_SSH_PRIVATE_KEY` | A dedicated GitHub Actions deployment private key, never the developer's personal SSH key. |
 | Secret | `VPS_KNOWN_HOSTS` | Verified host-key line from the VPS; do not generate it in CI with an unverified `ssh-keyscan`. |
 
-Before the workflow can activate a release, provision the VPS with PostgreSQL, Java 21, Caddy, an `usia-emas-api` systemd service, and a non-login deployment user that can run only `/usr/local/sbin/usia-emas-activate-release` through `sudo`. On a fresh Ubuntu 24.04 VPS, [scripts/production/provision-vps.sh](scripts/production/provision-vps.sh) does all of this. Copy `scripts/production/` and the GitHub Actions deploy public key (optionally also the Firebase service-account JSON) to the server, then run:
+Before the workflow can activate a release, provision the VPS with PostgreSQL, Java 21, Caddy, an `usia-emas-api` systemd service, and a non-login deployment user that can run only `/usr/local/sbin/usia-emas-activate-release` through `sudo`. On a fresh Ubuntu 20.04 or 24.04 VPS, [scripts/production/provision-vps.sh](scripts/production/provision-vps.sh) does all of this. Copy `scripts/production/` and the GitHub Actions deploy public key (optionally also the Firebase service-account JSON) to the server, then run:
 
 ```sh
 sudo ./provision-vps.sh --web-domain umuremas.id --api-domain api.umuremas.id \

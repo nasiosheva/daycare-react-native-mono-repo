@@ -1,4 +1,4 @@
-# Skrip provisioning VPS production (Ubuntu 24.04)
+# Skrip provisioning VPS production (Ubuntu 20.04/24.04)
 
 ## Latar belakang
 
@@ -11,16 +11,19 @@ service. Diagnosis bertahap lewat step `Check SSH access`
 2. Host key berubah → `VPS_KNOWN_HOSTS` diperbarui.
 3. Deploy key tidak terdaftar → server memang belum disiapkan.
 
-VPS baru semula Ubuntu 20.04, yang dukungan standarnya habis Mei 2025.
-Karena server masih kosong, diputuskan reinstall ke Ubuntu 24.04 LTS.
+VPS baru menggunakan Ubuntu 20.04. Karena image tersebut sudah ditetapkan oleh
+provider, provisioning dibuat kompatibel dengan Ubuntu 20.04 dan 24.04 tanpa
+mengubah OS.
 Repo sebelumnya tidak menyimpan langkah provisioning apa pun selain
 `activate-release.sh`, sehingga setup server lama tidak bisa direproduksi.
 
 ## Perubahan
 
-- `scripts/production/provision-vps.sh` (baru, idempoten, hanya Ubuntu 24.04):
+- `scripts/production/provision-vps.sh` (baru, idempoten, Ubuntu 20.04 dan 24.04):
   - paket: `openjdk-21-jre-headless`, `postgresql`, `caddy`, `rsync` (menerima
     upload rilis), `curl` (health check workflow), `ufw`, `openssl`;
+    pada image yang tidak menyediakan Caddy, repository resmi Caddy ditambahkan
+    otomatis sebelum instalasi;
   - user service `usia-emas` (nologin) dan user deploy `usia-emas-deploy`
     dengan public key deploy GitHub Actions di `authorized_keys`;
   - `/opt/usia-emas/releases` milik user deploy; `activate-release.sh`
@@ -47,7 +50,7 @@ Repo sebelumnya tidak menyimpan langkah provisioning apa pun selain
 
 ## Verifikasi
 
-- `bash -n` lolos; argumen dan guard (root, Ubuntu 24.04, keberadaan
+- `bash -n` lolos; argumen dan guard (root, Ubuntu 20.04/24.04, keberadaan
   `activate-release.sh`, format public key dan JSON service account) dicek di
   lokal. Skrip berhenti sebelum mengubah apa pun bila guard gagal.
 - `shellcheck`/`caddy validate` tidak tersedia di mesin lokal. Skrip sendiri
@@ -58,7 +61,10 @@ Repo sebelumnya tidak menyimpan langkah provisioning apa pun selain
 
 ## Tindak lanjut (dilakukan pemilik repo)
 
-- Reinstall VPS ke Ubuntu 24.04, lalu perbarui `VPS_KNOWN_HOSTS` sekali lagi.
+- Jalankan provisioning pada VPS Ubuntu 20.04 yang sudah tersedia, lalu perbarui
+  `VPS_KNOWN_HOSTS` jika host key berubah.
+- Karena VPS hanya memiliki RAM 1 GB tanpa swap, tambahkan swap minimal 2 GB
+  sebelum deploy API pertama untuk mengurangi risiko OOM.
 - Arahkan DNS A `umuremas.id` dan `api.umuremas.id` (`www` adalah CNAME ke apex)
   dari `103.197.188.200` ke `139.190.100.239`.
 - Database lama ikut hilang bersama VPS lama kecuali ada backup; tanpa backup,
