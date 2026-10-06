@@ -40,6 +40,15 @@ Never commit any content from `run-logs/`; it contains generated local runtime a
 
 Never commit directly on the `production` branch, even for a small or low-risk change — check the current branch before `git commit`; if it's `production`, create and switch to a new branch first. All changes reach `production` only through a reviewed PR. Do not add a "Generated with Claude Code" watermark, 🤖 emoji, or similar tool-attribution footer to PR titles/descriptions — commit trailers such as `Co-Authored-By` are unaffected by this rule.
 
+After a PR/MR is confirmed merged, synchronize the checkout with the remote
+`production` branch (`git fetch origin production --prune`, `git checkout
+production`, then `git pull --ff-only`) and remove local branches whose changes
+are already merged or whose remote branch has been deleted. Prefer
+`git branch -d`; use `git branch -D` only when the remote PR is confirmed merged
+but squash/rebase history prevents Git from recognizing the local commits as
+ancestors. Never remove `production`, the current branch, an unmerged branch, or
+untracked local files such as `docs/local-accounts.md`.
+
 ## Commands
 
 Install once: `corepack enable && pnpm install`.
