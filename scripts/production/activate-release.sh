@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly app_root="${UMUR_EMAS_APP_ROOT:-/opt/umur-emas}"
+readonly app_root="${USIA_EMAS_APP_ROOT:-/opt/usia-emas}"
 readonly rollback_argument="--rollback"
 
 activate_release() {
@@ -36,7 +36,7 @@ activate_release() {
   mv -Tf "$app_root/current.next" "$app_root/current"
 
   if [[ "$restart_api" == true ]]; then
-    systemctl restart umur-emas-api
+    systemctl restart usia-emas-api
   fi
   systemctl reload caddy
 }
@@ -56,7 +56,7 @@ rollback_release() {
   mv -Tf "$app_root/previous.next" "$app_root/previous"
   ln -sfn "$previous_directory" "$app_root/current.next"
   mv -Tf "$app_root/current.next" "$app_root/current"
-  systemctl restart umur-emas-api
+  systemctl restart usia-emas-api
   systemctl reload caddy
 }
 
