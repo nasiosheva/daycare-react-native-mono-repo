@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppText, Badge, BackButton, Banner, BottomSheet, Button, Card, EmptyState, ErrorState, ShimmerList, spacing } from "@daycare/ui";
 import { statusTone } from "@/ui/statusTone";
+import { pendingActionState } from "@/ui/pendingAction";
 import { AppScreen } from "@/navigation/AppScreen";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
@@ -41,8 +42,8 @@ export default function ChildConsentsScreen() {
     {consents.data?.map((item) => <Card key={item.definition.id} icon="shield-checkmark-outline" title={item.definition.title} subtitle={`${t(consentPurposeKey(item.definition.purpose))} · ${t("consent.revision", { revision: item.definition.revision })}`} trailing={<Badge tone={statusTone(item.status)} label={t(consentStatusKey(item.status))} />}>
       <AppText>{item.definition.content}</AppText>
       {item.status === "GRANTED" ? <Button variant="danger" onPress={() => setWithdrawTarget({ definitionId: item.definition.id, title: item.definition.title })}>{t("consent.withdraw")}</Button> : <View style={styles.actions}>
-        <Button style={styles.action} variant="secondary" loading={decide.isPending} onPress={() => void decide.mutateAsync({ definitionId: item.definition.id, granted: false })}>{t("consent.decline")}</Button>
-        <Button style={styles.action} loading={decide.isPending} onPress={() => void decide.mutateAsync({ definitionId: item.definition.id, granted: true })}>{t("consent.grant")}</Button>
+        <Button style={styles.action} variant="secondary" {...pendingActionState(decide, (pending) => pending.definitionId === item.definition.id && !pending.granted)} onPress={() => void decide.mutateAsync({ definitionId: item.definition.id, granted: false })}>{t("consent.decline")}</Button>
+        <Button style={styles.action} {...pendingActionState(decide, (pending) => pending.definitionId === item.definition.id && pending.granted)} onPress={() => void decide.mutateAsync({ definitionId: item.definition.id, granted: true })}>{t("consent.grant")}</Button>
       </View>}
     </Card>)}
     {!consents.isLoading && !consents.isError && !consents.data?.length && <EmptyState icon="shield-checkmark-outline" title={t("consent.empty")} />}

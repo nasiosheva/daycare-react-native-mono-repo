@@ -11,6 +11,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useImagePicker, type PickedImage } from "@/image-picker";
 import { encodeLocalFileBase64 } from "@/development/encodeLocalFile";
+import { pendingActionState } from "@/ui/pendingAction";
 
 const severities: IncidentSeverity[] = ["MINOR", "MODERATE", "SERIOUS"];
 const categories: IncidentCategory[] = ["INJURY", "ILLNESS", "BEHAVIOR", "OTHER"];
@@ -71,7 +72,7 @@ export default function IncidentReportsScreen() {
       <AppText>{report.description}</AppText>
       {report.actionTaken && <AppText tone="muted">{t("incident.actionTakenLabel", { action: report.actionTaken })}</AppText>}
       {report.hasPhoto && <Button variant="secondary" leadingIcon={<Ionicons name="image-outline" size={18} color={colors.primary} />} onPress={() => setPhotoEntry(report)}>{t("incident.viewPhoto")}</Button>}
-      {canAcknowledge && (report.acknowledgedByMe ? <Badge tone="success" icon="checkmark-circle" label={t("incident.acknowledged")} /> : <Button loading={acknowledge.isPending} onPress={() => void acknowledge.mutateAsync(report.id)}>{t("incident.acknowledge")}</Button>)}
+      {canAcknowledge && (report.acknowledgedByMe ? <Badge tone="success" icon="checkmark-circle" label={t("incident.acknowledged")} /> : <Button {...pendingActionState(acknowledge, (incidentId) => incidentId === report.id)} onPress={() => void acknowledge.mutateAsync(report.id)}>{t("incident.acknowledge")}</Button>)}
     </Card>)}
     {!reports.isLoading && !reports.isError && reports.data?.length === 0 && <EmptyState icon="shield-checkmark-outline" title={t("incident.empty")} />}
 

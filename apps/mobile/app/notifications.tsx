@@ -16,6 +16,7 @@ import { canOpenNotificationRoute, isSelfServiceNotificationRoute, notificationR
 import { hasOfferingCapability } from "@/education/useUiAccessContext";
 import { useInboxNotifications } from "@/notifications/useInboxNotifications";
 import { unreadNotificationCount } from "@/notifications/unreadBadge";
+import { pendingActionState } from "@/ui/pendingAction";
 import type { NotificationWithTenant } from "@/notifications/inboxTenants";
 
 export default function NotificationsScreen() {
@@ -114,7 +115,7 @@ export default function NotificationsScreen() {
         {!item.readAt && <View accessibilityLabel={t("notifications.unread")} style={styles.dot} />}
       </View>
       <AppText>{item.body}</AppText>
-      {!item.readAt && <Button variant={item.actionPath ? "primary" : "secondary"} loading={markRead.isPending} onPress={() => void open(item)}>{t(item.actionPath ? "notifications.open" : "notifications.markRead")}</Button>}
+      {!item.readAt && <Button variant={item.actionPath ? "primary" : "secondary"} {...pendingActionState(markRead, (pending) => pending.id === item.id)} onPress={() => void open(item)}>{t(item.actionPath ? "notifications.open" : "notifications.markRead")}</Button>}
       {item.readAt && item.actionPath && <Button variant="ghost" onPress={() => void openAction(item)}>{t("notifications.open")}</Button>}
     </View>)}
     {!inbox.isFetching && inbox.failedTenants.length === 0 && inbox.data.length === 0 && <EmptyState icon="notifications-off-outline" title={debouncedSearch ? t("common.noResults") : t("notifications.empty")} />}
