@@ -149,8 +149,12 @@ require_environment_values() {
   done
 
   if [ "$missing" -ne 0 ]; then
-    echo "Update $environment_file with the selected environment's Firebase and API values, then run this launcher again." >&2
+    echo "Update $environment_file with the selected environment's API and Firebase values, then run this launcher again." >&2
     exit 1
+  fi
+
+  if [ "$platform" != "web" ] && [ -z "${EXPO_PUBLIC_EXPO_PROJECT_ID:-}" ]; then
+    echo "Warning: EXPO_PUBLIC_EXPO_PROJECT_ID is empty; native Expo push registration will be skipped. WebSocket and the app can still run." >&2
   fi
 }
 
@@ -433,6 +437,16 @@ local_metro_ready() {
   /usr/bin/curl -fsS http://localhost:8081/status 2>/dev/null | grep -q "packager-status:running"
 }
 
+hold_android_local_session() {
+  # run-android.sh owns the interactive controls while this process owns the
+  # Android log stream. Keep the child alive after opening a dev client against
+  # an already-running Metro instance so the parent can continue handling
+  # s/r/b until the user stops the launcher.
+  while :; do
+    sleep 1
+  done
+}
+
 run_android_local_client_through_adb() {
   # The API server is mounted at /api and all mobile routes are versioned under /v1.
   export EXPO_PUBLIC_API_URL="http://localhost:8080/api/v1"
@@ -444,6 +458,7 @@ run_android_local_client_through_adb() {
   if local_metro_ready; then
     echo "Reusing the Metro server already running on localhost:8081."
     adb shell am start -W -a android.intent.action.VIEW -d "exp+children-platform://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081" >/dev/null
+    hold_android_local_session
     return
   fi
 
@@ -546,7 +561,8 @@ ensure_android_development_build
 
 cd "$repository_root"
 
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 configure_android_local_reverse
 start_android_local_logs
 run_client
