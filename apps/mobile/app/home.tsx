@@ -4,7 +4,7 @@ import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { Pressable, StyleSheet, View } from "react-native";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useQueries, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
-import { AppText, Badge, Button, EmptyState, ErrorState, FloatingActionButton, MenuItem, MenuSection, NavigationCard, SearchField, SectionHeader, ShimmerList, colors, radius, shadows, spacing } from "@daycare/ui";
+import { AppText, Badge, Button, EmptyState, ErrorState, FloatingActionButton, MenuItem, MenuSection, NavigationCard, SearchField, SectionHeader, Shimmer, ShimmerList, colors, radius, shadows, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren, useParentChildrenAcrossTenants } from "@/attendance/useAttendance";
 import { useBookings, useEntitlements, useInvoices, useParentEntitlementsAcrossTenants, useParentInvoicesAcrossTenants } from "@/booking/useBooking";
@@ -170,7 +170,7 @@ function ParentHome({ displayName, organizationName, subscriptionActive }: { dis
     <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.PARENT")}</AppText></View><NotificationBellButton /><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
     {!subscriptionActive && <AppText tone="danger">{t("tenantReadiness.issueSubscription")}</AppText>}
     <SummarySection title={t("home.parentChildren")}>
-      {children.isFetching && <ShimmerList />}
+      {children.isFetching && <ShimmerList style={styles.summaryShimmer} />}
       {children.allFailed && !children.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={children.retryFailed} />}
       {!childrenUnavailable && <TenantLoadFailureBanner failedTenants={children.failedTenants} onRetry={children.retryFailed} />}
       {!childrenUnavailable && summary.children.map(({ child, activeEntitlements }) => {
@@ -213,7 +213,7 @@ function ParentHome({ displayName, organizationName, subscriptionActive }: { dis
       {!childrenUnavailable && children.failedTenants.length === 0 && summary.children.length === 0 && <EmptyState icon="happy-outline" title={t("children.empty")} description={t("parentEnrollment.startDescription")} action={{ label: t("parentEnrollment.newTenant"), onPress: () => router.push("/parent-enrollment-form") }} />}
     </SummarySection>
     <SummarySection title={t("home.parentPayments")}>
-      {invoices.isFetching && <ShimmerList />}
+      {invoices.isFetching && <ShimmerList style={styles.summaryShimmer} />}
       {invoices.allFailed && !invoices.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={invoices.retryFailed} />}
       {!paymentsUnavailable && <TenantLoadFailureBanner failedTenants={invoices.failedTenants} onRetry={invoices.retryFailed} />}
       {!paymentsUnavailable && summary.actionableInvoices.map((invoice) => {
@@ -258,14 +258,20 @@ function ParentOnboardingHome({ displayName }: { displayName: string }) {
   const homeRefresh = useHomeRefresh([parentEnrollmentQueryKey(user?.uid)]);
   return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
     <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{t("parentEnrollment.onboardingSubtitle")}</AppText></View><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
-    {next?.status === "PENDING_APPROVAL" && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText tone="muted">{t("parentEnrollment.pendingApproval")}</AppText><Button variant="secondary" onPress={() => router.push("/parent-enrollment")}>{t("parentEnrollment.viewApplication")}</Button></View>}
-    {next?.invoiceStatus === "PENDING" && next.invoiceId && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText>{next.planName} · {formatCurrency(next.totalAmount)}</AppText><AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText><Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: next.invoiceId!, organizationId: next.organizationId } })}>{t("parentEnrollment.pay")}</Button></View>}
-    {!next && <MenuItem icon="add-circle-outline" title={t("parentEnrollment.newTenant")} description={t("parentEnrollment.startDescription")} onPress={() => router.push("/parent-enrollment-form")} />}
+    {enrollments.isFetching ? <ShimmerList count={1} /> : <>
+      {next?.status === "PENDING_APPROVAL" && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText tone="muted">{t("parentEnrollment.pendingApproval")}</AppText><Button variant="secondary" onPress={() => router.push("/parent-enrollment")}>{t("parentEnrollment.viewApplication")}</Button></View>}
+      {next?.invoiceStatus === "PENDING" && next.invoiceId && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText>{next.planName} · {formatCurrency(next.totalAmount)}</AppText><AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText><Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: next.invoiceId!, organizationId: next.organizationId } })}>{t("parentEnrollment.pay")}</Button></View>}
+      {!next && <MenuItem icon="add-circle-outline" title={t("parentEnrollment.newTenant")} description={t("parentEnrollment.startDescription")} onPress={() => router.push("/parent-enrollment-form")} />}
+    </>}
   </View></AppScreen>;
 }
 
 function HomeLoadingState() {
-  return <AppScreen showBottomNavigation={false}><ShimmerList /></AppScreen>;
+  return <AppScreen showBottomNavigation={false}><View style={styles.content}>
+    <View style={styles.loadingToolbar}><View style={styles.loadingHeading}><Shimmer width="62%" height={28} /><Shimmer width="46%" height={16} /></View><Shimmer width={36} height={36} borderRadius={radius.pill} /></View>
+    <ShimmerList variant="tile" />
+    <ShimmerList />
+  </View></AppScreen>;
 }
 
 function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, subscriptionActive }: { displayName: string; organizationName: string; hasDaycareOperations: boolean; subscriptionActive: boolean }) {
@@ -321,18 +327,18 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, s
       {readiness.data.issues.map((issue) => <AppText key={issue} variant="caption" tone="danger">• {t(tenantReadinessIssueKey(issue))}</AppText>)}
     </NavigationCard>}
     <SummarySection title={t("home.operationalSummary")}>
-      <SummaryCard label={t("home.activeChildren")} value={operationalUnavailable ? undefined : summary.activeChildren} onPress={() => router.push("/children")} />
-      <SummaryCard label={t("home.activeStaff")} value={operationalUnavailable ? undefined : summary.activeStaff} onPress={() => router.push("/tenant-users")} />
-      {hasDaycareOperations && <SummaryCard label={t("home.pendingApprovals")} value={approvalsUnavailable ? undefined : summary.pendingApprovals} onPress={() => router.push("/booking-approvals")} />}
+      <SummaryCard label={t("home.activeChildren")} value={operationalUnavailable ? undefined : summary.activeChildren} loading={children.isFetching} onPress={() => router.push("/children")} />
+      <SummaryCard label={t("home.activeStaff")} value={operationalUnavailable ? undefined : summary.activeStaff} loading={users.isFetching} onPress={() => router.push("/tenant-users")} />
+      {hasDaycareOperations && <SummaryCard label={t("home.pendingApprovals")} value={approvalsUnavailable ? undefined : summary.pendingApprovals} loading={pendingBookings.isFetching || pendingEnrollments.isFetching} onPress={() => router.push("/booking-approvals")} />}
     </SummarySection>
     {hasDaycareOperations && <SummarySection title={t("home.financialSummary")}>
-      <SummaryCard label={t("home.pendingInvoices")} value={financialUnavailable ? undefined : summary.pendingInvoices} onPress={() => router.push("/parent-payments")} />
-      <SummaryCard label={t("home.activeSubscriptions")} value={financialUnavailable ? undefined : summary.activeSubscriptions} onPress={() => router.push("/parent-subscriptions")} />
-      <SummaryCard label={t("home.remainingCredits")} value={financialUnavailable ? undefined : summary.remainingCredits} onPress={() => router.push("/parent-subscriptions")} />
+      <SummaryCard label={t("home.pendingInvoices")} value={financialUnavailable ? undefined : summary.pendingInvoices} loading={invoices.isFetching} onPress={() => router.push("/parent-payments")} />
+      <SummaryCard label={t("home.activeSubscriptions")} value={financialUnavailable ? undefined : summary.activeSubscriptions} loading={entitlements.isFetching} onPress={() => router.push("/parent-subscriptions")} />
+      <SummaryCard label={t("home.remainingCredits")} value={financialUnavailable ? undefined : summary.remainingCredits} loading={entitlements.isFetching} onPress={() => router.push("/parent-subscriptions")} />
     </SummarySection>}
     <SummarySection title={t("children.programs")}>
-      <SummaryCard label={t("home.activePrograms")} value={programsSummary.isFetching || programsSummary.isError ? undefined : programsSummary.data?.activePrograms} onPress={() => router.push("/children")} />
-      <SummaryCard label={t("home.programFeedback")} value={programsSummary.isFetching || programsSummary.isError ? undefined : programsSummary.data?.feedbackCount} onPress={() => router.push("/children")} />
+      <SummaryCard label={t("home.activePrograms")} value={programsSummary.isFetching || programsSummary.isError ? undefined : programsSummary.data?.activePrograms} loading={programsSummary.isFetching} onPress={() => router.push("/children")} />
+      <SummaryCard label={t("home.programFeedback")} value={programsSummary.isFetching || programsSummary.isError ? undefined : programsSummary.data?.feedbackCount} loading={programsSummary.isFetching} onPress={() => router.push("/children")} />
     </SummarySection>
 
     <SectionHeader title={t("home.branchSummary")} />
@@ -352,9 +358,9 @@ function SummarySection({ title, children }: { title: string; children: ReactNod
   return <View style={styles.summarySection}><SectionHeader title={title} /><View style={styles.summaryGrid}>{children}</View></View>;
 }
 
-function SummaryCard({ label, value, onPress }: { label: string; value?: number; onPress: () => void }) {
+function SummaryCard({ label, value, loading = false, onPress }: { label: string; value?: number; loading?: boolean; onPress: () => void }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ pressed }) => [styles.summaryCard, pressed && styles.summaryCardPressed]}>
-    <AppText variant="h3">{value ?? "—"}</AppText><AppText variant="caption" tone="muted">{label}</AppText>
+    {loading ? <Shimmer width="44%" height={28} /> : <AppText variant="h3">{value ?? "—"}</AppText>}<AppText variant="caption" tone="muted">{label}</AppText>
   </Pressable>;
 }
 
@@ -402,7 +408,7 @@ function PlatformAdminHome() {
     <NavigationCard accessibilityLabel={t("tenantReadiness.open")} onPress={() => router.push("/tenant-readiness")}>
       <AppText variant="h5">{t("tenantReadiness.menu")}</AppText>
       <AppText variant="bodySmall" tone="muted">{t("tenantReadiness.menuDescription")}</AppText>
-      {readiness.isFetching && <AppText variant="caption" tone="muted">{t("common.loading")}</AppText>}
+      {readiness.isFetching && <Shimmer width="48%" height={14} />}
       {readiness.isError && <AppText variant="caption" tone="danger">{t("tenantReadiness.loadFailed")}</AppText>}
       {readiness.data && <AppText variant="caption" tone={readiness.data.needsAttentionCount > 0 ? "danger" : "muted"}>{readiness.data.needsAttentionCount > 0 ? t("tenantReadiness.needsAttentionSummary", { count: readiness.data.needsAttentionCount }) : t("tenantReadiness.allReadySummary", { count: readiness.data.readyCount })}</AppText>}
     </NavigationCard>
@@ -425,6 +431,8 @@ function TenantSection({ title, tenants, emptyMessage, formatCurrency, t }: { ti
 
 const styles = StyleSheet.create({
   content: { gap: spacing.md },
+  loadingToolbar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+  loadingHeading: { flex: 1, gap: spacing.sm },
   attentionCard: { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
   profileError: { flex: 1, justifyContent: "center", gap: spacing.md, minHeight: 240 },
   profileErrorActions: { gap: spacing.sm },
@@ -439,6 +447,7 @@ const styles = StyleSheet.create({
   notificationBadgeText: { color: colors.surface },
   summarySection: { gap: spacing.sm },
   summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  summaryShimmer: { width: "100%", flexBasis: "100%" },
   summaryCard: { flexGrow: 1, minWidth: 150, gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTint },
   summaryCardPressed: { opacity: 0.76 },
   parentCard: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
