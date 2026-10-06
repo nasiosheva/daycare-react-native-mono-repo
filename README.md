@@ -414,7 +414,17 @@ For a private repository on GitHub Free, configure these values as repository-le
 | Secret | `VPS_SSH_PRIVATE_KEY` | A dedicated GitHub Actions deployment private key, never the developer's personal SSH key. |
 | Secret | `VPS_KNOWN_HOSTS` | Verified host-key line from the VPS; do not generate it in CI with an unverified `ssh-keyscan`. |
 
-Before the workflow can activate a release, provision the VPS with PostgreSQL, Java 21, Caddy, an `umur-emas-api` systemd service, and a non-login deployment user that can run only `/usr/local/sbin/umur-emas-activate-release` through `sudo`. Install [scripts/production/activate-release.sh](scripts/production/activate-release.sh) there as `/usr/local/sbin/umur-emas-activate-release` with root ownership and executable permissions. It preserves the existing API JAR for web-only releases, restarts the service only after an API release uploads a new `api.jar`, and supports `--rollback` to swap the current and immediately preceding releases. The API systemd environment file must remain only on the VPS and provide at least `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `FIREBASE_ISSUER_URI`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `CORS_ALLOWED_ORIGINS`, `PLATFORM_ADMIN_EMAILS`, and a strong `QR_SIGNING_SECRET`.
+Before the workflow can activate a release, provision the VPS with PostgreSQL, Java 21, Caddy, an `umur-emas-api` systemd service, and a non-login deployment user that can run only `/usr/local/sbin/umur-emas-activate-release` through `sudo`. On a fresh Ubuntu 24.04 VPS, [scripts/production/provision-vps.sh](scripts/production/provision-vps.sh) does all of this. Copy `scripts/production/` and the GitHub Actions deploy public key (optionally also the Firebase service-account JSON) to the server, then run:
+
+```sh
+sudo ./provision-vps.sh --web-domain umuremas.id --api-domain api.umuremas.id \
+  --firebase-project-id <firebase-project-id> --platform-admin-emails <admin-email> \
+  --deploy-public-key ~/umur_emas_actions.pub [--firebase-service-account ~/service-account.json]
+```
+
+It installs the packages, creates the `umur-emas` service user and the `umur-emas-deploy` deployment user (authorizing the given public key), prepares `/opt/umur-emas/releases`, installs [scripts/production/activate-release.sh](scripts/production/activate-release.sh) as `/usr/local/sbin/umur-emas-activate-release` with a `sudo` rule limited to it, creates the `daycare` database, writes the `umur-emas-api` unit and a Caddyfile (web on the web domain with a `www` redirect, API reverse-proxied on the API domain), and opens SSH/HTTP/HTTPS in `ufw`. It is safe to re-run. The activation script preserves the existing API JAR for web-only releases, restarts the service only after an API release uploads a new `api.jar`, and supports `--rollback` to swap the current and immediately preceding releases; the very first release must therefore be a manual `Deploy production` run with `force_api` checked.
+
+The API environment file (`/etc/umur-emas/api.env`) must remain only on the VPS. It provides `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `FIREBASE_ISSUER_URI`, `LOCAL_AUTH_JWT_SECRET` (at least 32 bytes; the API refuses to start without it), `CORS_ALLOWED_ORIGINS`, `PLATFORM_ADMIN_EMAILS`, and a strong `QR_SIGNING_SECRET`. The provisioning script generates the database password and both signing secrets when it first creates the file and never overwrites an existing one. The optional Firebase service account is kept as `/etc/umur-emas/firebase-service-account.json` and exported as `FIREBASE_SERVICE_ACCOUNT_JSON` when the service starts, because a multi-line JSON document cannot live in a systemd environment file.
 
 ## Git workflow
 
