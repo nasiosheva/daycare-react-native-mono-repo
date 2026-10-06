@@ -3,6 +3,12 @@ name: Deploy production
 on:
   push:
     branches: [production]
+  workflow_dispatch:
+    inputs:
+      force_api:
+        description: Also test, build, and deploy the API (a manual run otherwise deploys only the web release)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -14,7 +20,7 @@ concurrency:
 jobs:
   detect-api-changes:
     name: Detect API changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       api_changed: ${{ steps.changes.outputs.api_changed }}
     steps:
@@ -23,9 +29,17 @@ jobs:
           fetch-depth: 2
       - id: changes
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          FORCE_API: ${{ inputs.force_api && 'true' || 'false' }}
           BEFORE_SHA: ${{ github.event.before }}
           AFTER_SHA: ${{ github.sha }}
         run: |
+          # A manual run has no pushed commit range to diff; the API ships only when requested.
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "api_changed=$FORCE_API" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
             changed_files="$(git show --format= --name-only "$AFTER_SHA")"
           else
@@ -40,7 +54,7 @@ jobs:
 
   build-and-deploy:
     name: Build and deploy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: detect-api-changes
     env:
       EXPO_PUBLIC_APP_ENV: production
@@ -103,6 +117,23 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
+      - name: Check SSH access
+        run: |
+          # Names the failure in a run annotation (readable without log access) instead of a bare
+          # exit code 255. The annotation holds only these fixed reasons; raw ssh output stays in the log.
+          if ! output="$(ssh -o BatchMode=yes -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" true 2>&1)"; then
+            case "$output" in
+              *"Host key verification failed"*|*"REMOTE HOST IDENTIFICATION HAS CHANGED"*) reason="Host key mismatch: refresh VPS_KNOWN_HOSTS from the verified VPS host key." ;;
+              *"Permission denied"*) reason="Authentication rejected: the VPS_SSH_PRIVATE_KEY public key is not authorized for VPS_USER." ;;
+              *"timed out"*|*"No route to host"*|*"Network is unreachable"*) reason="VPS unreachable on port 22: check VPS_HOST and the firewall." ;;
+              *"Connection refused"*) reason="SSH refused on port 22: check that sshd is running on the VPS." ;;
+              *"Could not resolve hostname"*) reason="VPS_HOST cannot be resolved." ;;
+              *) reason="Unrecognized SSH failure: see this step's log." ;;
+            esac
+            echo "::error title=SSH access to the VPS failed::$reason"
+            printf '%s\n' "$output" >&2
+            exit 1
+          fi
       - name: Upload immutable release
         env:
           RELEASE_ID: ${{ github.sha }}
