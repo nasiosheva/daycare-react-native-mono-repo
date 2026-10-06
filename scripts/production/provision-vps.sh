@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # Prepares a fresh Ubuntu 24.04 VPS for the release flow in .github/workflows/deploy-production.yml:
 # Java 21, PostgreSQL, Caddy, a restricted deployment user, the release root, the activation script,
-# the umur-emas-api service, and its environment file. Safe to re-run: existing users, the database,
+# the usia-emas-api service, and its environment file. Safe to re-run: existing users, the database,
 # and an existing environment file (with its secrets) are kept as they are.
 set -euo pipefail
 
-readonly app_root=/opt/umur-emas
-readonly config_dir=/etc/umur-emas
+readonly app_root=/opt/usia-emas
+readonly config_dir=/etc/usia-emas
 readonly env_file=$config_dir/api.env
 readonly firebase_file=$config_dir/firebase-service-account.json
-readonly start_script=/usr/local/libexec/umur-emas-api-start
-readonly unit_file=/etc/systemd/system/umur-emas-api.service
-readonly activation_script=/usr/local/sbin/umur-emas-activate-release
-readonly sudoers_file=/etc/sudoers.d/umur-emas-deploy
-readonly service_user=umur-emas
-readonly deploy_user=umur-emas-deploy
+readonly start_script=/usr/local/libexec/usia-emas-api-start
+readonly unit_file=/etc/systemd/system/usia-emas-api.service
+readonly activation_script=/usr/local/sbin/usia-emas-activate-release
+readonly sudoers_file=/etc/sudoers.d/usia-emas-deploy
+readonly service_user=usia-emas
+readonly deploy_user=usia-emas-deploy
 readonly database_name=daycare
 readonly database_user=daycare
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -133,7 +133,7 @@ if [[ -n "$firebase_service_account" ]]; then
   echo "Installed the Firebase service account at $firebase_file."
 fi
 
-step "Installing the umur-emas-api service"
+step "Installing the usia-emas-api service"
 install -d -m 755 /usr/local/libexec
 cat > "$start_script" <<EOF
 #!/bin/sh
@@ -149,7 +149,7 @@ EOF
 chmod 755 "$start_script"
 cat > "$unit_file" <<EOF
 [Unit]
-Description=Umur Emas API
+Description=Usia Emas API
 Requires=postgresql.service
 After=network-online.target postgresql.service
 Wants=network-online.target
@@ -172,11 +172,11 @@ WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
 # Started by the activation script once the first API release is uploaded.
-systemctl enable umur-emas-api
+systemctl enable usia-emas-api
 
 step "Configuring Caddy"
 caddyfile=/etc/caddy/Caddyfile
-if [[ -f "$caddyfile" && ! -f "$caddyfile.orig" ]] && ! grep -q 'umur-emas' "$caddyfile"; then
+if [[ -f "$caddyfile" && ! -f "$caddyfile.orig" ]] && ! grep -q 'usia-emas' "$caddyfile"; then
   cp -p "$caddyfile" "$caddyfile.orig"
 fi
 web_site_block="	root * $app_root/current/web
@@ -185,7 +185,7 @@ web_site_block="	root * $app_root/current/web
 	file_server"
 if [[ -n "$api_domain" ]]; then
   cat > "$caddyfile" <<EOF
-# umur-emas: managed by scripts/production/provision-vps.sh
+# usia-emas: managed by scripts/production/provision-vps.sh
 $web_domain {
 $web_site_block
 }
@@ -200,7 +200,7 @@ $api_domain {
 EOF
 else
   cat > "$caddyfile" <<EOF
-# umur-emas: managed by scripts/production/provision-vps.sh
+# usia-emas: managed by scripts/production/provision-vps.sh
 $web_domain {
 	handle /api/* {
 		reverse_proxy 127.0.0.1:8080

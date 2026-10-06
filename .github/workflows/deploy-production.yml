@@ -152,7 +152,7 @@ jobs:
         continue-on-error: ${{ needs.detect-api-changes.outputs.api_changed == 'true' }}
         env:
           RELEASE_ID: ${{ github.sha }}
-        run: ssh "$VPS_USER@$VPS_HOST" "sudo /usr/local/sbin/umur-emas-activate-release '$RELEASE_ID'"
+        run: ssh "$VPS_USER@$VPS_HOST" "sudo /usr/local/sbin/usia-emas-activate-release '$RELEASE_ID'"
       - name: Verify API health
         id: verify-api-health
         if: needs.detect-api-changes.outputs.api_changed == 'true' && steps.activate-release.outcome == 'success'
@@ -169,7 +169,7 @@ jobs:
       - name: Roll back failed API release
         if: needs.detect-api-changes.outputs.api_changed == 'true' && (steps.activate-release.outcome == 'failure' || steps.verify-api-health.outcome == 'failure')
         run: |
-          ssh "$VPS_USER@$VPS_HOST" "sudo /usr/local/sbin/umur-emas-activate-release --rollback"
+          ssh "$VPS_USER@$VPS_HOST" "sudo /usr/local/sbin/usia-emas-activate-release --rollback"
           for attempt in {1..18}; do
             if ssh "$VPS_USER@$VPS_HOST" "curl --silent --fail http://127.0.0.1:8080/api/actuator/health | grep -q '\"status\":\"UP\"'"; then
               exit 0
