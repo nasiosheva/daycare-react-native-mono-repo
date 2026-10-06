@@ -692,6 +692,9 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @GetMapping("/children/{childId}/messages")
     fun listChildMessages(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childMessages.list(jwt, organizationId, childId)
 
+    @GetMapping("/children/{childId}/messages/summary")
+    fun childMessageSummary(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childMessages.summary(jwt, organizationId, childId)
+
     @PostMapping("/children/{childId}/messages") @ResponseStatus(HttpStatus.CREATED)
     fun sendChildMessage(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: SendChildMessageRequest) = childMessages.send(jwt, organizationId, childId, request)
 

@@ -28,13 +28,13 @@ const queryKeysByFlag: Record<RealtimeFlag, readonly string[]> = {
   PRIVATE_TUTORING: ["private-tutoring-services", "private-tutoring-requests", "private-tutoring-admin-services", "private-tutoring-tutors", "private-tutoring-admin-requests"],
   CHILD_PROGRAMS: ["child-profile", "parent-child-profile"],
   TENANT_FEEDBACK: ["tenant-feedback-mine", "tenant-feedback-inbox"],
-  CHILD_MESSAGES: ["child-messages"],
+  CHILD_MESSAGES: ["child-messages", "child-message-summary"],
 };
 
 export function invalidateRealtimeFlags(queryClient: QueryClient, flags: readonly RealtimeFlag[], organizationId?: string | null, userId?: string | null, payload?: unknown): void {
   const childMessageChildId = flags.includes("CHILD_MESSAGES") ? readChildMessageChildId(payload) : undefined;
   new Set(flags.flatMap((flag) => queryKeysByFlag[flag])).forEach((key) => {
-    if (key === "child-messages" && organizationId && childMessageChildId) {
+    if ((key === "child-messages" || key === "child-message-summary") && organizationId && childMessageChildId) {
       void queryClient.invalidateQueries({ queryKey: [key, organizationId, childMessageChildId] });
       return;
     }

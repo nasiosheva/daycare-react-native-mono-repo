@@ -23,6 +23,7 @@ import { parentEnrollmentQueryKey } from "@/parent-enrollment/queryKeys";
 import { isInactiveStaffMembership } from "@/navigation/inactiveStaffRouteAccess";
 import { hasOfferingCapability, useOfferingCapabilitiesByTenant, useUiAccessContext } from "@/education/useUiAccessContext";
 import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
+import { StaffChatFloatingAction } from "@/chat/StaffChatFloatingAction";
 
 export default function HomeScreen() {
   const { user, profile, organizationId, loading, profileError, requiresOrganizationSelection } = useAuth();
@@ -103,7 +104,7 @@ function StaffHome({ displayName, organizationName, managedChildren, tasksByChil
   const { t } = useI18n();
   const children = subscriptionActive ? managedChildren.data ?? [] : [];
   const homeRefresh = useHomeRefresh([["children", organizationId], ["development-entries", organizationId], ["child-goals", organizationId], ["notifications", organizationId]]);
-  return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
+  return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()} floatingAction={<StaffChatFloatingAction />}><View style={styles.content}>
     <View style={styles.staffToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.STAFF")}</AppText></View><NotificationBellButton enabled={subscriptionActive} /><Pressable accessibilityRole="button" accessibilityLabel={t("nav.profile")} hitSlop={spacing.sm} onPress={() => router.push("/profile")} style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}><Ionicons name="person-circle-outline" size={32} color={colors.primary} /></Pressable></View>
     {!subscriptionActive && <AppText tone="danger">{t("tenantReadiness.issueSubscription")}</AppText>}
     <SectionHeader title={t("home.managedChildren")} />

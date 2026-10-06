@@ -10,6 +10,7 @@ import com.daycare.api.service.DevelopmentEntryMediaError
 import com.daycare.api.service.DevelopmentProgramError
 import com.daycare.api.service.LearningLevelError
 import com.daycare.api.service.ChildIncidentError
+import com.daycare.api.service.ChildMessageError
 import com.daycare.api.service.ParentEnrollmentError
 import com.daycare.api.service.TenantPaymentInstructionError
 import com.daycare.api.service.StaffLeaveRequestError
@@ -90,6 +91,7 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             ChildIncidentError.PHOTO_TYPE to "error.childIncidentPhotoType",
             ChildIncidentError.PHOTO_INVALID to "error.childIncidentPhotoInvalid",
             ChildIncidentError.PHOTO_TOO_LARGE to "error.childIncidentPhotoTooLarge",
+            ChildMessageError.REPLY_UNAVAILABLE to "error.childMessageReplyUnavailable",
             ParentEnrollmentError.ALREADY_ACTIVE to "error.parentEnrollmentAlreadyActive",
             ParentEnrollmentError.BOOKINGS_NOT_ALLOWED to "error.parentEnrollmentBookingsNotAllowed",
             ParentEnrollmentError.NOT_FOUND to "error.parentEnrollmentNotFound",

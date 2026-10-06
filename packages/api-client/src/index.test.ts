@@ -128,6 +128,19 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/children/child-id/guardians/parent-id", expect.objectContaining({ method: "DELETE" }));
   });
 
+  it("sends an optional reply target without changing the child message endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "tenant-id", getLanguage: () => "id" });
+
+    await client.sendChildMessage("child-id", "Siap", "tenant-id", "message-id");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/children/child-id/messages", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ body: "Siap", replyToMessageId: "message-id" }),
+    }));
+  });
+
   it("checks whether the signed-in identity already has an account", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ exists: false, email: null, phoneNumber: "+6281234567890" }) });
     vi.stubGlobal("fetch", fetchMock);

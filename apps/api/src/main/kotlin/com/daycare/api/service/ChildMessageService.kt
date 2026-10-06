@@ -9,6 +9,7 @@ import com.daycare.api.persistence.ChildMessageRepository
 import com.daycare.api.persistence.ChildStaffAssignmentRepository
 import com.daycare.api.persistence.GuardianLinkRepository
 import com.daycare.api.persistence.MembershipRepository
+import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.UserProfileRepository
 import com.daycare.api.realtime.ChildMessageRealtimePayload
 import com.daycare.api.realtime.RealtimeFlag
@@ -21,7 +22,18 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import java.util.UUID
 
-data class SendChildMessageRequest(@field:NotBlank @field:Size(max = 2_000) val body: String)
+data class SendChildMessageRequest(@field:NotBlank @field:Size(max = 2_000) val body: String, val replyToMessageId: UUID? = null)
+object ChildMessageError {
+    const val REPLY_UNAVAILABLE = "Child message reply is not available"
+}
+enum class ChildMessageDeliveryStatus { SENT, READ }
+data class ChildMessageSummaryResponse(val unreadCount: Int)
+data class ChildMessageReplyResponse(
+    val id: UUID,
+    val senderName: String,
+    val body: String,
+    val createdAt: Instant,
+)
 data class ChildMessageResponse(
     val id: UUID,
     val childId: UUID,
@@ -31,6 +43,9 @@ data class ChildMessageResponse(
     val body: String,
     val createdAt: Instant,
     val mine: Boolean,
+    val deliveryStatus: ChildMessageDeliveryStatus,
+    val readAt: Instant?,
+    val replyTo: ChildMessageReplyResponse?,
 )
 
 @Service
@@ -49,10 +64,29 @@ class ChildMessageService(
     @Transactional(readOnly = true)
     fun list(jwt: Jwt, organizationId: UUID, childId: UUID): List<ChildMessageResponse> {
         val scope = access.require(jwt, organizationId, Role.entries.toSet())
-        requireChildAccess(scope, childId, organizationId)
+        val child = requireChildAccess(scope, childId, organizationId)
         val forChild = messages.findAllByOrganizationIdAndChildIdOrderByCreatedAtAsc(organizationId, childId)
         val namesByUserId = users.findAllById(forChild.map { it.senderUserId }.distinct()).associateBy { it.id }
-        return forChild.map { response(it, namesByUserId[it.senderUserId]?.displayName ?: "Unknown", scope.user.id) }
+        val messagesById = forChild.associateBy { it.id }
+        val readAtByUserId = reads.findAllByChildId(childId).associateBy { it.userId }
+        val recipientIdsBySenderRole = forChild.map { it.senderRole }.distinct().associateWith { readRecipientUserIds(child, it).toSet() }
+        return forChild.map { message ->
+            val readAt = readAtFor(message, recipientIdsBySenderRole[message.senderRole].orEmpty(), readAtByUserId)
+            response(message, namesByUserId[message.senderUserId]?.displayName ?: "Unknown", scope.user.id, readAt, messagesById, namesByUserId)
+        }
+    }
+
+    @Transactional(readOnly = true)
+    fun summary(jwt: Jwt, organizationId: UUID, childId: UUID): ChildMessageSummaryResponse {
+        val scope = access.require(jwt, organizationId, Role.entries.toSet())
+        requireChildAccess(scope, childId, organizationId)
+        val lastReadAt = reads.findByChildIdAndUserId(childId, scope.user.id)?.lastReadAt
+        val unreadCount = if (lastReadAt == null) {
+            messages.countByOrganizationIdAndChildIdAndSenderUserIdNot(organizationId, childId, scope.user.id)
+        } else {
+            messages.countByOrganizationIdAndChildIdAndSenderUserIdNotAndCreatedAtAfter(organizationId, childId, scope.user.id, lastReadAt)
+        }
+        return ChildMessageSummaryResponse(unreadCount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
     }
 
     @Transactional
@@ -60,17 +94,29 @@ class ChildMessageService(
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))
         access.requireWritable(scope)
         val child = requireChildAccess(scope, childId, organizationId)
-        val message = messages.save(ChildMessage(organizationId = organizationId, childId = child.id, senderUserId = scope.user.id, senderRole = scope.membership.role, body = request.body.trim(), createdAt = Instant.now()))
+        val replyTo = request.replyToMessageId?.let { replyId ->
+            messages.findByIdAndOrganizationIdAndChildId(replyId, organizationId, child.id)
+                ?: throw IllegalArgumentException(ChildMessageError.REPLY_UNAVAILABLE)
+        }
+        val message = messages.save(ChildMessage(organizationId = organizationId, childId = child.id, senderUserId = scope.user.id, senderRole = scope.membership.role, body = request.body.trim(), replyToMessageId = replyTo?.id, createdAt = Instant.now()))
         touchRead(child.id, scope.user.id)
         notifyOtherSide(child, scope.membership.role, scope.user.displayName, message)
-        return response(message, scope.user.displayName, scope.user.id)
+        val replySenderName = replyTo?.let { users.findById(it.senderUserId).map { sender -> sender.displayName }.orElse("Unknown") }
+        return response(message, scope.user.displayName, scope.user.id, null, replyTo = replyTo, replySenderName = replySenderName)
     }
 
     @Transactional
     fun markRead(jwt: Jwt, organizationId: UUID, childId: UUID) {
         val scope = access.require(jwt, organizationId, Role.entries.toSet())
-        requireChildAccess(scope, childId, organizationId)
+        val child = requireChildAccess(scope, childId, organizationId)
         touchRead(childId, scope.user.id)
+        val latestIncoming = messages.findAllByOrganizationIdAndChildIdOrderByCreatedAtAsc(organizationId, childId)
+            .lastOrNull { it.senderUserId != scope.user.id }
+        if (latestIncoming != null) {
+            readRecipientUserIds(child, scope.membership.role).forEach { userId ->
+                realtime.publishToUser(organizationId, userId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, latestIncoming.id))
+            }
+        }
     }
 
     private fun requireChildAccess(scope: AccessScope, childId: UUID, organizationId: UUID): Child =
@@ -81,8 +127,28 @@ class ChildMessageService(
         if (existing != null) existing.lastReadAt = Instant.now() else reads.save(ChildMessageRead(childId = childId, userId = userId, lastReadAt = Instant.now()))
     }
 
-    private fun response(message: ChildMessage, senderName: String, viewerUserId: UUID) =
-        ChildMessageResponse(message.id, message.childId, message.senderUserId, senderName, message.senderRole, message.body, message.createdAt, message.senderUserId == viewerUserId)
+    private fun response(
+        message: ChildMessage,
+        senderName: String,
+        viewerUserId: UUID,
+        readAt: Instant?,
+        messagesById: Map<UUID, ChildMessage> = emptyMap(),
+        namesByUserId: Map<UUID, UserProfile> = emptyMap(),
+        replyTo: ChildMessage? = message.replyToMessageId?.let { messagesById[it] },
+        replySenderName: String? = replyTo?.let { namesByUserId[it.senderUserId]?.displayName },
+    ) = ChildMessageResponse(
+        message.id,
+        message.childId,
+        message.senderUserId,
+        senderName,
+        message.senderRole,
+        message.body,
+        message.createdAt,
+        message.senderUserId == viewerUserId,
+        if (readAt != null) ChildMessageDeliveryStatus.READ else ChildMessageDeliveryStatus.SENT,
+        readAt,
+        replyTo?.let { ChildMessageReplyResponse(it.id, replySenderName ?: "Unknown", it.body, it.createdAt) },
+    )
 
     // A Parent's message notifies the Staff directly assigned to the child, falling back to active
     // Staff Admins when no Staff is assigned yet. A Staff/Staff Admin's message always notifies every
@@ -91,17 +157,29 @@ class ChildMessageService(
         val title = "Pesan baru dari $senderName"
         val body = message.body.take(200)
         val path = "/child-messages?childId=${child.id}"
-        if (senderRole == Role.PARENT) {
-            val assignedStaffUserIds = staffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(child.organizationId, child.id).map { it.userId }.distinct()
-            val recipients = assignedStaffUserIds.ifEmpty {
-                memberships.findAllByOrganizationId(child.organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.map { it.userId }.distinct()
-            }
-            recipients.forEach { userId -> notifyRecipient(child, userId, title, body, path, message) }
-        } else {
-            guardians.findAllByChildId(child.id).map { it.userId }.distinct()
-                .forEach { userId -> notifyRecipient(child, userId, title, body, path, message) }
-        }
+        notificationRecipientUserIds(child, senderRole).forEach { userId -> notifyRecipient(child, userId, title, body, path, message) }
     }
+
+    private fun notificationRecipientUserIds(child: Child, senderRole: Role): List<UUID> = if (senderRole == Role.PARENT) {
+        val assignedStaffUserIds = staffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(child.organizationId, child.id).map { it.userId }.distinct()
+        assignedStaffUserIds.ifEmpty {
+            memberships.findAllByOrganizationId(child.organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.map { it.userId }.distinct()
+        }
+    } else {
+        guardians.findAllByChildId(child.id).map { it.userId }.distinct()
+    }
+
+    private fun readRecipientUserIds(child: Child, senderRole: Role): List<UUID> = if (senderRole == Role.PARENT) {
+        (staffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(child.organizationId, child.id).map { it.userId } +
+            memberships.findAllByOrganizationId(child.organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.map { it.userId }).distinct()
+    } else {
+        guardians.findAllByChildId(child.id).map { it.userId }.distinct()
+    }
+
+    private fun readAtFor(message: ChildMessage, recipientUserIds: Set<UUID>, readAtByUserId: Map<UUID, ChildMessageRead>): Instant? =
+        recipientUserIds.mapNotNull { readAtByUserId[it]?.lastReadAt }
+            .filter { !it.isBefore(message.createdAt) }
+            .minOrNull()
 
     private fun notifyRecipient(child: Child, userId: UUID, title: String, body: String, path: String, message: ChildMessage) {
         // Persisted notification and push delivery remain separate from the chat

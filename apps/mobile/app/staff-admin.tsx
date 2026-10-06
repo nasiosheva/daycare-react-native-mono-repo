@@ -7,6 +7,7 @@ import { AppText, Badge, Banner, colors, MenuItem, MenuSection, radius, spacing 
 import { StyleSheet, View } from "react-native";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
+import { StaffChatFloatingAction } from "@/chat/StaffChatFloatingAction";
 import { useEntitlements, useInvoices } from "@/booking/useBooking";
 import { createStaffAdminSummary } from "@/home/staffAdminSummary";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -66,7 +67,7 @@ export default function StaffAdminScreen() {
 
   const issuesFor = (menuIssues: TenantReadinessIssue[]) => attentionIssues(readiness.data?.issues, menuIssues);
 
-  return <AppScreen><AppText variant="title">{t("staffAdmin.title")}</AppText>
+  return <AppScreen floatingAction={<StaffChatFloatingAction />}><AppText variant="title">{t("staffAdmin.title")}</AppText>
     <AppText tone="muted">{t("staffAdmin.subtitle")}</AppText>
     {readOnly && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
     {readiness.data?.issues.includes("SUBSCRIPTION_NOT_ACTIVE") && <Banner tone="danger" title={t("tenantReadiness.needsAttention")} message={t(tenantReadinessIssueKey("SUBSCRIPTION_NOT_ACTIVE"))} />}

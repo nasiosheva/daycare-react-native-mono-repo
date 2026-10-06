@@ -141,7 +141,9 @@ export type CreateChildHealthNoteInput = { note: string };
 export type IncidentSeverity = "MINOR" | "MODERATE" | "SERIOUS";
 export type IncidentCategory = "INJURY" | "ILLNESS" | "BEHAVIOR" | "OTHER";
 export type ChildIncidentReport = { id: string; childId: string; severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string | null; occurredAt: string; hasPhoto: boolean; acknowledgedByMe: boolean; createdAt: string };
-export type ChildMessage = { id: string; childId: string; senderUserId: string; senderName: string; senderRole: Role; body: string; createdAt: string; mine: boolean };
+export type ChildMessageReply = { id: string; senderName: string; body: string; createdAt: string };
+export type ChildMessage = { id: string; childId: string; senderUserId: string; senderName: string; senderRole: Role; body: string; createdAt: string; mine: boolean; deliveryStatus: "SENT" | "READ"; readAt?: string | null; replyTo?: ChildMessageReply | null };
+export type ChildMessageSummary = { unreadCount: number };
 export type IncidentPhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
 export type CreateChildIncidentInput = { severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string; occurredAt: string; photo?: IncidentPhotoInput };
 export type ChildIncidentPhoto = { contentType: string; dataBase64: string };
@@ -568,8 +570,12 @@ export class ApiClient {
     return this.request(`/children/${childId}/messages`, this.orgOverride(organizationId));
   }
 
-  async sendChildMessage(childId: string, body: string, organizationId?: string): Promise<ChildMessage> {
-    return this.request(`/children/${childId}/messages`, { method: "POST", body: JSON.stringify({ body }), ...this.orgOverride(organizationId) });
+  async childMessageSummary(childId: string, organizationId?: string): Promise<ChildMessageSummary> {
+    return this.request(`/children/${childId}/messages/summary`, this.orgOverride(organizationId));
+  }
+
+  async sendChildMessage(childId: string, body: string, organizationId?: string, replyToMessageId?: string): Promise<ChildMessage> {
+    return this.request(`/children/${childId}/messages`, { method: "POST", body: JSON.stringify({ body, ...(replyToMessageId ? { replyToMessageId } : {}) }), ...this.orgOverride(organizationId) });
   }
 
   async markChildMessagesRead(childId: string, organizationId?: string): Promise<void> {
