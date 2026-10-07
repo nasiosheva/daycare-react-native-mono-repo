@@ -141,6 +141,11 @@ interface ChildMessageUnreadCount {
     val unreadCount: Long
 }
 interface ChildMessagePhotoRepository : JpaRepository<ChildMessagePhoto, UUID>
+interface ChildMessageTemplateRepository : JpaRepository<ChildMessageTemplate, UUID> {
+    fun findAllByOrganizationIdOrderByCreatedAtAsc(organizationId: UUID): List<ChildMessageTemplate>
+    fun findByIdAndOrganizationId(id: UUID, organizationId: UUID): ChildMessageTemplate?
+    fun countByOrganizationId(organizationId: UUID): Long
+}
 interface ChildMessageReadRepository : JpaRepository<ChildMessageRead, UUID> {
     fun findByChildIdAndUserId(childId: UUID, userId: UUID): ChildMessageRead?
     fun findAllByChildId(childId: UUID): List<ChildMessageRead>

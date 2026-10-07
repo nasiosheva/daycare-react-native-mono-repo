@@ -651,6 +651,16 @@ class ChildMessage(
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
+/** Tenant-wide quick reply that Staff can insert into a child chat draft. */
+@Entity
+@Table(name = "child_message_templates")
+class ChildMessageTemplate(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(nullable = false, length = 500) var body: String = "",
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
 /** Photo bytes for a chat message, kept apart so thread listings never load image data. */
 @Entity
 @Table(name = "child_message_photos")

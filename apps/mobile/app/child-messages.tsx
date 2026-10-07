@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ChildMessage } from "@daycare/api-client";
-import { AppText, BackButton, Banner, Button, EmptyState, ErrorState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Banner, BottomSheet, Button, EmptyState, ErrorState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
@@ -12,6 +12,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { useImagePicker, type PickedImage } from "@/image-picker";
 import { pickedImageUpload } from "@/image-picker/photoUpload";
 import { ChildMessagePhoto } from "@/chat/ChildMessagePhoto";
+import { useChildMessageTemplates } from "@/chat/useChildMessageTemplates";
 import { childMessageNotificationScope } from "@/notifications/childMessageLocalNotificationPolicy";
 import { useLocalNotificationScope } from "@/notifications/useLocalNotificationScope";
 import { childMessageUnreadSummaryQueryKey } from "@/chat/useChildMessageUnreadSummary";
@@ -29,6 +30,9 @@ export default function ChildMessagesScreen() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<ChildMessage | null>(null);
   const [photo, setPhoto] = useState<PickedImage | null>(null);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const isStaffSide = membership?.role === "STAFF" || membership?.role === "STAFF_ADMIN";
+  const templates = useChildMessageTemplates(Boolean(canUse && isStaffSide && organizationId === activeOrganizationId));
   const imagePicker = useImagePicker();
   const scrollViewRef = useRef<ScrollView | null>(null);
   const threadOffset = useRef(0);
@@ -159,6 +163,9 @@ export default function ChildMessagesScreen() {
       <Pressable accessibilityRole="button" accessibilityLabel={t("childMessage.attachPhoto")} hitSlop={spacing.xs} onPress={() => void imagePicker.pickFromLibrary().then((images) => { if (images[0]) setPhoto(images[0]); })} style={styles.attachButton}>
         <Ionicons name="images-outline" size={22} color={colors.primary} />
       </Pressable>
+      {isStaffSide && <Pressable accessibilityRole="button" accessibilityLabel={t("childMessageTemplate.pick")} hitSlop={spacing.xs} onPress={() => setTemplatesOpen(true)} style={styles.attachButton}>
+        <Ionicons name="flash-outline" size={22} color={colors.primary} />
+      </Pressable>}
       <Pressable accessibilityRole="button" accessibilityLabel={t("childMessage.takePhoto")} hitSlop={spacing.xs} onPress={() => void imagePicker.takePhoto().then((image) => { if (image) setPhoto(image); })} style={styles.attachButton}>
         <Ionicons name="camera-outline" size={22} color={colors.primary} />
       </Pressable>
@@ -195,6 +202,14 @@ export default function ChildMessagesScreen() {
     {!messages.isLoading && !messages.isError && messages.data?.length === 0 && <EmptyState compact icon="chatbubbles-outline" title={t("childMessage.empty")} />}
 
     {sendError && <Banner tone="danger" title={sendError} />}
+    <BottomSheet visible={templatesOpen} onClose={() => setTemplatesOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("childMessageTemplate.pickTitle")}>
+      {templates.isFetching && <ShimmerList />}
+      {templates.isError && !templates.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void templates.refetch()} />}
+      {!templates.isFetching && templates.data?.length === 0 && <EmptyState compact icon="chatbox-ellipses-outline" title={t("childMessageTemplate.pickEmpty")} />}
+      {!templates.isFetching && templates.data?.map((template) => <Pressable key={template.id} accessibilityRole="button" accessibilityLabel={template.body} onPress={() => { setDraft((current) => current.trim() ? `${current.trimEnd()} ${template.body}` : template.body); setSendError(null); setTemplatesOpen(false); }} style={styles.templateOption}>
+        <AppText>{template.body}</AppText>
+      </Pressable>)}
+    </BottomSheet>
   </AppScreen>;
 }
 
@@ -217,6 +232,7 @@ const styles = StyleSheet.create({
   cancelReply: { width: 28, height: 28, alignItems: "center", justifyContent: "center", borderRadius: radius.pill },
   composer: { width: "100%", flexDirection: "row", alignItems: "center", gap: spacing.sm },
   composerInput: { flex: 1, minWidth: 0 },
+  templateOption: { padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   attachButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderRadius: radius.pill },
   photoComposer: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.xs, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
   photoComposerPreview: { width: 64, height: 64, borderRadius: radius.sm },
