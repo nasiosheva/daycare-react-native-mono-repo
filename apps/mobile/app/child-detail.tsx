@@ -67,6 +67,7 @@ export default function ChildDetailScreen() {
   const [staffListOpen, setStaffListOpen] = useState(false);
   const [guardiansOpen, setGuardiansOpen] = useState(false);
   const childBranchId = childProfile.data?.child.branchId;
+  const hasDaycareOperations = hasBranchOfferingCapability(access.data, childBranchId, "DAYCARE_OPERATIONS");
   const canManagePickup = canManage && hasBranchOfferingCapability(access.data, childBranchId, "DAYCARE_OPERATIONS");
   const assignableStaff = useMemo(() => staff.data?.filter((user) => user.userId && user.status === "ACTIVE" && (user.role === "STAFF_ADMIN" || (user.role === "STAFF" && user.branchId === childBranchId))) ?? [], [staff.data, childBranchId]);
   const assignmentRoleLabel = (role: (typeof assignmentRoles)[number]) => role === "NURSE" ? t("children.nurse") : role === "MISS" ? t("children.miss") : t("children.staff");
@@ -166,10 +167,13 @@ export default function ChildDetailScreen() {
     {childId && childProfile.data && <>
       {membership?.active === false && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
       <MenuSection title={t("children.dailyRecords")}>
+        <MenuItem icon="time-outline" title={t("operations.timeline")} description={t("operations.timelineDescription")} onPress={() => router.push({ pathname: "/child-daily-timeline", params: { childId } } as never)} />
         <MenuItem icon="sparkles-outline" title={t("development.title")} description={t("staffOperations.developmentDescription")} onPress={() => router.push({ pathname: "/development", params: { childId } })} />
         {hasAcademicOffering && <MenuItem icon="flag-outline" title={t("goals.title")} description={t("goals.menuDescription")} onPress={() => router.push({ pathname: "/goals", params: { childId } })} />}
         <MenuItem icon="medkit-outline" title={t("health.title")} onPress={() => router.push({ pathname: "/child-health", params: { childId } })} />
         <MenuItem icon="bandage-outline" title={t("incident.title")} onPress={() => router.push({ pathname: "/incident-reports", params: { childId } })} />
+        {hasDaycareOperations && <MenuItem icon="restaurant-outline" title={t("operations.careLogs")} description={t("operations.careLogsDescription")} onPress={() => router.push({ pathname: "/child-care-logs", params: { childId } } as never)} />}
+        {hasDaycareOperations && (membership?.role === "STAFF" || membership?.role === "STAFF_ADMIN") && <MenuItem icon="swap-horizontal-outline" title={t("operations.handovers")} description={t("operations.handoversDescription")} onPress={() => router.push({ pathname: "/child-handovers", params: { childId } } as never)} />}
         <MenuItem icon="chatbubbles-outline" title={t("childMessage.menuTitle")} onPress={() => router.push({ pathname: "/child-messages", params: { childId, organizationId } })} />
       </MenuSection>
       <MenuSection title={t("children.classAndCare")}>

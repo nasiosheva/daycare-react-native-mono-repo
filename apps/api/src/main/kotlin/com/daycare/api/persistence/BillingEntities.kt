@@ -16,6 +16,7 @@ import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
@@ -69,6 +70,23 @@ class Booking(
 class BranchCapacitySetting(
     @Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
     @Column(name = "branch_id", nullable = false, unique = true) var branchId: UUID = UUID.randomUUID(), @Column(name = "daily_capacity", nullable = false) var dailyCapacity: Int = 1,
+)
+
+@Entity @Table(name = "service_expiry_reminder_settings")
+class ServiceExpiryReminderSettings(
+    @Id @Column(name = "organization_id") var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "lead_days", nullable = false, length = 100) var leadDays: String = "7,3,1",
+    @Column(name = "updated_by_user_id", nullable = false) var updatedByUserId: UUID = UUID.randomUUID(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "service_expiry_reminders", uniqueConstraints = [UniqueConstraint(columnNames = ["entitlement_id", "lead_days"])])
+class ServiceExpiryReminder(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "entitlement_id", nullable = false) var entitlementId: UUID = UUID.randomUUID(),
+    @Column(name = "lead_days", nullable = false) var leadDays: Int = 1,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
 @Entity @Table(name = "capacity_reservations")

@@ -183,6 +183,25 @@ interface ChildIncidentAcknowledgementRepository : JpaRepository<ChildIncidentAc
     fun findAllByIncidentIdIn(incidentIds: Collection<UUID>): List<ChildIncidentAcknowledgement>
     fun existsByIncidentIdAndUserId(incidentId: UUID, userId: UUID): Boolean
 }
+interface ChildIncidentFollowUpRepository : JpaRepository<ChildIncidentFollowUp, UUID> {
+    fun findAllByIncidentIdOrderByCreatedAtAsc(incidentId: UUID): List<ChildIncidentFollowUp>
+    fun existsByIncidentIdAndStatus(incidentId: UUID, status: com.daycare.api.domain.IncidentFollowUpStatus): Boolean
+}
+interface ChildCareLogRepository : JpaRepository<ChildCareLog, UUID> {
+    fun findAllByOrganizationIdAndChildIdOrderByOccurredAtDesc(organizationId: UUID, childId: UUID): List<ChildCareLog>
+}
+interface StaffHandoverRepository : JpaRepository<StaffHandover, UUID> {
+    fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<StaffHandover>
+}
+interface TenantAnnouncementRepository : JpaRepository<TenantAnnouncement, UUID> {
+    fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<TenantAnnouncement>
+    fun findAllByOrganizationIdAndStatus(organizationId: UUID, status: com.daycare.api.domain.TenantAnnouncementStatus): List<TenantAnnouncement>
+}
+interface TenantAnnouncementRecipientRepository : JpaRepository<TenantAnnouncementRecipient, UUID> {
+    fun findAllByRecipientUserId(recipientUserId: UUID): List<TenantAnnouncementRecipient>
+    fun findByAnnouncementIdAndRecipientUserId(announcementId: UUID, recipientUserId: UUID): TenantAnnouncementRecipient?
+    fun findAllByAnnouncementId(announcementId: UUID): List<TenantAnnouncementRecipient>
+}
 interface InvitationRepository : JpaRepository<Invitation, UUID> { fun findAllByStatus(status: InvitationStatus): List<Invitation>; fun findAllByOrganizationIdAndStatus(organizationId: UUID, status: InvitationStatus): List<Invitation> }
 interface NotificationRepository : JpaRepository<Notification, UUID> {
     @Query("""

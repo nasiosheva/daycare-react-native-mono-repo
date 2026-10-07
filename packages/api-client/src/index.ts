@@ -140,7 +140,28 @@ export type ChildHealthNote = { id: string; note: string; authorName: string; re
 export type CreateChildHealthNoteInput = { note: string };
 export type IncidentSeverity = "MINOR" | "MODERATE" | "SERIOUS";
 export type IncidentCategory = "INJURY" | "ILLNESS" | "BEHAVIOR" | "OTHER";
-export type ChildIncidentReport = { id: string; childId: string; severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string | null; occurredAt: string; hasPhoto: boolean; acknowledgedByMe: boolean; createdAt: string };
+export type IncidentStatus = "OPEN" | "IN_PROGRESS" | "CLOSED";
+export type GuardianContactStatus = "NOT_REQUIRED" | "PENDING" | "ATTEMPTED" | "CONFIRMED";
+export type IncidentFollowUpStatus = "OPEN" | "COMPLETED";
+export type ChildIncidentReport = { id: string; childId: string; severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string | null; occurredAt: string; hasPhoto: boolean; acknowledgedByMe: boolean; incidentStatus: IncidentStatus; guardianContactStatus: GuardianContactStatus; guardianContactOutcome?: string | null; followUpOwnerUserId?: string | null; followUpDueOn?: string | null; closedAt?: string | null; createdAt: string };
+export type UpdateChildIncidentLifecycleInput = { incidentStatus: IncidentStatus; guardianContactStatus: GuardianContactStatus; guardianContactOutcome?: string; followUpOwnerUserId?: string; followUpDueOn?: string };
+export type ChildIncidentFollowUp = { id: string; incidentId: string; title: string; note?: string | null; status: IncidentFollowUpStatus; completedAt?: string | null; createdAt: string };
+export type CreateChildIncidentFollowUpInput = { title: string; note?: string };
+export type ChildCareLogType = "MEAL" | "NAP" | "TOILET";
+export type ChildMealType = "BREAKFAST" | "SNACK" | "LUNCH" | "OTHER";
+export type ChildMealAmount = "NONE" | "LESS_THAN_HALF" | "ABOUT_HALF" | "MOST" | "ALL";
+export type ChildToiletType = "WET" | "SOILED" | "TOILET_ATTEMPT";
+export type ChildCareLog = { id: string; childId: string; type: ChildCareLogType; occurredAt: string; mealType?: ChildMealType | null; mealAmount?: ChildMealAmount | null; napStartedAt?: string | null; napEndedAt?: string | null; toiletType?: ChildToiletType | null; note?: string | null; correctsLogId?: string | null; correctionReason?: string | null; createdAt: string };
+export type CreateChildCareLogInput = { type: ChildCareLogType; occurredAt: string; mealType?: ChildMealType; mealAmount?: ChildMealAmount; napStartedAt?: string; napEndedAt?: string; toiletType?: ChildToiletType; note?: string; correctsLogId?: string; correctionReason?: string };
+export type StaffHandoverStatus = "OPEN" | "ACKNOWLEDGED";
+export type StaffHandover = { id: string; childId: string; recipientUserId: string; recipientName: string; summary: string; status: StaffHandoverStatus; acknowledgedAt?: string | null; createdAt: string };
+export type StaffHandoverRecipient = { userId: string; displayName: string };
+export type CreateStaffHandoverInput = { recipientUserId: string; summary: string };
+export type TenantAnnouncementAudience = "TENANT" | "BRANCH";
+export type TenantAnnouncementStatus = "DRAFT" | "SCHEDULED" | "PUBLISHED" | "CLOSED";
+export type TenantAnnouncement = { id: string; audience: TenantAnnouncementAudience; branchId?: string | null; title: string; body: string; requiresAcknowledgement: boolean; status: TenantAnnouncementStatus; scheduledAt?: string | null; publishedAt?: string | null; closedAt?: string | null; acknowledgedByMe: boolean; recipientCount: number; createdAt: string };
+export type UpsertTenantAnnouncementInput = { audience: TenantAnnouncementAudience; branchId?: string; title: string; body: string; requiresAcknowledgement?: boolean };
+export type ServiceExpiryReminderSettings = { leadDays: number[] };
 export type ChildMessageReply = { id: string; senderName: string; body: string; createdAt: string; hasPhoto: boolean };
 export type ChildMessagePhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
 export type ChildMessagePhoto = { contentType: string; dataBase64: string };
@@ -266,7 +287,7 @@ export type TenantFeedback = { id: string; submittedByName: string; category: Te
 export type CreateTenantFeedbackInput = { category: TenantFeedbackCategory; message: string };
 export type StaffLeaveEvidence = { contentType: string; dataBase64: string };
 export type GlobalCurriculumSeedResult = { alreadySeeded: boolean; learningLevelCount: number; developmentProgramCount: number; developmentProgramItemCount: number; curriculumProgramCount: number };
-export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "INCIDENT_REPORTS" | "HEALTH" | "DEVELOPMENT" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS" | "PRIVATE_TUTORING" | "CHILD_PROGRAMS" | "TENANT_FEEDBACK" | "CHILD_MESSAGES";
+export type RealtimeFlag = "NOTIFICATIONS" | "PROFILE" | "PARENT_ENROLLMENTS" | "CHILDREN" | "ATTENDANCE" | "ABSENCE_REQUESTS" | "INCIDENT_REPORTS" | "HEALTH" | "DEVELOPMENT" | "CHILD_CARE_LOGS" | "STAFF_HANDOVERS" | "TENANT_ANNOUNCEMENTS" | "DEVELOPMENT_CATEGORIES" | "BOOKINGS" | "INVOICES" | "ENTITLEMENTS" | "SERVICE_PLANS" | "BRANCHES" | "TENANT_USERS" | "LEARNING" | "ACADEMIC" | "TENANTS" | "GLOBAL_CURRICULUM" | "GOALS" | "STAFF_REMINDERS" | "STAFF_LEAVE_REQUESTS" | "PRIVATE_TUTORING" | "CHILD_PROGRAMS" | "TENANT_FEEDBACK" | "CHILD_MESSAGES";
 export type RealtimeEvent<TPayload = unknown> = { type: "EVENT"; id: string; organizationId?: string | null; flags: RealtimeFlag[]; payload?: TPayload | null; occurredAt: string };
 export type RealtimeConnectRequest = { type: "CONNECT"; token: string; organizationId?: string | null };
 export type ChildMessageRealtimeEvent = "MESSAGE_CREATED" | "MESSAGE_READ";
@@ -359,6 +380,8 @@ export class ApiClient {
   async archiveBranch(branchId: string): Promise<TenantBranch> { return this.request(`/branches/${branchId}/archive`, { method: "POST" }); }
   async branchOperatingHours(branchId: string): Promise<BranchOperatingHours> { return this.request(`/branches/${branchId}/operating-hours`); }
   async updateBranchOperatingHours(branchId: string, input: UpdateBranchOperatingHoursInput): Promise<BranchOperatingHours> { return this.request(`/branches/${branchId}/operating-hours`, { method: "PUT", body: JSON.stringify(input) }); }
+  async serviceExpiryReminderSettings(): Promise<ServiceExpiryReminderSettings> { return this.request("/service-expiry-reminder-settings"); }
+  async updateServiceExpiryReminderSettings(leadDays: number[]): Promise<ServiceExpiryReminderSettings> { return this.request("/service-expiry-reminder-settings", { method: "PUT", body: JSON.stringify({ leadDays }) }); }
   async parentOperatingHours(): Promise<BranchOperatingHours[]> { return this.request("/parent/operating-hours"); }
   async parentOperatingHoursAllTenants(): Promise<ParentChildOperatingHours[]> { return this.request("/parent/operating-hours/all-tenants"); }
   async overtimeCharges(): Promise<OvertimeCharge[]> { return this.request("/overtime-charges"); }
@@ -421,6 +444,13 @@ export class ApiClient {
   async myTenantFeedback(organizationId?: string): Promise<TenantFeedback[]> { return this.request("/tenant-feedback/mine", this.orgOverride(organizationId)); }
   async tenantFeedbackInbox(): Promise<TenantFeedback[]> { return this.request("/tenant-feedback"); }
   async updateTenantFeedbackStatus(feedbackId: string, status: TenantFeedbackStatus): Promise<TenantFeedback> { return this.request(`/tenant-feedback/${feedbackId}/status`, { method: "POST", body: JSON.stringify({ status }) }); }
+  async announcements(organizationId?: string): Promise<TenantAnnouncement[]> { return this.request("/announcements", this.orgOverride(organizationId)); }
+  async managedAnnouncements(): Promise<TenantAnnouncement[]> { return this.request("/announcements/manage"); }
+  async createAnnouncement(input: UpsertTenantAnnouncementInput): Promise<TenantAnnouncement> { return this.request("/announcements", { method: "POST", body: JSON.stringify(input) }); }
+  async updateAnnouncement(announcementId: string, input: UpsertTenantAnnouncementInput): Promise<TenantAnnouncement> { return this.request(`/announcements/${announcementId}`, { method: "PUT", body: JSON.stringify(input) }); }
+  async publishAnnouncement(announcementId: string, scheduledAt?: string): Promise<TenantAnnouncement> { return this.request(`/announcements/${announcementId}/publish`, { method: "POST", body: JSON.stringify({ scheduledAt }) }); }
+  async closeAnnouncement(announcementId: string): Promise<TenantAnnouncement> { return this.request(`/announcements/${announcementId}/close`, { method: "POST" }); }
+  async acknowledgeAnnouncement(announcementId: string, organizationId?: string): Promise<TenantAnnouncement> { return this.request(`/announcements/${announcementId}/acknowledge`, { method: "POST", ...this.orgOverride(organizationId) }); }
   async staffLeaveRequestEvidence(requestId: string): Promise<StaffLeaveEvidence> { return this.request(`/staff-leave-requests/${requestId}/evidence`); }
   async academicYears(): Promise<AcademicYear[]> { return this.request("/academic-years"); }
   async createAcademicYear(input: CreateAcademicYearInput): Promise<AcademicYear> { return this.request("/academic-years", { method: "POST", body: JSON.stringify(input) }); }
@@ -580,6 +610,29 @@ export class ApiClient {
   async childIncidentReportPhoto(childId: string, incidentId: string, organizationId?: string): Promise<ChildIncidentPhoto> {
     return this.request(`/children/${childId}/incident-reports/${incidentId}/photo`, this.orgOverride(organizationId));
   }
+
+  async updateChildIncidentLifecycle(childId: string, incidentId: string, input: UpdateChildIncidentLifecycleInput, organizationId?: string): Promise<ChildIncidentReport> {
+    return this.request(`/children/${childId}/incident-reports/${incidentId}/lifecycle`, { method: "PATCH", body: JSON.stringify(input), ...this.orgOverride(organizationId) });
+  }
+
+  async childIncidentFollowUps(childId: string, incidentId: string, organizationId?: string): Promise<ChildIncidentFollowUp[]> {
+    return this.request(`/children/${childId}/incident-reports/${incidentId}/follow-ups`, this.orgOverride(organizationId));
+  }
+
+  async createChildIncidentFollowUp(childId: string, incidentId: string, input: CreateChildIncidentFollowUpInput, organizationId?: string): Promise<ChildIncidentFollowUp> {
+    return this.request(`/children/${childId}/incident-reports/${incidentId}/follow-ups`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) });
+  }
+
+  async completeChildIncidentFollowUp(childId: string, incidentId: string, followUpId: string, organizationId?: string): Promise<ChildIncidentFollowUp> {
+    return this.request(`/children/${childId}/incident-reports/${incidentId}/follow-ups/${followUpId}/complete`, { method: "POST", ...this.orgOverride(organizationId) });
+  }
+
+  async childCareLogs(childId: string, organizationId?: string): Promise<ChildCareLog[]> { return this.request(`/children/${childId}/care-logs`, this.orgOverride(organizationId)); }
+  async createChildCareLog(childId: string, input: CreateChildCareLogInput, organizationId?: string): Promise<ChildCareLog> { return this.request(`/children/${childId}/care-logs`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async childHandovers(childId: string, organizationId?: string): Promise<StaffHandover[]> { return this.request(`/children/${childId}/handovers`, this.orgOverride(organizationId)); }
+  async childHandoverRecipients(childId: string, organizationId?: string): Promise<StaffHandoverRecipient[]> { return this.request(`/children/${childId}/handovers/recipients`, this.orgOverride(organizationId)); }
+  async createChildHandover(childId: string, input: CreateStaffHandoverInput, organizationId?: string): Promise<StaffHandover> { return this.request(`/children/${childId}/handovers`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async acknowledgeChildHandover(childId: string, handoverId: string, organizationId?: string): Promise<StaffHandover> { return this.request(`/children/${childId}/handovers/${handoverId}/acknowledge`, { method: "POST", ...this.orgOverride(organizationId) }); }
 
   async childMessages(childId: string, organizationId?: string): Promise<ChildMessage[]> {
     return this.request(`/children/${childId}/messages`, this.orgOverride(organizationId));

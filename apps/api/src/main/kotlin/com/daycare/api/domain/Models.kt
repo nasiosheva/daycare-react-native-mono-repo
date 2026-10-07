@@ -28,6 +28,16 @@ enum class ChildAbsencePurpose { SICK, OUT_OF_TOWN, FAMILY_EVENT, EMERGENCY, OTH
 enum class ChildAbsenceRequestStatus { PENDING, APPROVED, REJECTED, CANCELLED }
 enum class IncidentSeverity { MINOR, MODERATE, SERIOUS }
 enum class IncidentCategory { INJURY, ILLNESS, BEHAVIOR, OTHER }
+enum class IncidentStatus { OPEN, IN_PROGRESS, CLOSED }
+enum class GuardianContactStatus { NOT_REQUIRED, PENDING, ATTEMPTED, CONFIRMED }
+enum class IncidentFollowUpStatus { OPEN, COMPLETED }
+enum class ChildCareLogType { MEAL, NAP, TOILET }
+enum class ChildMealType { BREAKFAST, SNACK, LUNCH, OTHER }
+enum class ChildMealAmount { NONE, LESS_THAN_HALF, ABOUT_HALF, MOST, ALL }
+enum class ChildToiletType { WET, SOILED, TOILET_ATTEMPT }
+enum class StaffHandoverStatus { OPEN, ACKNOWLEDGED }
+enum class TenantAnnouncementAudience { TENANT, BRANCH }
+enum class TenantAnnouncementStatus { DRAFT, SCHEDULED, PUBLISHED, CLOSED }
 enum class DevelopmentMediaKind { PHOTO, AUDIO }
 enum class DevelopmentCategory { ACTIVITY, MEAL, NAP, OBSERVATION }
 enum class GoalDomain { KEMANDIRIAN, BAHASA_KOMUNIKASI, KOGNITIF, MOTORIK_HALUS, MOTORIK_KASAR, SOSIAL_EMOSI }

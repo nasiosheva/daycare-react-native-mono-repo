@@ -3,7 +3,7 @@ import { Image, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ChildIncidentReport, IncidentCategory, IncidentSeverity } from "@daycare/api-client";
+import type { ChildIncidentReport, GuardianContactStatus, IncidentCategory, IncidentSeverity, IncidentStatus } from "@daycare/api-client";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppText, Badge, BackButton, Banner, BottomSheet, Button, Card, Chip, ChipGroup, EmptyState, ErrorState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing, type Tone } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
@@ -12,10 +12,13 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { useImagePicker, type PickedImage } from "@/image-picker";
 import { pickedImageUpload } from "@/image-picker/photoUpload";
 import { pendingActionState } from "@/ui/pendingAction";
+import { notify } from "@/notify/notify";
 
 const severities: IncidentSeverity[] = ["MINOR", "MODERATE", "SERIOUS"];
 const categories: IncidentCategory[] = ["INJURY", "ILLNESS", "BEHAVIOR", "OTHER"];
 const severityTones: Record<IncidentSeverity, Tone> = { MINOR: "info", MODERATE: "warning", SERIOUS: "danger" };
+const incidentStatuses: IncidentStatus[] = ["OPEN", "IN_PROGRESS", "CLOSED"];
+const guardianContactStatuses: GuardianContactStatus[] = ["NOT_REQUIRED", "PENDING", "ATTEMPTED", "CONFIRMED"];
 
 type FormState = { severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken: string };
 const defaultForm = (): FormState => ({ severity: "MINOR", category: "INJURY", description: "", actionTaken: "" });
@@ -38,6 +41,13 @@ export default function IncidentReportsScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [photo, setPhoto] = useState<PickedImage | null>(null);
   const [photoEntry, setPhotoEntry] = useState<ChildIncidentReport | null>(null);
+  const [lifecycleEntry, setLifecycleEntry] = useState<ChildIncidentReport | null>(null);
+  const [incidentStatus, setIncidentStatus] = useState<IncidentStatus>("OPEN");
+  const [guardianContactStatus, setGuardianContactStatus] = useState<GuardianContactStatus>("NOT_REQUIRED");
+  const [guardianContactOutcome, setGuardianContactOutcome] = useState("");
+  const [followUpEntry, setFollowUpEntry] = useState<ChildIncidentReport | null>(null);
+  const [followUpTitle, setFollowUpTitle] = useState("");
+  const [followUpNote, setFollowUpNote] = useState("");
 
   const reports = useQuery({ queryKey: ["child-incident-reports", organizationId, childId], queryFn: () => api.childIncidentReports(childId!, organizationId), enabled: Boolean(organizationId && childId && membership) });
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["child-incident-reports", organizationId, childId] });
@@ -50,6 +60,11 @@ export default function IncidentReportsScreen() {
     onSuccess: () => { invalidate(); setForm(null); setPhoto(null); },
   });
   const acknowledge = useMutation({ mutationFn: (incidentId: string) => api.acknowledgeChildIncidentReport(childId!, incidentId, organizationId), onSuccess: invalidate });
+  const updateLifecycle = useMutation({ mutationFn: () => api.updateChildIncidentLifecycle(childId!, lifecycleEntry!.id, { incidentStatus, guardianContactStatus, guardianContactOutcome: guardianContactOutcome.trim() || undefined }, organizationId), onSuccess: () => { invalidate(); setLifecycleEntry(null); notify(t("operations.lifecycleSaved"), undefined, "success"); } });
+  const followUps = useQuery({ queryKey: ["child-incident-follow-ups", organizationId, childId, followUpEntry?.id], queryFn: () => api.childIncidentFollowUps(childId!, followUpEntry!.id, organizationId), enabled: Boolean(followUpEntry && canCreate) });
+  const refreshFollowUps = () => void queryClient.invalidateQueries({ queryKey: ["child-incident-follow-ups", organizationId, childId, followUpEntry?.id] });
+  const addFollowUp = useMutation({ mutationFn: () => api.createChildIncidentFollowUp(childId!, followUpEntry!.id, { title: followUpTitle.trim(), note: followUpNote.trim() || undefined }, organizationId), onSuccess: () => { refreshFollowUps(); setFollowUpTitle(""); setFollowUpNote(""); } });
+  const completeFollowUp = useMutation({ mutationFn: (followUpId: string) => api.completeChildIncidentFollowUp(childId!, followUpEntry!.id, followUpId, organizationId), onSuccess: refreshFollowUps });
   const photoQuery = useQuery({ queryKey: ["child-incident-report-photo", organizationId, childId, photoEntry?.id], queryFn: () => api.childIncidentReportPhoto(childId!, photoEntry!.id, organizationId), enabled: Boolean(childId && photoEntry) });
 
   if (!profile) return null;
@@ -64,6 +79,15 @@ export default function IncidentReportsScreen() {
     try { await create.mutateAsync(form); }
     catch (error) { setFormError(error instanceof Error ? error.message : t("incident.saveFailed")); }
   };
+  const incidentStatusLabel = (status: IncidentStatus) => t(status === "OPEN" ? "operations.statusOpen" : status === "IN_PROGRESS" ? "operations.statusInProgress" : "operations.statusClosed");
+  const guardianContactLabel = (status: GuardianContactStatus) => t(status === "NOT_REQUIRED" ? "operations.contactNotRequired" : status === "PENDING" ? "operations.contactPending" : status === "ATTEMPTED" ? "operations.contactAttempted" : "operations.contactConfirmed");
+  const openLifecycle = (report: ChildIncidentReport) => { setIncidentStatus(report.incidentStatus); setGuardianContactStatus(report.guardianContactStatus); setGuardianContactOutcome(report.guardianContactOutcome ?? ""); setLifecycleEntry(report); };
+  const saveLifecycle = () => void updateLifecycle.mutateAsync().catch((error: unknown) => notify(t("operations.lifecycleSaveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"));
+  const openFollowUps = (report: ChildIncidentReport) => { setFollowUpEntry(report); setFollowUpTitle(""); setFollowUpNote(""); };
+  const saveFollowUp = () => {
+    if (!followUpTitle.trim()) return;
+    void addFollowUp.mutateAsync().catch((error: unknown) => notify(t("operations.lifecycleSaveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"));
+  };
 
   return <AppScreen showBottomNavigation={false} title={t("incident.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canCreate ? <FloatingActionButton icon="add" accessibilityLabel={t("incident.add")} onPress={openForm}>{t("incident.add")}</FloatingActionButton> : undefined}>
     {reports.isLoading && <ShimmerList />}
@@ -71,7 +95,11 @@ export default function IncidentReportsScreen() {
     {!reports.isLoading && !reports.isError && reports.data?.map((report) => <Card key={report.id} icon="bandage-outline" title={categoryLabel(report.category)} subtitle={formatDateTime(report.occurredAt)} trailing={<Badge tone={severityTones[report.severity]} label={severityLabel(report.severity)} />}>
       <AppText>{report.description}</AppText>
       {report.actionTaken && <AppText tone="muted">{t("incident.actionTakenLabel", { action: report.actionTaken })}</AppText>}
+      <View style={styles.lifecycle}><Badge tone={report.incidentStatus === "CLOSED" ? "success" : report.incidentStatus === "IN_PROGRESS" ? "info" : "warning"} label={incidentStatusLabel(report.incidentStatus)} /><AppText variant="caption" tone="muted">{t("operations.guardianContact")}: {guardianContactLabel(report.guardianContactStatus)}</AppText></View>
+      {report.guardianContactOutcome && <AppText variant="caption" tone="muted">{report.guardianContactOutcome}</AppText>}
       {report.hasPhoto && <Button variant="secondary" leadingIcon={<Ionicons name="image-outline" size={18} color={colors.primary} />} onPress={() => setPhotoEntry(report)}>{t("incident.viewPhoto")}</Button>}
+      {canCreate && <Button variant="secondary" leadingIcon={<Ionicons name="create-outline" size={18} color={colors.primary} />} onPress={() => openLifecycle(report)}>{t("operations.updateLifecycle")}</Button>}
+      {canCreate && <Button variant="secondary" leadingIcon={<Ionicons name="list-outline" size={18} color={colors.primary} />} onPress={() => openFollowUps(report)}>{t("operations.followUps")}</Button>}
       {canAcknowledge && (report.acknowledgedByMe ? <Badge tone="success" icon="checkmark-circle" label={t("incident.acknowledged")} /> : <Button {...pendingActionState(acknowledge, (incidentId) => incidentId === report.id)} onPress={() => void acknowledge.mutateAsync(report.id)}>{t("incident.acknowledge")}</Button>)}
     </Card>)}
     {!reports.isLoading && !reports.isError && reports.data?.length === 0 && <EmptyState icon="shield-checkmark-outline" title={t("incident.empty")} />}
@@ -93,11 +121,28 @@ export default function IncidentReportsScreen() {
       {photoQuery.isFetching && <ShimmerList variant="tile" />}
       {photoQuery.data && <Image source={{ uri: `data:${photoQuery.data.contentType};base64,${photoQuery.data.dataBase64}` }} style={styles.photoPreview} resizeMode="contain" />}
     </BottomSheet>
+
+    <BottomSheet visible={lifecycleEntry !== null} onClose={() => setLifecycleEntry(null)} closeAccessibilityLabel={t("common.close")} title={t("operations.incidentLifecycle")} negativeAction={{ label: t("common.cancel"), onPress: () => setLifecycleEntry(null) }} positiveAction={{ label: t("common.save"), loading: updateLifecycle.isPending, onPress: saveLifecycle }}>
+      <View style={styles.field}><AppText variant="label">{t("operations.incidentStatus")}</AppText><ChipGroup accessibilityLabel={t("operations.incidentStatus")}>{incidentStatuses.map((status) => <Chip key={status} label={incidentStatusLabel(status)} selected={incidentStatus === status} onPress={() => setIncidentStatus(status)} />)}</ChipGroup></View>
+      <View style={styles.field}><AppText variant="label">{t("operations.guardianContact")}</AppText><ChipGroup accessibilityLabel={t("operations.guardianContact")}>{guardianContactStatuses.map((status) => <Chip key={status} label={guardianContactLabel(status)} selected={guardianContactStatus === status} onPress={() => setGuardianContactStatus(status)} />)}</ChipGroup></View>
+      <TextField label={t("operations.contactOutcome")} value={guardianContactOutcome} onChangeText={setGuardianContactOutcome} multiline maxLength={2_000} />
+    </BottomSheet>
+
+    <BottomSheet visible={followUpEntry !== null} onClose={() => setFollowUpEntry(null)} closeAccessibilityLabel={t("common.close")} title={t("operations.followUps")}>
+      {followUps.isFetching && <ShimmerList variant="row" />}
+      {!followUps.isFetching && followUps.data?.map((followUp) => <View key={followUp.id} style={styles.followUp}><View style={styles.grow}><AppText variant="label">{followUp.title}</AppText>{followUp.note && <AppText tone="muted">{followUp.note}</AppText>}</View>{followUp.status === "COMPLETED" ? <Badge tone="success" label={t("operations.acknowledged")} /> : <Button variant="secondary" loading={completeFollowUp.isPending} onPress={() => void completeFollowUp.mutateAsync(followUp.id).catch((error: unknown) => notify(t("operations.lifecycleSaveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))}>{t("operations.completeFollowUp")}</Button>}</View>)}
+      {!followUps.isFetching && followUps.data?.length === 0 && <EmptyState compact icon="list-outline" title={t("operations.followUpEmpty")} />}
+      <View style={styles.followUpForm}><TextField label={t("operations.addFollowUp")} value={followUpTitle} onChangeText={setFollowUpTitle} maxLength={500} /><TextField label={t("operations.note")} value={followUpNote} onChangeText={setFollowUpNote} multiline maxLength={2_000} /><Button disabled={!followUpTitle.trim()} loading={addFollowUp.isPending} onPress={saveFollowUp}>{t("operations.addFollowUp")}</Button></View>
+    </BottomSheet>
   </AppScreen>;
 }
 
 const styles = StyleSheet.create({
   field: { gap: spacing.xs },
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  lifecycle: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm },
+  followUp: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
+  followUpForm: { gap: spacing.sm },
+  grow: { flex: 1 },
   photoPreview: { width: "100%", height: 220, borderRadius: radius.md, backgroundColor: colors.surfaceTint },
 });

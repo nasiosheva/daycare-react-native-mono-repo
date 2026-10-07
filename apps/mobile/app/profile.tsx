@@ -98,6 +98,9 @@ export default function ProfileScreen() {
       {parentMemberships.length > 0 && <MenuItem icon="business-outline" title={t("profile.manageTenants")} description={t("profile.activeTenantsSummary", { count: parentMemberships.length })} onPress={() => setTenantSheetOpen(true)} />}
       {profile?.registrationRole === "PARENT" && <MenuItem icon="people-outline" title={t("parentFamily.cardTitle")} description={t("parentFamily.cardDescription")} onPress={() => router.push("/parent-family-profile" as never)} />}
     </MenuSection>}
+    {membership?.active && <MenuSection title={t("operations.announcements")}>
+      <MenuItem icon="megaphone-outline" title={t(membership.role === "STAFF_ADMIN" ? "operations.manageAnnouncements" : "operations.announcements")} description={t("operations.announcementsDescription")} onPress={() => router.push("/tenant-announcements" as never)} />
+    </MenuSection>}
 
     <MenuSection title={t("profile.accountSection")}>
       <MenuItem icon="person-outline" title={t("profile.savePersonal")} onPress={() => setProfileSheet("profile")} />
