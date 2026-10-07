@@ -272,7 +272,7 @@ class ChildMessageServiceTest {
         val staff = UserProfile()
         val assignedChildId = UUID.randomUUID()
         val scope = fixture.scope(staff, organizationId, Role.STAFF)
-        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF, Role.STAFF_ADMIN))).thenReturn(scope)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(scope)
         `when`(fixture.staffAssignments.findAllByOrganizationIdAndUserId(organizationId, staff.id)).thenReturn(listOf(ChildStaffAssignment(organizationId = organizationId, childId = assignedChildId, userId = staff.id)))
         `when`(fixture.messages.countUnreadByChild(organizationId, setOf(assignedChildId), staff.id)).thenReturn(listOf(unreadCount(assignedChildId, 3)))
 
@@ -293,7 +293,7 @@ class ChildMessageServiceTest {
         val assignedToOtherStaff = Child(organizationId = organizationId)
         val inactiveUnassigned = Child(organizationId = organizationId, active = false)
         val scope = fixture.scope(admin, organizationId, Role.STAFF_ADMIN)
-        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF, Role.STAFF_ADMIN))).thenReturn(scope)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(scope)
         `when`(fixture.staffAssignments.findAllByOrganizationIdAndUserId(organizationId, admin.id)).thenReturn(emptyList())
         `when`(fixture.staffAssignments.findAllByOrganizationId(organizationId)).thenReturn(listOf(ChildStaffAssignment(organizationId = organizationId, childId = assignedToOtherStaff.id, userId = UUID.randomUUID())))
         `when`(fixture.children.findAllByOrganizationId(organizationId)).thenReturn(listOf(unassigned, assignedToOtherStaff, inactiveUnassigned))
@@ -311,11 +311,31 @@ class ChildMessageServiceTest {
         val jwt = mock(Jwt::class.java)
         val organizationId = UUID.randomUUID()
         val staff = UserProfile()
-        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF, Role.STAFF_ADMIN))).thenReturn(fixture.scope(staff, organizationId, Role.STAFF))
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(fixture.scope(staff, organizationId, Role.STAFF))
         `when`(fixture.staffAssignments.findAllByOrganizationIdAndUserId(organizationId, staff.id)).thenReturn(emptyList())
 
         assertEquals(ChildMessageUnreadSummaryResponse(0, emptyList()), fixture.service.unreadSummary(jwt, organizationId))
         verifyNoInteractions(fixture.messages)
+    }
+
+    @Test
+    fun `unread summary for a Parent covers only linked children in the requested tenant`() {
+        val fixture = ChildMessageServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val parent = UserProfile()
+        val linkedHere = Child(organizationId = organizationId)
+        val linkedElsewhere = Child(organizationId = UUID.randomUUID())
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(fixture.scope(parent, organizationId, Role.PARENT))
+        `when`(fixture.guardians.findAllByUserId(parent.id)).thenReturn(listOf(GuardianLink(childId = linkedHere.id, userId = parent.id), GuardianLink(childId = linkedElsewhere.id, userId = parent.id)))
+        `when`(fixture.children.findAllById(setOf(linkedHere.id, linkedElsewhere.id))).thenReturn(listOf(linkedHere, linkedElsewhere))
+        `when`(fixture.messages.countUnreadByChild(organizationId, setOf(linkedHere.id), parent.id)).thenReturn(listOf(unreadCount(linkedHere.id, 1)))
+
+        val summary = fixture.service.unreadSummary(jwt, organizationId)
+
+        assertEquals(1, summary.totalUnreadCount)
+        assertEquals(listOf(ChildMessageChildUnreadCount(linkedHere.id, 1)), summary.children)
+        verifyNoInteractions(fixture.staffAssignments)
     }
 
     private fun unreadCount(childId: UUID, count: Long) = object : ChildMessageUnreadCount {

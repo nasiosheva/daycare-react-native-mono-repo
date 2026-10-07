@@ -82,14 +82,15 @@ class ChildMessageService(
     }
 
     /**
-     * Staff-side unread badge across the threads where the caller is a new-message
-     * recipient: children directly assigned to them, plus, for a Staff Admin, every
-     * active child without an assigned Staff (the notification fallback). Only
-     * children with unread messages are listed.
+     * Unread badge across the threads where the caller is a new-message
+     * recipient: a Parent's linked children in this tenant; a Staff member's
+     * directly assigned children; for a Staff Admin, directly assigned children
+     * plus every active child without an assigned Staff (the notification
+     * fallback). Only children with unread messages are listed.
      */
     @Transactional(readOnly = true)
     fun unreadSummary(jwt: Jwt, organizationId: UUID): ChildMessageUnreadSummaryResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF, Role.STAFF_ADMIN))
+        val scope = access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))
         val childIds = recipientChildIds(scope, organizationId)
         if (childIds.isEmpty()) return ChildMessageUnreadSummaryResponse(0, emptyList())
         val counts = messages.countUnreadByChild(organizationId, childIds, scope.user.id)
@@ -101,6 +102,11 @@ class ChildMessageService(
     }
 
     private fun recipientChildIds(scope: AccessScope, organizationId: UUID): Set<UUID> {
+        if (scope.membership.role == Role.PARENT) {
+            val linkedChildIds = guardians.findAllByUserId(scope.user.id).map { it.childId }.toSet()
+            if (linkedChildIds.isEmpty()) return emptySet()
+            return children.findAllById(linkedChildIds).filter { it.organizationId == organizationId }.map { it.id }.toSet()
+        }
         val directlyAssigned = staffAssignments.findAllByOrganizationIdAndUserId(organizationId, scope.user.id).map { it.childId }.toSet()
         if (scope.membership.role != Role.STAFF_ADMIN) return directlyAssigned
         val childrenWithStaff = staffAssignments.findAllByOrganizationId(organizationId).map { it.childId }.toSet()

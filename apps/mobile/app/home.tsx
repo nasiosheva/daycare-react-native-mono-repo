@@ -18,6 +18,8 @@ import { useStaffDailyTasks } from "@/home/useStaffDailyTasks";
 import { combineProgramSummaries, createParentHomeSummary } from "@/home/parentHomeSummary";
 import { authErrorMessage } from "@/auth/authErrorMessage";
 import { unreadNotificationBadge } from "@/notifications/unreadBadge";
+import { ChatUnreadBadge } from "@/chat/ChatFloatingAction";
+import { useParentChildMessageUnreadAcrossTenants } from "@/chat/useChildMessageUnreadSummary";
 import { useInboxNotifications } from "@/notifications/useInboxNotifications";
 import { parentEnrollmentQueryKey } from "@/parent-enrollment/queryKeys";
 import { isInactiveStaffMembership } from "@/navigation/inactiveStaffRouteAccess";
@@ -136,6 +138,7 @@ function ParentHome({ displayName, organizationName, subscriptionActive }: { dis
   const showsTenantLabel = allParentMemberships.length > 1;
   const children = useParentChildrenAcrossTenants(parentMemberships, true);
   const offerings = useOfferingCapabilitiesByTenant(operationalMemberships, true);
+  const unreadChatByChildId = useParentChildMessageUnreadAcrossTenants(operationalMemberships);
   const hasDaycareOperations = (tenantId: string) => offerings.hasCapability(tenantId, "DAYCARE_OPERATIONS");
   // Every one of these destinations resolves organizationId from this route param before falling
   // back to the active tenant, so opening a non-active tenant's child action never needs a
@@ -178,6 +181,7 @@ function ParentHome({ displayName, organizationName, subscriptionActive }: { dis
         const statusKey = child.todayCheckedOutAt ? "attendance.statusCheckedOut" : child.todayCheckedInAt ? "attendance.statusCheckedIn" : "attendance.statusNotYet";
         const childHasDaycareOperations = hasDaycareOperations(child.organizationId);
         const entitlementsFailed = entitlements.failedTenants.some((tenant) => tenant.organizationId === child.organizationId);
+        const unreadChat = unreadChatByChildId.get(child.id) ?? 0;
         return <View key={child.id} style={styles.childCard}>
           <View style={styles.childCardHeader}>
             <View style={styles.avatar}><AppText variant="h6" style={styles.avatarText}>{child.fullName.trim().charAt(0).toUpperCase() || "?"}</AppText></View>
@@ -204,6 +208,10 @@ function ParentHome({ displayName, organizationName, subscriptionActive }: { dis
             <View style={styles.parentActions}>
               <Button variant="secondary" leadingIcon={<Ionicons name="person-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-child-profile", { childId: child.id })}>{t("children.parentProfile")}</Button>
               <Button variant="secondary" leadingIcon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/development", { childId: child.id })}>{t("development.title")}</Button>
+              <View style={styles.chatAction}>
+                <Button variant="secondary" accessibilityLabel={unreadChat > 0 ? t("childMessage.unreadCount", { count: unreadChat }) : t("childMessage.menuTitle")} leadingIcon={<Ionicons name="chatbubbles-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/child-messages", { childId: child.id })}>{t("childMessage.menuTitle")}</Button>
+                {unreadChat > 0 && <ChatUnreadBadge count={unreadChat} style={styles.chatActionBadge} />}
+              </View>
               {childHasDaycareOperations && activeEntitlements.length > 0 && <Button variant="secondary" leadingIcon={<Ionicons name="qr-code-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/parent-qr", { childId: child.id })}>{t("qr.title")}</Button>}
               {activeEntitlements.length > 0 && <Button variant="secondary" leadingIcon={<Ionicons name="calendar-outline" size={16} color={colors.primary} />} onPress={() => openChild(child.organizationId, "/absence-requests", { childId: child.id })}>{t("absence.menu")}</Button>}
             </View>
@@ -452,6 +460,8 @@ const styles = StyleSheet.create({
   summaryCardPressed: { opacity: 0.76 },
   parentCard: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   parentActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  chatAction: { position: "relative" },
+  chatActionBadge: { position: "absolute", top: -8, right: -8, zIndex: 1 },
   section: { gap: spacing.sm },
   tenant: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   branchCard: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
