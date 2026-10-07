@@ -109,6 +109,23 @@ jarsigner -verify -verbose -certs apps/mobile/android/app/build/outputs/bundle/r
 
 When run manually, `jarsigner` can warn about an AAB's ZIP structure and self-signed local certificate even when it reports `jar verified.`. Those warnings do not replace Google Play Console's upload validation.
 
+## Share with testers (Firebase App Distribution)
+
+`./scripts/distribute-android.sh` builds a signed release APK through `build-android.sh` and uploads it to Firebase App Distribution for an existing tester group:
+
+```sh
+./scripts/distribute-android.sh prod                       # default group: qa-tester
+./scripts/distribute-android.sh prod --groups qa-tester,internal
+./scripts/distribute-android.sh prod --release-notes-file notes.txt
+./scripts/distribute-android.sh prod --skip-build          # re-upload the last release APK
+```
+
+- The Firebase App ID is resolved from `apps/mobile/google-services.json` for the package in `apps/mobile/app.json`; it is not hardcoded.
+- Before the build starts, the script lists the project's tester groups and stops if a requested alias does not exist. Listing groups needs firebase-tools 14+; when the installed CLI is older, the script runs `npx firebase-tools@15` with the same login.
+- Release notes default to the app version, environment, commit, branch, and latest commit subject. The script warns when tracked files have uncommitted changes, because the APK then differs from the referenced commit.
+- Authenticate once with `firebase login`. In CI, set `GOOGLE_APPLICATION_CREDENTIALS` to a service-account key stored as a CI secret; never commit that key.
+- Uploading immediately emails every tester in the selected groups. Manage groups in Firebase Console → App Distribution → Testers & Groups.
+
 ## Troubleshooting
 
 | Message or symptom | Resolution |
@@ -121,6 +138,8 @@ When run manually, `jarsigner` can warn about an AAB's ZIP structure and self-si
 | APK will not install on a 32-bit device | Rebuild with `ANDROID_RELEASE_ARCHITECTURES=armeabi-v7a,arm64-v8a`; the default release APK is ARM64-only to reduce download size. |
 | AAB will not install through `adb install` | This is expected. Upload the AAB to Google Play or use the APK launcher for direct device installation. |
 | Release build breaks after R8 shrinking | Keep the failure output, add the smallest necessary rule to `android/app/proguard-rules.pro`, then rebuild and exercise the affected native flow. Do not disable shrinking globally as a first response. |
+| `Unknown tester group(s)` from `distribute-android.sh` | Create the group in Firebase Console → App Distribution → Testers & Groups, or pass an existing alias with `--groups`. |
+| `Firebase CLI is not authenticated` | Run `firebase login`, or set `GOOGLE_APPLICATION_CREDENTIALS` for a service account in CI. |
 | `apksigner` is not found | Install Android SDK Build Tools through Android Studio, then repeat the build. |
 | A native package or application ID changed | Synchronize the generated Android project, then restore/confirm the ignored local signing configuration before running the release launcher. |
 
