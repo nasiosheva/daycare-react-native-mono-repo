@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PushNotificationMuteDuration } from "@daycare/api-client";
+import type { BranchOperatingHours, ParentChildOperatingHours, PushNotificationMuteDuration } from "@daycare/api-client";
 import { Pressable, StyleSheet, View } from "react-native";
-import { AppText, BackButton, Banner, BottomSheet, Button, Chip, ChipGroup, EmptyState, ErrorState, SearchField, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Banner, BottomSheet, Button, Chip, ChipGroup, EmptyState, ErrorState, SearchField, ShimmerList, ToggleSwitch, colors, radius, spacing } from "@daycare/ui";
 import { notify } from "@/notify/notify";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -20,8 +20,11 @@ import { hasOfferingCapability } from "@/education/useUiAccessContext";
 import { useInboxNotifications } from "@/notifications/useInboxNotifications";
 import { pendingActionState } from "@/ui/pendingAction";
 import type { NotificationWithTenant } from "@/notifications/inboxTenants";
-import { nativeNotificationPlatform, registerNativePushDevice, requestNativeNotificationPermission } from "@/notifications/nativePush";
+import { nativeNotificationPlatform, registerNativePushDevice, requestNativeNotificationPermission, type NativeNotificationPermission } from "@/notifications/nativePush";
 import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
+import { loadOperationalCloseReminderEnabled, saveOperationalCloseReminderEnabled } from "@/reminders/operationalCloseReminderPreference";
+import { cancelOperationalCloseReminderSchedules, reconcileOperationalCloseReminderSchedules } from "@/reminders/operationalCloseReminderScheduler";
+import type { OperationalCloseReminderSource } from "@/reminders/operationalCloseReminder";
 
 export default function NotificationsScreen() {
   const router = useRouter();
@@ -38,10 +41,17 @@ export default function NotificationsScreen() {
   }, [search]);
   useEffect(() => setPage(0), [debouncedSearch]);
   const [selectedMuteDuration, setSelectedMuteDuration] = useState<PushNotificationMuteDuration | null | undefined>(undefined);
+  const [selectedOperationalCloseReminder, setSelectedOperationalCloseReminder] = useState<boolean | undefined>(undefined);
+  const [operationalCloseReminderEnabled, setOperationalCloseReminderEnabled] = useState<boolean | null>(null);
+  const [nativePermission, setNativePermission] = useState<NativeNotificationPermission | null>(null);
+  const [savingSettings, setSavingSettings] = useState(false);
   const [browserMutedUntil, setBrowserMutedUntil] = useState<string | undefined>(() => browserNotificationMutedUntil());
   const isNative = nativeNotificationPlatform() !== null;
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const subscriptionActive = hasOperationalTenantSubscription(membership?.subscriptionStatus);
+  const isParent = profile?.registrationRole === "PARENT" || profile?.memberships.some((item) => item.role === "PARENT" && item.active) === true;
+  const isStaffAdmin = membership?.role === "STAFF_ADMIN" && membership.active === true;
+  const operationalCloseReminderSupported = isNative && (isParent || isStaffAdmin);
   useEffect(() => {
     if (!isNative) return;
     let cancelled = false;
@@ -49,6 +59,7 @@ export default function NotificationsScreen() {
       try {
         const requested = await requestNativeNotificationPermission();
         if (!cancelled && requested) {
+          setNativePermission(requested);
           console.info(`[notifications] Native permission status: ${requested.status}`);
           if (requested.status === "granted" && organizationId && profile && subscriptionActive) {
             await registerNativePushDevice(api, requested);
@@ -62,10 +73,55 @@ export default function NotificationsScreen() {
     void requestNativePermission();
     return () => { cancelled = true; };
   }, [api, isNative, organizationId, profile, subscriptionActive]);
+  useEffect(() => {
+    if (!operationalCloseReminderSupported) {
+      setOperationalCloseReminderEnabled(null);
+      return;
+    }
+    let cancelled = false;
+    void loadOperationalCloseReminderEnabled().then((enabled) => {
+      if (!cancelled) setOperationalCloseReminderEnabled(enabled);
+    });
+    return () => { cancelled = true; };
+  }, [operationalCloseReminderSupported]);
   // A Parent sees one merged inbox across every Parent tenant (docs/business-rules.md §8); every
   // mark-read and opened action below uses the notification's own tenant, not the active one.
   const inbox = useInboxNotifications(debouncedSearch, page);
   const notificationPreference = useQuery({ ...deviceNotificationPreferenceQuery(api, organizationId), enabled: isNative && Boolean(organizationId) });
+  const parentOperatingHours = useQuery({
+    queryKey: ["operational-close-reminder-parent-hours", profile?.id],
+    queryFn: () => api.parentOperatingHoursAllTenants(),
+    enabled: operationalCloseReminderSupported && isParent,
+    staleTime: 5 * 60 * 1000,
+  });
+  const staffOperatingHours = useQuery({
+    queryKey: ["operational-close-reminder-staff-hours", organizationId],
+    queryFn: async () => {
+      const branches = await api.branches();
+      const results = await Promise.allSettled(branches.filter((branch) => branch.active).map((branch) => api.branchOperatingHours(branch.id)));
+      return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+    },
+    enabled: operationalCloseReminderSupported && isStaffAdmin && Boolean(organizationId) && subscriptionActive,
+    staleTime: 5 * 60 * 1000,
+  });
+  const operationalCloseReminderSources = useMemo<OperationalCloseReminderSource[]>(() => {
+    const parentSources: ParentChildOperatingHours[] = parentOperatingHours.data ?? [];
+    const staffSources: BranchOperatingHours[] = staffOperatingHours.data ?? [];
+    const raw = isParent ? parentSources : staffSources;
+    const unique = new Map<string, OperationalCloseReminderSource>();
+    for (const source of raw) {
+      if (!unique.has(source.branchId)) unique.set(source.branchId, { branchId: source.branchId, branchName: source.branchName, timezone: source.timezone, hours: source.hours });
+    }
+    return [...unique.values()];
+  }, [isParent, parentOperatingHours.data, staffOperatingHours.data]);
+  const operationalCloseReminderSourcesReady = operationalCloseReminderSupported && (isParent ? !parentOperatingHours.isPending && !parentOperatingHours.isError : !staffOperatingHours.isPending && !staffOperatingHours.isError);
+  useEffect(() => {
+    if (!operationalCloseReminderSourcesReady || operationalCloseReminderEnabled == null || nativePermission?.status !== "granted") return;
+    const operation = operationalCloseReminderEnabled
+      ? reconcileOperationalCloseReminderSchedules(operationalCloseReminderSources, nativePermission, ({ branchName, closesAt }) => ({ title: t("notifications.operationalCloseReminderTitle"), body: t("notifications.operationalCloseReminderBody", { branch: branchName, time: closesAt }) }))
+      : cancelOperationalCloseReminderSchedules();
+    void operation.catch((error: unknown) => console.warn(`[notifications] operational close reminder sync failed: ${error instanceof Error ? error.message : String(error)}`));
+  }, [nativePermission?.status, operationalCloseReminderEnabled, operationalCloseReminderSources, operationalCloseReminderSourcesReady, t]);
   useLocalNotificationScope(inboxNotificationScope);
   const markRead = useMutation({ mutationFn: (item: NotificationWithTenant) => api.markNotificationRead(item.id, item.organizationId), onSuccess: (_, item) => void client.invalidateQueries({ queryKey: ["notifications", item.organizationId] }) });
   const markAllRead = useMutation({
@@ -75,7 +131,7 @@ export default function NotificationsScreen() {
     },
     onSettled: () => inbox.tenants.forEach((tenant) => { void client.invalidateQueries({ queryKey: ["notifications", tenant.organizationId] }); }),
   });
-  const updatePreference = useMutation({ mutationFn: async (muteDuration: PushNotificationMuteDuration | null) => api.updateDeviceNotificationPreference({ installationId: await getDeviceInstallationId(), muteDuration }), onSuccess: () => { void client.invalidateQueries({ queryKey: notificationPreferenceQueryKey(organizationId) }); setSettingsVisible(false); } });
+  const updatePreference = useMutation({ mutationFn: async (muteDuration: PushNotificationMuteDuration | null) => api.updateDeviceNotificationPreference({ installationId: await getDeviceInstallationId(), muteDuration }), onSuccess: () => { void client.invalidateQueries({ queryKey: notificationPreferenceQueryKey(organizationId) }); } });
 
   // The action path is re-validated against the notification's own tenant on every open
   // (§13.14), including a fresh capability read for that tenant; a failed read fails closed.
@@ -103,33 +159,46 @@ export default function NotificationsScreen() {
     if (!isNative) {
       if (muteDuration) {
         const mutedUntil = muteBrowserNotifications(muteDuration);
-        if (!mutedUntil) {
-          notify(t("notifications.saveFailed"), undefined, "danger");
-          return;
-        }
+        if (!mutedUntil) throw new Error(t("notifications.saveFailed"));
         setBrowserMutedUntil(mutedUntil);
       }
       else { unmuteBrowserNotifications(); setBrowserMutedUntil(undefined); void requestBrowserNotificationPermission(); }
-      setSettingsVisible(false);
       return;
     }
-    try { await updatePreference.mutateAsync(muteDuration); }
-    catch (error) { notify(t("notifications.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
+    await updatePreference.mutateAsync(muteDuration);
   };
 
   const mutedUntil = isNative ? notificationPreference.data?.pushMutedUntil : browserMutedUntil;
 
   const openSettings = () => {
     setSelectedMuteDuration(undefined);
+    setSelectedOperationalCloseReminder(operationalCloseReminderEnabled ?? true);
     setSettingsVisible(true);
   };
   const closeSettings = () => {
     setSelectedMuteDuration(undefined);
+    setSelectedOperationalCloseReminder(undefined);
     setSettingsVisible(false);
   };
-  const applyMutePreference = () => {
-    if (selectedMuteDuration === undefined) return;
-    void updateMutePreference(selectedMuteDuration);
+  const operationalCloseReminderChanged = selectedOperationalCloseReminder !== undefined && operationalCloseReminderEnabled != null && selectedOperationalCloseReminder !== operationalCloseReminderEnabled;
+  const settingsChanged = selectedMuteDuration !== undefined || operationalCloseReminderChanged;
+  const applyNotificationSettings = () => {
+    if (!settingsChanged) return;
+    void (async () => {
+      setSavingSettings(true);
+      try {
+        if (operationalCloseReminderChanged && selectedOperationalCloseReminder !== undefined) {
+          await saveOperationalCloseReminderEnabled(selectedOperationalCloseReminder);
+          setOperationalCloseReminderEnabled(selectedOperationalCloseReminder);
+        }
+        if (selectedMuteDuration !== undefined) await updateMutePreference(selectedMuteDuration);
+        closeSettings();
+      }
+      catch (error) {
+        notify(t("notifications.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger");
+      }
+      finally { setSavingSettings(false); }
+    })();
   };
 
   const markAll = () => {
@@ -169,15 +238,27 @@ export default function NotificationsScreen() {
       <AppText variant="label" tone="muted">{t("notifications.page", { page: page + 1 })}</AppText>
       <Button variant="secondary" disabled={!inbox.hasNext} onPress={() => setPage((current) => current + 1)}>{t("notifications.nextPage")}</Button>
     </View>}
-    <BottomSheet visible={settingsVisible} onClose={closeSettings} closeAccessibilityLabel={t("common.close")} title={t("notifications.settings")} negativeAction={{ label: t("common.close"), onPress: closeSettings }} positiveAction={{ label: t("notifications.apply"), loading: updatePreference.isPending, disabled: selectedMuteDuration === undefined, onPress: applyMutePreference }}>
+    <BottomSheet visible={settingsVisible} onClose={closeSettings} closeAccessibilityLabel={t("common.close")} title={t("notifications.settings")} negativeAction={{ label: t("common.close"), onPress: closeSettings }} positiveAction={{ label: t("notifications.apply"), loading: savingSettings, disabled: !settingsChanged, onPress: applyNotificationSettings }}>
       <AppText tone="muted">{t("notifications.muteDescription")}</AppText>
       {mutedUntil && <Banner tone="info" title={t("notifications.mutedUntil", { date: formatDateTime(mutedUntil) })} />}
       <ChipGroup>{notificationMuteDurations.map((duration) => <Chip key={duration} label={t(notificationMuteDurationKeys[duration])} selected={selectedMuteDuration === duration} onPress={() => setSelectedMuteDuration(duration)} />)}{mutedUntil && <Chip label={t("notifications.turnOn")} selected={selectedMuteDuration === null} onPress={() => setSelectedMuteDuration(null)} />}</ChipGroup>
+      {operationalCloseReminderSupported && operationalCloseReminderEnabled != null && <View style={styles.settingsSection}>
+        <ToggleSwitch
+          label={t("notifications.operationalCloseReminderLabel")}
+          description={t("notifications.operationalCloseReminderDescription")}
+          accessibilityLabel={t("notifications.operationalCloseReminderLabel")}
+          value={selectedOperationalCloseReminder ?? operationalCloseReminderEnabled}
+          onValueChange={setSelectedOperationalCloseReminder}
+          disabled={savingSettings}
+        />
+        {nativePermission != null && nativePermission.status !== "granted" && <AppText variant="caption" tone="muted">{t("notifications.operationalCloseReminderPermission")}</AppText>}
+      </View>}
     </BottomSheet>
   </AppScreen>;
 }
 
 const styles = StyleSheet.create({
+  settingsSection: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   unread: { borderColor: colors.primary, backgroundColor: colors.surfaceTint },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
