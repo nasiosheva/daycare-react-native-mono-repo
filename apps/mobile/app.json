@@ -5,7 +5,7 @@
     "scheme": "children",
     "version": "0.1.0",
     "orientation": "default",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "icon": "./assets/images/icon.png",
     "plugins": [
       "expo-router",
@@ -14,7 +14,7 @@
         {
           "image": "./assets/images/login-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#FFFDF6"
+          "backgroundColor": "#202D41"
         }
       ],
       "expo-notifications",
@@ -52,7 +52,7 @@
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon-foreground.png",
-        "backgroundColor": "#FFFDF6"
+        "backgroundColor": "#202D41"
       }
     },
     "web": {

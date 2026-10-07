@@ -60,7 +60,7 @@ function ParentQrScreenContent() {
 }
 const styles = StyleSheet.create({
   card: { alignItems: "center", gap: spacing.sm, padding: spacing.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  qrFrame: { padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.onPrimary },
+  qrFrame: { padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.codeSurface },
   center: { textAlign: "center" },
   single: { gap: spacing.sm },
 });
