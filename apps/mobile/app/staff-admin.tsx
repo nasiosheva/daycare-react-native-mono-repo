@@ -104,6 +104,7 @@ export default function StaffAdminScreen() {
       {hasDaycareOperations && <AdminMenuItem icon="shield-checkmark-outline" title={t("consent.staffTitle")} description={t("consent.staffDescription")} onPress={() => router.push("/consent-definitions" as never)} />}
     </MenuSection>
     <MenuSection title={t("menu.groupOther")}>
+      <AdminMenuItem icon="flash-outline" title={t("childMessageTemplate.menuTitle")} description={t("childMessageTemplate.menuDescription")} onPress={() => router.push("/child-message-templates" as never)} />
       <AdminMenuItem icon="chatbox-ellipses-outline" title={t("tenantFeedback.inboxTitle")} description={t("tenantFeedback.inboxDescription")} onPress={() => router.push("/tenant-feedback-inbox" as never)} />
       <AdminMenuItem icon="person-circle-outline" title={t("nav.profile")} description={t("profile.staffMenuDescription")} onPress={() => router.push("/profile")} />
     </MenuSection>

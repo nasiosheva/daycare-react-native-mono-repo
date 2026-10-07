@@ -11,6 +11,7 @@ import com.daycare.api.service.DevelopmentProgramError
 import com.daycare.api.service.LearningLevelError
 import com.daycare.api.service.ChildIncidentError
 import com.daycare.api.service.ChildMessageError
+import com.daycare.api.service.ChildMessageTemplateError
 import com.daycare.api.service.ParentEnrollmentError
 import com.daycare.api.service.TenantPaymentInstructionError
 import com.daycare.api.service.StaffLeaveRequestError
@@ -92,6 +93,13 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             ChildIncidentError.PHOTO_INVALID to "error.childIncidentPhotoInvalid",
             ChildIncidentError.PHOTO_TOO_LARGE to "error.childIncidentPhotoTooLarge",
             ChildMessageError.REPLY_UNAVAILABLE to "error.childMessageReplyUnavailable",
+            ChildMessageError.CONTENT_REQUIRED to "error.childMessageContentRequired",
+            ChildMessageError.PHOTO_MISSING to "error.childMessagePhotoMissing",
+            ChildMessageError.PHOTO_TYPE to "error.childMessagePhotoType",
+            ChildMessageError.PHOTO_INVALID to "error.childMessagePhotoInvalid",
+            ChildMessageError.PHOTO_TOO_LARGE to "error.childMessagePhotoTooLarge",
+            ChildMessageTemplateError.NOT_FOUND to "error.childMessageTemplateNotFound",
+            ChildMessageTemplateError.LIMIT_REACHED to "error.childMessageTemplateLimitReached",
             ParentEnrollmentError.ALREADY_ACTIVE to "error.parentEnrollmentAlreadyActive",
             ParentEnrollmentError.BOOKINGS_NOT_ALLOWED to "error.parentEnrollmentBookingsNotAllowed",
             ParentEnrollmentError.NOT_FOUND to "error.parentEnrollmentNotFound",

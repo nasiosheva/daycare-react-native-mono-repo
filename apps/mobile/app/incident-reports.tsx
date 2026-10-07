@@ -10,7 +10,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useImagePicker, type PickedImage } from "@/image-picker";
-import { encodeLocalFileBase64 } from "@/development/encodeLocalFile";
+import { pickedImageUpload } from "@/image-picker/photoUpload";
 import { pendingActionState } from "@/ui/pendingAction";
 
 const severities: IncidentSeverity[] = ["MINOR", "MODERATE", "SERIOUS"];
@@ -45,7 +45,7 @@ export default function IncidentReportsScreen() {
     mutationFn: async (input: FormState) => api.createChildIncidentReport(childId!, {
       severity: input.severity, category: input.category, description: input.description.trim(), actionTaken: input.actionTaken.trim() || undefined,
       occurredAt: new Date().toISOString(),
-      photo: photo ? { contentType: photo.mimeType === "image/png" ? "image/png" : "image/jpeg", dataBase64: await encodeLocalFileBase64(photo.uri) } : undefined,
+      photo: photo ? await pickedImageUpload(photo) : undefined,
     }, organizationId),
     onSuccess: () => { invalidate(); setForm(null); setPhoto(null); },
   });

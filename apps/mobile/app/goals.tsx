@@ -18,6 +18,7 @@ import { ChildFilterSheet } from "@/children/ChildFilterSheet";
 import { resolveSelectedChildId } from "@/development/selectedChild";
 import { ageInMonths } from "@/development/childAge";
 import { useImagePicker, type PickedImage } from "@/image-picker";
+import { pickedImageUpload } from "@/image-picker/photoUpload";
 import { useAudioRecording, useAudioPlayback } from "@/audio";
 import { encodeLocalFileBase64 } from "@/development/encodeLocalFile";
 import { checkInAudioPlaybackUri } from "@/development/checkInAudioUri";
@@ -421,7 +422,7 @@ function CheckInDetailPanel({ goalId, date, indicatorId, existingNote, hasPhoto,
   const submit = async () => {
     const detail: { note?: string; photo?: GoalCheckInPhotoInput; audio?: GoalCheckInAudioInput } = {};
     if (note.trim() !== (existingNote ?? "")) detail.note = note.trim();
-    if (photo) detail.photo = { contentType: photo.mimeType === "image/png" ? "image/png" : "image/jpeg", dataBase64: await encodeLocalFileBase64(photo.uri) };
+    if (photo) detail.photo = await pickedImageUpload(photo);
     if (audioRecording.recording) detail.audio = { contentType: audioRecording.recording.mimeType, dataBase64: await encodeLocalFileBase64(audioRecording.recording.uri), durationMs: audioRecording.recording.durationMs };
     await onSubmit(detail);
     setPhoto(null);

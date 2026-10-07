@@ -19,6 +19,7 @@ import { ParentSelfServiceRouteBoundary } from "@/navigation/ParentSelfServiceRo
 import { ProfileContextRouteBoundary } from "@/navigation/ProfileContextRouteBoundary";
 import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
+import { isDuplicateRemoteNotification } from "@/notifications/localNotificationContent";
 import { getNativeNotificationPermission, nativeNotificationPlatform, registerNativePushDevice, requestNativeNotificationPermission, type NativeNotificationPermission } from "@/notifications/nativePush";
 
 if (Platform.OS !== "web") {
@@ -27,7 +28,15 @@ if (Platform.OS !== "web") {
 }
 
 if (Platform.OS !== "web") {
-  Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }) });
+  Notifications.setNotificationHandler({
+    handleNotification: async (notification) => {
+      // A server push that repeats a notification already shown locally from the realtime event stays silent.
+      const trigger = notification.request.trigger;
+      const isRemote = Boolean(trigger && typeof trigger === "object" && "type" in trigger && trigger.type === "push");
+      const show = !isDuplicateRemoteNotification(isRemote, notification.request.content.data);
+      return { shouldShowBanner: show, shouldShowList: show, shouldPlaySound: show, shouldSetBadge: false };
+    },
+  });
 } else {
   const nativeAlert = Alert.alert;
   Alert.alert = (title, message, buttons, options) => {
@@ -195,7 +204,7 @@ export default function RootLayout() {
     <BottomNavigationBackHandler><Stack initialRouteName="home" screenOptions={{ headerShown: false }}>
       {bottomNavigationScreenNames.map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none" }} />)}
       {[
-        "tenant-readiness", "absence-requests", "staff-leave-requests", "staff-leave-approvals", "tenant-feedback", "tenant-feedback-inbox", "payment-history", "parent-family-profile", "parent-child-profile", "pickup-authorizations", "emergency-contacts", "child-consents", "consent-definitions", "consent-information", "add-tenant", "institution-types", "branches", "branch-operating-hours", "overtime-charges", "global-curriculum", "global-development-programs", "global-learning-levels", "goals", "child-messages", "development-categories", "notifications", "staff-reminders", "payment-instructions", "parent-enrollment-form", "parent-payment", "context-selection", "sign-up", "verify-phone",
+        "tenant-readiness", "absence-requests", "staff-leave-requests", "staff-leave-approvals", "tenant-feedback", "tenant-feedback-inbox", "payment-history", "parent-family-profile", "parent-child-profile", "pickup-authorizations", "emergency-contacts", "child-consents", "consent-definitions", "consent-information", "child-message-templates", "add-tenant", "institution-types", "branches", "branch-operating-hours", "overtime-charges", "global-curriculum", "global-development-programs", "global-learning-levels", "goals", "child-messages", "development-categories", "notifications", "staff-reminders", "payment-instructions", "parent-enrollment-form", "parent-payment", "context-selection", "sign-up", "verify-phone",
       ].map((name) => <Stack.Screen key={name} name={name} options={{ animation: "none" }} />)}
     </Stack></BottomNavigationBackHandler>
     {/* Keep Stack mounted while guards dispatch redirects. Unmounting it here

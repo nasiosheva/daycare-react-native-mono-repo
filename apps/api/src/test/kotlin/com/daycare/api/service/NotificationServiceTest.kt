@@ -39,6 +39,24 @@ class NotificationServiceTest {
     }
 
     @Test
+    fun `inbox push carries the notification id so the app can skip a duplicate local notification`() {
+        val notifications = mock(NotificationRepository::class.java)
+        val devices = mock(DeviceTokenRepository::class.java)
+        val realtime = mock(RealtimePublisher::class.java)
+        val organizationId = UUID.randomUUID()
+        val recipientUserId = UUID.randomUUID()
+        val notification = Notification(organizationId = organizationId, recipientUserId = recipientUserId, title = "Title", body = "Body", actionPath = "/booking")
+        val device = DeviceToken(organizationId = organizationId, userId = recipientUserId, token = "ExponentPushToken[inbox]", platform = "android")
+        `when`(notifications.save(any(Notification::class.java))).thenReturn(notification)
+        `when`(devices.findAllByUserIdAndOrganizationId(recipientUserId, organizationId)).thenReturn(listOf(device))
+        val service = spy(NotificationService(notifications, devices, realtime, "http://127.0.0.1:1"))
+
+        service.notify(organizationId, recipientUserId, notification.title, notification.body, "/booking")
+
+        verify(service).sendPush(device, organizationId, "Title", "Body", "/booking", notification.id)
+    }
+
+    @Test
     fun `push-only notification skips inbox and generic realtime event`() {
         val notifications = mock(NotificationRepository::class.java)
         val devices = mock(DeviceTokenRepository::class.java)

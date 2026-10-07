@@ -12,6 +12,11 @@ export type LocalNotificationInput = {
   actionPath?: string;
   /** Tenant the action belongs to; the route handler re-validates access against it. */
   organizationId?: string | null;
+  /**
+   * Inbox notification or chat message id. When the server also pushes the
+   * same id, the foreground handler hides that duplicate push.
+   */
+  notificationId?: string;
 };
 
 /**
@@ -22,6 +27,7 @@ export function localNotificationContent(input: LocalNotificationInput): Notific
   const data: Record<string, string> = {};
   if (input.actionPath) data.actionPath = input.actionPath;
   if (input.organizationId) data.organizationId = input.organizationId;
+  if (input.notificationId) data.notificationId = input.notificationId;
   return { title: input.title, body: input.body, sound: "default", data };
 }
 
@@ -59,4 +65,25 @@ export function createLocalNotificationDeduper(capacity = 200) {
       ids.clear();
     },
   };
+}
+
+const displayedNotifications = createLocalNotificationDeduper();
+
+/**
+ * First display wins: a local notification from the realtime event and a
+ * server push carrying the same notificationId are shown only once, whichever
+ * arrives first. Returns false when that id was already displayed.
+ */
+export function claimNotificationDisplay(notificationId: string | undefined): boolean {
+  return notificationId ? displayedNotifications.claim(notificationId) : true;
+}
+
+/** Foreground-handler check for a server push that repeats an already displayed notification. */
+export function isDuplicateRemoteNotification(isRemote: boolean, data: Record<string, unknown> | null | undefined): boolean {
+  const notificationId = typeof data?.notificationId === "string" ? data.notificationId : undefined;
+  return isRemote && !claimNotificationDisplay(notificationId);
+}
+
+export function resetDisplayedNotifications(): void {
+  displayedNotifications.clear();
 }

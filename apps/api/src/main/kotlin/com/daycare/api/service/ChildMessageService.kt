@@ -3,6 +3,8 @@ package com.daycare.api.service
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildMessage
+import com.daycare.api.persistence.ChildMessagePhoto
+import com.daycare.api.persistence.ChildMessagePhotoRepository
 import com.daycare.api.persistence.ChildMessageRead
 import com.daycare.api.persistence.ChildMessageReadRepository
 import com.daycare.api.persistence.ChildMessageRepository
@@ -16,17 +18,30 @@ import com.daycare.api.realtime.ChildMessageRealtimeEvent
 import com.daycare.api.realtime.ChildMessageRealtimePayload
 import com.daycare.api.realtime.RealtimeFlag
 import com.daycare.api.realtime.RealtimePublisher
+import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
+import java.util.Base64
 import java.util.UUID
 
-data class SendChildMessageRequest(@field:NotBlank @field:Size(max = 2_000) val body: String, val replyToMessageId: UUID? = null)
+private const val MAX_CHILD_MESSAGE_PHOTO_BYTES = 5 * 1024 * 1024
+private val CHILD_MESSAGE_PHOTO_CONTENT_TYPES = setOf("image/jpeg", "image/png")
+
+data class ChildMessagePhotoInput(@field:NotBlank val contentType: String, @field:NotBlank val dataBase64: String)
+/** A message needs text, a photo, or both. */
+data class SendChildMessageRequest(@field:Size(max = 2_000) val body: String = "", val replyToMessageId: UUID? = null, @field:Valid val photo: ChildMessagePhotoInput? = null)
+data class ChildMessagePhotoResponse(val contentType: String, val dataBase64: String)
 object ChildMessageError {
     const val REPLY_UNAVAILABLE = "Child message reply is not available"
+    const val CONTENT_REQUIRED = "child_message.content_required"
+    const val PHOTO_MISSING = "child_message.photo_missing"
+    const val PHOTO_TYPE = "child_message.photo_type"
+    const val PHOTO_INVALID = "child_message.photo_invalid"
+    const val PHOTO_TOO_LARGE = "child_message.photo_too_large"
 }
 enum class ChildMessageDeliveryStatus { SENT, READ }
 data class ChildMessageSummaryResponse(val unreadCount: Int)
@@ -37,6 +52,7 @@ data class ChildMessageReplyResponse(
     val senderName: String,
     val body: String,
     val createdAt: Instant,
+    val hasPhoto: Boolean,
 )
 data class ChildMessageResponse(
     val id: UUID,
@@ -50,6 +66,7 @@ data class ChildMessageResponse(
     val deliveryStatus: ChildMessageDeliveryStatus,
     val readAt: Instant?,
     val replyTo: ChildMessageReplyResponse?,
+    val hasPhoto: Boolean,
 )
 
 @Service
@@ -57,6 +74,7 @@ class ChildMessageService(
     private val access: AccessService,
     private val childScopes: ChildScopeService,
     private val messages: ChildMessageRepository,
+    private val photos: ChildMessagePhotoRepository,
     private val reads: ChildMessageReadRepository,
     private val guardians: GuardianLinkRepository,
     private val staffAssignments: ChildStaffAssignmentRepository,
@@ -82,14 +100,15 @@ class ChildMessageService(
     }
 
     /**
-     * Staff-side unread badge across the threads where the caller is a new-message
-     * recipient: children directly assigned to them, plus, for a Staff Admin, every
-     * active child without an assigned Staff (the notification fallback). Only
-     * children with unread messages are listed.
+     * Unread badge across the threads where the caller is a new-message
+     * recipient: a Parent's linked children in this tenant; a Staff member's
+     * directly assigned children; for a Staff Admin, directly assigned children
+     * plus every active child without an assigned Staff (the notification
+     * fallback). Only children with unread messages are listed.
      */
     @Transactional(readOnly = true)
     fun unreadSummary(jwt: Jwt, organizationId: UUID): ChildMessageUnreadSummaryResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF, Role.STAFF_ADMIN))
+        val scope = access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))
         val childIds = recipientChildIds(scope, organizationId)
         if (childIds.isEmpty()) return ChildMessageUnreadSummaryResponse(0, emptyList())
         val counts = messages.countUnreadByChild(organizationId, childIds, scope.user.id)
@@ -101,6 +120,11 @@ class ChildMessageService(
     }
 
     private fun recipientChildIds(scope: AccessScope, organizationId: UUID): Set<UUID> {
+        if (scope.membership.role == Role.PARENT) {
+            val linkedChildIds = guardians.findAllByUserId(scope.user.id).map { it.childId }.toSet()
+            if (linkedChildIds.isEmpty()) return emptySet()
+            return children.findAllById(linkedChildIds).filter { it.organizationId == organizationId }.map { it.id }.toSet()
+        }
         val directlyAssigned = staffAssignments.findAllByOrganizationIdAndUserId(organizationId, scope.user.id).map { it.childId }.toSet()
         if (scope.membership.role != Role.STAFF_ADMIN) return directlyAssigned
         val childrenWithStaff = staffAssignments.findAllByOrganizationId(organizationId).map { it.childId }.toSet()
@@ -130,11 +154,27 @@ class ChildMessageService(
             messages.findByIdAndOrganizationIdAndChildId(replyId, organizationId, child.id)
                 ?: throw IllegalArgumentException(ChildMessageError.REPLY_UNAVAILABLE)
         }
-        val message = messages.save(ChildMessage(organizationId = organizationId, childId = child.id, senderUserId = scope.user.id, senderRole = scope.membership.role, body = request.body.trim(), replyToMessageId = replyTo?.id, createdAt = Instant.now()))
+        val body = request.body.trim()
+        val photo = request.photo?.let(::decodePhoto)
+        require(body.isNotEmpty() || photo != null) { ChildMessageError.CONTENT_REQUIRED }
+        val message = messages.save(ChildMessage(organizationId = organizationId, childId = child.id, senderUserId = scope.user.id, senderRole = scope.membership.role, body = body, replyToMessageId = replyTo?.id, photoContentType = photo?.first, createdAt = Instant.now()))
+        photo?.let { (_, bytes) -> photos.save(ChildMessagePhoto(messageId = message.id, data = bytes)) }
         touchRead(child.id, scope.user.id)
         notifyOtherSide(child, scope.membership.role, scope.user.displayName, message)
         val replySenderName = replyTo?.let { users.findById(it.senderUserId).map { sender -> sender.displayName }.orElse("Unknown") }
         return response(message, scope.user.displayName, scope.user.id, null, replyTo = replyTo, replySenderName = replySenderName)
+    }
+
+    /** Photo bytes are authorized exactly like the thread itself: same tenant and child scope. */
+    @Transactional(readOnly = true)
+    fun photo(jwt: Jwt, organizationId: UUID, childId: UUID, messageId: UUID): ChildMessagePhotoResponse {
+        val scope = access.require(jwt, organizationId, Role.entries.toSet())
+        val child = requireChildAccess(scope, childId, organizationId)
+        val message = messages.findByIdAndOrganizationIdAndChildId(messageId, organizationId, child.id)
+            ?: throw IllegalArgumentException(ChildMessageError.PHOTO_MISSING)
+        val contentType = message.photoContentType ?: throw IllegalArgumentException(ChildMessageError.PHOTO_MISSING)
+        val data = photos.findById(message.id).orElseThrow { IllegalArgumentException(ChildMessageError.PHOTO_MISSING) }.data
+        return ChildMessagePhotoResponse(contentType, Base64.getEncoder().encodeToString(data))
     }
 
     @Transactional
@@ -179,8 +219,22 @@ class ChildMessageService(
         message.senderUserId == viewerUserId,
         if (readAt != null) ChildMessageDeliveryStatus.READ else ChildMessageDeliveryStatus.SENT,
         readAt,
-        replyTo?.let { ChildMessageReplyResponse(it.id, replySenderName ?: "Unknown", it.body, it.createdAt) },
+        replyTo?.let { ChildMessageReplyResponse(it.id, replySenderName ?: "Unknown", it.body, it.createdAt, it.photoContentType != null) },
+        message.photoContentType != null,
     )
+
+    /** Same JPEG/PNG, size, and magic-byte checks as incident photos. Returns the normalized content type and bytes. */
+    private fun decodePhoto(input: ChildMessagePhotoInput): Pair<String, ByteArray> {
+        val contentType = input.contentType.lowercase()
+        require(contentType in CHILD_MESSAGE_PHOTO_CONTENT_TYPES) { ChildMessageError.PHOTO_TYPE }
+        val bytes = try { Base64.getDecoder().decode(input.dataBase64) } catch (_: IllegalArgumentException) { throw IllegalArgumentException(ChildMessageError.PHOTO_INVALID) }
+        require(bytes.isNotEmpty()) { ChildMessageError.PHOTO_INVALID }
+        require(bytes.size <= MAX_CHILD_MESSAGE_PHOTO_BYTES) { ChildMessageError.PHOTO_TOO_LARGE }
+        val isJpeg = bytes.size >= 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte()
+        val isPng = bytes.size >= 8 && bytes.copyOfRange(0, 8).contentEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
+        require(isJpeg || isPng) { ChildMessageError.PHOTO_INVALID }
+        return contentType to bytes
+    }
 
     // A Parent's message notifies the Staff directly assigned to the child, falling back to active
     // Staff Admins when no Staff is assigned yet. A Staff/Staff Admin's message always notifies every
@@ -217,7 +271,7 @@ class ChildMessageService(
         // WebSocket is the active chat transport. The event contains
         // identifiers only; the client must refetch the authorized thread over
         // REST. No inbox row or generic NOTIFICATIONS event is created.
-        notifications.notifyChat(child.organizationId, userId, title, body, path)
+        notifications.notifyChat(child.organizationId, userId, title, body, path, message.id)
         realtime.publishToUser(
             child.organizationId,
             userId,

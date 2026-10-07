@@ -128,6 +128,8 @@ import com.daycare.api.service.UpsertChildHealthRecordRequest
 import com.daycare.api.service.ChildIncidentService
 import com.daycare.api.service.CreateChildIncidentRequest
 import com.daycare.api.service.ChildMessageService
+import com.daycare.api.service.ChildMessageTemplateRequest
+import com.daycare.api.service.ChildMessageTemplateService
 import com.daycare.api.service.SendChildMessageRequest
 import com.daycare.api.service.AnalyticsService
 import com.daycare.api.service.EducationOfferingService
@@ -453,7 +455,7 @@ class PlatformController(
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class InstitutionController(private val attendance: AttendanceService, private val pickupAuthorizations: PickupAuthorizationService, private val emergencyContacts: EmergencyContactService, private val consents: ConsentService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val parentChildProfiles: ParentChildProfileService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService, private val tenantReadiness: TenantReadinessService, private val childHealth: ChildHealthService, private val childIncidents: ChildIncidentService, private val tenantFeedback: TenantFeedbackService, private val childMessages: ChildMessageService) {
+class InstitutionController(private val attendance: AttendanceService, private val pickupAuthorizations: PickupAuthorizationService, private val emergencyContacts: EmergencyContactService, private val consents: ConsentService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val parentChildProfiles: ParentChildProfileService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService, private val tenantReadiness: TenantReadinessService, private val childHealth: ChildHealthService, private val childIncidents: ChildIncidentService, private val tenantFeedback: TenantFeedbackService, private val childMessages: ChildMessageService, private val childMessageTemplates: ChildMessageTemplateService) {
     @GetMapping("/tenant-readiness")
     fun tenantReadiness(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = tenantReadiness.organizationReadiness(jwt, organizationId)
 
@@ -692,11 +694,26 @@ class InstitutionController(private val attendance: AttendanceService, private v
     @GetMapping("/children/{childId}/messages")
     fun listChildMessages(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childMessages.list(jwt, organizationId, childId)
 
+    @GetMapping("/child-message-templates")
+    fun childMessageTemplates(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = childMessageTemplates.list(jwt, organizationId)
+
+    @PostMapping("/child-message-templates") @ResponseStatus(HttpStatus.CREATED)
+    fun createChildMessageTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: ChildMessageTemplateRequest) = childMessageTemplates.create(jwt, organizationId, request)
+
+    @PutMapping("/child-message-templates/{templateId}")
+    fun updateChildMessageTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID, @Valid @RequestBody request: ChildMessageTemplateRequest) = childMessageTemplates.update(jwt, organizationId, templateId, request)
+
+    @DeleteMapping("/child-message-templates/{templateId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteChildMessageTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID) = childMessageTemplates.delete(jwt, organizationId, templateId)
+
     @GetMapping("/child-messages/unread-summary")
     fun childMessageUnreadSummary(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = childMessages.unreadSummary(jwt, organizationId)
 
     @GetMapping("/children/{childId}/messages/summary")
     fun childMessageSummary(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childMessages.summary(jwt, organizationId, childId)
+
+    @GetMapping("/children/{childId}/messages/{messageId}/photo")
+    fun childMessagePhoto(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable messageId: UUID) = childMessages.photo(jwt, organizationId, childId, messageId)
 
     @PostMapping("/children/{childId}/messages") @ResponseStatus(HttpStatus.CREATED)
     fun sendChildMessage(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: SendChildMessageRequest) = childMessages.send(jwt, organizationId, childId, request)

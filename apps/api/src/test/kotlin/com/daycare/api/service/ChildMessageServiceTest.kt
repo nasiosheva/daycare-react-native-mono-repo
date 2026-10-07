@@ -3,6 +3,8 @@ package com.daycare.api.service
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildMessage
+import com.daycare.api.persistence.ChildMessagePhoto
+import com.daycare.api.persistence.ChildMessagePhotoRepository
 import com.daycare.api.persistence.ChildMessageRead
 import com.daycare.api.persistence.ChildMessageReadRepository
 import com.daycare.api.persistence.ChildMessageRepository
@@ -34,6 +36,7 @@ import org.mockito.Mockito.`when`
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.oauth2.jwt.Jwt
 import java.time.Instant
+import java.util.Base64
 import java.util.Optional
 import java.util.UUID
 
@@ -41,6 +44,7 @@ private class ChildMessageServiceFixture {
     val access = mock(AccessService::class.java)
     val childScopes = mock(ChildScopeService::class.java)
     val messages = mock(ChildMessageRepository::class.java)
+    val photos = mock(ChildMessagePhotoRepository::class.java)
     val reads = mock(ChildMessageReadRepository::class.java)
     val guardians = mock(GuardianLinkRepository::class.java)
     val staffAssignments = mock(ChildStaffAssignmentRepository::class.java)
@@ -49,7 +53,7 @@ private class ChildMessageServiceFixture {
     val users = mock(UserProfileRepository::class.java)
     val notifications = mock(NotificationService::class.java)
     val realtime = mock(RealtimePublisher::class.java)
-    val service = ChildMessageService(access, childScopes, messages, reads, guardians, staffAssignments, children, memberships, users, notifications, realtime)
+    val service = ChildMessageService(access, childScopes, messages, photos, reads, guardians, staffAssignments, children, memberships, users, notifications, realtime)
 
     fun scope(user: UserProfile, organizationId: UUID, role: Role) = AccessScope(user, Membership(organizationId = organizationId, userId = user.id, role = role, active = true), emptySet(), emptySet())
 }
@@ -76,10 +80,10 @@ class ChildMessageServiceTest {
         assertEquals("Anak saya belum makan siang", response.body)
         assertEquals(Role.PARENT, response.senderRole)
         assertEquals(true, response.mine)
-        verify(fixture.notifications).notifyChat(organizationId, assignedStaffId, "Pesan baru", "Ada pesan baru di chat anak.", "/child-messages?childId=${child.id}")
-        verifyNoMoreInteractions(fixture.notifications)
         val saved = ArgumentCaptor.forClass(ChildMessage::class.java)
         verify(fixture.messages).save(saved.capture())
+        verify(fixture.notifications).notifyChat(organizationId, assignedStaffId, "Pesan baru", "Ada pesan baru di chat anak.", "/child-messages?childId=${child.id}", saved.value.id)
+        verifyNoMoreInteractions(fixture.notifications)
         verify(fixture.realtime).publishToUser(organizationId, assignedStaffId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, saved.value.id, ChildMessageRealtimeEvent.MESSAGE_CREATED))
         verifyNoInteractions(fixture.guardians)
     }
@@ -148,9 +152,9 @@ class ChildMessageServiceTest {
 
         fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest("Halo"))
 
-        verify(fixture.notifications).notifyChat(organizationId, activeStaffAdminId, "Pesan baru", "Ada pesan baru di chat anak.", "/child-messages?childId=${child.id}")
         val saved = ArgumentCaptor.forClass(ChildMessage::class.java)
         verify(fixture.messages).save(saved.capture())
+        verify(fixture.notifications).notifyChat(organizationId, activeStaffAdminId, "Pesan baru", "Ada pesan baru di chat anak.", "/child-messages?childId=${child.id}", saved.value.id)
         verify(fixture.realtime).publishToUser(organizationId, activeStaffAdminId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, saved.value.id, ChildMessageRealtimeEvent.MESSAGE_CREATED))
         org.mockito.Mockito.verifyNoMoreInteractions(fixture.notifications)
     }
@@ -172,9 +176,9 @@ class ChildMessageServiceTest {
         val response = fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest("Hari ini ceria sekali"))
 
         assertEquals(Role.STAFF, response.senderRole)
-        verify(fixture.notifications).notifyChat(organizationId, guardianId, "Pesan baru", "Ada pesan baru di chat anak.", "/child-messages?childId=${child.id}")
         val saved = ArgumentCaptor.forClass(ChildMessage::class.java)
         verify(fixture.messages).save(saved.capture())
+        verify(fixture.notifications).notifyChat(organizationId, guardianId, "Pesan baru", "Ada pesan baru di chat anak.", "/child-messages?childId=${child.id}", saved.value.id)
         verify(fixture.realtime).publishToUser(organizationId, guardianId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, saved.value.id, ChildMessageRealtimeEvent.MESSAGE_CREATED))
         verifyNoInteractions(fixture.staffAssignments)
     }
@@ -272,7 +276,7 @@ class ChildMessageServiceTest {
         val staff = UserProfile()
         val assignedChildId = UUID.randomUUID()
         val scope = fixture.scope(staff, organizationId, Role.STAFF)
-        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF, Role.STAFF_ADMIN))).thenReturn(scope)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(scope)
         `when`(fixture.staffAssignments.findAllByOrganizationIdAndUserId(organizationId, staff.id)).thenReturn(listOf(ChildStaffAssignment(organizationId = organizationId, childId = assignedChildId, userId = staff.id)))
         `when`(fixture.messages.countUnreadByChild(organizationId, setOf(assignedChildId), staff.id)).thenReturn(listOf(unreadCount(assignedChildId, 3)))
 
@@ -293,7 +297,7 @@ class ChildMessageServiceTest {
         val assignedToOtherStaff = Child(organizationId = organizationId)
         val inactiveUnassigned = Child(organizationId = organizationId, active = false)
         val scope = fixture.scope(admin, organizationId, Role.STAFF_ADMIN)
-        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF, Role.STAFF_ADMIN))).thenReturn(scope)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(scope)
         `when`(fixture.staffAssignments.findAllByOrganizationIdAndUserId(organizationId, admin.id)).thenReturn(emptyList())
         `when`(fixture.staffAssignments.findAllByOrganizationId(organizationId)).thenReturn(listOf(ChildStaffAssignment(organizationId = organizationId, childId = assignedToOtherStaff.id, userId = UUID.randomUUID())))
         `when`(fixture.children.findAllByOrganizationId(organizationId)).thenReturn(listOf(unassigned, assignedToOtherStaff, inactiveUnassigned))
@@ -311,11 +315,101 @@ class ChildMessageServiceTest {
         val jwt = mock(Jwt::class.java)
         val organizationId = UUID.randomUUID()
         val staff = UserProfile()
-        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF, Role.STAFF_ADMIN))).thenReturn(fixture.scope(staff, organizationId, Role.STAFF))
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(fixture.scope(staff, organizationId, Role.STAFF))
         `when`(fixture.staffAssignments.findAllByOrganizationIdAndUserId(organizationId, staff.id)).thenReturn(emptyList())
 
         assertEquals(ChildMessageUnreadSummaryResponse(0, emptyList()), fixture.service.unreadSummary(jwt, organizationId))
         verifyNoInteractions(fixture.messages)
+    }
+
+    @Test
+    fun `unread summary for a Parent covers only linked children in the requested tenant`() {
+        val fixture = ChildMessageServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val parent = UserProfile()
+        val linkedHere = Child(organizationId = organizationId)
+        val linkedElsewhere = Child(organizationId = UUID.randomUUID())
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(fixture.scope(parent, organizationId, Role.PARENT))
+        `when`(fixture.guardians.findAllByUserId(parent.id)).thenReturn(listOf(GuardianLink(childId = linkedHere.id, userId = parent.id), GuardianLink(childId = linkedElsewhere.id, userId = parent.id)))
+        `when`(fixture.children.findAllById(setOf(linkedHere.id, linkedElsewhere.id))).thenReturn(listOf(linkedHere, linkedElsewhere))
+        `when`(fixture.messages.countUnreadByChild(organizationId, setOf(linkedHere.id), parent.id)).thenReturn(listOf(unreadCount(linkedHere.id, 1)))
+
+        val summary = fixture.service.unreadSummary(jwt, organizationId)
+
+        assertEquals(1, summary.totalUnreadCount)
+        assertEquals(listOf(ChildMessageChildUnreadCount(linkedHere.id, 1)), summary.children)
+        verifyNoInteractions(fixture.staffAssignments)
+    }
+
+    @Test
+    fun `a photo-only message stores the photo bytes apart from the message`() {
+        val fixture = ChildMessageServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val parent = UserProfile()
+        val child = Child(organizationId = organizationId)
+        val scope = fixture.scope(parent, organizationId, Role.PARENT)
+        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(scope)
+        `when`(fixture.childScopes.requireParentLinkedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.messages.save(any(ChildMessage::class.java))).thenAnswer { it.arguments[0] }
+        `when`(fixture.staffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id)).thenReturn(emptyList())
+        `when`(fixture.memberships.findAllByOrganizationId(organizationId)).thenReturn(emptyList())
+
+        val response = fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest(photo = ChildMessagePhotoInput("IMAGE/PNG", Base64.getEncoder().encodeToString(png))))
+
+        assertEquals("", response.body)
+        assertEquals(true, response.hasPhoto)
+        val savedMessage = ArgumentCaptor.forClass(ChildMessage::class.java)
+        verify(fixture.messages).save(savedMessage.capture())
+        assertEquals("image/png", savedMessage.value.photoContentType)
+        val savedPhoto = ArgumentCaptor.forClass(ChildMessagePhoto::class.java)
+        verify(fixture.photos).save(savedPhoto.capture())
+        assertEquals(savedMessage.value.id, savedPhoto.value.messageId)
+        assertEquals(png.toList(), savedPhoto.value.data.toList())
+    }
+
+    @Test
+    fun `a message without text or photo, or with a non-image photo, is rejected before saving`() {
+        val fixture = ChildMessageServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val parent = UserProfile()
+        val child = Child(organizationId = organizationId)
+        val scope = fixture.scope(parent, organizationId, Role.PARENT)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(scope)
+        `when`(fixture.childScopes.requireParentLinkedChild(scope, child.id, organizationId)).thenReturn(child)
+
+        val empty = assertThrows(IllegalArgumentException::class.java) { fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest(body = "   ")) }
+        val notImage = assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest(photo = ChildMessagePhotoInput("image/jpeg", Base64.getEncoder().encodeToString("hello".toByteArray()))))
+        }
+
+        assertEquals(ChildMessageError.CONTENT_REQUIRED, empty.message)
+        assertEquals(ChildMessageError.PHOTO_INVALID, notImage.message)
+        verify(fixture.messages, never()).save(any(ChildMessage::class.java))
+        verifyNoInteractions(fixture.photos)
+    }
+
+    @Test
+    fun `message photo is served only within the thread scope`() {
+        val fixture = ChildMessageServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val staff = UserProfile()
+        val child = Child(organizationId = organizationId)
+        val message = ChildMessage(organizationId = organizationId, childId = child.id, photoContentType = "image/jpeg")
+        val scope = fixture.scope(staff, organizationId, Role.STAFF)
+        `when`(fixture.access.require(jwt, organizationId, Role.entries.toSet())).thenReturn(scope)
+        `when`(fixture.childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.messages.findByIdAndOrganizationIdAndChildId(message.id, organizationId, child.id)).thenReturn(message)
+        `when`(fixture.photos.findById(message.id)).thenReturn(Optional.of(ChildMessagePhoto(messageId = message.id, data = byteArrayOf(1, 2))))
+
+        val photo = fixture.service.photo(jwt, organizationId, child.id, message.id)
+
+        assertEquals("image/jpeg", photo.contentType)
+        assertEquals(Base64.getEncoder().encodeToString(byteArrayOf(1, 2)), photo.dataBase64)
     }
 
     private fun unreadCount(childId: UUID, count: Long) = object : ChildMessageUnreadCount {

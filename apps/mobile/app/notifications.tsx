@@ -11,6 +11,8 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { getDeviceInstallationId } from "@/device/installationId";
 import { deviceNotificationPreferenceQuery } from "@/notifications/deviceNotificationPreference";
+import { inboxNotificationScope } from "@/notifications/inboxLocalNotificationPolicy";
+import { useLocalNotificationScope } from "@/notifications/useLocalNotificationScope";
 import { notificationMuteDurationKeys, notificationMuteDurations, notificationPreferenceQueryKey } from "@/notifications/mutePreferences";
 import { browserNotificationMutedUntil, muteBrowserNotifications, requestBrowserNotificationPermission, unmuteBrowserNotifications } from "../src/notifications/browserNotifications";
 import { canOpenNotificationRoute, isSelfServiceNotificationRoute, notificationRouteRequiresDaycareCapability, notificationRouteWithOrganizationId } from "@/navigation/notificationRouteAccess";
@@ -64,6 +66,7 @@ export default function NotificationsScreen() {
   // mark-read and opened action below uses the notification's own tenant, not the active one.
   const inbox = useInboxNotifications(debouncedSearch, page);
   const notificationPreference = useQuery({ ...deviceNotificationPreferenceQuery(api, organizationId), enabled: isNative && Boolean(organizationId) });
+  useLocalNotificationScope(inboxNotificationScope);
   const markRead = useMutation({ mutationFn: (item: NotificationWithTenant) => api.markNotificationRead(item.id, item.organizationId), onSuccess: (_, item) => void client.invalidateQueries({ queryKey: ["notifications", item.organizationId] }) });
   const markAllRead = useMutation({
     mutationFn: async () => {

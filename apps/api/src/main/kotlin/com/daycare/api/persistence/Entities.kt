@@ -647,7 +647,26 @@ class ChildMessage(
     @Enumerated(EnumType.STRING) @Column(name = "sender_role", nullable = false) var senderRole: Role = Role.PARENT,
     @Column(nullable = false, length = 2_000) var body: String = "",
     @Column(name = "reply_to_message_id") var replyToMessageId: UUID? = null,
+    @Column(name = "photo_content_type", length = 50) var photoContentType: String? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+/** Tenant-wide quick reply that Staff can insert into a child chat draft. */
+@Entity
+@Table(name = "child_message_templates")
+class ChildMessageTemplate(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(nullable = false, length = 500) var body: String = "",
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+/** Photo bytes for a chat message, kept apart so thread listings never load image data. */
+@Entity
+@Table(name = "child_message_photos")
+class ChildMessagePhoto(
+    @Id @Column(name = "message_id") var messageId: UUID = UUID.randomUUID(),
+    @Column(name = "data", nullable = false) var data: ByteArray = ByteArray(0),
 )
 
 @Entity
