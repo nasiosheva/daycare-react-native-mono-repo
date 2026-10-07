@@ -11,6 +11,7 @@ import { formatIsoDate, isIsoDate } from "@/date-picker/date";
 import { useI18n } from "@/i18n/I18nProvider";
 import { roleKey } from "@/i18n/translations";
 import { AppScreen } from "@/navigation/AppScreen";
+import { installedAppVersionInfo } from "@/app-version/nativeAppVersionInfo";
 import { LanguageSelectField } from "@/profile/LanguageSelectField";
 import { capitalizeWords } from "@/text/capitalizeWords";
 
@@ -103,6 +104,10 @@ export default function ProfileScreen() {
       {profile?.isPlatformAdmin && <MenuItem icon="keypad-outline" title={t("profile.changePin")} onPress={() => router.push("/admin-pin")} />}
     </MenuSection>
     <Card><LanguageSelectField /></Card>
+    <Card title={t("profile.appInfo")}>
+      <InfoRow icon="phone-portrait-outline" label={t("profile.appVersion")} value={installedAppVersionInfo.version ?? t("common.noData")} />
+      <InfoRow icon="code-outline" label={t("profile.versionCode")} value={installedAppVersionInfo.buildCode ?? t("common.noData")} />
+    </Card>
 
     <Button variant="secondary" onPress={() => setLogoutSheetVisible(true)}><AppText variant="label" tone="danger">{t("auth.signOut")}</AppText></Button>
     <BottomSheet
