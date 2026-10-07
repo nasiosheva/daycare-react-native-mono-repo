@@ -22,6 +22,9 @@
 - `./scripts/run_full_suite_and_compile_check.sh` (launcher shell syntax, full TypeScript lint/typecheck/test, complete Spring suite, and patch whitespace)
 - `apps/api/gradlew -p apps/api test --no-daemon --rerun-tasks --tests "*.ChildCareLogServiceTest" --tests "*.ServiceExpiryReminderServiceTest"`
 - Focused service tests cover cross-child care-log correction rejection, guardian-only care-log refresh delivery, and idempotent service-expiry reminders for the Parent and active Staff Admin.
+- Local Flyway startup from schema version 19 successfully applied `V20__daycare_operational_extensions.sql` to version 20. The migration's user foreign keys reference the existing `users` table, which is also the table mapped by `UserProfile`; the failed, never-applied `user_profiles` reference was corrected before retrying.
+- `GET /api/actuator/health` returned `UP`; unauthenticated `GET /api/v1/announcements` returned `401` rather than `404`, and the local OpenAPI document lists the announcement routes.
+- A Debug build was installed on the connected Pixel 3a. Its authenticated Parent-onboarding session completed the initial API requests with `200` responses and no React Native or Android crash. Staff/Admin operational flows could not be driven on that device because the active session has no tenant membership.
 
 ## Follow-up
 
