@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,9 @@ import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
+import { useImagePicker, type PickedImage } from "@/image-picker";
+import { pickedImageUpload } from "@/image-picker/photoUpload";
+import { ChildMessagePhoto } from "@/chat/ChildMessagePhoto";
 import { childMessageNotificationScope } from "@/notifications/childMessageLocalNotificationPolicy";
 import { useLocalNotificationScope } from "@/notifications/useLocalNotificationScope";
 import { childMessageUnreadSummaryQueryKey } from "@/chat/useChildMessageUnreadSummary";
@@ -25,6 +28,8 @@ export default function ChildMessagesScreen() {
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<ChildMessage | null>(null);
+  const [photo, setPhoto] = useState<PickedImage | null>(null);
+  const imagePicker = useImagePicker();
   const scrollViewRef = useRef<ScrollView | null>(null);
   const threadOffset = useRef(0);
   const bubbleRelativeOffsets = useRef<Record<string, number>>({});
@@ -38,8 +43,8 @@ export default function ChildMessagesScreen() {
 
   const messages = useQuery({ queryKey: ["child-messages", organizationId, childId], queryFn: () => api.childMessages(childId!, organizationId), enabled: Boolean(organizationId && childId && canUse) });
   const send = useMutation({
-    mutationFn: ({ body, replyToMessageId }: { body: string; replyToMessageId?: string }) => api.sendChildMessage(childId!, body, organizationId, replyToMessageId),
-    onSuccess: () => { setDraft(""); setReplyTo(null); setSendError(null); void queryClient.invalidateQueries({ queryKey: ["child-messages", organizationId, childId] }); },
+    mutationFn: async ({ body, replyToMessageId, photo: picked }: { body: string; replyToMessageId?: string; photo?: PickedImage }) => api.sendChildMessage(childId!, body, organizationId, replyToMessageId, picked ? await pickedImageUpload(picked) : undefined),
+    onSuccess: () => { setDraft(""); setReplyTo(null); setPhoto(null); setSendError(null); void queryClient.invalidateQueries({ queryKey: ["child-messages", organizationId, childId] }); },
     onError: (error: unknown) => setSendError(error instanceof Error ? error.message : t("childMessage.sendFailed")),
   });
 
@@ -98,10 +103,12 @@ export default function ChildMessagesScreen() {
   if (!profile) return null;
   if (!childId || !canUse) return <Redirect href="/home" />;
 
+  const canSubmit = Boolean(draft.trim() || photo);
   const submit = () => {
-    if (!draft.trim()) return;
-    void send.mutateAsync({ body: draft.trim(), replyToMessageId: replyTo?.id });
+    if (!canSubmit) return;
+    void send.mutateAsync({ body: draft.trim(), replyToMessageId: replyTo?.id, photo: photo ?? undefined });
   };
+  const replySummary = (reply: { body: string; hasPhoto: boolean }) => reply.body || (reply.hasPhoto ? t("childMessage.photo") : "");
 
   const jumpToMessage = (messageId: string) => {
     const offset = bubbleOffsets.current[messageId];
@@ -133,7 +140,7 @@ export default function ChildMessagesScreen() {
   const replyPreview = replyTo && <View style={styles.replyComposer}>
     <View style={styles.replyComposerCopy}>
       <AppText variant="caption" tone="muted">{t("childMessage.replyingTo", { name: replyTo.senderName })}</AppText>
-      <AppText numberOfLines={1} tone="muted">{replyTo.body}</AppText>
+      <AppText numberOfLines={1} tone="muted">{replySummary(replyTo)}</AppText>
     </View>
     <Pressable accessibilityRole="button" accessibilityLabel={t("childMessage.cancelReply")} hitSlop={spacing.sm} onPress={() => setReplyTo(null)} style={styles.cancelReply}>
       <Ionicons name="close" size={18} color={colors.muted} />
@@ -142,9 +149,21 @@ export default function ChildMessagesScreen() {
 
   const composer = <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.composerFooter}>
     {replyPreview}
+    {photo && <View style={styles.photoComposer}>
+      <Image source={{ uri: photo.uri }} style={styles.photoComposerPreview} resizeMode="cover" />
+      <Pressable accessibilityRole="button" accessibilityLabel={t("childMessage.removePhoto")} hitSlop={spacing.sm} onPress={() => setPhoto(null)} style={styles.cancelReply}>
+        <Ionicons name="close" size={18} color={colors.muted} />
+      </Pressable>
+    </View>}
     <View style={styles.composer}>
+      <Pressable accessibilityRole="button" accessibilityLabel={t("childMessage.attachPhoto")} hitSlop={spacing.xs} onPress={() => void imagePicker.pickFromLibrary().then((images) => { if (images[0]) setPhoto(images[0]); })} style={styles.attachButton}>
+        <Ionicons name="images-outline" size={22} color={colors.primary} />
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={t("childMessage.takePhoto")} hitSlop={spacing.xs} onPress={() => void imagePicker.takePhoto().then((image) => { if (image) setPhoto(image); })} style={styles.attachButton}>
+        <Ionicons name="camera-outline" size={22} color={colors.primary} />
+      </Pressable>
       <TextField containerStyle={styles.composerInput} accessibilityLabel={t("childMessage.placeholder")} placeholder={t("childMessage.placeholder")} value={draft} onChangeText={(value) => { setDraft(value); setSendError(null); }} maxLength={2_000} returnKeyType="send" onSubmitEditing={submit} />
-      <Button disabled={!draft.trim()} loading={send.isPending} onPress={submit}>{t("childMessage.send")}</Button>
+      <Button disabled={!canSubmit} loading={send.isPending} onPress={submit}>{t("childMessage.send")}</Button>
     </View>
   </KeyboardAvoidingView>;
 
@@ -161,10 +180,11 @@ export default function ChildMessagesScreen() {
         <Pressable accessibilityRole="button" accessibilityLabel={t("childMessage.replyAction", { name: message.senderName })} onPress={() => setReplyTo(message)} onLongPress={() => setReplyTo(message)} delayLongPress={250} style={[styles.bubble, message.mine ? styles.bubbleMine : styles.bubbleOther]}>
           {message.replyTo && <Pressable accessibilityRole="button" accessibilityLabel={t("childMessage.jumpToReply", { name: message.replyTo.senderName })} onPress={(event) => { event.stopPropagation(); jumpToMessage(message.replyTo!.id); }} style={[styles.replyPreview, message.mine ? styles.replyPreviewMine : styles.replyPreviewOther]}>
             <AppText variant="caption" style={message.mine ? styles.bubbleTextMine : undefined}>{message.replyTo.senderName}</AppText>
-            <AppText numberOfLines={1} tone={message.mine ? undefined : "muted"} style={message.mine ? styles.bubbleTextMine : undefined}>{message.replyTo.body}</AppText>
+            <AppText numberOfLines={1} tone={message.mine ? undefined : "muted"} style={message.mine ? styles.bubbleTextMine : undefined}>{replySummary(message.replyTo)}</AppText>
           </Pressable>}
           {!message.mine && <AppText variant="caption" tone="muted">{message.senderName}</AppText>}
-          <AppText style={message.mine ? styles.bubbleTextMine : undefined}>{message.body}</AppText>
+          {message.hasPhoto && <ChildMessagePhoto childId={childId} messageId={message.id} organizationId={organizationId} />}
+          {Boolean(message.body) && <AppText style={message.mine ? styles.bubbleTextMine : undefined}>{message.body}</AppText>}
           <View style={styles.metaRow}>
             <AppText variant="caption" tone={message.mine ? undefined : "muted"} style={message.mine ? styles.bubbleTextMine : undefined}>{formatDateTime(message.createdAt)}</AppText>
             {message.mine && <View style={styles.status}><Ionicons name={message.deliveryStatus === "READ" ? "checkmark-done-outline" : "checkmark-outline"} size={14} color={colors.onPrimary} /><AppText variant="caption" style={styles.bubbleTextMine}>{t(message.deliveryStatus === "READ" ? "childMessage.read" : "childMessage.sent")}</AppText></View>}
@@ -197,4 +217,7 @@ const styles = StyleSheet.create({
   cancelReply: { width: 28, height: 28, alignItems: "center", justifyContent: "center", borderRadius: radius.pill },
   composer: { width: "100%", flexDirection: "row", alignItems: "center", gap: spacing.sm },
   composerInput: { flex: 1, minWidth: 0 },
+  attachButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderRadius: radius.pill },
+  photoComposer: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.xs, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
+  photoComposerPreview: { width: 64, height: 64, borderRadius: radius.sm },
 });

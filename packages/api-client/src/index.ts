@@ -141,8 +141,10 @@ export type CreateChildHealthNoteInput = { note: string };
 export type IncidentSeverity = "MINOR" | "MODERATE" | "SERIOUS";
 export type IncidentCategory = "INJURY" | "ILLNESS" | "BEHAVIOR" | "OTHER";
 export type ChildIncidentReport = { id: string; childId: string; severity: IncidentSeverity; category: IncidentCategory; description: string; actionTaken?: string | null; occurredAt: string; hasPhoto: boolean; acknowledgedByMe: boolean; createdAt: string };
-export type ChildMessageReply = { id: string; senderName: string; body: string; createdAt: string };
-export type ChildMessage = { id: string; childId: string; senderUserId: string; senderName: string; senderRole: Role; body: string; createdAt: string; mine: boolean; deliveryStatus: "SENT" | "READ"; readAt?: string | null; replyTo?: ChildMessageReply | null };
+export type ChildMessageReply = { id: string; senderName: string; body: string; createdAt: string; hasPhoto: boolean };
+export type ChildMessagePhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
+export type ChildMessagePhoto = { contentType: string; dataBase64: string };
+export type ChildMessage = { id: string; childId: string; senderUserId: string; senderName: string; senderRole: Role; body: string; createdAt: string; mine: boolean; deliveryStatus: "SENT" | "READ"; readAt?: string | null; replyTo?: ChildMessageReply | null; hasPhoto: boolean };
 export type ChildMessageSummary = { unreadCount: number };
 /** Staff-side unread totals across the threads where the caller receives new messages; only children with unread messages are listed. */
 export type ChildMessageUnreadSummary = { totalUnreadCount: number; children: Array<{ childId: string; unreadCount: number }> };
@@ -590,8 +592,12 @@ export class ApiClient {
     return this.request("/child-messages/unread-summary", this.orgOverride(organizationId));
   }
 
-  async sendChildMessage(childId: string, body: string, organizationId?: string, replyToMessageId?: string): Promise<ChildMessage> {
-    return this.request(`/children/${childId}/messages`, { method: "POST", body: JSON.stringify({ body, ...(replyToMessageId ? { replyToMessageId } : {}) }), ...this.orgOverride(organizationId) });
+  async sendChildMessage(childId: string, body: string, organizationId?: string, replyToMessageId?: string, photo?: ChildMessagePhotoInput): Promise<ChildMessage> {
+    return this.request(`/children/${childId}/messages`, { method: "POST", body: JSON.stringify({ body, ...(replyToMessageId ? { replyToMessageId } : {}), ...(photo ? { photo } : {}) }), ...this.orgOverride(organizationId) });
+  }
+
+  async childMessagePhoto(childId: string, messageId: string, organizationId?: string): Promise<ChildMessagePhoto> {
+    return this.request(`/children/${childId}/messages/${messageId}/photo`, this.orgOverride(organizationId));
   }
 
   async markChildMessagesRead(childId: string, organizationId?: string): Promise<void> {
