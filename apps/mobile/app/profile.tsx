@@ -16,6 +16,7 @@ import { LanguageSelectField } from "@/profile/LanguageSelectField";
 import { capitalizeWords } from "@/text/capitalizeWords";
 
 type ProfileSheet = "profile" | "password" | null;
+const copyrightYear = new Date().getFullYear();
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -104,10 +105,13 @@ export default function ProfileScreen() {
       {profile?.isPlatformAdmin && <MenuItem icon="keypad-outline" title={t("profile.changePin")} onPress={() => router.push("/admin-pin")} />}
     </MenuSection>
     <Card><LanguageSelectField /></Card>
-    <Card title={t("profile.appInfo")}>
-      <InfoRow icon="phone-portrait-outline" label={t("profile.appVersion")} value={installedAppVersionInfo.version ?? t("common.noData")} />
-      <InfoRow icon="code-outline" label={t("profile.versionCode")} value={installedAppVersionInfo.buildCode ?? t("common.noData")} />
-    </Card>
+    <View style={styles.appVersion}>
+      <AppText variant="caption" tone="muted">{t("profile.appVersionSummary", {
+        version: installedAppVersionInfo.version ?? t("common.noData"),
+        buildCode: installedAppVersionInfo.buildCode ?? t("common.noData"),
+      })}</AppText>
+      <AppText variant="caption" tone="muted">{t("profile.copyright", { year: copyrightYear })}</AppText>
+    </View>
 
     <Button variant="secondary" onPress={() => setLogoutSheetVisible(true)}><AppText variant="label" tone="danger">{t("auth.signOut")}</AppText></Button>
     <BottomSheet
@@ -163,4 +167,5 @@ const styles = StyleSheet.create({
   hero: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   grow: { flex: 1, gap: spacing.xs },
   field: { gap: spacing.xs },
+  appVersion: { alignItems: "center", paddingVertical: spacing.xs },
 });

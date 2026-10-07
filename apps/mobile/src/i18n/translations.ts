@@ -2133,13 +2133,13 @@ const automaticOvertimeTranslations = {
 } as const;
 
 const profileAppInfoTranslations = {
-  id: { "profile.appInfo": "Informasi aplikasi", "profile.appVersion": "Versi aplikasi", "profile.versionCode": "Kode versi" },
-  en: { "profile.appInfo": "App information", "profile.appVersion": "App version", "profile.versionCode": "Version code" },
-  zh: { "profile.appInfo": "应用信息", "profile.appVersion": "应用版本", "profile.versionCode": "版本代码" },
-  fr: { "profile.appInfo": "Informations sur l’application", "profile.appVersion": "Version de l’application", "profile.versionCode": "Code de version" },
-  pt: { "profile.appInfo": "Informações da aplicação", "profile.appVersion": "Versão da aplicação", "profile.versionCode": "Código da versão" },
-  es: { "profile.appInfo": "Información de la aplicación", "profile.appVersion": "Versión de la aplicación", "profile.versionCode": "Código de versión" },
-  ru: { "profile.appInfo": "Информация о приложении", "profile.appVersion": "Версия приложения", "profile.versionCode": "Код версии" },
+  id: { "profile.appVersionSummary": "Versi {version} · Kode versi {buildCode}", "profile.copyright": "© {year} Usia Emas. Semua hak dilindungi." },
+  en: { "profile.appVersionSummary": "Version {version} · Build code {buildCode}", "profile.copyright": "© {year} Usia Emas. All rights reserved." },
+  zh: { "profile.appVersionSummary": "版本 {version} · 构建代码 {buildCode}", "profile.copyright": "© {year} Usia Emas。保留所有权利。" },
+  fr: { "profile.appVersionSummary": "Version {version} · Code de build {buildCode}", "profile.copyright": "© {year} Usia Emas. Tous droits réservés." },
+  pt: { "profile.appVersionSummary": "Versão {version} · Código de compilação {buildCode}", "profile.copyright": "© {year} Usia Emas. Todos os direitos reservados." },
+  es: { "profile.appVersionSummary": "Versión {version} · Código de compilación {buildCode}", "profile.copyright": "© {year} Usia Emas. Todos los derechos reservados." },
+  ru: { "profile.appVersionSummary": "Версия {version} · Код сборки {buildCode}", "profile.copyright": "© {year} Usia Emas. Все права защищены." },
 } as const;
 
 const staffAdminOperationalTaskTranslations = {

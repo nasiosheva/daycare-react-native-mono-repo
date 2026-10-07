@@ -49,7 +49,7 @@ describe("translations", () => {
   });
 
   it("includes Profile app-version metadata in every supported locale", () => {
-    const keys: TranslationKey[] = ["profile.appInfo", "profile.appVersion", "profile.versionCode"];
+    const keys: TranslationKey[] = ["profile.appVersionSummary", "profile.copyright"];
     for (const locale of supportedLocales) for (const key of keys) expect(translate(locale, key)).not.toBe(key);
   });
 
