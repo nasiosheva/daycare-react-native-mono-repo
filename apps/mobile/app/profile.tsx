@@ -11,10 +11,12 @@ import { formatIsoDate, isIsoDate } from "@/date-picker/date";
 import { useI18n } from "@/i18n/I18nProvider";
 import { roleKey } from "@/i18n/translations";
 import { AppScreen } from "@/navigation/AppScreen";
+import { installedAppVersionInfo } from "@/app-version/nativeAppVersionInfo";
 import { LanguageSelectField } from "@/profile/LanguageSelectField";
 import { capitalizeWords } from "@/text/capitalizeWords";
 
 type ProfileSheet = "profile" | "password" | null;
+const copyrightYear = new Date().getFullYear();
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -96,6 +98,9 @@ export default function ProfileScreen() {
       {parentMemberships.length > 0 && <MenuItem icon="business-outline" title={t("profile.manageTenants")} description={t("profile.activeTenantsSummary", { count: parentMemberships.length })} onPress={() => setTenantSheetOpen(true)} />}
       {profile?.registrationRole === "PARENT" && <MenuItem icon="people-outline" title={t("parentFamily.cardTitle")} description={t("parentFamily.cardDescription")} onPress={() => router.push("/parent-family-profile" as never)} />}
     </MenuSection>}
+    {membership?.active && <MenuSection title={t("operations.announcements")}>
+      <MenuItem icon="megaphone-outline" title={t(membership.role === "STAFF_ADMIN" ? "operations.manageAnnouncements" : "operations.announcements")} description={t("operations.announcementsDescription")} onPress={() => router.push("/tenant-announcements" as never)} />
+    </MenuSection>}
 
     <MenuSection title={t("profile.accountSection")}>
       <MenuItem icon="person-outline" title={t("profile.savePersonal")} onPress={() => setProfileSheet("profile")} />
@@ -103,6 +108,13 @@ export default function ProfileScreen() {
       {profile?.isPlatformAdmin && <MenuItem icon="keypad-outline" title={t("profile.changePin")} onPress={() => router.push("/admin-pin")} />}
     </MenuSection>
     <Card><LanguageSelectField /></Card>
+    <View style={styles.appVersion}>
+      <AppText variant="caption" tone="muted">{t("profile.appVersionSummary", {
+        version: installedAppVersionInfo.version ?? t("common.noData"),
+        buildCode: installedAppVersionInfo.buildCode ?? t("common.noData"),
+      })}</AppText>
+      <AppText variant="caption" tone="muted">{t("profile.copyright", { year: copyrightYear })}</AppText>
+    </View>
 
     <Button variant="secondary" onPress={() => setLogoutSheetVisible(true)}><AppText variant="label" tone="danger">{t("auth.signOut")}</AppText></Button>
     <BottomSheet
@@ -158,4 +170,5 @@ const styles = StyleSheet.create({
   hero: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   grow: { flex: 1, gap: spacing.xs },
   field: { gap: spacing.xs },
+  appVersion: { alignItems: "center", paddingVertical: spacing.xs },
 });

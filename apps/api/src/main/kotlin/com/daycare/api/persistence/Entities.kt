@@ -791,6 +791,13 @@ class ChildIncidentReport(
     @Column(name = "photo_data") var photoData: ByteArray? = null,
     @Column(name = "acknowledged_by_user_id") var acknowledgedByUserId: UUID? = null,
     @Column(name = "acknowledged_at") var acknowledgedAt: Instant? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "incident_status", nullable = false) var incidentStatus: com.daycare.api.domain.IncidentStatus = com.daycare.api.domain.IncidentStatus.OPEN,
+    @Enumerated(EnumType.STRING) @Column(name = "guardian_contact_status", nullable = false) var guardianContactStatus: com.daycare.api.domain.GuardianContactStatus = com.daycare.api.domain.GuardianContactStatus.NOT_REQUIRED,
+    @Column(name = "guardian_contact_outcome", length = 2_000) var guardianContactOutcome: String? = null,
+    @Column(name = "follow_up_owner_user_id") var followUpOwnerUserId: UUID? = null,
+    @Column(name = "follow_up_due_on") var followUpDueOn: LocalDate? = null,
+    @Column(name = "closed_at") var closedAt: Instant? = null,
+    @Column(name = "closed_by_user_id") var closedByUserId: UUID? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
@@ -800,6 +807,81 @@ class ChildIncidentAcknowledgement(
     @Column(name = "incident_id", nullable = false) var incidentId: UUID = UUID.randomUUID(),
     @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(),
     @Column(name = "acknowledged_at", nullable = false) var acknowledgedAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "child_incident_follow_ups")
+class ChildIncidentFollowUp(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "incident_id", nullable = false) var incidentId: UUID = UUID.randomUUID(),
+    @Column(name = "created_by_user_id", nullable = false) var createdByUserId: UUID = UUID.randomUUID(),
+    @Column(nullable = false, length = 500) var title: String = "",
+    @Column(length = 2_000) var note: String? = null,
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: com.daycare.api.domain.IncidentFollowUpStatus = com.daycare.api.domain.IncidentFollowUpStatus.OPEN,
+    @Column(name = "completed_at") var completedAt: Instant? = null,
+    @Column(name = "completed_by_user_id") var completedByUserId: UUID? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "child_care_logs")
+class ChildCareLog(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "recorded_by_user_id", nullable = false) var recordedByUserId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(name = "care_type", nullable = false) var type: com.daycare.api.domain.ChildCareLogType = com.daycare.api.domain.ChildCareLogType.MEAL,
+    @Column(name = "occurred_at", nullable = false) var occurredAt: Instant = Instant.now(),
+    @Enumerated(EnumType.STRING) @Column(name = "meal_type") var mealType: com.daycare.api.domain.ChildMealType? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "meal_amount") var mealAmount: com.daycare.api.domain.ChildMealAmount? = null,
+    @Column(name = "nap_started_at") var napStartedAt: Instant? = null,
+    @Column(name = "nap_ended_at") var napEndedAt: Instant? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "toilet_type") var toiletType: com.daycare.api.domain.ChildToiletType? = null,
+    @Column(length = 500) var note: String? = null,
+    @Column(name = "corrects_log_id") var correctsLogId: UUID? = null,
+    @Column(name = "correction_reason", length = 500) var correctionReason: String? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "staff_handovers")
+class StaffHandover(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "created_by_user_id", nullable = false) var createdByUserId: UUID = UUID.randomUUID(),
+    @Column(name = "recipient_user_id", nullable = false) var recipientUserId: UUID = UUID.randomUUID(),
+    @Column(nullable = false, length = 2_000) var summary: String = "",
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: com.daycare.api.domain.StaffHandoverStatus = com.daycare.api.domain.StaffHandoverStatus.OPEN,
+    @Column(name = "acknowledged_at") var acknowledgedAt: Instant? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "tenant_announcements")
+class TenantAnnouncement(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "created_by_user_id", nullable = false) var createdByUserId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var audience: com.daycare.api.domain.TenantAnnouncementAudience = com.daycare.api.domain.TenantAnnouncementAudience.TENANT,
+    @Column(name = "branch_id") var branchId: UUID? = null,
+    @Column(nullable = false, length = 160) var title: String = "",
+    @Column(nullable = false, length = 4_000) var body: String = "",
+    @Column(name = "requires_acknowledgement", nullable = false) var requiresAcknowledgement: Boolean = false,
+    @Enumerated(EnumType.STRING) @Column(nullable = false) var status: com.daycare.api.domain.TenantAnnouncementStatus = com.daycare.api.domain.TenantAnnouncementStatus.DRAFT,
+    @Column(name = "scheduled_at") var scheduledAt: Instant? = null,
+    @Column(name = "published_at") var publishedAt: Instant? = null,
+    @Column(name = "closed_at") var closedAt: Instant? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "tenant_announcement_recipients")
+class TenantAnnouncementRecipient(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "announcement_id", nullable = false) var announcementId: UUID = UUID.randomUUID(),
+    @Column(name = "recipient_user_id", nullable = false) var recipientUserId: UUID = UUID.randomUUID(),
+    @Column(name = "acknowledged_at") var acknowledgedAt: Instant? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
 @Entity @Table(name = "invitations")

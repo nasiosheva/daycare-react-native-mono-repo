@@ -130,6 +130,17 @@ import com.daycare.api.service.CreateChildIncidentRequest
 import com.daycare.api.service.ChildMessageService
 import com.daycare.api.service.ChildMessageTemplateRequest
 import com.daycare.api.service.ChildMessageTemplateService
+import com.daycare.api.service.ChildCareLogService
+import com.daycare.api.service.CreateChildCareLogRequest
+import com.daycare.api.service.StaffHandoverService
+import com.daycare.api.service.CreateStaffHandoverRequest
+import com.daycare.api.service.TenantAnnouncementService
+import com.daycare.api.service.UpsertTenantAnnouncementRequest
+import com.daycare.api.service.ScheduleTenantAnnouncementRequest
+import com.daycare.api.service.ServiceExpiryReminderService
+import com.daycare.api.service.UpdateServiceExpiryReminderSettingsRequest
+import com.daycare.api.service.UpdateChildIncidentLifecycleRequest
+import com.daycare.api.service.CreateChildIncidentFollowUpRequest
 import com.daycare.api.service.SendChildMessageRequest
 import com.daycare.api.service.AnalyticsService
 import com.daycare.api.service.EducationOfferingService
@@ -455,7 +466,7 @@ class PlatformController(
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class InstitutionController(private val attendance: AttendanceService, private val pickupAuthorizations: PickupAuthorizationService, private val emergencyContacts: EmergencyContactService, private val consents: ConsentService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val parentChildProfiles: ParentChildProfileService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService, private val tenantReadiness: TenantReadinessService, private val childHealth: ChildHealthService, private val childIncidents: ChildIncidentService, private val tenantFeedback: TenantFeedbackService, private val childMessages: ChildMessageService, private val childMessageTemplates: ChildMessageTemplateService) {
+class InstitutionController(private val attendance: AttendanceService, private val pickupAuthorizations: PickupAuthorizationService, private val emergencyContacts: EmergencyContactService, private val consents: ConsentService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val parentChildProfiles: ParentChildProfileService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService, private val tenantReadiness: TenantReadinessService, private val childHealth: ChildHealthService, private val childIncidents: ChildIncidentService, private val childCareLogs: ChildCareLogService, private val staffHandovers: StaffHandoverService, private val tenantAnnouncements: TenantAnnouncementService, private val tenantFeedback: TenantFeedbackService, private val childMessages: ChildMessageService, private val childMessageTemplates: ChildMessageTemplateService) {
     @GetMapping("/tenant-readiness")
     fun tenantReadiness(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = tenantReadiness.organizationReadiness(jwt, organizationId)
 
@@ -531,6 +542,27 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PostMapping("/tenant-feedback/{feedbackId}/status")
     fun updateTenantFeedbackStatus(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable feedbackId: UUID, @Valid @RequestBody request: UpdateTenantFeedbackStatusRequest) = tenantFeedback.updateStatus(jwt, organizationId, feedbackId, request)
+
+    @GetMapping("/announcements")
+    fun announcements(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = tenantAnnouncements.listMine(jwt, organizationId)
+
+    @GetMapping("/announcements/manage")
+    fun managedAnnouncements(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = tenantAnnouncements.listManaged(jwt, organizationId)
+
+    @PostMapping("/announcements") @ResponseStatus(HttpStatus.CREATED)
+    fun createAnnouncement(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpsertTenantAnnouncementRequest) = tenantAnnouncements.create(jwt, organizationId, request)
+
+    @PutMapping("/announcements/{announcementId}")
+    fun updateAnnouncement(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable announcementId: UUID, @Valid @RequestBody request: UpsertTenantAnnouncementRequest) = tenantAnnouncements.update(jwt, organizationId, announcementId, request)
+
+    @PostMapping("/announcements/{announcementId}/publish")
+    fun publishAnnouncement(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable announcementId: UUID, @Valid @RequestBody request: ScheduleTenantAnnouncementRequest) = tenantAnnouncements.publish(jwt, organizationId, announcementId, request)
+
+    @PostMapping("/announcements/{announcementId}/close")
+    fun closeAnnouncement(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable announcementId: UUID) = tenantAnnouncements.close(jwt, organizationId, announcementId)
+
+    @PostMapping("/announcements/{announcementId}/acknowledge")
+    fun acknowledgeAnnouncement(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable announcementId: UUID) = tenantAnnouncements.acknowledge(jwt, organizationId, announcementId)
 
     @GetMapping("/children/programs-summary")
     fun childProgramsSummary(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = childManagement.programsSummary(jwt, organizationId)
@@ -690,6 +722,36 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @GetMapping("/children/{childId}/incident-reports/{incidentId}/photo")
     fun childIncidentReportPhoto(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable incidentId: UUID) = childIncidents.photo(jwt, organizationId, childId, incidentId)
+
+    @PatchMapping("/children/{childId}/incident-reports/{incidentId}/lifecycle")
+    fun updateChildIncidentLifecycle(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable incidentId: UUID, @Valid @RequestBody request: UpdateChildIncidentLifecycleRequest) = childIncidents.updateLifecycle(jwt, organizationId, childId, incidentId, request)
+
+    @GetMapping("/children/{childId}/incident-reports/{incidentId}/follow-ups")
+    fun childIncidentFollowUps(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable incidentId: UUID) = childIncidents.listFollowUps(jwt, organizationId, childId, incidentId)
+
+    @PostMapping("/children/{childId}/incident-reports/{incidentId}/follow-ups") @ResponseStatus(HttpStatus.CREATED)
+    fun createChildIncidentFollowUp(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable incidentId: UUID, @Valid @RequestBody request: CreateChildIncidentFollowUpRequest) = childIncidents.addFollowUp(jwt, organizationId, childId, incidentId, request)
+
+    @PostMapping("/children/{childId}/incident-reports/{incidentId}/follow-ups/{followUpId}/complete")
+    fun completeChildIncidentFollowUp(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable incidentId: UUID, @PathVariable followUpId: UUID) = childIncidents.completeFollowUp(jwt, organizationId, childId, incidentId, followUpId)
+
+    @GetMapping("/children/{childId}/care-logs")
+    fun childCareLogs(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childCareLogs.list(jwt, organizationId, childId)
+
+    @PostMapping("/children/{childId}/care-logs") @ResponseStatus(HttpStatus.CREATED)
+    fun createChildCareLog(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateChildCareLogRequest) = childCareLogs.create(jwt, organizationId, childId, request)
+
+    @GetMapping("/children/{childId}/handovers")
+    fun childHandovers(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = staffHandovers.list(jwt, organizationId, childId)
+
+    @GetMapping("/children/{childId}/handovers/recipients")
+    fun childHandoverRecipients(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = staffHandovers.recipients(jwt, organizationId, childId)
+
+    @PostMapping("/children/{childId}/handovers") @ResponseStatus(HttpStatus.CREATED)
+    fun createChildHandover(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateStaffHandoverRequest) = staffHandovers.create(jwt, organizationId, childId, request)
+
+    @PostMapping("/children/{childId}/handovers/{handoverId}/acknowledge")
+    fun acknowledgeChildHandover(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable handoverId: UUID) = staffHandovers.acknowledge(jwt, organizationId, childId, handoverId)
 
     @GetMapping("/children/{childId}/messages")
     fun listChildMessages(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childMessages.list(jwt, organizationId, childId)
@@ -953,7 +1015,12 @@ class InstitutionController(private val attendance: AttendanceService, private v
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class BillingController(private val billing: BillingService, private val overtime: OvertimeService) {
+class BillingController(private val billing: BillingService, private val overtime: OvertimeService, private val expiryReminders: ServiceExpiryReminderService) {
+    @GetMapping("/service-expiry-reminder-settings")
+    fun serviceExpiryReminderSettings(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = expiryReminders.settings(jwt, organizationId)
+
+    @PutMapping("/service-expiry-reminder-settings")
+    fun updateServiceExpiryReminderSettings(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: UpdateServiceExpiryReminderSettingsRequest) = expiryReminders.updateSettings(jwt, organizationId, request)
     @GetMapping("/service-plans")
     fun servicePlans(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = billing.plans(jwt, organizationId)
 

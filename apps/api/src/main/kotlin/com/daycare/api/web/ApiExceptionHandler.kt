@@ -18,6 +18,7 @@ import com.daycare.api.service.StaffLeaveRequestError
 import com.daycare.api.service.TenantFeedbackError
 import com.daycare.api.service.ChildAttendanceReportError
 import com.daycare.api.service.PlatformAdminError
+import com.daycare.api.service.DaycareOperationError
 import org.springframework.context.MessageSource
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -125,6 +126,9 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             StaffLeaveRequestError.NOT_PENDING to "error.staffLeaveNotPending",
             StaffLeaveRequestError.REJECTION_REASON_REQUIRED to "error.staffLeaveRejectionReasonRequired",
             TenantFeedbackError.NOT_FOUND to "error.tenantFeedbackNotFound",
+            DaycareOperationError.INVALID to "error.daycareOperationInvalid",
+            DaycareOperationError.UNAVAILABLE to "error.daycareOperationUnavailable",
+            DaycareOperationError.STATE to "error.daycareOperationState",
             ChildAttendanceReportError.DATE_RANGE.name to "error.childAttendanceReportDateRange",
             "You do not have permission for this organization" to "error.organizationAccess",
             "Tenant subscription is not active" to "error.subscriptionInactive",

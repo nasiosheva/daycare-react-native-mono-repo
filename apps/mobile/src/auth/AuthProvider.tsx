@@ -10,6 +10,7 @@ import { localAuth, type LocalAuthSession } from "./localAuth";
 import { clearLocalSession, loadLocalSession, saveLocalSession } from "./localSessionStorage";
 import { hasOrganizationMembership, requiresOrganizationSelection, selectedOrganizationId } from "./organizationContext";
 import { profileForCurrentIdentity, profileIdentityChanged } from "./profileIdentity";
+import { cancelOperationalCloseReminderSchedules } from "@/reminders/operationalCloseReminderScheduler";
 import type { AuthUser, PhoneChallenge } from "./types";
 
 type AuthContextValue = {
@@ -242,6 +243,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const signOut = async () => {
     setIsSigningOut(true);
     clearProfileContext(true);
+    // Device-local reminders belong to the signed-in user's branches; never let them outlive the session.
+    void cancelOperationalCloseReminderSchedules().catch(() => undefined);
     const localAccessToken = localSession?.token ?? null;
     const firebaseAccessToken = localAccessToken ? null : await firebaseAuth.getIdToken().catch(() => null);
     const accessToken = localAccessToken ?? firebaseAccessToken;

@@ -80,10 +80,13 @@ function BillingAdminScreenContent() {
   const markPaid = useMarkInvoicePaid();
   const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: membership?.role === "STAFF_ADMIN" });
   const capacities = useQuery({ queryKey: ["branch-capacities", organizationId], queryFn: () => api.branchCapacities(), enabled: membership?.role === "STAFF_ADMIN" });
+  const expiryReminderSettings = useQuery({ queryKey: ["service-expiry-reminder-settings", organizationId], queryFn: () => api.serviceExpiryReminderSettings(), enabled: membership?.role === "STAFF_ADMIN" });
   const templates = useQuery({ queryKey: ["service-plan-templates", organizationId], queryFn: () => api.servicePlanTemplates(), enabled: membership?.role === "STAFF_ADMIN" });
   const [selectedPlanId, setSelectedPlanId] = useState<string>();
   const [capacityBranchId, setCapacityBranchId] = useState<string>();
   const [capacity, setCapacity] = useState("");
+  const [expiryReminderOpen, setExpiryReminderOpen] = useState(false);
+  const [expiryLeadDays, setExpiryLeadDays] = useState("");
   const [listSheet, setListSheet] = useState<"plans" | "templates" | "capacity" | "discounts" | "invoices" | null>(null);
   const [discountFormOpen, setDiscountFormOpen] = useState(false);
   const [discount, setDiscount] = useState(emptyDiscountForm());
@@ -104,6 +107,7 @@ function BillingAdminScreenContent() {
   const createPlan = useMutation({ mutationFn: api.createServicePlan.bind(api), onSuccess: () => { refreshPlans(); closePlanFormState(); } });
   const createTemplate = useMutation({ mutationFn: api.createServicePlanTemplate.bind(api), onSuccess: () => { refreshTemplates(); closePlanFormState(); } });
   const updateTemplate = useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof api.updateServicePlanTemplate>[1] }) => api.updateServicePlanTemplate(id, input), onSuccess: () => { refreshTemplates(); closePlanFormState(); } });
+  const updateExpiryReminderSettings = useMutation({ mutationFn: (leadDays: number[]) => api.updateServiceExpiryReminderSettings(leadDays), onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["service-expiry-reminder-settings", organizationId] }); setExpiryReminderOpen(false); notify(t("operations.expiryReminderSaved"), undefined, "success"); } });
 
   useEffect(() => { if (selectedTemplate) setPlanFields(templateToFields(selectedTemplate)); }, [selectedTemplate]);
 
@@ -154,6 +158,12 @@ function BillingAdminScreenContent() {
   };
   const planFormTitle = isTemplateEditor ? t(planFormTemplateId ? "billing.editTemplate" : "billing.createTemplate") : t("billing.createPlan");
   const pendingInvoices = invoices.data?.filter((invoice) => invoice.status === "PENDING") ?? [];
+  const openExpiryReminder = () => { setExpiryLeadDays((expiryReminderSettings.data?.leadDays ?? []).join(", ")); setExpiryReminderOpen(true); };
+  const saveExpiryReminder = () => {
+    const leadDays = expiryLeadDays.split(",").map((item) => Number(item.trim())).filter((item) => Number.isInteger(item));
+    if (!leadDays.length || leadDays.some((item) => item < 1 || item > 30)) return notify(t("operations.expiryReminderSaveFailed"), t("operations.leadDaysHint"), "warning");
+    void updateExpiryReminderSettings.mutateAsync(leadDays).catch((error: unknown) => notify(t("operations.expiryReminderSaveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"));
+  };
 
   return <AppScreen showBottomNavigation={false} title={t("billing.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {!canManage && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
@@ -178,6 +188,10 @@ function BillingAdminScreenContent() {
       <NavigationCard accessibilityLabel={t("billing.pendingInvoices")} onPress={() => setListSheet("invoices")} style={styles.tile}>
         <AppText variant="label">{t("billing.pendingInvoices")}</AppText>
         <AppText tone={pendingInvoices.length ? "danger" : "muted"}>{pendingInvoices.length ? t("billing.pendingInvoicesCount", { count: pendingInvoices.length }) : t("common.noData")}</AppText>
+      </NavigationCard>
+      <NavigationCard accessibilityLabel={t("operations.expiryReminder")} onPress={openExpiryReminder} style={styles.tile}>
+        <AppText variant="label">{t("operations.expiryReminder")}</AppText>
+        <AppText tone="muted">{expiryReminderSettings.data?.leadDays?.join(", ") || t("common.noData")}</AppText>
       </NavigationCard>
     </View>
 
@@ -247,6 +261,8 @@ function BillingAdminScreenContent() {
     </BottomSheet>
 
     <BottomSheet visible={Boolean(capacityBranchId)} onClose={() => setCapacityBranchId(undefined)} closeAccessibilityLabel={t("common.close")} title={t("billing.branchCapacity")} negativeAction={{ label: t("common.cancel"), onPress: () => setCapacityBranchId(undefined) }} positiveAction={{ label: t("billing.saveCapacity"), loading: setBranchCapacity.isPending, onPress: () => void saveCapacity() }}><TextField label={t("billing.dailyCapacity")} keyboardType="numeric" maxLength={3} value={capacity} onChangeText={(value) => setCapacity(formatCapacityInput(value))} /></BottomSheet>
+
+    <BottomSheet visible={expiryReminderOpen} onClose={() => setExpiryReminderOpen(false)} closeAccessibilityLabel={t("common.close")} title={t("operations.expiryReminder")} negativeAction={{ label: t("common.cancel"), onPress: () => setExpiryReminderOpen(false) }} positiveAction={{ label: t("common.save"), loading: updateExpiryReminderSettings.isPending, onPress: saveExpiryReminder }}><AppText tone="muted">{t("operations.expiryReminderDescription")}</AppText><TextField label={t("operations.leadDays")} keyboardType="numbers-and-punctuation" value={expiryLeadDays} onChangeText={setExpiryLeadDays} /><AppText variant="caption" tone="muted">{t("operations.leadDaysHint")}</AppText></BottomSheet>
 
     <BottomSheet visible={discountFormOpen} onClose={closeDiscountForm} closeAccessibilityLabel={t("common.close")} title={t("billing.createDiscount")} negativeAction={{ label: t("common.cancel"), onPress: closeDiscountForm }} positiveAction={{ label: t("billing.saveDiscount"), loading: createDiscount.isPending, onPress: () => void saveDiscount() }}>
       <TextField label={t("billing.discountName")} value={discount.name} onChangeText={(name) => setDiscount((current) => ({ ...current, name }))} />

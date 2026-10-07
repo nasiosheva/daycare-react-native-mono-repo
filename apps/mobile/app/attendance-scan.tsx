@@ -50,9 +50,9 @@ function AttendanceScanScreenContent() {
 }
 const styles = StyleSheet.create({
   center: { textAlign: "center" },
-  camera: { height: 420, overflow: "hidden", borderRadius: radius.lg, backgroundColor: colors.text },
+  camera: { height: 420, overflow: "hidden", borderRadius: radius.lg, backgroundColor: colors.mediaBackground },
   overlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
-  frame: { width: 240, height: 240, borderRadius: radius.lg, borderWidth: 3, borderColor: colors.onPrimary },
+  frame: { width: 240, height: 240, borderRadius: radius.lg, borderWidth: 3, borderColor: colors.onMedia },
   status: { position: "absolute", left: spacing.md, right: spacing.md, bottom: spacing.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.pill, backgroundColor: colors.primary },
   statusText: { color: colors.onPrimary },
 });
