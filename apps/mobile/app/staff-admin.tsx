@@ -8,12 +8,14 @@ import { StyleSheet, View } from "react-native";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { StaffChatFloatingAction } from "@/chat/StaffChatFloatingAction";
-import { useEntitlements, useInvoices } from "@/booking/useBooking";
+import { useBookings, useEntitlements, useInvoices } from "@/booking/useBooking";
 import { createStaffAdminSummary } from "@/home/staffAdminSummary";
 import { useI18n } from "@/i18n/I18nProvider";
 import { tenantReadinessIssueKey } from "@/i18n/translations";
 import { hasLegacyLearningAccess, hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 import { pendingStaffAdminSetupIssues } from "@/tenant-readiness/staffAdminSetupChecklist";
+import { OperationalTaskCenter } from "@/staff-admin/OperationalTaskCenter";
+import { createStaffAdminOperationalTasks, type OperationalTaskKind } from "@/staff-admin/operationalTasks";
 
 const menuReadinessIssues = {
   staff: ["STAFF_ADMIN_REQUIRED"],
@@ -33,22 +35,50 @@ export default function StaffAdminScreen() {
   const { api, profile, organizationId } = useAuth();
   const { t } = useI18n();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const isStaffAdmin = membership?.role === "STAFF_ADMIN";
   const readOnly = membership?.active === false;
   const access = useUiAccessContext(Boolean(membership));
   const hasDaycareOperations = hasOfferingCapability(access.data, "DAYCARE_OPERATIONS");
   const hasLearningAccess = hasLegacyLearningAccess(membership?.capabilities, access.data);
   const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
-  const users = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: membership?.role === "STAFF_ADMIN" });
-  const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: membership?.role === "STAFF_ADMIN" });
+  const operationalTasksEnabled = isStaffAdmin && Boolean(organizationId);
+  const users = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: isStaffAdmin });
+  const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: isStaffAdmin });
   const invoices = useInvoices();
   const entitlements = useEntitlements();
-  const readiness = useQuery({ queryKey: ["organization-readiness", organizationId], queryFn: () => api.organizationReadiness(), enabled: membership?.role === "STAFF_ADMIN" });
+  const readiness = useQuery({ queryKey: ["organization-readiness", organizationId], queryFn: () => api.organizationReadiness(), enabled: isStaffAdmin });
+  const pendingBookings = useBookings(true, operationalTasksEnabled && hasDaycareOperations);
+  const pendingEnrollments = useQuery({ queryKey: ["parent-enrollments", organizationId, "pending"], queryFn: () => api.pendingParentEnrollments(), enabled: operationalTasksEnabled && hasDaycareOperations });
+  const pendingStaffLeaveRequests = useQuery({ queryKey: ["staff-leave-approvals", organizationId], queryFn: () => api.pendingStaffLeaveRequests(), enabled: operationalTasksEnabled });
+  const tenantFeedback = useQuery({ queryKey: ["tenant-feedback-inbox", organizationId], queryFn: () => api.tenantFeedbackInbox(), enabled: operationalTasksEnabled });
+  const privateTutoringRequests = useQuery({ queryKey: ["private-tutoring-admin-requests", organizationId], queryFn: () => api.privateTutoringRequests(), enabled: operationalTasksEnabled && hasAcademicOffering });
   if (!profile) return null;
-  if (membership?.role !== "STAFF_ADMIN") return <Redirect href="/home" />;
+  if (!isStaffAdmin) return <Redirect href="/home" />;
 
   const summary = createStaffAdminSummary({ children: [], users: users.data ?? [], pendingBookings: [], invoices: invoices.data ?? [], entitlements: entitlements.data ?? [] });
   const setupIssues = pendingStaffAdminSetupIssues(readiness.data?.issues);
   const activeBranchId = branches.data?.find((branch) => branch.active)?.id;
+  const operationalTasks = createStaffAdminOperationalTasks({
+    invoices: invoices.data ?? [],
+    pendingBookings: pendingBookings.data ?? [],
+    pendingEnrollments: pendingEnrollments.data ?? [],
+    pendingStaffLeaveRequests: pendingStaffLeaveRequests.data ?? [],
+    tenantFeedback: tenantFeedback.data ?? [],
+    privateTutoringRequests: privateTutoringRequests.data ?? [],
+  });
+  const operationalTaskQueries = [
+    invoices,
+    pendingStaffLeaveRequests,
+    tenantFeedback,
+    ...(hasDaycareOperations ? [pendingBookings, pendingEnrollments] : []),
+    ...(hasAcademicOffering ? [privateTutoringRequests] : []),
+  ];
+  const operationalTasksLoading = access.isLoading || operationalTaskQueries.some((query) => query.isLoading);
+  const operationalTasksError = access.isError || operationalTaskQueries.some((query) => query.isError);
+  const retryOperationalTasks = () => {
+    for (const query of operationalTaskQueries) void query.refetch();
+    if (access.isError) void access.refetch();
+  };
   const openSetupIssue = (issue: TenantReadinessIssue) => {
     switch (issue) {
       case "ACTIVE_BRANCH_REQUIRED": router.push("/branches" as never); break;
@@ -65,12 +95,24 @@ export default function StaffAdminScreen() {
     }
   };
 
+  const openOperationalTask = (kind: OperationalTaskKind) => {
+    switch (kind) {
+      case "PAYMENT_PROOF_REVIEW": router.push("/parent-payments"); break;
+      case "BOOKING_APPROVAL":
+      case "ENROLLMENT_APPROVAL": router.push("/booking-approvals"); break;
+      case "STAFF_LEAVE_APPROVAL": router.push("/staff-leave-approvals"); break;
+      case "TENANT_FEEDBACK_REVIEW": router.push("/tenant-feedback-inbox"); break;
+      case "PRIVATE_TUTORING_APPROVAL": router.push("/private-tutoring-admin"); break;
+    }
+  };
+
   const issuesFor = (menuIssues: TenantReadinessIssue[]) => attentionIssues(readiness.data?.issues, menuIssues);
 
   return <AppScreen floatingAction={<StaffChatFloatingAction />}><AppText variant="title">{t("staffAdmin.title")}</AppText>
     <AppText tone="muted">{t("staffAdmin.subtitle")}</AppText>
     {readOnly && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
     {readiness.data?.issues.includes("SUBSCRIPTION_NOT_ACTIVE") && <Banner tone="danger" title={t("tenantReadiness.needsAttention")} message={t(tenantReadinessIssueKey("SUBSCRIPTION_NOT_ACTIVE"))} />}
+    <OperationalTaskCenter tasks={operationalTasks} isLoading={operationalTasksLoading} hasError={operationalTasksError} onOpen={openOperationalTask} onRetry={retryOperationalTasks} />
     {readiness.data && <SetupChecklist issues={setupIssues} ready={readiness.data.status === "READY"} onOpen={openSetupIssue} />}
     <View style={styles.metrics}>
       <Metric icon="people-outline" label={t("staffAdmin.activeStaff")} value={summary.activeStaff} />
