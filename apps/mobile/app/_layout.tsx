@@ -19,6 +19,7 @@ import { ParentSelfServiceRouteBoundary } from "@/navigation/ParentSelfServiceRo
 import { ProfileContextRouteBoundary } from "@/navigation/ProfileContextRouteBoundary";
 import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
+import { isDuplicateRemoteNotification } from "@/notifications/localNotificationContent";
 import { getNativeNotificationPermission, nativeNotificationPlatform, registerNativePushDevice, requestNativeNotificationPermission, type NativeNotificationPermission } from "@/notifications/nativePush";
 
 if (Platform.OS !== "web") {
@@ -27,7 +28,15 @@ if (Platform.OS !== "web") {
 }
 
 if (Platform.OS !== "web") {
-  Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }) });
+  Notifications.setNotificationHandler({
+    handleNotification: async (notification) => {
+      // A server push that repeats a notification already shown locally from the realtime event stays silent.
+      const trigger = notification.request.trigger;
+      const isRemote = Boolean(trigger && typeof trigger === "object" && "type" in trigger && trigger.type === "push");
+      const show = !isDuplicateRemoteNotification(isRemote, notification.request.content.data);
+      return { shouldShowBanner: show, shouldShowList: show, shouldPlaySound: show, shouldSetBadge: false };
+    },
+  });
 } else {
   const nativeAlert = Alert.alert;
   Alert.alert = (title, message, buttons, options) => {

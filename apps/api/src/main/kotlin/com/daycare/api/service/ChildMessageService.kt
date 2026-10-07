@@ -217,7 +217,7 @@ class ChildMessageService(
         // WebSocket is the active chat transport. The event contains
         // identifiers only; the client must refetch the authorized thread over
         // REST. No inbox row or generic NOTIFICATIONS event is created.
-        notifications.notifyChat(child.organizationId, userId, title, body, path)
+        notifications.notifyChat(child.organizationId, userId, title, body, path, message.id)
         realtime.publishToUser(
             child.organizationId,
             userId,

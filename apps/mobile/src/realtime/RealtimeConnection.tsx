@@ -8,6 +8,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { allRealtimeFlags, invalidateRealtimeFlags } from "./queryInvalidation";
 import { showBrowserNotification } from "../notifications/browserNotifications";
 import { presentChildMessageLocalNotification } from "../notifications/childMessageLocalNotification";
+import { presentInboxLocalNotification } from "../notifications/inboxLocalNotification";
 import { loadDeviceNotificationMutedUntil } from "../notifications/deviceNotificationPreference";
 
 const INITIAL_RECONNECT_DELAY_MILLIS = 1_000;
@@ -37,11 +38,17 @@ export function RealtimeConnection() {
       invalidateRealtimeFlags(queryClient, event.flags, event.organizationId ?? organizationId, userId, event.payload);
       if (Platform.OS === "web" && event.flags.includes("NOTIFICATIONS")) void showBrowserNotification(() => api.notifications().then((page) => page.items), notificationId(event));
       if (Platform.OS !== "web") {
+        const loadMutedUntil = () => loadDeviceNotificationMutedUntil(queryClient, api, organizationId);
+        const eventOrganizationId = event.organizationId ?? organizationId ?? undefined;
         void presentChildMessageLocalNotification(event, {
           title: translateRef.current("childMessage.localNotificationTitle"),
           body: translateRef.current("childMessage.localNotificationBody"),
-          loadMutedUntil: () => loadDeviceNotificationMutedUntil(queryClient, api, organizationId),
-        }).catch((error: unknown) => console.warn(`[notifications] Chat local notification skipped: ${error instanceof Error ? error.message : String(error)}`));
+          loadMutedUntil,
+        }).catch((error: unknown) => warnLocalNotificationSkipped("Chat", error));
+        void presentInboxLocalNotification(event, {
+          loadNotification: (id) => api.notifications(undefined, eventOrganizationId).then((page) => page.items.find((item) => item.id === id)),
+          loadMutedUntil,
+        }).catch((error: unknown) => warnLocalNotificationSkipped("Inbox", error));
       }
     };
 
@@ -103,6 +110,10 @@ export function RealtimeConnection() {
   }, [api, getRealtimeToken, hasProfile, organizationId, queryClient, refreshProfile, userId]);
 
   return null;
+}
+
+function warnLocalNotificationSkipped(kind: string, error: unknown): void {
+  console.warn(`[notifications] ${kind} local notification skipped: ${error instanceof Error ? error.message : String(error)}`);
 }
 
 function notificationId(event: RealtimeEvent): string | undefined {

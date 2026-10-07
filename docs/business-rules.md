@@ -237,6 +237,16 @@ Status minimum lifecycle Platform Knowledge adalah `CANDIDATE`, `APPROVED`, `PUB
   `Notification.requestPermission()` melalui pengaturan notifikasi dengan aksi user, karena browser
   umumnya menolak prompt otomatis tanpa user gesture; inbox web tetap tersedia walau permission web
   tidak diberikan.
+- Pada native Android/iOS, setiap event realtime `NOTIFICATIONS` yang membawa `notificationId`
+  memunculkan **local notification** OS berisi judul, isi, dan action path dari item inbox tersimpan
+  milik tenant event tersebut, selama proses aplikasi dan WebSocket masih hidup. Local notification
+  tidak muncul bila permission OS belum `granted`, perangkat sedang mute (`pushMutedUntil`), item
+  sudah dibaca, atau layar Notifikasi sedang terbuka di foreground. Item inbox tetap tersimpan apa pun
+  hasilnya.
+- Push server membawa `notificationId` (id item inbox atau id pesan chat). Aplikasi menampilkan satu
+  notifikasi per id: mana yang tiba lebih dulu antara local notification dari WebSocket dan push server
+  ditampilkan, salinan berikutnya disembunyikan saat aplikasi berjalan. Push yang tiba ketika aplikasi
+  tidak berjalan ditampilkan OS seperti biasa.
 - Notifikasi pesan chat adalah pengecualian dari inbox: pengiriman pesan tidak membuat record inbox,
   tidak menambah unread badge, dan tidak ikut aksi **Tandai semua sudah dibaca**. Penerima yang
   tersambung menerima invalidation WebSocket `CHILD_MESSAGES`. Di Android/iOS, event pesan baru

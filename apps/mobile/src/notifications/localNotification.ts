@@ -1,6 +1,6 @@
 import * as Notifications from "expo-notifications";
 import type { SchedulableNotificationTriggerInput } from "expo-notifications";
-import { localNotificationContent, type LocalNotificationInput } from "./localNotificationContent";
+import { claimNotificationDisplay, localNotificationContent, type LocalNotificationInput } from "./localNotificationContent";
 import { defaultNotificationChannelId, ensureDefaultNotificationChannel, getNativeNotificationPermission, nativeNotificationPlatform } from "./nativePush";
 
 export * from "./localNotificationContent";
@@ -14,6 +14,7 @@ export async function presentLocalNotification(input: LocalNotificationInput): P
   if (!platform) return false;
   const permission = await getNativeNotificationPermission();
   if (permission?.status !== "granted") return false;
+  if (!claimNotificationDisplay(input.notificationId)) return false;
   await ensureDefaultNotificationChannel();
   await Notifications.scheduleNotificationAsync({
     content: localNotificationContent(input),

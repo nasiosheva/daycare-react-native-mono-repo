@@ -15,5 +15,5 @@ export async function presentChildMessageLocalNotification(
   if (!isNewChildMessageEvent(event)) return;
   const notification = childMessageLocalNotificationFor(event, { appIsActive: AppState.currentState === "active", mutedUntil: await input.loadMutedUntil() });
   if (!notification) return;
-  await presentLocalNotification({ title: input.title, body: input.body, actionPath: notification.actionPath, organizationId: notification.organizationId });
+  await presentLocalNotification({ title: input.title, body: input.body, actionPath: notification.actionPath, organizationId: notification.organizationId, notificationId: notification.messageId });
 }

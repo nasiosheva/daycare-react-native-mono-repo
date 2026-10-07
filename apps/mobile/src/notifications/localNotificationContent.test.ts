@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createLocalNotificationDeduper, isActiveLocalNotificationScope, localNotificationContent, localNotificationScopeKey, setActiveLocalNotificationScope } from "./localNotificationContent";
+import { claimNotificationDisplay, createLocalNotificationDeduper, isActiveLocalNotificationScope, isDuplicateRemoteNotification, localNotificationContent, localNotificationScopeKey, resetDisplayedNotifications, setActiveLocalNotificationScope } from "./localNotificationContent";
 import { isMuteActive } from "./mutePreferences";
 
 describe("localNotificationContent", () => {
@@ -51,5 +51,26 @@ describe("isMuteActive", () => {
     expect(isMuteActive("not-a-date", now)).toBe(false);
     expect(isMuteActive(null, now)).toBe(false);
     expect(isMuteActive(undefined, now)).toBe(false);
+  });
+});
+
+describe("notification display dedupe", () => {
+  afterEach(() => resetDisplayedNotifications());
+
+  it("hides a server push that repeats a notification already shown locally", () => {
+    expect(claimNotificationDisplay("n-1")).toBe(true);
+    expect(isDuplicateRemoteNotification(true, { notificationId: "n-1" })).toBe(true);
+  });
+
+  it("lets the first server push through and skips the later local copy", () => {
+    expect(isDuplicateRemoteNotification(true, { notificationId: "n-2" })).toBe(false);
+    expect(claimNotificationDisplay("n-2")).toBe(false);
+  });
+
+  it("never hides local notifications or pushes without an id", () => {
+    claimNotificationDisplay("n-3");
+    expect(isDuplicateRemoteNotification(false, { notificationId: "n-3" })).toBe(false);
+    expect(isDuplicateRemoteNotification(true, { actionPath: "/home" })).toBe(false);
+    expect(claimNotificationDisplay(undefined)).toBe(true);
   });
 });
