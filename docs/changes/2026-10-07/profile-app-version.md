@@ -2,7 +2,7 @@
 
 ## Scope
 
-- Profile now shows the version and native build/version code of the currently running application binary for every role.
+- Profile now shows the version and native build/version code of the currently running application binary for every role as one centered, muted text line; it does not create a separate card. A second centered line shows a localized Usia Emas copyright with the current year.
 - The values are informational only. They do not alter authentication, authorization, tenant selection, or any business workflow.
 
 ## Source of truth
