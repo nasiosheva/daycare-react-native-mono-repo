@@ -47,7 +47,7 @@ export default function LearningLevelsScreen() {
   if (!access.isLoading && !canAccessLegacyClasses) return <Redirect href="/academic" />;
 
   const failure = (error: unknown) => setFormError(error instanceof Error ? error.message : t("learning.saveFailed"));
-  const useTemplate = (templateName: string, minimum?: number | null, maximum?: number | null) => { setName(templateName); setMinAge(minimum?.toString() ?? ""); setMaxAge(maximum?.toString() ?? ""); setFormError(null); };
+  const applyTemplate = (templateName: string, minimum?: number | null, maximum?: number | null) => { setName(templateName); setMinAge(minimum?.toString() ?? ""); setMaxAge(maximum?.toString() ?? ""); setFormError(null); };
   const editLevel = (level: LearningLevel) => { setEditingLevelId(level.id); setName(level.name); setMinAge(level.minAgeMonths?.toString() ?? ""); setMaxAge(level.maxAgeMonths?.toString() ?? ""); setDisplayOrder(level.displayOrder.toString()); setSelectedPrograms(level.curriculumProgramIds); setFormError(null); };
   const cancelEdit = () => { setEditingLevelId(undefined); setName(""); setMinAge(""); setMaxAge(""); setDisplayOrder("0"); setSelectedPrograms([]); setFormError(null); };
   const openCreate = () => { cancelEdit(); setDisplayOrder((levels.data?.length ?? 0).toString()); setVisible(true); };
@@ -89,7 +89,7 @@ export default function LearningLevelsScreen() {
       <AppText variant="label">{t("learning.templates")}</AppText>
       {templates.isLoading && <ShimmerList variant="tile" />}
       {templates.isError && <View style={styles.feedback}><Banner tone="danger" title={t("learning.loadFailed")} /><Button variant="secondary" onPress={() => void templates.refetch()}>{t("common.retry")}</Button></View>}
-      {!templates.isLoading && <View style={styles.options}>{templates.data?.map((template) => <Button key={template.code} variant="secondary" onPress={() => useTemplate(template.name, template.minAgeMonths, template.maxAgeMonths)}>{template.name}</Button>)}</View>}
+      {!templates.isLoading && <View style={styles.options}>{templates.data?.map((template) => <Button key={template.code} variant="secondary" onPress={() => applyTemplate(template.name, template.minAgeMonths, template.maxAgeMonths)}>{template.name}</Button>)}</View>}
       <TextField label={t(hasAcademicOffering ? "learning.levelName" : "learning.legacyLevelName")} value={name} onChangeText={(value) => { setName(value); setFormError(null); }} />
       <TextField label={t("learning.minAge")} inputMode="numeric" value={minAge} onChangeText={(value) => { setMinAge(value); setFormError(null); }} />
       <TextField label={t("learning.maxAge")} inputMode="numeric" value={maxAge} onChangeText={(value) => { setMaxAge(value); setFormError(null); }} />

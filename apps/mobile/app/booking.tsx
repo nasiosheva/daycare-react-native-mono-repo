@@ -56,7 +56,7 @@ function BookingScreenContent() {
   const closeListSheet = () => setListSheet(null);
   const pickDate = (value: string) => { if (!isIsoDate(value) || bookingDates.includes(value)) return; setBookingDates((dates) => [...dates, value].sort()); };
   const selectPlan = (item: ServicePlan) => { setPlanId(item.id); setCreditEntitlementId(null); setBookingDates([]); setListSheet(null); setBookFormOpen(true); };
-  const useRemaining = (entitlementId: string, entitlementChildId: string) => { setCreditEntitlementId(entitlementId); setChildId(entitlementChildId); setBookingDates([]); setListSheet(null); setBookFormOpen(true); };
+  const applyRemainingCredit = (entitlementId: string, entitlementChildId: string) => { setCreditEntitlementId(entitlementId); setChildId(entitlementChildId); setBookingDates([]); setListSheet(null); setBookFormOpen(true); };
   const closeBookForm = () => { setBookFormOpen(false); setPlanId(null); setCreditEntitlementId(null); setBookingDates([]); };
   const submit = async () => {
     if (creditEntitlement) {
@@ -108,7 +108,7 @@ function BookingScreenContent() {
     <BottomSheet visible={listSheet === "remaining"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.remaining")}>
       <AppText tone="muted">{t("booking.remainingDescription")}</AppText>
       {entitlements.isFetching && <ShimmerList />}
-      {!entitlements.isFetching && entitlements.data?.map((item) => <Card key={item.id} variant="tinted" title={item.planName} subtitle={t("booking.validUntil", { date: formatDate(item.validUntil) })} trailing={<Badge tone={statusTone(item.status)} label={t(`status.${item.status}` as Parameters<typeof t>[0])} />}><AppText variant="h5">{item.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: item.remainingCredits })}</AppText>{item.status === "ACTIVE" && (item.remainingCredits ?? 0) > 0 && <Button variant="secondary" onPress={() => useRemaining(item.id, item.childId)}>{t("booking.useRemaining")}</Button>}</Card>)}
+      {!entitlements.isFetching && entitlements.data?.map((item) => <Card key={item.id} variant="tinted" title={item.planName} subtitle={t("booking.validUntil", { date: formatDate(item.validUntil) })} trailing={<Badge tone={statusTone(item.status)} label={t(`status.${item.status}` as Parameters<typeof t>[0])} />}><AppText variant="h5">{item.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: item.remainingCredits })}</AppText>{item.status === "ACTIVE" && (item.remainingCredits ?? 0) > 0 && <Button variant="secondary" onPress={() => applyRemainingCredit(item.id, item.childId)}>{t("booking.useRemaining")}</Button>}</Card>)}
       {!entitlements.isFetching && entitlements.data?.length === 0 && <EmptyState compact icon="ticket-outline" title={t("common.noData")} />}
     </BottomSheet>
 
