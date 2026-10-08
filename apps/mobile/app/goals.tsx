@@ -36,16 +36,12 @@ export default function GoalsScreen() {
   const { api, profile, organizationId: activeOrganizationId } = useAuth();
   // A Parent can view Goals for a child at a tenant that isn't the active one; Staff/Staff Admin
   // never pass this param, so their own tenant-wide browsing below is unaffected.
-  const organizationId = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
+  const routeOrganization = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
   const { t, formatDate, formatDateTime } = useI18n();
   const queryClient = useQueryClient();
-  const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const isStaffAdmin = membership?.role === "STAFF_ADMIN";
-  const isParent = membership?.role === "PARENT";
-  const canAdmin = isStaffAdmin && membership.active;
-  const canWrite = Boolean(membership?.active && (membership.role === "STAFF_ADMIN" || membership.role === "STAFF"));
-  const access = useUiAccessContext(Boolean(membership), organizationId);
-  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
+  const baseMembership = profile?.memberships.find((item) => item.organizationId === routeOrganization);
+  const isStaffAdmin = baseMembership?.role === "STAFF_ADMIN";
+  const isParent = baseMembership?.role === "PARENT";
   const [filterVisible, setFilterVisible] = useState(false);
   const [childFilter, setChildFilter] = useState<ChildListFilter>({});
   const children = useChildren(isStaffAdmin ? childFilter : {}, !isParent);
@@ -61,6 +57,14 @@ export default function GoalsScreen() {
     setChildId((currentChildId) => resolveSelectedChildId(availableChildren, currentChildId, hasFixedChild ? routeChildId : undefined, hasFixedChild));
   }, [availableChildren, hasFixedChild, routeChildId]);
   const selectedChild = availableChildren.find((child) => child.id === childId) ?? null;
+  // Parent child pickers aggregate across tenants. Goals must use the selected
+  // child's tenant for every read and action instead of the active tenant.
+  const organizationId = selectedChild?.organizationId ?? routeOrganization;
+  const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const canAdmin = isStaffAdmin && membership?.active === true;
+  const canWrite = Boolean(membership?.active && (membership.role === "STAFF_ADMIN" || membership.role === "STAFF"));
+  const access = useUiAccessContext(Boolean(membership), organizationId);
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
   const [programSearch, setProgramSearch] = useState("");
   const [debouncedProgramSearch, setDebouncedProgramSearch] = useState("");
   useEffect(() => {

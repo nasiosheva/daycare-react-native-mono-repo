@@ -48,7 +48,7 @@ if (Platform.OS !== "web") {
 const bottomNavigationScreenNames = ["home", "platform-tenants", "platform-catalog", "tenant-detail", "children", "academic", "development", "booking-approvals", "billing-admin", "staff-admin", "staff-operations", "parent-qr", "booking", "operational-hours", "parent-enrollment", "profile"];
 
 function NotificationRouteHandler() {
-  const { organizationId, profile, selectOrganization } = useAuth();
+  const { organizationId, profile } = useAuth();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const access = useUiAccessContext(Boolean(profile && organizationId && hasOperationalTenantSubscription(membership?.subscriptionStatus)));
   const router = useRouter();
@@ -63,9 +63,11 @@ function NotificationRouteHandler() {
       const actionPath = typeof data.actionPath === "string" ? data.actionPath : null;
       const isSelfServiceRoute = Boolean(actionPath && isSelfServiceNotificationRoute(actionPath));
       const targetOrganizationId = isSelfServiceRoute ? null : notificationOrganizationId ?? organizationId;
-      if (!isSelfServiceRoute && notificationOrganizationId && !selectOrganization(notificationOrganizationId)) return;
-      const isCurrentOrganization = !targetOrganizationId || targetOrganizationId === organizationId;
-      if (!actionPath || !canOpenNotificationRoute(profile, targetOrganizationId, actionPath, !isCurrentOrganization || hasOfferingCapability(access.data, "DAYCARE_OPERATIONS"))) return;
+      // A notification is an action scoped to the tenant in its payload. Never
+      // switch the user's active tenant as a side effect of opening it; routes
+      // that support cross-tenant Parent access receive organizationId and
+      // resolve that scope in their own query/action layer.
+      if (!actionPath || !canOpenNotificationRoute(profile, targetOrganizationId, actionPath, hasOfferingCapability(access.data, "DAYCARE_OPERATIONS"), organizationId)) return;
       openedNotificationIds.current.add(notificationId);
       setPendingRoute({
         actionPath: notificationRouteWithOrganizationId(actionPath, notificationOrganizationId),
@@ -75,12 +77,11 @@ function NotificationRouteHandler() {
     void Notifications.getLastNotificationResponseAsync().then((response) => { if (response) open(response.notification.request.content.data, response.notification.request.identifier); });
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => open(response.notification.request.content.data, response.notification.request.identifier));
     return () => subscription.remove();
-  }, [access.data, organizationId, profile, selectOrganization]);
+  }, [access.data, organizationId, profile]);
   useEffect(() => {
     if (!pendingRoute || !navigationRef.current?.isReady()) return;
-    if (pendingRoute.organizationId && pendingRoute.organizationId !== organizationId) return;
     if (access.isLoading) return;
-    if (!canOpenNotificationRoute(profile, pendingRoute.organizationId ?? organizationId, pendingRoute.actionPath, hasOfferingCapability(access.data, "DAYCARE_OPERATIONS"))) {
+    if (!canOpenNotificationRoute(profile, pendingRoute.organizationId ?? organizationId, pendingRoute.actionPath, hasOfferingCapability(access.data, "DAYCARE_OPERATIONS"), organizationId)) {
       setPendingRoute(null);
       return;
     }

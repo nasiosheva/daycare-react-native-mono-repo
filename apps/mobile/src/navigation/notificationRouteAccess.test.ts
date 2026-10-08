@@ -68,7 +68,10 @@ describe("canOpenNotificationRoute", () => {
 
     expect(canOpenNotificationRoute(twoTenantParent, "tenant-b", "/absence-requests?childId=child-b", false, "tenant-a")).toBe(true);
     expect(canOpenNotificationRoute(twoTenantParent, "tenant-b", "/child-messages?childId=child-b", false, "tenant-a")).toBe(true);
-    expect(canOpenNotificationRoute(twoTenantParent, "tenant-b", "/booking", true, "tenant-a")).toBe(true);
+    // The cross-tenant Booking screen performs its own aggregate capability
+    // check; the notification handler must not require the active tenant's
+    // capability or switch tenants before opening it.
+    expect(canOpenNotificationRoute(twoTenantParent, "tenant-b", "/booking", false, "tenant-a")).toBe(true);
     expect(notificationRouteWithOrganizationId("/absence-requests?childId=child-b", "tenant-b")).toBe("/absence-requests?childId=child-b&organizationId=tenant-b");
     expect(notificationRouteWithOrganizationId("/child-messages?childId=child-b", "tenant-b")).toBe("/child-messages?childId=child-b&organizationId=tenant-b");
     expect(notificationRouteWithOrganizationId("/booking", "tenant-b")).toBe("/booking");
