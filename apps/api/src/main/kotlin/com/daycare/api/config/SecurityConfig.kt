@@ -55,7 +55,11 @@ class SecurityConfig {
         val firebaseDecoder: JwtDecoder = JwtDecoders.fromIssuerLocation(firebaseIssuer)
         return JwtDecoder { token ->
             if (tokenRevocations.isRevoked(token)) throw JwtException("Token has been revoked")
-            val issuer = try { SignedJWT.parse(token).jwtClaimsSet.issuer } catch (error: Exception) { throw JwtException("Invalid token", error) }
+            val claims = try { SignedJWT.parse(token).jwtClaimsSet } catch (error: Exception) { throw JwtException("Invalid token", error) }
+            val issuer = claims.issuer
+            if (issuer == LOCAL_TOKEN_ISSUER && tokenRevocations.isUserSessionRevoked(claims.subject, claims.issueTime?.toInstant())) {
+                throw JwtException("User sessions have been revoked")
+            }
             if (issuer == LOCAL_TOKEN_ISSUER) localDecoder.decode(token) else firebaseDecoder.decode(token)
         }
     }

@@ -129,6 +129,18 @@ class TenantAccountProvisioningTest {
     }
 
     @Test
+    fun `rejects a password longer than 128 characters`() {
+        val users = mock(UserProfileRepository::class.java)
+        val passwordEncoder = mock(PasswordEncoder::class.java)
+        val user = UserProfile(localPasswordHash = "old-hash")
+        val service = TenantUserAccountService(users, passwordEncoder)
+
+        assertThrows(IllegalArgumentException::class.java) { service.changePassword(user, "x".repeat(129)) }
+
+        assertEquals("old-hash", user.localPasswordHash)
+    }
+
+    @Test
     fun `creates application credentials when local auth is disabled`() {
         val users = mock(UserProfileRepository::class.java)
         val passwordEncoder = mock(PasswordEncoder::class.java)
@@ -175,7 +187,7 @@ class TenantAccountProvisioningTest {
         `when`(branches.findFirstByOrganizationId(organization.id)).thenReturn(Branch(organizationId = organization.id, name = "Cabang Utama"))
         `when`(invitations.findAllByOrganizationIdAndStatus(organization.id, InvitationStatus.PENDING)).thenReturn(emptyList())
         `when`(payments.findAllByOrganizationIdOrderByCreatedAtDesc(organization.id)).thenReturn(emptyList())
-        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, tenantAccounts, institutionTypes, defaultCurriculumActivities, mock(com.daycare.api.persistence.EducationOfferingRepository::class.java))
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, tenantAccounts, institutionTypes, defaultCurriculumActivities, mock(com.daycare.api.persistence.EducationOfferingRepository::class.java), mock(AccessTokenRevocationService::class.java))
 
         val response = service.createTenant(jwt, CreateTenantRequest("Tenant Baru", "Cabang Utama", setOf(InstitutionTypeCodes.DAYCARE), TenantSubscriptionPlan.STARTER, null, 1, "Owner Tenant", "owner@tenant.test", "123123"))
 
@@ -209,7 +221,7 @@ class TenantAccountProvisioningTest {
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
         `when`(organizations.findById(organization.id)).thenReturn(Optional.of(organization))
         `when`(memberships.findById(primaryMembership.id)).thenReturn(Optional.of(primaryMembership))
-        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, tenantAccounts, institutionTypes, defaultCurriculumActivities, mock(com.daycare.api.persistence.EducationOfferingRepository::class.java))
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, tenantAccounts, institutionTypes, defaultCurriculumActivities, mock(com.daycare.api.persistence.EducationOfferingRepository::class.java), mock(AccessTokenRevocationService::class.java))
 
         assertThrows(IllegalArgumentException::class.java) { service.removeTenantStaffAdmin(jwt, organization.id, primaryMembership.id) }
         assertTrue(primaryMembership.active)
@@ -236,7 +248,7 @@ class TenantAccountProvisioningTest {
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
         `when`(organizations.findById(organization.id)).thenReturn(Optional.of(organization))
         `when`(subscriptions.findByOrganizationId(organization.id)).thenReturn(subscription)
-        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, tenantAccounts, institutionTypes, defaultCurriculumActivities, mock(com.daycare.api.persistence.EducationOfferingRepository::class.java))
+        val service = PlatformAdministrationService(platformAccess, organizations, organizationTypes, capabilities, branches, subscriptions, payments, invitations, memberships, users, tenantAccounts, institutionTypes, defaultCurriculumActivities, mock(com.daycare.api.persistence.EducationOfferingRepository::class.java), mock(AccessTokenRevocationService::class.java))
 
         assertThrows(IllegalArgumentException::class.java) {
             service.updateTenant(jwt, organization.id, UpdateTenantRequest("Tenant Trial", setOf(InstitutionTypeCodes.DAYCARE), TenantSubscriptionPlan.STARTER, BigDecimal("100000")))
@@ -264,7 +276,7 @@ class TenantAccountProvisioningTest {
         `when`(tenantAccounts.create("Admin Baru", "admin-baru@tenant.test", "123123", "admin-baru")).thenReturn(user)
         `when`(memberships.save(any(Membership::class.java))).thenReturn(membership)
         val branchFilters = mock(BranchListFilterService::class.java)
-        val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts, branchFilters)
+        val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts, branchFilters, mock(AccessTokenRevocationService::class.java))
 
         val response = service.createTenantUser(jwt, organizationId, CreateTenantUserRequest("Admin Baru", "admin-baru@tenant.test", "123123", Role.STAFF_ADMIN, username = "admin-baru", branchId = UUID.randomUUID(), canManageChildPrograms = true, canManageDevelopmentCategories = true))
 
@@ -299,7 +311,7 @@ class TenantAccountProvisioningTest {
         `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
         `when`(tenantAccounts.create("Guru Baru", "guru@tenant.test", "123123", null)).thenReturn(user)
         `when`(memberships.save(any(Membership::class.java))).thenAnswer { it.arguments[0] }
-        val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts, branchFilters)
+        val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts, branchFilters, mock(AccessTokenRevocationService::class.java))
 
         val response = service.createTenantUser(jwt, organizationId, CreateTenantUserRequest("Guru Baru", "guru@tenant.test", "123123", Role.STAFF, branchId = branch.id, canManageChildPrograms = true, canManageDevelopmentCategories = true))
 
@@ -331,7 +343,7 @@ class TenantAccountProvisioningTest {
         val unavailableBranch = Branch(organizationId = UUID.randomUUID(), name = "Cabang Tenant Lain", active = false)
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(), emptySet(), emptySet()))
         `when`(branches.findById(unavailableBranch.id)).thenReturn(Optional.of(unavailableBranch))
-        val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts, branchFilters)
+        val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts, branchFilters, mock(AccessTokenRevocationService::class.java))
 
         assertThrows(IllegalArgumentException::class.java) {
             service.createTenantUser(jwt, organizationId, CreateTenantUserRequest("Guru Baru", "guru@tenant.test", "123123", Role.STAFF, branchId = unavailableBranch.id))
@@ -358,7 +370,7 @@ class TenantAccountProvisioningTest {
         val device = DeviceToken(organizationId = organizationId, userId = user.id, installationId = "installation-id")
         `when`(access.require(jwt, organizationId, Role.entries.toSet(), readOnly = true)).thenReturn(AccessScope(user, Membership(userId = user.id, organizationId = organizationId), emptySet(), emptySet()))
         `when`(deviceTokens.findByInstallationId("installation-id")).thenReturn(device)
-        val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts, branchFilters)
+        val service = AdministrationService(access, branches, children, invitations, memberships, users, deviceTokens, notifications, tenantAccounts, branchFilters, mock(AccessTokenRevocationService::class.java))
 
         val muted = service.updateDeviceNotificationPreference(jwt, organizationId, UpdateDeviceNotificationPreferenceRequest("installation-id", PushNotificationMuteDuration.ONE_HOUR))
         val restored = service.updateDeviceNotificationPreference(jwt, organizationId, UpdateDeviceNotificationPreferenceRequest("installation-id", null))

@@ -13,6 +13,7 @@ object TenantUserAccountError {
     const val USERNAME_REGISTERED = "tenant_user.username_registered"
     const val EMAIL_REQUIRED = "tenant_user.email_required"
     const val PASSWORD_TOO_SHORT = "tenant_user.password_too_short"
+    const val PASSWORD_TOO_LONG = "tenant_user.password_too_long"
     const val EMAIL_REGISTERED = "tenant_user.email_registered"
     const val STAFF_EDIT_NOT_ALLOWED = "tenant_user.staff_edit_not_allowed"
 }
@@ -30,6 +31,7 @@ class TenantUserAccountService(
         require(username == null || normalizedUsername != null) { TenantUserAccountError.USERNAME_REQUIRED }
         require(normalizedEmail.contains("@")) { TenantUserAccountError.EMAIL_REQUIRED }
         require(password.length >= 6) { TenantUserAccountError.PASSWORD_TOO_SHORT }
+        require(password.length <= 128) { TenantUserAccountError.PASSWORD_TOO_LONG }
         require(users.findByEmailIgnoreCase(normalizedEmail) == null) { TenantUserAccountError.EMAIL_REGISTERED }
         normalizedUsername?.let { require(users.findByUsernameIgnoreCase(it) == null) { TenantUserAccountError.USERNAME_REGISTERED } }
 
@@ -44,6 +46,7 @@ class TenantUserAccountService(
 
     fun changePassword(user: UserProfile, password: String) {
         require(password.length >= 6) { TenantUserAccountError.PASSWORD_TOO_SHORT }
+        require(password.length <= 128) { TenantUserAccountError.PASSWORD_TOO_LONG }
         user.localPasswordHash = passwordEncoder.encode(password)
     }
 

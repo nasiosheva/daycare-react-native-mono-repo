@@ -107,6 +107,7 @@ class PlatformAdministrationService(
     private val institutionTypeCatalog: InstitutionTypeCatalogService,
     private val defaultCurriculumActivities: TenantDefaultCurriculumActivitySeeder,
     private val educationOfferings: EducationOfferingRepository,
+    private val tokenRevocations: AccessTokenRevocationService,
 ) {
     @Transactional
     fun tenants(jwt: Jwt, search: String?): List<TenantResponse> {
@@ -208,6 +209,7 @@ class PlatformAdministrationService(
         require(membership.organizationId == organizationId && membership.active && membership.role == Role.STAFF_ADMIN) { "Staff Admin account was not found" }
         val user = users.findById(membership.userId).orElseThrow { IllegalArgumentException("Staff Admin account was not found") }
         tenantUserAccounts.changePassword(user, request.password)
+        tokenRevocations.revokeUserSessions(user)
     }
 
     @Transactional

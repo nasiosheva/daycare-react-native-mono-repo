@@ -73,6 +73,7 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             TenantUserAccountError.USERNAME_REGISTERED to "error.tenantUserUsernameRegistered",
             TenantUserAccountError.EMAIL_REQUIRED to "error.tenantUserEmailRequired",
             TenantUserAccountError.PASSWORD_TOO_SHORT to "error.tenantUserPasswordTooShort",
+            TenantUserAccountError.PASSWORD_TOO_LONG to "error.tenantUserPasswordTooLong",
             TenantUserAccountError.EMAIL_REGISTERED to "error.emailRegistered",
             TenantUserAccountError.STAFF_EDIT_NOT_ALLOWED to "error.tenantUserStaffEditNotAllowed",
             DevelopmentEntryMediaError.NOT_FOUND to "error.developmentEntryNotFound",

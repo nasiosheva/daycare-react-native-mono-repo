@@ -17,7 +17,7 @@ class LocalAuthenticationServiceTest {
         val verifiedIdentity = mock(Jwt::class.java)
         `when`(verifiedIdentity.getClaimAsString("email")).thenReturn("verified@example.test")
         `when`(verifiedIdentity.getClaimAsString("phone_number")).thenReturn(null)
-        val service = LocalAuthenticationService(users, mock(PasswordEncoder::class.java), LocalJwtService("01234567890123456789012345678901"))
+        val service = LocalAuthenticationService(users, mock(PasswordEncoder::class.java), LocalJwtService("01234567890123456789012345678901"), mock(AccessTokenRevocationService::class.java))
 
         assertThrows(IllegalArgumentException::class.java) {
             service.register("Parent Baru", "other@example.test", "123123", verifiedIdentity)

@@ -9,6 +9,8 @@
     "lint": "corepack pnpm -r --if-present lint",
     "typecheck": "corepack pnpm -r --if-present typecheck",
     "test": "corepack pnpm -r --if-present test",
+    "coverage:backend": "GRADLE_USER_HOME=.gradle-local ./apps/api/gradlew -p apps/api test jacocoTestReport --no-daemon",
+    "coverage": "corepack pnpm coverage:backend && corepack pnpm -r --if-present test:coverage",
     "generate:api": "corepack pnpm --filter @daycare/api-client generate",
     "verify": "corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test"
   },

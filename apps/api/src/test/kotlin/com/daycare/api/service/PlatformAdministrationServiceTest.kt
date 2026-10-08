@@ -41,13 +41,14 @@ private class PlatformAdministrationServiceFixture {
     val memberships = mock(MembershipRepository::class.java)
     val users = mock(UserProfileRepository::class.java)
     val tenantUserAccounts = mock(TenantUserAccountService::class.java)
+    val tokenRevocations = mock(AccessTokenRevocationService::class.java)
     val institutionTypeCatalog = mock(InstitutionTypeCatalogService::class.java)
     val defaultCurriculumActivities = mock(TenantDefaultCurriculumActivitySeeder::class.java)
     val educationOfferings = mock(EducationOfferingRepository::class.java)
     val service = PlatformAdministrationService(
         platformAccess, organizations, organizationTypes, organizationCapabilities, branches, subscriptions,
         payments, invitations, memberships, users, tenantUserAccounts, institutionTypeCatalog,
-        defaultCurriculumActivities, educationOfferings,
+        defaultCurriculumActivities, educationOfferings, tokenRevocations,
     )
 
     val jwt: Jwt = mock(Jwt::class.java)
@@ -81,6 +82,7 @@ class PlatformAdministrationServiceTest {
         fixture.service.resetTenantStaffAdminPassword(fixture.jwt, fixture.organizationId, fixture.membershipId, ChangeTenantUserPasswordRequest("new-password"))
 
         verify(fixture.tenantUserAccounts).changePassword(user, "new-password")
+        verify(fixture.tokenRevocations).revokeUserSessions(user)
     }
 
     @Test
@@ -93,6 +95,7 @@ class PlatformAdministrationServiceTest {
         fixture.service.resetTenantStaffAdminPassword(fixture.jwt, fixture.organizationId, fixture.membershipId, ChangeTenantUserPasswordRequest("new-password"))
 
         verify(fixture.tenantUserAccounts).changePassword(user, "new-password")
+        verify(fixture.tokenRevocations).revokeUserSessions(user)
     }
 
     @Test

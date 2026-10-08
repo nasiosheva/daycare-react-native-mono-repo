@@ -76,6 +76,7 @@ class LocalAuthenticationService(
     private val users: UserProfileRepository,
     private val passwordEncoder: PasswordEncoder,
     private val localJwt: LocalJwtService,
+    private val tokenRevocations: AccessTokenRevocationService,
 ) {
     @Transactional
     fun register(displayName: String, email: String, password: String, verifiedIdentity: Jwt? = null): LocalLoginResponse {
@@ -104,6 +105,7 @@ class LocalAuthenticationService(
         require(password.length >= 6) { LocalAuthenticationError.PASSWORD_TOO_SHORT }
         val user = users.findByFirebaseUid(firebaseUid) ?: throw IllegalArgumentException(LocalAuthenticationError.USER_NOT_FOUND)
         user.localPasswordHash = passwordEncoder.encode(password)
+        tokenRevocations.revokeUserSessions(user)
     }
 
     @Transactional

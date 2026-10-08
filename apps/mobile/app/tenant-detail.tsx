@@ -215,7 +215,7 @@ export default function TenantDetailScreen() {
     </BottomSheet>
     <BottomSheet visible={sheet === "resetStaffAdminPassword"} onClose={closeResetStaffAdminPasswordSheet} closeAccessibilityLabel={t("common.close")} title={t("tenant.resetStaffAdminPassword")} negativeAction={{ label: t("common.cancel"), onPress: closeResetStaffAdminPasswordSheet }} positiveAction={{ label: t("common.save"), loading: resetStaffAdminPassword.isPending, disabled: resetStaffAdminPasswordValue.length < 6, onPress: () => void submitResetStaffAdminPassword() }}>
       <AppText tone="muted">{staffAdminToResetPassword?.displayName ?? staffAdminToResetPassword?.email ?? t("common.noData")}</AppText>
-      <PasswordInput placeholder={t("password.new")} value={resetStaffAdminPasswordValue} onChangeText={setResetStaffAdminPasswordValue} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
+      <PasswordInput placeholder={t("password.new")} maxLength={128} value={resetStaffAdminPasswordValue} onChangeText={setResetStaffAdminPasswordValue} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
     </BottomSheet>
   </AppScreen>;
 }

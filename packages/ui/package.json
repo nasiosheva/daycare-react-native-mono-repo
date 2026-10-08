@@ -7,8 +7,23 @@
   "scripts": {
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage"
   },
-  "peerDependencies": { "react": "*", "react-native": "*", "expo-linear-gradient": "*", "@expo/vector-icons": "*" },
-  "devDependencies": { "@types/react": "19.0.10", "react": "19.0.0", "react-native": "0.79.4", "expo-linear-gradient": "~14.1.5", "@expo/vector-icons": "^14.1.0", "typescript": "^5.8.3", "vitest": "^3.2.3" }
+  "peerDependencies": {
+    "@expo/vector-icons": "*",
+    "expo-linear-gradient": "*",
+    "react": "*",
+    "react-native": "*"
+  },
+  "devDependencies": {
+    "@expo/vector-icons": "^14.1.0",
+    "@types/react": "19.0.10",
+    "@vitest/coverage-v8": "3.2.7",
+    "expo-linear-gradient": "~14.1.5",
+    "react": "19.0.0",
+    "react-native": "0.79.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.3"
+  }
 }
