@@ -381,6 +381,16 @@ Run the TypeScript checks and tests:
 pnpm verify
 ```
 
+Run the native UI smoke baseline separately (Jest Expo + React Native Testing Library):
+
+```sh
+pnpm --filter @daycare/app test:ui
+```
+
+The regular Vitest command remains focused on logic and utility tests; UI files
+named `*.ui.test.ts(x)` are excluded from that command and run through the
+Expo-aware Jest preset instead.
+
 Generate local backend JaCoCo and TypeScript V8 coverage reports:
 
 ```sh
