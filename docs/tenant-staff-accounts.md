@@ -20,7 +20,7 @@ Email dan username adalah kredensial global yang unik tanpa membedakan tenant. K
 | `STAFF_ADMIN` aktif | Semua Staff Admin, Staff, dan undangan Parent dalam tenant | `STAFF_ADMIN` atau `STAFF` | Hanya `STAFF` aktif dalam tenant | `STAFF_ADMIN` dan `STAFF` aktif dalam tenant | `STAFF_ADMIN` dan `STAFF` aktif dengan proteksi yang berlaku |
 | `STAFF` | Tidak | Tidak | Tidak | Tidak dari menu ini | Tidak |
 | `PARENT` | Tidak | Tidak | Tidak | Tidak | Tidak |
-| Platform `ADMIN` | Mengelola Staff Admin dari detail tenant, bukan melalui menu ini | Sesuai detail tenant | Bukan alur menu ini | Bukan alur menu ini | Sesuai detail tenant |
+| Platform `ADMIN` | Mengelola Staff Admin dari detail tenant, bukan melalui menu ini | Sesuai detail tenant | Bukan alur menu ini | `STAFF_ADMIN` mana pun dalam tenant, termasuk `primaryStaffAdmin` — satu-satunya pengecualian terhadap proteksi primary (lihat [Business rules](business-rules.md) §2); juga bukan alur menu ini | Sesuai detail tenant |
 
 `STAFF_ADMIN` pertama (primary Staff Admin) tidak dapat dinonaktifkan. Staff Admin yang sedang bertindak juga tidak dapat menonaktifkan aksesnya sendiri. Saat tersisa satu Staff Admin aktif, Staff Admin terakhir tidak dapat dinonaktifkan.
 

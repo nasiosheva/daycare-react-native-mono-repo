@@ -193,6 +193,23 @@ class PlatformAdministrationService(
         return tenantResponse(organization)
     }
 
+    /**
+     * Unlike update/removeTenantStaffAdmin, this is allowed for the primary
+     * Staff Admin too: a password reset is the only account-recovery path
+     * when a tenant's Staff Admin is locked out of their own account. See
+     * docs/business-rules.md §2 (primaryStaffAdmin protection and its
+     * explicit exception for this action).
+     */
+    @Transactional
+    fun resetTenantStaffAdminPassword(jwt: Jwt, organizationId: UUID, membershipId: UUID, request: ChangeTenantUserPasswordRequest) {
+        platformAccess.requirePlatformAdmin(jwt)
+        requireOrganization(organizationId)
+        val membership = memberships.findById(membershipId).orElseThrow { IllegalArgumentException("Staff Admin account was not found") }
+        require(membership.organizationId == organizationId && membership.active && membership.role == Role.STAFF_ADMIN) { "Staff Admin account was not found" }
+        val user = users.findById(membership.userId).orElseThrow { IllegalArgumentException("Staff Admin account was not found") }
+        tenantUserAccounts.changePassword(user, request.password)
+    }
+
     @Transactional
     fun updateTenant(jwt: Jwt, organizationId: UUID, request: UpdateTenantRequest): TenantResponse {
         platformAccess.requirePlatformAdmin(jwt)

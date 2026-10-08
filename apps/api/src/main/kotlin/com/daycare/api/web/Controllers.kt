@@ -423,6 +423,9 @@ class PlatformController(
     @PatchMapping("/tenants/{organizationId}/staff-admins/{membershipId}")
     fun updateTenantStaffAdmin(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable membershipId: UUID, @Valid @RequestBody request: UpdateTenantStaffAdminRequest) = platformAdministration.updateTenantStaffAdmin(jwt, organizationId, membershipId, request)
 
+    @PostMapping("/tenants/{organizationId}/staff-admins/{membershipId}/password") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun resetTenantStaffAdminPassword(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable membershipId: UUID, @Valid @RequestBody request: ChangeTenantUserPasswordRequest) = platformAdministration.resetTenantStaffAdminPassword(jwt, organizationId, membershipId, request)
+
     @PostMapping("/tenants/{organizationId}/subscription/renew")
     fun renewSubscription(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @Valid @RequestBody request: RenewTenantSubscriptionRequest) = platformAdministration.renewSubscription(jwt, organizationId, request)
 

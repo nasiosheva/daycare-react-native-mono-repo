@@ -104,6 +104,31 @@ class TenantAccountProvisioningTest {
     }
 
     @Test
+    fun `changes a password and stores only its hash`() {
+        val users = mock(UserProfileRepository::class.java)
+        val passwordEncoder = mock(PasswordEncoder::class.java)
+        val user = UserProfile(localPasswordHash = "old-hash")
+        `when`(passwordEncoder.encode("new-password")).thenReturn("new-hash")
+        val service = TenantUserAccountService(users, passwordEncoder)
+
+        service.changePassword(user, "new-password")
+
+        assertEquals("new-hash", user.localPasswordHash)
+    }
+
+    @Test
+    fun `rejects a password shorter than six characters`() {
+        val users = mock(UserProfileRepository::class.java)
+        val passwordEncoder = mock(PasswordEncoder::class.java)
+        val user = UserProfile(localPasswordHash = "old-hash")
+        val service = TenantUserAccountService(users, passwordEncoder)
+
+        assertThrows(IllegalArgumentException::class.java) { service.changePassword(user, "12345") }
+
+        assertEquals("old-hash", user.localPasswordHash)
+    }
+
+    @Test
     fun `creates application credentials when local auth is disabled`() {
         val users = mock(UserProfileRepository::class.java)
         val passwordEncoder = mock(PasswordEncoder::class.java)

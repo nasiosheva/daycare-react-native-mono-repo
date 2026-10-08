@@ -76,4 +76,13 @@ describe("translations", () => {
   it("keeps rendering when a runtime translation key is unavailable", () => {
     expect(translate("id", "tenant.unavailable" as TranslationKey)).toBe("tenant.unavailable");
   });
+
+  it("includes the Platform Admin Staff Admin password reset in every supported locale", () => {
+    const keys: TranslationKey[] = [
+      "tenant.resetStaffAdminPassword",
+      "tenant.staffAdminPasswordReset",
+      "tenant.staffAdminPasswordResetFailed",
+    ];
+    for (const locale of supportedLocales) for (const key of keys) expect(translate(locale, key)).not.toBe(key);
+  });
 });
