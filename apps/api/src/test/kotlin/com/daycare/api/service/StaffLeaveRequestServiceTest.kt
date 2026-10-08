@@ -79,6 +79,42 @@ class StaffLeaveRequestServiceTest {
 
         assertEquals(StaffLeaveRequestError.REJECTION_REASON_REQUIRED, error.message)
     }
+
+    @Test
+    fun `staff can cancel and read evidence while admin decides approval`() {
+        val fixture = StaffLeaveRequestFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val staff = UserProfile(displayName = "Rani")
+        val admin = UserProfile(displayName = "Admin")
+        val request = StaffLeaveRequest(organizationId = organizationId, requesterUserId = staff.id, startsOn = LocalDate.now(), endsOn = LocalDate.now().plusDays(1), reason = "Sakit", evidenceContentType = "image/jpeg", evidenceData = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()))
+        `when`(fixture.users.findById(staff.id)).thenReturn(Optional.of(staff))
+        `when`(fixture.requests.findById(request.id)).thenReturn(Optional.of(request))
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF))).thenReturn(fixture.scope(organizationId, staff, Role.STAFF))
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF, Role.STAFF_ADMIN), readOnly = true)).thenReturn(fixture.scope(organizationId, staff, Role.STAFF))
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF), readOnly = true)).thenReturn(fixture.scope(organizationId, staff, Role.STAFF))
+        `when`(fixture.requests.findAllByOrganizationIdAndRequesterUserIdOrderByCreatedAtDesc(organizationId, staff.id)).thenReturn(listOf(request))
+        assertEquals(request.id, fixture.service.mine(jwt, organizationId).single().id)
+        val evidence = fixture.service.evidence(jwt, organizationId, request.id)
+        assertEquals("image/jpeg", evidence.contentType)
+        request.status = StaffLeaveRequestStatus.PENDING
+        val cancelled = fixture.service.cancel(jwt, organizationId, request.id)
+        assertEquals(StaffLeaveRequestStatus.CANCELLED, cancelled.status)
+        request.status = StaffLeaveRequestStatus.PENDING
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(fixture.scope(organizationId, admin, Role.STAFF_ADMIN))
+        val approved = fixture.service.decide(jwt, organizationId, request.id, DecideStaffLeaveRequest(approved = true))
+        assertEquals(StaffLeaveRequestStatus.APPROVED, approved.status)
+    }
+
+    @Test
+    fun `leave evidence rejects unsupported or malformed content`() {
+        val fixture = StaffLeaveRequestFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val staff = UserProfile(displayName = "Rani")
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF))).thenReturn(fixture.scope(organizationId, staff, Role.STAFF))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.create(jwt, organizationId, CreateStaffLeaveRequest(StaffLeaveRequestType.SICK, LocalDate.now(), LocalDate.now(), "Sakit", StaffLeaveEvidenceInput("image/gif", "bad"))) }
+    }
 }
 
 private class StaffLeaveRequestFixture {

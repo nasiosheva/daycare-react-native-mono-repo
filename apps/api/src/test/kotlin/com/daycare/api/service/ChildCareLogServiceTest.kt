@@ -3,6 +3,7 @@ package com.daycare.api.service
 import com.daycare.api.domain.ChildCareLogType
 import com.daycare.api.domain.ChildMealAmount
 import com.daycare.api.domain.ChildMealType
+import com.daycare.api.domain.ChildToiletType
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AuditLogRepository
@@ -16,6 +17,7 @@ import com.daycare.api.persistence.UserProfile
 import com.daycare.api.realtime.RealtimeFlag
 import com.daycare.api.realtime.RealtimePublisher
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.any
 import org.mockito.Mockito.mock
@@ -56,6 +58,51 @@ class ChildCareLogServiceTest {
             setOf(RealtimeFlag.CHILD_CARE_LOGS),
             mapOf("childId" to fixture.child.id),
         )
+    }
+
+    @Test
+    fun `meal nap and toilet validation accepts only their own fields`() {
+        val fixture = Fixture()
+        `when`(fixture.logs.save(any(ChildCareLog::class.java))).thenAnswer { it.arguments[0] }
+        val napStarted = Instant.now().minusSeconds(3600)
+        val nap = fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, CreateChildCareLogRequest(ChildCareLogType.NAP, Instant.now(), napStartedAt = napStarted, napEndedAt = napStarted.plusSeconds(1800)))
+        assertEquals(ChildCareLogType.NAP, nap.type)
+        val toilet = fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, CreateChildCareLogRequest(ChildCareLogType.TOILET, Instant.now(), toiletType = ChildToiletType.WET))
+        assertEquals(ChildCareLogType.TOILET, toilet.type)
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, CreateChildCareLogRequest(ChildCareLogType.NAP, Instant.now(), napStartedAt = napStarted, napEndedAt = napStarted.minusSeconds(1)))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, CreateChildCareLogRequest(ChildCareLogType.MEAL, Instant.now(), mealType = ChildMealType.LUNCH))
+        }
+    }
+
+    @Test
+    fun `correction requires reason and can correct a log in the same child`() {
+        val fixture = Fixture()
+        val original = ChildCareLog(organizationId = fixture.organizationId, childId = fixture.child.id)
+        `when`(fixture.logs.findById(original.id)).thenReturn(Optional.of(original))
+        `when`(fixture.logs.save(any(ChildCareLog::class.java))).thenAnswer { it.arguments[0] }
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.mealRequest(correctsLogId = original.id))
+        }
+        val corrected = fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.mealRequest(correctsLogId = original.id, correctionReason = "Porsi diperbaiki"))
+        assertEquals(original.id, corrected.correctsLogId)
+        assertEquals("Porsi diperbaiki", corrected.correctionReason)
+    }
+
+    @Test
+    fun `parent listing is scoped through the linked child and returns stored logs`() {
+        val fixture = Fixture()
+        val parent = UserProfile()
+        val parentScope = AccessScope(parent, Membership(userId = parent.id, organizationId = fixture.organizationId, role = Role.PARENT), emptySet(), emptySet())
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)).thenReturn(parentScope)
+        `when`(fixture.childScopes.requireParentLinkedChild(parentScope, fixture.child.id, fixture.organizationId)).thenReturn(fixture.child)
+        val stored = ChildCareLog(organizationId = fixture.organizationId, childId = fixture.child.id, type = ChildCareLogType.MEAL, mealType = ChildMealType.LUNCH, mealAmount = ChildMealAmount.ALL)
+        `when`(fixture.logs.findAllByOrganizationIdAndChildIdOrderByOccurredAtDesc(fixture.organizationId, fixture.child.id)).thenReturn(listOf(stored))
+        val listed = fixture.service.list(fixture.jwt, fixture.organizationId, fixture.child.id)
+        assertEquals(1, listed.size)
+        assertEquals(ChildCareLogType.MEAL, listed.single().type)
     }
 
     private class Fixture {

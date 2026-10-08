@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.`when`
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.verify
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.util.UUID
@@ -49,5 +50,47 @@ class CapacityReservationServiceTest {
         service.releaseForBooking(bookingId)
 
         assertEquals(CapacityReservationStatus.RELEASED, reservation.status)
+    }
+
+    @Test
+    fun `availability checks branch capacity and inactive plan rules`() {
+        val plan = ServicePlan(id = planId, organizationId = organizationId, type = ServicePlanType.DAILY, price = BigDecimal.TEN, creditCount = 1, dailyCapacity = 2, active = false)
+        `when`(branches.findWithLockById(branchId)).thenReturn(Branch(id = branchId, organizationId = organizationId, active = true))
+        `when`(plans.findWithLockById(planId)).thenReturn(plan)
+        assertThrows(IllegalArgumentException::class.java) { service.requireAvailability(organizationId, branchId, planId, listOf(date)) }
+        assertThrows(IllegalArgumentException::class.java) { service.requireAvailability(UUID.randomUUID(), branchId, planId, listOf(date), requireActivePlan = false) }
+        plan.active = true
+        val setting = com.daycare.api.persistence.BranchCapacitySetting(organizationId = organizationId, branchId = branchId, dailyCapacity = 1)
+        `when`(settings.findByOrganizationIdAndBranchId(organizationId, branchId)).thenReturn(setting)
+        `when`(reservations.countByOrganizationIdAndBranchIdAndCapacityDateAndStatus(organizationId, branchId, date, CapacityReservationStatus.HELD)).thenReturn(0)
+        `when`(reservations.countByOrganizationIdAndServicePlanIdAndCapacityDateAndStatus(organizationId, planId, date, CapacityReservationStatus.HELD)).thenReturn(0)
+        assertEquals(plan, service.requireAvailability(organizationId, branchId, planId, listOf(date)))
+    }
+
+    @Test
+    fun `reserve updates existing slots and releases entitlement reservations`() {
+        val entitlementId = UUID.randomUUID()
+        val existing = CapacityReservation(entitlementId = entitlementId, capacityDate = date, status = CapacityReservationStatus.RELEASED)
+        `when`(reservations.findByEntitlementIdAndCapacityDate(entitlementId, date)).thenReturn(existing)
+        service.reserve(organizationId, branchId, planId, entitlementId, listOf(date), mapOf(date to UUID.randomUUID()))
+        assertEquals(CapacityReservationStatus.HELD, existing.status)
+        service.releaseForEntitlements(emptyList())
+        service.releaseForEntitlements(listOf(entitlementId))
+        `when`(reservations.findAllByEntitlementIdIn(listOf(entitlementId))).thenReturn(listOf(existing))
+        service.releaseForEntitlements(listOf(entitlementId))
+        assertEquals(CapacityReservationStatus.RELEASED, existing.status)
+        verify(reservations).saveAll(org.mockito.ArgumentMatchers.anyList())
+    }
+
+    @Test
+    fun `set branch capacity respects held peak and creates or updates settings`() {
+        val branch = Branch(id = branchId, organizationId = organizationId, active = true)
+        `when`(branches.findWithLockById(branchId)).thenReturn(branch)
+        `when`(reservations.findAllByOrganizationIdAndBranchIdAndCapacityDateGreaterThanEqualAndStatus(organizationId, branchId, LocalDate.now(), CapacityReservationStatus.HELD)).thenReturn(emptyList())
+        `when`(settings.findByOrganizationIdAndBranchId(organizationId, branchId)).thenReturn(null)
+        `when`(settings.save(org.mockito.ArgumentMatchers.any())).thenAnswer { it.arguments[0] }
+        assertEquals(5, service.setBranchCapacity(organizationId, branchId, 5).dailyCapacity)
+        assertThrows(IllegalArgumentException::class.java) { service.setBranchCapacity(organizationId, branchId, 0) }
+        assertEquals(emptyList<com.daycare.api.persistence.BranchCapacitySetting>(), service.branchSettings(organizationId))
     }
 }
