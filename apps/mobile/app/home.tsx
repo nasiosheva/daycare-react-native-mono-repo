@@ -411,6 +411,10 @@ function PlatformAdminHome() {
         <Ionicons name="person-circle-outline" size={32} color={colors.primary} />
       </Pressable>
     </View>
+    <NavigationCard accessibilityLabel={t("platformParents.open")} onPress={() => router.push("/platform-parents")}>
+      <AppText variant="h5">{t("platformParents.menu")}</AppText>
+      <AppText variant="bodySmall" tone="muted">{t("platformParents.menuDescription")}</AppText>
+    </NavigationCard>
     {tenants.isFetching && <ShimmerList />}
     {tenants.isError && !tenants.isFetching && <ErrorState compact title={t("home.tenantsError")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void tenants.refetch()} />}
     <NavigationCard accessibilityLabel={t("tenantReadiness.open")} onPress={() => router.push("/tenant-readiness")}>

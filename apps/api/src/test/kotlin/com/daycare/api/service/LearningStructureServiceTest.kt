@@ -20,6 +20,11 @@ import com.daycare.api.persistence.DevelopmentProgramRepository
 import com.daycare.api.persistence.CurriculumProgram
 import com.daycare.api.persistence.LearningLevelCurriculumProgramRepository
 import com.daycare.api.persistence.LearningLevelRepository
+import com.daycare.api.persistence.LearningLevel
+import com.daycare.api.persistence.LearningLevelCurriculumProgram
+import com.daycare.api.persistence.ChildPlacement
+import com.daycare.api.domain.ChildCareRole
+import java.time.LocalDate
 import com.daycare.api.persistence.Membership
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.UserProfile
@@ -60,6 +65,7 @@ class LearningStructureServiceTest {
     private val branchFilters = mock(BranchListFilterService::class.java)
     private val organizationId = UUID.randomUUID()
     private val jwt = mock(Jwt::class.java)
+    private val defaultStaffScope = AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet())
 
     @Test
     fun `classroom active total counts only approved Parent enrollments`() {
@@ -177,11 +183,12 @@ class LearningStructureServiceTest {
     }
 
     private fun allowStaffAccess() {
-        val scope = AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN)))
+            .thenReturn(defaultStaffScope)
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF)))
-            .thenReturn(scope)
+            .thenReturn(defaultStaffScope)
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true))
-            .thenReturn(scope)
+            .thenReturn(defaultStaffScope)
     }
 
     @Test
@@ -193,6 +200,83 @@ class LearningStructureServiceTest {
 
         assertEquals("Toddler", response.name)
         assertEquals(LearningLevelSource.GLOBAL, response.source)
+    }
+
+    @Test
+    fun `templates and global level lifecycle expose institution-specific options`() {
+        val scope = AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), setOf("DAYCARE", "PAUD", "TK"), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)).thenReturn(scope)
+        `when`(levels.findAllByOrganizationIdIsNullOrderByDisplayOrderAscNameAsc()).thenReturn(emptyList())
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
+        `when`(levels.save(any(LearningLevel::class.java))).thenAnswer { it.arguments[0] }
+        val global = LearningLevel(organizationId = null, name = "Global", minAgeMonths = 12, maxAgeMonths = 24)
+        `when`(levels.findById(global.id)).thenReturn(Optional.of(global))
+        `when`(levelPrograms.findAllByLearningLevelId(global.id)).thenReturn(emptyList())
+        val service = service()
+
+        val templates = service.templates(jwt, organizationId)
+        assertEquals(listOf("NURSERY", "TODDLER", "PAUD", "TK_A", "TK_B"), templates.map { it.code })
+        service.globalLevels(jwt)
+        assertEquals("Updated", service.updateGlobalLevel(jwt, global.id, UpsertLearningLevelRequest(" Updated ", 1, 30)).name)
+    }
+
+    @Test
+    fun `classroom and assignment lifecycle validates references and maps staff`() {
+        allowStaffAccess()
+        val branch = Branch(organizationId = organizationId, name = "Utama", active = true)
+        val level = LearningLevel(organizationId = organizationId, name = "Toddler")
+        val classroom = Classroom(organizationId = organizationId, branchId = branch.id, learningLevelId = level.id, name = "Old")
+        `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
+        `when`(levels.findById(level.id)).thenReturn(Optional.of(level))
+        `when`(classrooms.save(any(Classroom::class.java))).thenAnswer { it.arguments[0] }
+        `when`(classrooms.findById(classroom.id)).thenReturn(Optional.of(classroom))
+        `when`(placements.countByClassroomIdAndActiveEnrollmentStatus(classroom.id, ChildEnrollmentStatus.ACTIVE)).thenReturn(0)
+        val service = service()
+
+        assertThrows(IllegalArgumentException::class.java) { service.createClassroom(jwt, organizationId, UpsertClassroomRequest(branch.id, level.id, name = "X", capacity = 0)) }
+        val created = service.createClassroom(jwt, organizationId, UpsertClassroomRequest(branch.id, level.id, name = " New ", capacity = 10))
+        assertEquals("New", created.name)
+        assertEquals("Changed", service.updateClassroom(jwt, organizationId, classroom.id, UpsertClassroomRequest(branch.id, level.id, name = "Changed")).name)
+        assertEquals(false, service.archiveClassroom(jwt, organizationId, classroom.id).active)
+
+        val staff = UserProfile(displayName = "Staff", email = "staff@example.test")
+        val membership = Membership(userId = staff.id, organizationId = organizationId, role = Role.STAFF, branchId = branch.id, active = true)
+        `when`(memberships.findAllByUserIdAndOrganizationId(staff.id, organizationId)).thenReturn(listOf(membership))
+        `when`(classroomAssignments.existsByOrganizationIdAndClassroomIdAndUserId(organizationId, classroom.id, staff.id)).thenReturn(false)
+        `when`(classroomAssignments.save(any(ClassroomStaffAssignment::class.java))).thenAnswer { it.arguments[0] }
+        `when`(users.findById(staff.id)).thenReturn(Optional.of(staff))
+        val assignment = service.assignClassroomStaff(jwt, organizationId, classroom.id, AssignClassroomStaffRequest(staff.id, ChildCareRole.STAFF))
+        assertEquals("Staff", assignment.displayName)
+        `when`(classroomAssignments.findById(assignment.id)).thenReturn(Optional.of(ClassroomStaffAssignment(id = assignment.id, organizationId = organizationId, classroomId = classroom.id, userId = staff.id, assignmentRole = ChildCareRole.STAFF.name)))
+        service.unassignClassroomStaff(jwt, organizationId, classroom.id, assignment.id)
+        verify(classroomAssignments).delete(any())
+    }
+
+    @Test
+    fun `classroom programs and child placement lifecycle are persisted`() {
+        allowStaffAccess()
+        val branch = Branch(organizationId = organizationId, name = "Utama", active = true)
+        val level = LearningLevel(organizationId = organizationId, name = "Toddler")
+        val classroom = Classroom(organizationId = organizationId, branchId = branch.id, learningLevelId = level.id, name = "Toddler")
+        val child = Child(organizationId = organizationId, branchId = branch.id, dateOfBirth = LocalDate.now().minusYears(3), enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        `when`(classrooms.findById(classroom.id)).thenReturn(Optional.of(classroom))
+        `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
+        `when`(levels.findById(level.id)).thenReturn(Optional.of(level))
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(childScopes.canStaffPlaceChildInClassroom(defaultStaffScope, child.id, classroom.id, organizationId)).thenReturn(true)
+        `when`(placements.findByChildIdAndEndedOnIsNull(child.id)).thenReturn(null)
+        `when`(placements.save(any(ChildPlacement::class.java))).thenAnswer { it.arguments[0] }
+        `when`(placements.countByClassroomIdAndActiveEnrollmentStatus(classroom.id, ChildEnrollmentStatus.ACTIVE)).thenReturn(0)
+        val program = com.daycare.api.persistence.ClassroomProgram(organizationId = organizationId, classroomId = classroom.id, name = "Daily", description = "Plan")
+        `when`(classroomPrograms.save(any())).thenAnswer { it.arguments[0] }
+        `when`(classroomPrograms.findById(program.id)).thenReturn(Optional.of(program))
+        val service = service()
+
+        assertEquals("Daily", service.createClassroomProgram(jwt, organizationId, classroom.id, CreateClassroomProgramRequest(" Daily ", " Plan ")).name)
+        service.removeClassroomProgram(jwt, organizationId, classroom.id, program.id)
+        val placement = service.placeChild(jwt, organizationId, child.id, CreateChildPlacementRequest(classroom.id, LocalDate.now()))
+        assertEquals(classroom.id, placement.classroomId)
+        assertEquals(classroom.id, child.classroomId)
     }
 
     @Test

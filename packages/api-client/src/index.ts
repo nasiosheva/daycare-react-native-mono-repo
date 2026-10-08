@@ -200,6 +200,7 @@ export type CreateOvertimeChargeInput = { childId: string; operationalDate: stri
 export type OvertimeCharge = { id: string; invoiceId: string; branchId: string; childId: string; childName: string; operationalDate: string; pickedUpAt: string; closesAt: string; overtimeMinutes: number; totalAmount: number; dueDate: string; status: InvoiceStatus; tiers: OvertimeRateTier[] };
 export type TenantPayment = { id: string; amount: number; status: TenantPaymentStatus; dueDate: string; paidAt: string | null };
 export type TenantStaffAdmin = { id: string; email: string | null; displayName: string | null; status: "ACTIVE" | "INACTIVE" | "PENDING"; primary: boolean };
+export type PlatformParentAccount = { id: string; displayName: string; username: string | null; email: string | null; phoneNumber: string | null; status: "ACTIVE" | "INACTIVE" | "UNBOUND"; tenantCount: number; hasLocalPassword: boolean };
 export type TenantBranch = { id: string; name: string; timezone: string; fullAddress?: string | null; googleMapsUrl?: string | null; active: boolean; primary: boolean };
 export type InstitutionTypePresentationInput = { logo?: string | null; backgroundColor?: string | null; borderColor?: string | null; textColor?: string | null };
 export type InstitutionTypeParameters = Record<string, string>;
@@ -359,6 +360,8 @@ export class ApiClient {
   async cancelParentPrivateTutoringRequest(requestId: string, organizationId?: string): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/requests/${requestId}/cancel`, { method: "POST", ...this.orgOverride(organizationId) }); }
 
   async tenants(search?: string): Promise<Tenant[]> { const query = search?.trim(); return this.request(`/platform/tenants${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
+  async platformParents(search?: string): Promise<PlatformParentAccount[]> { const query = search?.trim(); return this.request(`/platform/parents${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
+  async resetPlatformParentPassword(userId: string, password: string): Promise<void> { await this.request<void>(`/platform/parents/${userId}/password`, { method: "POST", body: JSON.stringify({ password }) }); }
   async tenantReadiness(): Promise<TenantReadinessSummary> { return this.request("/platform/tenant-readiness"); }
   async organizationReadiness(): Promise<TenantReadiness> { return this.request("/tenant-readiness"); }
   async institutionTypes(): Promise<InstitutionTypeDefinition[]> { return this.request("/platform/institution-types"); }

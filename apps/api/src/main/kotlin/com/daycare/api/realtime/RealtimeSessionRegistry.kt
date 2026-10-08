@@ -1,6 +1,7 @@
 package com.daycare.api.realtime
 
 import com.daycare.api.domain.Role
+import org.springframework.web.socket.CloseStatus
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
@@ -26,6 +27,13 @@ class RealtimeSessionRegistry {
 
     fun remove(sessionId: String) {
         sessions.remove(sessionId)
+    }
+
+    fun closeForUser(userId: UUID) {
+        sessions.values.filter { it.userId == userId }.forEach { context ->
+            sessions.remove(context.session.id)
+            runCatching { context.session.close(CloseStatus.POLICY_VIOLATION) }
+        }
     }
 
     fun sendToUser(organizationId: UUID?, userId: UUID, message: String) = send(sessions.values.filter { it.userId == userId && (it.organizationId == organizationId || it.organizationId == null) }, message)

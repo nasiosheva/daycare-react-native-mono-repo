@@ -35,7 +35,7 @@ data class DeviceNotificationPreferenceResponse(val pushMutedUntil: Instant?)
 data class NotificationResponse(val id: UUID, val title: String, val body: String, val actionPath: String?, val createdAt: java.time.Instant, val readAt: java.time.Instant?)
 data class NotificationPageResponse(val items: List<NotificationResponse>, val page: Int, val pageSize: Int, val totalCount: Long, val unreadCount: Long, val hasNext: Boolean)
 data class TenantUserResponse(val id: UUID, val userId: UUID?, val displayName: String?, val username: String?, val email: String?, val role: Role, val status: String, val branchId: UUID?, val canManageChildPrograms: Boolean, val canManageDevelopmentCategories: Boolean)
-data class ChangeTenantUserPasswordRequest(val password: String)
+data class ChangeTenantUserPasswordRequest(@field:Size(min = 6, max = 128) val password: String)
 data class UpdateTenantUserChildProgramPermissionRequest(val canManageChildPrograms: Boolean)
 data class UpdateTenantUserDevelopmentCategoryPermissionRequest(val canManageDevelopmentCategories: Boolean)
 data class UpdateTenantUserRequest(
@@ -69,6 +69,7 @@ class AdministrationService(
     private val notifications: NotificationRepository,
     private val tenantUserAccounts: TenantUserAccountService,
     private val branchFilters: BranchListFilterService,
+    private val tokenRevocations: AccessTokenRevocationService,
 ) {
     @Transactional
     fun createChild(jwt: Jwt, organizationId: UUID, request: CreateChildRequest): ChildResponse {
@@ -135,6 +136,7 @@ class AdministrationService(
             ?: throw IllegalArgumentException("Only active Staff Admin or Staff users in this tenant can have their password changed")
         val user = users.findById(membership.userId).orElseThrow { IllegalArgumentException("Tenant user was not found") }
         tenantUserAccounts.changePassword(user, request.password)
+        tokenRevocations.revokeUserSessions(user)
     }
 
     @Transactional

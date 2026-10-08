@@ -58,7 +58,7 @@ Form edit di menu ini sengaja hanya untuk role `STAFF`. Mengubah role dapat meng
 
 ### Password dan nonaktifkan
 
-- **Kelola password staf** memakai `POST /api/v1/tenant-users/{userId}/password`; password minimal enam karakter, disimpan sebagai BCrypt hash, dan tidak pernah dikembalikan API.
+- **Kelola password staf** memakai `POST /api/v1/tenant-users/{userId}/password`; password harus 6–128 karakter, disimpan sebagai BCrypt hash, dan tidak pernah dikembalikan API. Setelah berhasil, JWT lokal lama pengguna ditolak dan koneksi WebSocket aktifnya ditutup sehingga pengguna harus login kembali.
 - **Nonaktifkan akun** memakai `POST /api/v1/tenant-users/{userId}/deactivate`. Aksi ini menonaktifkan membership tenant, bukan menghapus `UserProfile`, data historis, atau identitas global.
 
 ## Field dan validasi
@@ -68,7 +68,7 @@ Form edit di menu ini sengaja hanya untuk role `STAFF`. Mengubah role dapat meng
 | `displayName` | Wajib | Wajib | Dipangkas, 2–100 karakter pada kontrak request, tidak boleh kosong |
 | `email` | Wajib | Wajib | Dipangkas, lower-case, format email, unik global secara case-insensitive |
 | `username` | Opsional | Opsional | Dipangkas; kosong disimpan sebagai `null`; bila ada harus unik global secara case-insensitive |
-| `password` | Wajib saat buat | Wajib saat buat | Minimal enam karakter; hanya dapat diganti lewat endpoint password |
+| `password` | Wajib saat buat | Wajib saat buat | 6–128 karakter; hanya dapat diganti lewat endpoint password |
 | `role` | Wajib saat buat | Tetap `STAFF` saat edit | Tidak dapat diubah lewat endpoint edit |
 | `branchId` | Tidak digunakan | Wajib | Harus cabang aktif milik tenant aktif |
 | `canManageChildPrograms` | Selalu `false` | Dapat diatur | Hanya berlaku pada membership Staff tenant tersebut |

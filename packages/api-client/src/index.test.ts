@@ -81,6 +81,18 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/tenant-users/staff-id/child-program-permission", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ canManageChildPrograms: true }) }));
   });
 
+  it("lists platform Parent accounts and resets a selected Parent password", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
+
+    await client.platformParents("  parent@example.test ");
+    await client.resetPlatformParentPassword("parent-id", "new-password");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "https://api.example.test/v1/platform/parents?search=parent%40example.test", expect.anything());
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "https://api.example.test/v1/platform/parents/parent-id/password", expect.objectContaining({ method: "POST", body: JSON.stringify({ password: "new-password" }) }));
+  });
+
   it("creates a staff account with its optional username", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);

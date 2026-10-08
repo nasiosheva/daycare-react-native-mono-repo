@@ -3,6 +3,7 @@ package com.daycare.api.service
 import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.TenantSubscriptionStatus
+import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.persistence.Membership
 import com.daycare.api.persistence.MembershipRepository
 import com.daycare.api.persistence.OrganizationRepository
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.oauth2.jwt.Jwt
@@ -27,6 +29,7 @@ class AccessServiceTest {
         val memberships: MembershipRepository = mock(MembershipRepository::class.java)
         val subscriptions: TenantSubscriptionRepository = mock(TenantSubscriptionRepository::class.java)
         val organizationCapabilities: OrganizationCapabilitiesService = mock(OrganizationCapabilitiesService::class.java)
+        val publishedCapabilities: PublishedOfferingCapabilityService = mock(PublishedOfferingCapabilityService::class.java)
         val user = UserProfile()
         val service = AccessService(
             identityService,
@@ -35,7 +38,7 @@ class AccessServiceTest {
             mock(PlatformAccessService::class.java),
             subscriptions,
             organizationCapabilities,
-            mock(PublishedOfferingCapabilityService::class.java),
+            publishedCapabilities,
             mock(ParentFamilyProfileRepository::class.java),
         )
 
@@ -123,5 +126,27 @@ class AccessServiceTest {
 
         val parent = UserProfile(registrationRole = RegistrationRole.PARENT)
         assertEquals(parent, requireRegisteredParent(parent))
+    }
+
+    @Test
+    fun `capability and writable guards fail closed and pass when configured`() {
+        val fixtures = Fixtures()
+        val scope = AccessScope(fixtures.user, Membership(active = false), emptySet(), emptySet())
+        assertThrows(AccessDeniedException::class.java) { fixtures.service.requireWritable(scope) }
+        assertThrows(AccessDeniedException::class.java) { fixtures.service.requireAnyCapability(scope, setOf(InstitutionCapability.ACADEMIC_CURRICULUM)) }
+        val enabled = AccessScope(scope.user, Membership(active = true), emptySet(), setOf(InstitutionCapability.ACADEMIC_CURRICULUM))
+        fixtures.service.requireWritable(enabled)
+        fixtures.service.requireAnyCapability(enabled, setOf(InstitutionCapability.ACADEMIC_CURRICULUM))
+    }
+
+    @Test
+    fun `required capability delegates published offering guard`() {
+        val fixtures = Fixtures()
+        fixtures.withSubscriptionStatus(TenantSubscriptionStatus.ACTIVE)
+        val membership = Membership(userId = fixtures.user.id, organizationId = fixtures.organizationId, role = Role.STAFF_ADMIN)
+        `when`(fixtures.memberships.findAllByUserIdAndOrganizationId(fixtures.user.id, fixtures.organizationId)).thenReturn(listOf(membership))
+        `when`(fixtures.organizationCapabilities.forOrganization(fixtures.organizationId)).thenReturn(OrganizationCapabilities(setOf("PAUD"), setOf(InstitutionCapability.ACADEMIC_CURRICULUM)))
+        fixtures.service.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
+        verify(fixtures.publishedCapabilities).requirePublishedCapability(fixtures.organizationId, InstitutionCapability.ACADEMIC_CURRICULUM)
     }
 }

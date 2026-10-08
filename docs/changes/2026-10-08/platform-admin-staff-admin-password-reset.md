@@ -29,9 +29,8 @@ untuk mencatat pengecualian ini secara eksplisit.
   tenant yang diminta, `active = true`, dan `role = STAFF_ADMIN`; sengaja
   **tidak** memeriksa `!membership.primaryStaffAdmin`. Memakai ulang
   `TenantUserAccountService.changePassword` (validasi panjang password
-  minimal 6 karakter) dan DTO `ChangeTenantUserPasswordRequest` yang sudah ada
-  (tidak perlu registrasi error key baru — `PASSWORD_TOO_SHORT` sudah
-  terdaftar).
+  6–128 karakter) dan DTO `ChangeTenantUserPasswordRequest` yang sudah ada.
+  Setelah berhasil, sesi JWT lokal dan koneksi realtime target dicabut.
 - **Endpoint**: `POST /api/v1/platform/tenants/{organizationId}/staff-admins/{membershipId}/password`
   (`204 No Content`), mengikuti pola URL endpoint Platform Admin lain untuk
   Staff Admin (`staff-admins/{membershipId}`).
@@ -39,7 +38,7 @@ untuk mencatat pengecualian ini secara eksplisit.
 - **Mobile** (`app/tenant-detail.tsx`): ikon reset password baru di setiap
   Staff Admin **aktif**, termasuk primary (ikon ubah nama dan hapus tetap
   hanya untuk non-primary). Bottom Sheet baru dengan `PasswordInput` (memakai
-  ulang key `password.*` yang sudah ada), minimal 6 karakter. Tidak
+  ulang key `password.*` yang sudah ada), 6–128 karakter. Tidak
   menginvalidasi query tenant karena reset password tidak mengubah field
   apa pun pada respons `Tenant`.
 - **i18n**: `tenantStaffAdminPasswordTranslations` (3 key baru, 7 locale):

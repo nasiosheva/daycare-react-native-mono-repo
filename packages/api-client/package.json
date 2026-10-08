@@ -8,8 +8,16 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage",
     "generate": "openapi-typescript http://localhost:8080/v3/api-docs -o src/openapi.ts"
   },
-  "dependencies": { "@daycare/core": "workspace:*" },
-  "devDependencies": { "openapi-typescript": "^7.7.0", "typescript": "^5.8.3", "vitest": "^3.2.3" }
+  "dependencies": {
+    "@daycare/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "3.2.7",
+    "openapi-typescript": "^7.7.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.3"
+  }
 }
