@@ -44,6 +44,14 @@ beberapa pemicu sekaligus (idempotent): panggilan kedua tidak menemukan
 apa pun untuk di-dismiss dan hanya me-replace entry `/sign-in` yang sudah
 ada dengan dirinya sendiri.
 
+`dismissAll()`/`router.canDismiss()` dipakai sebagai guard: `dismissAll()`
+yang dipanggil tanpa ada apa pun untuk di-dismiss (mis. cold load langsung
+ke `/sign-in`) memicu dispatch `POP_TO_TOP` yang tidak tertangani navigator
+mana pun — di web ini tercatat sebagai `console.error` dev-only ("The
+action 'POP_TO_TOP' was not handled by any navigator"). Ditemukan lewat uji
+langsung di browser (lihat Verifikasi) dan diperbaiki dengan membungkus
+kedua pemanggilan `dismissAll()` dengan `router.canDismiss()`.
+
 ## Verifikasi
 
 - `pnpm --filter @daycare/app typecheck` lulus.
@@ -52,7 +60,17 @@ ada dengan dirinya sendiri.
   dan menguji perilaku navigator Expo Router secara unit tidak sesuai pola
   test navigasi yang sudah ada di repo ini, yang menguji fungsi akses
   murni, bukan komponen router).
-- Uji perangkat: **belum**, tidak ada perangkat Android/iOS yang
-  terhubung saat perbaikan ini dibuat. Perlu dikonfirmasi: logout dari
+- **Diuji langsung di web** (`./scripts/run-mobile.sh web local` + Chrome,
+  backend lokal): cold load `/sign-in` tidak lagi memicu `POP_TO_TOP`
+  error setelah guard `canDismiss()` ditambahkan; alur sungguhan
+  Home → Profile → Sign out tetap mendarat bersih di `/sign-in` tanpa
+  error, dan `dismissAll()` tetap terpanggil (dibuktikan dari perilaku
+  sebelum guard, yang menunjukkan `POP_TO_TOP` juga sempat muncul pada
+  alur logout nyata ini sebelum diperbaiki).
+- Uji perangkat native (Android/iOS): **belum**, tidak ada perangkat yang
+  terhubung. Ini satu-satunya platform tempat gejala asli (hardware/gesture
+  back memicu layar putih) sebenarnya terjadi, karena web dan native
+  menangani navigasi "back" lewat mekanisme berbeda (browser history vs
+  stack React Navigation). Perlu dikonfirmasi di perangkat: logout dari
   Profile → tekan back di `/sign-in` → aplikasi keluar atau tetap di
   `/sign-in`, bukan layar putih.
