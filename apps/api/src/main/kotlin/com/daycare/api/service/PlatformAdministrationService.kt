@@ -4,6 +4,7 @@ import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.InstitutionTypeCodes
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.TenantPaymentStatus
 import com.daycare.api.domain.TenantSubscriptionPlan
 import com.daycare.api.domain.TenantSubscriptionStatus
@@ -53,6 +54,16 @@ data class CreateTenantRequest(
 
 data class TenantPaymentResponse(val id: UUID, val amount: BigDecimal, val status: TenantPaymentStatus, val dueDate: LocalDate, val paidAt: Instant?)
 data class TenantStaffAdminResponse(val id: UUID, val email: String?, val displayName: String?, val status: String, val primary: Boolean)
+data class PlatformParentAccountResponse(
+    val id: UUID,
+    val displayName: String,
+    val username: String?,
+    val email: String?,
+    val phoneNumber: String?,
+    val status: String,
+    val tenantCount: Int,
+    val hasLocalPassword: Boolean,
+)
 data class TenantResponse(
     val id: UUID,
     val name: String,
@@ -109,6 +120,43 @@ class PlatformAdministrationService(
     private val educationOfferings: EducationOfferingRepository,
     private val tokenRevocations: AccessTokenRevocationService,
 ) {
+    @Transactional(readOnly = true)
+    fun parents(jwt: Jwt, search: String?): List<PlatformParentAccountResponse> {
+        platformAccess.requirePlatformAdmin(jwt)
+        val query = search?.trim().orEmpty()
+        val parentUsers = users.findRegisteredParents(query)
+        if (parentUsers.isEmpty()) return emptyList()
+        val membershipsByUser = memberships.findAllByRoleAndUserIdIn(Role.PARENT, parentUsers.map { it.id })
+            .groupBy { it.userId }
+        return parentUsers.map { user ->
+            val parentMemberships = membershipsByUser[user.id].orEmpty()
+            val activeTenantCount = parentMemberships.count { it.active }
+            PlatformParentAccountResponse(
+                id = user.id,
+                displayName = user.displayName,
+                username = user.username,
+                email = user.email,
+                phoneNumber = user.phoneNumber,
+                status = when {
+                    activeTenantCount > 0 -> "ACTIVE"
+                    parentMemberships.isNotEmpty() -> "INACTIVE"
+                    else -> "UNBOUND"
+                },
+                tenantCount = activeTenantCount,
+                hasLocalPassword = user.localPasswordHash != null,
+            )
+        }
+    }
+
+    @Transactional
+    fun resetParentPassword(jwt: Jwt, userId: UUID, request: ChangeTenantUserPasswordRequest) {
+        platformAccess.requirePlatformAdmin(jwt)
+        val user = users.findById(userId).orElseThrow { IllegalArgumentException("Parent account was not found") }
+        require(user.registrationRole == RegistrationRole.PARENT) { "Parent account was not found" }
+        tenantUserAccounts.changePassword(user, request.password)
+        tokenRevocations.revokeUserSessions(user)
+    }
+
     @Transactional
     fun tenants(jwt: Jwt, search: String?): List<TenantResponse> {
         platformAccess.requirePlatformAdmin(jwt)

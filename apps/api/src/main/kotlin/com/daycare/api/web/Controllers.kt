@@ -402,6 +402,12 @@ class PlatformController(
     @GetMapping("/tenants")
     fun tenants(@AuthenticationPrincipal jwt: Jwt, @RequestParam(required = false) search: String?) = platformAdministration.tenants(jwt, search)
 
+    @GetMapping("/parents")
+    fun parents(@AuthenticationPrincipal jwt: Jwt, @RequestParam(required = false) search: String?) = platformAdministration.parents(jwt, search)
+
+    @PostMapping("/parents/{userId}/password") @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun resetParentPassword(@AuthenticationPrincipal jwt: Jwt, @PathVariable userId: UUID, @Valid @RequestBody request: ChangeTenantUserPasswordRequest) = platformAdministration.resetParentPassword(jwt, userId, request)
+
     @GetMapping("/tenant-readiness")
     fun tenantReadiness(@AuthenticationPrincipal jwt: Jwt) = tenantReadiness.readiness(jwt)
 

@@ -14,13 +14,32 @@ import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
-interface UserProfileRepository : JpaRepository<UserProfile, UUID> { fun findByFirebaseUid(firebaseUid: String): UserProfile?; fun findByEmailIgnoreCase(email: String): UserProfile?; fun findByPhoneNumber(phoneNumber: String): UserProfile?; fun findByUsernameIgnoreCase(username: String): UserProfile? }
+interface UserProfileRepository : JpaRepository<UserProfile, UUID> {
+    fun findByFirebaseUid(firebaseUid: String): UserProfile?
+    fun findByEmailIgnoreCase(email: String): UserProfile?
+    fun findByPhoneNumber(phoneNumber: String): UserProfile?
+    fun findByUsernameIgnoreCase(username: String): UserProfile?
+
+    @Query("""
+        select user
+        from UserProfile user
+        where user.registrationRole = com.daycare.api.domain.RegistrationRole.PARENT
+          and (:query = ''
+            or lower(coalesce(user.displayName, '')) like lower(concat('%', :query, '%'))
+            or lower(coalesce(user.email, '')) like lower(concat('%', :query, '%'))
+            or lower(coalesce(user.username, '')) like lower(concat('%', :query, '%'))
+            or lower(coalesce(user.phoneNumber, '')) like lower(concat('%', :query, '%')))
+        order by user.displayName asc
+    """)
+    fun findRegisteredParents(@Param("query") query: String): List<UserProfile>
+}
 interface ParentFamilyProfileRepository : JpaRepository<ParentFamilyProfile, UUID> { fun findByUserId(userId: UUID): ParentFamilyProfile? }
 interface RevokedAccessTokenRepository : JpaRepository<RevokedAccessToken, UUID> { fun existsByTokenHash(tokenHash: String): Boolean; fun deleteAllByExpiresAtBefore(expiresAt: Instant) }
 interface MembershipRepository : JpaRepository<Membership, UUID> {
     fun findAllByUserIdAndOrganizationId(userId: UUID, organizationId: UUID): List<Membership>
     fun findAllByUserId(userId: UUID): List<Membership>
     fun findAllByOrganizationId(organizationId: UUID): List<Membership>
+    fun findAllByRoleAndUserIdIn(role: com.daycare.api.domain.Role, userIds: Collection<UUID>): List<Membership>
 
     @Query("""
         select distinct membership.organizationId
