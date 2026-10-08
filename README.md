@@ -164,7 +164,7 @@ Platform Admin can manage every tenant from **Tenant**. Its **Tambah lembaga** f
 
 The platform allows at most one Platform Admin. A deployed account is provisioned through controlled infrastructure bootstrap; the Profile screen does not offer a second-admin flow, and the legacy `POST /platform/admins` contract remains only as a compatibility endpoint that always rejects creation. The database enforces this singleton invariant, including concurrent or out-of-band writes, and Platform Admin records are protected from deletion. From a tenant's detail screen, Platform Admin can add a non-primary Staff Admin with a display name, required email and password, and an optional globally unique username. The API stores only the BCrypt password hash and grants the requested access in one transaction; it does not create Firebase Email/Password users. A configured username can be used with the same password at sign-in; an omitted username leaves email as the only credential identifier.
 
-Staff Admins can create additional active `STAFF_ADMIN` and `STAFF` accounts from **Akun tenant** with a name, required email and password, and an optional globally unique username. The create action is exposed as a floating button; a Staff account's optional child-program and development-category permissions are selected with switches and default to disabled. The account-list branch filter is staged in a Bottom Sheet and affects the list only after **OK**; closing or cancelling the sheet keeps the current list. Names and emails are required, passwords must contain at least six characters, and email matching is case-insensitive. An already-registered email or username is rejected with a localized inline error. A configured username can be used with the same password at sign-in and is shown on the tenant-account list; an omitted username leaves email as the only credential identifier. Staff Admin can edit an active `STAFF` account's name, email, username, branch, and those two permissions from the same list; role and password are not editable in that form. Parent accounts remain invitation-based. From **Akun tenant → Kelola password staf**, Staff Admins can replace the password of active `STAFF_ADMIN` and `STAFF` accounts in their own tenant using the same password rule. Parent accounts are excluded. Passwords are stored only as BCrypt hashes in PostgreSQL.
+Staff Admins can create additional active `STAFF_ADMIN` and `STAFF` accounts from **Akun tenant** with a name, required email and password, and an optional globally unique username. The create action is exposed as a floating button; a Staff account's optional child-program and development-category permissions are selected with switches and default to disabled. The account-list branch filter is staged in a Bottom Sheet and affects the list only after **OK**; closing or cancelling the sheet keeps the current list. Names and emails are required, passwords must contain 6–128 characters, and email matching is case-insensitive. An already-registered email or username is rejected with a localized inline error. A configured username can be used with the same password at sign-in and is shown on the tenant-account list; an omitted username leaves email as the only credential identifier. Staff Admin can edit an active `STAFF` account's name, email, username, branch, and those two permissions from the same list; role and password are not editable in that form. Parent accounts remain invitation-based. From **Akun tenant → Kelola password staf**, Staff Admins can replace the password of active `STAFF_ADMIN` and `STAFF` accounts in their own tenant using the same password rule. Parent accounts are excluded. Password changes invalidate that user's existing local JWT sessions and close active realtime connections, requiring a new login. Passwords are stored only as BCrypt hashes in PostgreSQL.
 
 The detailed UI, authorization, field-ownership, API, validation, and verification contract is in [Tenant staff accounts](docs/tenant-staff-accounts.md).
 
@@ -380,6 +380,16 @@ Run the TypeScript checks and tests:
 ```sh
 pnpm verify
 ```
+
+Generate local backend JaCoCo and TypeScript V8 coverage reports:
+
+```sh
+pnpm coverage
+```
+
+Reports are written to `apps/api/build/reports/jacoco/test/` and each
+workspace's ignored `coverage/` directory. Coverage is measured for trend
+tracking; the repository does not currently enforce a 99% threshold.
 
 Run backend tests with JDK 21:
 
