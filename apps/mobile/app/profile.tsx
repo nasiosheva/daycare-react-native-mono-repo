@@ -46,6 +46,9 @@ export default function ProfileScreen() {
   const leave = () => {
     setLeaving(true);
     void signOut();
+    // Clear every pushed screen first so hardware/gesture back from sign-in
+    // never pops into a now-unauthenticated screen left behind it.
+    router.dismissAll();
     router.replace("/sign-in");
   };
   const saveProfile = async () => {
