@@ -19,7 +19,11 @@ export function SafeRedirect({ href, dismissStack }: SafeRedirectProps) {
 
   useEffect(() => {
     if (!navigationState?.key) return;
-    if (dismissStack) router.dismissAll();
+    // canDismiss() guards an empty stack (e.g. a fresh load landing straight
+    // on /sign-in): dismissAll() is a no-op there, but on web it logs a
+    // dev-only "POP_TO_TOP was not handled" console error if nothing is
+    // actually pushed.
+    if (dismissStack && router.canDismiss()) router.dismissAll();
     router?.replace(href);
   }, [dismissStack, href, navigationState?.key, router]);
 
