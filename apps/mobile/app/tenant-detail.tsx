@@ -15,7 +15,7 @@ import { tenantPaymentStatusKey, tenantSubscriptionPlanKey, tenantSubscriptionSt
 import { notify } from "@/notify/notify";
 import { capitalizeWords } from "@/text/capitalizeWords";
 
-type Sheet = "edit" | "renew" | "staffAdmin" | "editStaffAdmin" | "removeStaffAdmin" | null;
+type Sheet = "edit" | "renew" | "staffAdmin" | "editStaffAdmin" | "removeStaffAdmin" | "resetStaffAdminPassword" | null;
 
 export default function TenantDetailScreen() {
   const router = useRouter();
@@ -32,6 +32,8 @@ export default function TenantDetailScreen() {
   const createStaffAdmin = useMutation({ mutationFn: (input: { displayName: string; username?: string; email: string; password: string }) => api.createTenantStaffAdmin(tenantId, input), onSuccess: refresh });
   const updateStaffAdmin = useMutation({ mutationFn: ({ membershipId, displayName }: { membershipId: string; displayName: string }) => api.updateTenantStaffAdmin(tenantId, membershipId, { displayName }), onSuccess: refresh });
   const removeStaffAdmin = useMutation({ mutationFn: (membershipId: string) => api.removeTenantStaffAdmin(tenantId, membershipId), onSuccess: refresh });
+  // Deliberately no onSuccess refresh: a password reset changes no field in the Tenant response.
+  const resetStaffAdminPassword = useMutation({ mutationFn: ({ membershipId, password }: { membershipId: string; password: string }) => api.resetTenantStaffAdminPassword(tenantId, membershipId, password) });
   const markPaid = useMutation({ mutationFn: (paymentId: string) => api.markTenantPaymentPaid(tenantId, paymentId), onSuccess: refresh });
   const voidPayment = useMutation({ mutationFn: (paymentId: string) => api.voidTenantPayment(tenantId, paymentId), onSuccess: refresh });
   const refreshInvitation = useMutation({ mutationFn: () => api.refreshTenantStaffAdminInvitation(tenantId), onSuccess: refresh });
@@ -46,6 +48,8 @@ export default function TenantDetailScreen() {
   const [staffAdminEmail, setStaffAdminEmail] = useState("");
   const [staffAdminPassword, setStaffAdminPassword] = useState("");
   const [staffAdminToRemove, setStaffAdminToRemove] = useState<TenantStaffAdmin | null>(null);
+  const [staffAdminToResetPassword, setStaffAdminToResetPassword] = useState<TenantStaffAdmin | null>(null);
+  const [resetStaffAdminPasswordValue, setResetStaffAdminPasswordValue] = useState("");
   const [editingStaffAdmin, setEditingStaffAdmin] = useState<TenantStaffAdmin | null>(null);
   const [editStaffAdminName, setEditStaffAdminName] = useState("");
 
@@ -125,6 +129,16 @@ export default function TenantDetailScreen() {
       notify(t("tenant.staffAdminRemoved"));
     } catch (error) { notify(t("tenant.staffAdminRemoveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
   };
+  const openResetStaffAdminPassword = (staffAdmin: TenantStaffAdmin) => { setStaffAdminToResetPassword(staffAdmin); setResetStaffAdminPasswordValue(""); setSheet("resetStaffAdminPassword"); };
+  const closeResetStaffAdminPasswordSheet = () => { setStaffAdminToResetPassword(null); setResetStaffAdminPasswordValue(""); setSheet(null); };
+  const submitResetStaffAdminPassword = async () => {
+    if (!staffAdminToResetPassword || resetStaffAdminPasswordValue.length < 6) return notify(t("password.minLength"));
+    try {
+      await resetStaffAdminPassword.mutateAsync({ membershipId: staffAdminToResetPassword.id, password: resetStaffAdminPasswordValue });
+      closeResetStaffAdminPasswordSheet();
+      notify(t("tenant.staffAdminPasswordReset"));
+    } catch (error) { notify(t("tenant.staffAdminPasswordResetFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+  };
   return <AppScreen showBottomNavigation={false} title={t("tenant.detailTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {tenant.isLoading && <ShimmerList variant="card" count={4} />}
     {tenant.isError && !tenant.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void tenant.refetch()} />}
@@ -146,9 +160,11 @@ export default function TenantDetailScreen() {
         {staffAdmins.map((staffAdmin) => <View key={staffAdmin.id} style={styles.staffAdmin}>
           <AppText variant="label">{staffAdmin.displayName ?? staffAdmin.email ?? t("common.noData")}{staffAdmin.primary ? ` · ${t("tenant.primaryStaffAdmin")}` : ""}</AppText>
           <Badge tone={statusTone(staffAdmin.status)} label={t(`status.${staffAdmin.status}` as Parameters<typeof t>[0])} />
-          {!staffAdmin.primary && staffAdmin.status === "ACTIVE" && <View style={styles.actions}>
-            <IconButton icon="pencil-outline" tone="secondary" accessibilityLabel={t("tenant.editStaffAdmin")} onPress={() => openEditStaffAdmin(staffAdmin)} />
-            <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("tenant.removeStaffAdmin")} disabled={removeStaffAdmin.isPending} onPress={() => { setStaffAdminToRemove(staffAdmin); setSheet("removeStaffAdmin"); }} />
+          {staffAdmin.status === "ACTIVE" && <View style={styles.actions}>
+            {!staffAdmin.primary && <IconButton icon="pencil-outline" tone="secondary" accessibilityLabel={t("tenant.editStaffAdmin")} onPress={() => openEditStaffAdmin(staffAdmin)} />}
+            {/* Unlike edit/remove, password reset is also available for the primary Staff Admin — see docs/business-rules.md §2. */}
+            <IconButton icon="key-outline" tone="secondary" accessibilityLabel={t("tenant.resetStaffAdminPassword")} onPress={() => openResetStaffAdminPassword(staffAdmin)} />
+            {!staffAdmin.primary && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("tenant.removeStaffAdmin")} disabled={removeStaffAdmin.isPending} onPress={() => { setStaffAdminToRemove(staffAdmin); setSheet("removeStaffAdmin"); }} />}
           </View>}
         </View>)}
         {staffAdmins.length === 0 && <EmptyState compact title={t("common.noData")} />}
@@ -196,6 +212,10 @@ export default function TenantDetailScreen() {
     </BottomSheet>
     <BottomSheet visible={sheet === "removeStaffAdmin"} onClose={() => { setStaffAdminToRemove(null); setSheet(null); }} closeAccessibilityLabel={t("common.close")} title={t("tenant.removeStaffAdmin")} negativeAction={{ label: t("common.cancel"), onPress: () => { setStaffAdminToRemove(null); setSheet(null); } }} positiveAction={{ label: t("tenant.removeStaffAdmin"), variant: "danger", loading: removeStaffAdmin.isPending, onPress: () => void submitRemoveStaffAdmin() }}>
       <AppText tone="muted">{t("tenant.removeStaffAdminConfirm", { name: staffAdminToRemove?.displayName ?? staffAdminToRemove?.email ?? t("common.noData") })}</AppText>
+    </BottomSheet>
+    <BottomSheet visible={sheet === "resetStaffAdminPassword"} onClose={closeResetStaffAdminPasswordSheet} closeAccessibilityLabel={t("common.close")} title={t("tenant.resetStaffAdminPassword")} negativeAction={{ label: t("common.cancel"), onPress: closeResetStaffAdminPasswordSheet }} positiveAction={{ label: t("common.save"), loading: resetStaffAdminPassword.isPending, disabled: resetStaffAdminPasswordValue.length < 6, onPress: () => void submitResetStaffAdminPassword() }}>
+      <AppText tone="muted">{staffAdminToResetPassword?.displayName ?? staffAdminToResetPassword?.email ?? t("common.noData")}</AppText>
+      <PasswordInput placeholder={t("password.new")} value={resetStaffAdminPasswordValue} onChangeText={setResetStaffAdminPasswordValue} accessibilityLabel={t("password.accessibility")} showLabel={t("password.show")} hideLabel={t("password.hide")} showAccessibilityLabel={t("password.showAccessibility")} hideAccessibilityLabel={t("password.hideAccessibility")} />
     </BottomSheet>
   </AppScreen>;
 }
