@@ -36,7 +36,7 @@ export default function HomeScreen() {
   const staffChildren = useChildren(activeStaffMembership);
   const staffDailyTasks = useStaffDailyTasks(staffChildren.data ?? [], activeStaffMembership);
   if (loading) return <HomeLoadingState />;
-  if (!user) return <Redirect href="/sign-in" />;
+  if (!user) return <Redirect href="/sign-in" dismissStack />;
   if (!profile) return profileError ? <ProfileLoadFailure error={profileError} /> : <HomeLoadingState />;
   if (profile.isPlatformAdmin) return <PlatformAdminHome />;
   if (requiresOrganizationSelection) return <Redirect href="/context-selection" />;
