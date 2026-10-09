@@ -418,5 +418,173 @@ class ParentEnrollmentServiceTest {
         assertEquals(false, originChild.active)
     }
 
+    @Test
+    fun `catalog returns only active tenants with a published daycare branch`() {
+        val fixture = enrollmentFixture()
+        val second = UUID.randomUUID()
+        val hiddenBranch = Branch(organizationId = second, active = true, name = "Tersembunyi")
+        val visibleOrg = com.daycare.api.persistence.Organization(id = fixture.organizationId, name = "Usia Emas")
+        val hiddenOrg = com.daycare.api.persistence.Organization(id = second, name = "Hidden")
+        `when`(fixture.organizations.findAll()).thenReturn(listOf(visibleOrg, hiddenOrg))
+        `when`(fixture.subscriptions.findByOrganizationId(fixture.organizationId)).thenReturn(TenantSubscription(organizationId = fixture.organizationId, status = TenantSubscriptionStatus.TRIAL))
+        `when`(fixture.subscriptions.findByOrganizationId(second)).thenReturn(TenantSubscription(organizationId = second, status = TenantSubscriptionStatus.SUSPENDED))
+        `when`(fixture.branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(fixture.organizationId)).thenReturn(listOf(fixture.branch))
+        `when`(fixture.branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(second)).thenReturn(listOf(hiddenBranch))
+        `when`(fixture.published.hasPublishedCapability(fixture.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, fixture.branch.id)).thenReturn(true)
+        `when`(fixture.published.hasPublishedCapability(second, InstitutionCapability.DAYCARE_OPERATIONS, hiddenBranch.id)).thenReturn(false)
+        `when`(fixture.billing.branchCapacityForCatalog(fixture.organizationId, fixture.branch.id)).thenReturn(12)
+        `when`(fixture.plans.findAllByOrganizationIdAndActiveTrue(fixture.organizationId)).thenReturn(emptyList())
+
+        assertEquals(listOf(fixture.organizationId), fixture.service.catalog(fixture.jwt).map { it.organizationId })
+        `when`(fixture.organizations.findAllByNameContainingIgnoreCase("Usia")).thenReturn(listOf(visibleOrg))
+        assertEquals(1, fixture.service.catalog(fixture.jwt, " Usia ").size)
+    }
+
+    @Test
+    fun `pending approvals validate branch filter search and include family profile`() {
+        val fixture = enrollmentFixture()
+        val enrollment = ParentEnrollment(userId = fixture.parent.id, organizationId = fixture.organizationId, branchId = fixture.branch.id, childId = fixture.child.id, selectedPlanName = "Paket", selectedTotalAmount = java.math.BigDecimal.TEN)
+        val scope = AccessScope(fixture.staff, Membership(organizationId = fixture.organizationId, role = Role.STAFF_ADMIN), setOf(InstitutionTypeCodes.DAYCARE), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)).thenReturn(scope)
+        `when`(fixture.enrollments.findAllByOrganizationIdAndStatusOrderByCreatedAtAsc(fixture.organizationId, ParentEnrollmentStatus.PENDING_APPROVAL)).thenReturn(listOf(enrollment))
+        `when`(fixture.familyProfiles.forTenant(fixture.organizationId, enrollment.userId)).thenReturn(null)
+        assertEquals(listOf(enrollment.id), fixture.service.pendingApprovals(fixture.jwt, fixture.organizationId, BranchListFilter(branchId = fixture.branch.id), " Alya ").map { it.id })
+        assertEquals(emptyList<ParentEnrollmentResponse>(), fixture.service.pendingApprovals(fixture.jwt, fixture.organizationId, search = "TidakAda"))
+    }
+
+    @Test
+    fun `checkout rejects active membership bookings invalid gender and unavailable catalog`() {
+        val fixture = enrollmentFixture()
+        val request = ParentEnrollmentCheckoutRequest(fixture.organizationId, fixture.branch.id, UUID.randomUUID(), emptyList(), children = listOf(ParentEnrollmentChildInput("Alya", null, Gender.FEMALE, LocalDate.of(2022, 1, 1))))
+        `when`(fixture.memberships.findAllByUserIdAndOrganizationId(fixture.parent.id, fixture.organizationId)).thenReturn(listOf(Membership(userId = fixture.parent.id, organizationId = fixture.organizationId, role = Role.PARENT, active = true)))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.checkout(fixture.jwt, request) }
+        `when`(fixture.memberships.findAllByUserIdAndOrganizationId(fixture.parent.id, fixture.organizationId)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.checkout(fixture.jwt, request.copy(bookingDates = listOf(LocalDate.now()))) }
+        `when`(fixture.subscriptions.findByOrganizationId(fixture.organizationId)).thenReturn(TenantSubscription(organizationId = fixture.organizationId, status = TenantSubscriptionStatus.SUSPENDED))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.checkout(fixture.jwt, request) }
+        `when`(fixture.subscriptions.findByOrganizationId(fixture.organizationId)).thenReturn(TenantSubscription(organizationId = fixture.organizationId, status = TenantSubscriptionStatus.ACTIVE))
+        `when`(fixture.published.hasPublishedCapability(fixture.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, fixture.branch.id)).thenReturn(true)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.checkout(fixture.jwt, request.copy(children = listOf(ParentEnrollmentChildInput("Alya", null, Gender.UNSPECIFIED, LocalDate.of(2022, 1, 1))))) }
+    }
+
+    @Test
+    fun `retry reactivates rejected child and rejects bookings, wrong owner, and active status`() {
+        val fixture = enrollmentFixture()
+        val enrollment = ParentEnrollment(userId = fixture.parent.id, organizationId = fixture.organizationId, branchId = fixture.branch.id, childId = fixture.child.id, selectedPlanName = "Paket", selectedTotalAmount = java.math.BigDecimal.TEN, status = ParentEnrollmentStatus.REJECTED)
+        `when`(fixture.enrollments.findById(enrollment.id)).thenReturn(Optional.of(enrollment))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.retry(fixture.jwt, enrollment.id, ParentEnrollmentRetryRequest(listOf(LocalDate.now()))) }
+        val response = fixture.service.retry(fixture.jwt, enrollment.id, ParentEnrollmentRetryRequest())
+        assertEquals(ParentEnrollmentStatus.PENDING_APPROVAL, response.status)
+        assertEquals(true, fixture.child.active)
+
+        val other = ParentEnrollment(id = UUID.randomUUID(), userId = UUID.randomUUID(), organizationId = fixture.organizationId, branchId = fixture.branch.id, childId = fixture.child.id, status = ParentEnrollmentStatus.REJECTED)
+        `when`(fixture.enrollments.findById(other.id)).thenReturn(Optional.of(other))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.retry(fixture.jwt, other.id, ParentEnrollmentRetryRequest()) }
+        enrollment.status = ParentEnrollmentStatus.APPROVED
+        `when`(fixture.enrollments.findById(enrollment.id)).thenReturn(Optional.of(enrollment))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.retry(fixture.jwt, enrollment.id, ParentEnrollmentRetryRequest()) }
+    }
+
+    @Test
+    fun `approval requires payment instruction and registered parent, while rejection can omit reason`() {
+        val fixture = enrollmentFixture()
+        val enrollment = ParentEnrollment(userId = fixture.parent.id, organizationId = fixture.organizationId, branchId = fixture.branch.id, childId = fixture.child.id, selectedPlanName = "Paket", selectedTotalAmount = java.math.BigDecimal.TEN)
+        val scope = AccessScope(fixture.staff, Membership(organizationId = fixture.organizationId, role = Role.STAFF_ADMIN), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(scope)
+        `when`(fixture.enrollments.findById(enrollment.id)).thenReturn(Optional.of(enrollment))
+        `when`(fixture.children.findById(fixture.child.id)).thenReturn(Optional.of(fixture.child))
+        `when`(fixture.paymentInstructions.hasActiveInstruction(fixture.organizationId)).thenReturn(false)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.decide(fixture.jwt, fixture.organizationId, enrollment.id, ParentEnrollmentApprovalRequest(true)) }
+        `when`(fixture.paymentInstructions.hasActiveInstruction(fixture.organizationId)).thenReturn(true)
+        `when`(fixture.users.findById(fixture.parent.id)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.decide(fixture.jwt, fixture.organizationId, enrollment.id, ParentEnrollmentApprovalRequest(true)) }
+        enrollment.status = ParentEnrollmentStatus.PENDING_APPROVAL
+        val rejected = fixture.service.decide(fixture.jwt, fixture.organizationId, enrollment.id, ParentEnrollmentApprovalRequest(false))
+        assertEquals(ParentEnrollmentStatus.REJECTED, rejected.status)
+    }
+
+    @Test
+    fun `expired invoice limits Parent access only when no active entitlement remains`() {
+        val fixture = enrollmentFixture()
+        val enrollment = ParentEnrollment(userId = fixture.parent.id, organizationId = fixture.organizationId, branchId = fixture.branch.id, childId = fixture.child.id, status = ParentEnrollmentStatus.APPROVED)
+        `when`(fixture.enrollments.findByInvoiceId(fixture.invoice.id)).thenReturn(enrollment)
+        `when`(fixture.entitlements.findAllByOrganizationIdAndOwnerUserId(fixture.organizationId, fixture.parent.id)).thenReturn(emptyList())
+        `when`(fixture.memberships.findAllByUserIdAndOrganizationId(fixture.parent.id, fixture.organizationId)).thenReturn(listOf(Membership(userId = fixture.parent.id, organizationId = fixture.organizationId, role = Role.PARENT, active = true)))
+        fixture.service.invoiceExpired(InvoiceExpiredEvent(fixture.invoice.id))
+        assertEquals(false, fixture.memberships.findAllByUserIdAndOrganizationId(fixture.parent.id, fixture.organizationId).first().active)
+
+        `when`(fixture.entitlements.findAllByOrganizationIdAndOwnerUserId(fixture.organizationId, fixture.parent.id)).thenReturn(listOf(com.daycare.api.persistence.ServiceEntitlement(organizationId = fixture.organizationId, ownerUserId = fixture.parent.id, status = EntitlementStatus.ACTIVE)))
+        enrollment.status = ParentEnrollmentStatus.APPROVED
+        fixture.service.invoiceExpired(InvoiceExpiredEvent(fixture.invoice.id))
+        verify(fixture.notifications, times(1)).notify(fixture.organizationId, fixture.parent.id, "Tagihan kedaluwarsa", "Akses tenant dibatasi sampai Anda mengajukan pendaftaran baru.", "/parent-enrollment", setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.PROFILE, RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS))
+    }
+
     private fun snapshot(planId: UUID) = EnrollmentPlanSnapshot(planId, "Paket", com.daycare.api.domain.ServicePlanType.MONTHLY, java.math.BigDecimal.ONE, java.math.BigDecimal.ZERO, null, null, java.math.BigDecimal.ONE, null, null, null, true)
+}
+
+private data class ParentEnrollmentFixture(
+    val organizationId: UUID,
+    val branch: Branch,
+    val child: Child,
+    val parent: UserProfile,
+    val staff: UserProfile,
+    val invoice: Invoice,
+    val jwt: Jwt,
+    val identity: IdentityService,
+    val access: AccessService,
+    val organizations: OrganizationRepository,
+    val subscriptions: TenantSubscriptionRepository,
+    val branches: BranchRepository,
+    val plans: ServicePlanRepository,
+    val children: ChildRepository,
+    val enrollments: ParentEnrollmentRepository,
+    val memberships: MembershipRepository,
+    val guardians: GuardianLinkRepository,
+    val users: UserProfileRepository,
+    val entitlements: ServiceEntitlementRepository,
+    val invoices: InvoiceRepository,
+    val billing: BillingService,
+    val notifications: NotificationService,
+    val branchFilters: BranchListFilterService,
+    val paymentInstructions: TenantPaymentInstructionService,
+    val familyProfiles: ParentFamilyProfileVisibilityService,
+    val published: PublishedOfferingCapabilityService,
+    val service: ParentEnrollmentService,
+)
+
+private fun enrollmentFixture(): ParentEnrollmentFixture {
+    val organizationId = UUID.randomUUID()
+    val branch = Branch(organizationId = organizationId, name = "Utama", active = true)
+    val parent = UserProfile(registrationRole = RegistrationRole.PARENT, displayName = "Parent")
+    val staff = UserProfile(displayName = "Staff")
+    val child = Child(organizationId = organizationId, branchId = branch.id, firstName = "Alya", enrollmentStatus = ChildEnrollmentStatus.PENDING)
+    val invoice = Invoice(organizationId = organizationId, payerUserId = parent.id, childId = child.id, invoiceNumber = "INV-TEST", totalAmount = java.math.BigDecimal.TEN)
+    val jwt = mock(Jwt::class.java)
+    val identity = mock(IdentityService::class.java)
+    val access = mock(AccessService::class.java)
+    val organizations = mock(OrganizationRepository::class.java)
+    val subscriptions = mock(TenantSubscriptionRepository::class.java)
+    val branches = mock(BranchRepository::class.java)
+    val plans = mock(ServicePlanRepository::class.java)
+    val children = mock(ChildRepository::class.java)
+    val enrollments = mock(ParentEnrollmentRepository::class.java)
+    val memberships = mock(MembershipRepository::class.java)
+    val guardians = mock(GuardianLinkRepository::class.java)
+    val users = mock(UserProfileRepository::class.java)
+    val entitlements = mock(ServiceEntitlementRepository::class.java)
+    val invoices = mock(InvoiceRepository::class.java)
+    val billing = mock(BillingService::class.java)
+    val notifications = mock(NotificationService::class.java)
+    val branchFilters = mock(BranchListFilterService::class.java)
+    val paymentInstructions = mock(TenantPaymentInstructionService::class.java)
+    val familyProfiles = mock(ParentFamilyProfileVisibilityService::class.java)
+    val published = mock(PublishedOfferingCapabilityService::class.java)
+    `when`(identity.sync(jwt)).thenReturn(parent)
+    `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+    `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
+    `when`(subscriptions.findByOrganizationId(organizationId)).thenReturn(TenantSubscription(organizationId = organizationId, status = TenantSubscriptionStatus.ACTIVE))
+    `when`(published.hasPublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branch.id)).thenReturn(true)
+    `when`(memberships.findAllByOrganizationId(organizationId)).thenReturn(emptyList())
+    val service = ParentEnrollmentService(identity, access, organizations, subscriptions, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters, paymentInstructions, familyProfiles, published)
+    return ParentEnrollmentFixture(organizationId, branch, child, parent, staff, invoice, jwt, identity, access, organizations, subscriptions, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters, paymentInstructions, familyProfiles, published, service)
 }

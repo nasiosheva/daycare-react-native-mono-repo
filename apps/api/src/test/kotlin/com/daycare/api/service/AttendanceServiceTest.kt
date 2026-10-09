@@ -2,8 +2,10 @@ package com.daycare.api.service
 
 import com.daycare.api.domain.AttendanceAction
 import com.daycare.api.domain.AttendanceMethod
+import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.PickupVerificationMethod
 import com.daycare.api.persistence.AttendanceRepository
 import com.daycare.api.persistence.AttendanceRecord
 import com.daycare.api.persistence.AuditLogRepository
@@ -197,6 +199,78 @@ class AttendanceServiceTest {
         }
     }
 
+    @Test
+    fun `Parent child list omits staff attendance context and still returns today's record`() {
+        val fixtures = Fixtures()
+        val parentScope = AccessScope(UserProfile(registrationRole = RegistrationRole.PARENT), Membership(organizationId = fixtures.organizationId, role = Role.PARENT), emptySet(), emptySet())
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
+        val record = AttendanceRecord(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, childId = child.id, operationalDate = LocalDate.now(ZoneId.of(fixtures.branch.timezone)), checkedInAt = Instant.now())
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, Role.entries.toSet(), allowSubscriptionRestrictedForRoles = setOf(Role.PARENT))).thenReturn(parentScope)
+        `when`(fixtures.childScopes.visibleChildren(parentScope, fixtures.organizationId)).thenReturn(listOf(child))
+        `when`(fixtures.branches.findAllById(setOf(child.branchId))).thenReturn(listOf(fixtures.branch))
+        `when`(fixtures.attendance.findAllByChildIdInAndOperationalDateIn(listOf(child.id), listOf(record.operationalDate))).thenReturn(listOf(record))
+        val result = fixtures.service.listChildren(fixtures.jwt, fixtures.organizationId)
+        assertEquals(record.checkedInAt, result.single().todayCheckedInAt)
+        assertEquals(null, result.single().attendanceContext)
+    }
+
+    @Test
+    fun `Staff list exposes unavailable and eligible attendance contexts`() {
+        val fixtures = Fixtures()
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
+        val staffScope = AccessScope(UserProfile(), Membership(organizationId = fixtures.organizationId, role = Role.STAFF), emptySet(), emptySet())
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, Role.entries.toSet(), allowSubscriptionRestrictedForRoles = setOf(Role.PARENT))).thenReturn(staffScope)
+        `when`(fixtures.childScopes.visibleChildren(staffScope, fixtures.organizationId)).thenReturn(listOf(child))
+        `when`(fixtures.branches.findAllById(setOf(child.branchId))).thenReturn(listOf(fixtures.branch))
+        `when`(fixtures.attendance.findAllByChildIdInAndOperationalDateIn(listOf(child.id), listOf(LocalDate.now(ZoneId.of(fixtures.branch.timezone))))).thenReturn(emptyList())
+        val unavailable = fixtures.service.listChildren(fixtures.jwt, fixtures.organizationId).single().attendanceContext
+        assertEquals(AttendancePolicy.NONE, unavailable?.attendancePolicy)
+
+        val eligibleScope = AccessScope(staffScope.user, staffScope.membership, emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, Role.entries.toSet(), allowSubscriptionRestrictedForRoles = setOf(Role.PARENT))).thenReturn(eligibleScope)
+        `when`(fixtures.childScopes.visibleChildren(eligibleScope, fixtures.organizationId)).thenReturn(listOf(child))
+        `when`(fixtures.publishedOfferings.hasPublishedCapability(fixtures.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)).thenReturn(true)
+        `when`(fixtures.bookingEligibility.checkInEligibility(fixtures.organizationId, child.id, LocalDate.now(ZoneId.of(fixtures.branch.timezone)))).thenReturn(BookingEligibility(true))
+        val eligible = fixtures.service.listChildren(fixtures.jwt, fixtures.organizationId).single().attendanceContext
+        assertEquals(setOf(AttendanceAction.CHECK_IN), eligible?.allowedActions)
+    }
+
+    @Test
+    fun `QR check-in verifies the token and records the QR method`() {
+        val fixtures = Fixtures()
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF))).thenReturn(fixtures.scope)
+        `when`(fixtures.childScopes.requireStaffManagedChild(fixtures.scope, child.id, fixtures.organizationId)).thenReturn(child)
+        `when`(fixtures.branches.findById(child.branchId)).thenReturn(Optional.of(fixtures.branch))
+        `when`(fixtures.attendance.findByChildIdAndOperationalDate(child.id, LocalDate.now(ZoneId.of(fixtures.branch.timezone)))).thenReturn(null)
+        `when`(fixtures.attendance.save(any(AttendanceRecord::class.java))).thenAnswer { it.arguments[0] }
+        fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_IN, AttendanceMethod.QR, "qr-key", qrToken = "token"))
+        verify(fixtures.qr).verify(child.id, "Alya", "token")
+    }
+
+    @Test
+    fun `daycare attendance records checkout verification and consumes check-in entitlement`() {
+        val fixtures = Fixtures()
+        val staffScope = AccessScope(UserProfile(), Membership(organizationId = fixtures.organizationId, role = Role.STAFF), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
+        val today = LocalDate.now(ZoneId.of(fixtures.branch.timezone))
+        val checkedIn = AttendanceRecord(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, childId = child.id, operationalDate = today, checkedInAt = Instant.now().minusSeconds(600), checkInIdempotencyKey = "in")
+        val checkedOutAt = Instant.now().minusSeconds(30)
+        val authorizationId = UUID.randomUUID()
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF))).thenReturn(staffScope)
+        `when`(fixtures.childScopes.requireStaffManagedChild(staffScope, child.id, fixtures.organizationId)).thenReturn(child)
+        `when`(fixtures.branches.findById(child.branchId)).thenReturn(Optional.of(fixtures.branch))
+        `when`(fixtures.publishedOfferings.hasPublishedCapability(fixtures.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)).thenReturn(true)
+        `when`(fixtures.attendance.findByChildIdAndOperationalDate(child.id, today)).thenReturn(checkedIn)
+        `when`(fixtures.pickupAuthorizations.verifyCheckout(staffScope, child, authorizationId, "exception")).thenReturn(PickupCheckoutVerification(authorizationId, "Ayah", PickupVerificationMethod.PHOTO_ID, "exception"))
+        `when`(fixtures.attendance.save(any(AttendanceRecord::class.java))).thenAnswer { it.arguments[0] }
+
+        val response = fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_OUT, AttendanceMethod.MANUAL, "out", pickupAuthorizationId = authorizationId, pickupExceptionReason = "exception", at = checkedOutAt))
+
+        assertEquals(checkedOutAt, response.checkedOutAt)
+        verify(fixtures.pickupAuthorizations).verifyCheckout(staffScope, child, authorizationId, "exception")
+    }
+
     private class Fixtures {
         val organizationId: UUID = UUID.randomUUID()
         val jwt: Jwt = mock(Jwt::class.java)
@@ -209,6 +283,9 @@ class AttendanceServiceTest {
         val classrooms: ClassroomRepository = mock(ClassroomRepository::class.java)
         val attendance: AttendanceRepository = mock(AttendanceRepository::class.java)
         val qr: AttendanceQrService = mock(AttendanceQrService::class.java)
+        val bookingEligibility: BookingEligibilityService = mock(BookingEligibilityService::class.java)
+        val pickupAuthorizations: PickupAuthorizationService = mock(PickupAuthorizationService::class.java)
+        val publishedOfferings: PublishedOfferingCapabilityService = mock(PublishedOfferingCapabilityService::class.java)
         val branch = Branch(organizationId = organizationId)
         val level = LearningLevel(organizationId = organizationId)
         val classroom = Classroom(organizationId = organizationId, branchId = branch.id, learningLevelId = level.id)
@@ -225,9 +302,9 @@ class AttendanceServiceTest {
             mock(AuditLogRepository::class.java),
             qr,
             mock(NotificationService::class.java),
-            mock(BookingEligibilityService::class.java),
-            mock(PickupAuthorizationService::class.java),
-            mock(PublishedOfferingCapabilityService::class.java),
+            bookingEligibility,
+            pickupAuthorizations,
+            publishedOfferings,
         )
     }
 }

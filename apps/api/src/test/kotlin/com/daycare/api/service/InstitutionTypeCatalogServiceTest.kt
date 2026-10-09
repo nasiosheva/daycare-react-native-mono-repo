@@ -6,6 +6,7 @@ import com.daycare.api.persistence.OrganizationTypeAssignmentRepository
 import com.daycare.api.persistence.UserProfile
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentCaptor
 import org.mockito.Mockito.any
@@ -129,5 +130,47 @@ class InstitutionTypeCatalogServiceTest {
         service.delete(jwt, "TAMAN_BERMAIN")
 
         verify(types).delete(type)
+    }
+
+    @Test
+    fun `catalog validates dynamic parameters, URL normalization and active code guards`() {
+        val types = mock(InstitutionTypeDefinitionRepository::class.java)
+        val organizationTypes = mock(OrganizationTypeAssignmentRepository::class.java)
+        val access = mock(PlatformAccessService::class.java)
+        val jwt = mock(Jwt::class.java)
+        `when`(access.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
+        val service = InstitutionTypeCatalogService(types, organizationTypes, access)
+        `when`(types.findAllByActiveTrueOrderByNameAsc()).thenReturn(listOf(InstitutionTypeDefinition(code = "DAYCARE", name = "Daycare")))
+        service.requireActiveCodes(setOf("DAYCARE"))
+        assertThrows(IllegalArgumentException::class.java) { service.requireActiveCodes(emptySet()) }
+        assertThrows(IllegalArgumentException::class.java) { service.requireActiveCodes(setOf("UNKNOWN")) }
+
+        `when`(types.existsByNameIgnoreCase("!!!")).thenReturn(false)
+        assertThrows(IllegalArgumentException::class.java) { service.create(jwt, CreateInstitutionTypeDefinitionRequest("!!!")) }
+        `when`(types.existsByNameIgnoreCase("Existing")).thenReturn(false)
+        `when`(types.existsById("EXISTING")).thenReturn(true)
+        assertThrows(IllegalArgumentException::class.java) { service.create(jwt, CreateInstitutionTypeDefinitionRequest("Existing")) }
+        `when`(types.existsByNameIgnoreCase("Params")).thenReturn(false)
+        `when`(types.existsById("PARAMS")).thenReturn(false)
+        assertThrows(IllegalArgumentException::class.java) { service.create(jwt, CreateInstitutionTypeDefinitionRequest("Params", logo = "ftp://example.test/logo")) }
+        assertThrows(IllegalArgumentException::class.java) { service.create(jwt, CreateInstitutionTypeDefinitionRequest("Params", logo = "https://")) }
+        assertThrows(IllegalArgumentException::class.java) { service.create(jwt, CreateInstitutionTypeDefinitionRequest("Params", parameters = mapOf("Bad-Key" to "value"))) }
+        assertThrows(IllegalArgumentException::class.java) { service.create(jwt, CreateInstitutionTypeDefinitionRequest("Params", parameters = mapOf("bad" to "x".repeat(1001)))) }
+        assertThrows(IllegalArgumentException::class.java) { service.create(jwt, CreateInstitutionTypeDefinitionRequest("Params", parameters = mapOf("foo" to "1", " foo " to "2"))) }
+        assertThrows(IllegalArgumentException::class.java) { service.create(jwt, CreateInstitutionTypeDefinitionRequest("Params", parameters = (1..51).associate { "key$it" to "value" })) }
+
+        val type = InstitutionTypeDefinition(code = "CUSTOM", name = "Custom")
+        `when`(types.findById("CUSTOM")).thenReturn(Optional.of(type))
+        `when`(types.findByNameIgnoreCase("Custom")).thenReturn(type)
+        val updated = service.update(jwt, " custom ", CreateInstitutionTypeDefinitionRequest("Custom", description = "  ", parentOccupationVisible = true, logo = "  ", backgroundColor = " ", parameters = emptyMap()))
+        assertTrue(updated.parentOccupationVisible)
+        assertEquals(null, updated.description)
+        assertEquals(null, updated.logo)
+        assertEquals(emptyMap<String, String>(), updated.parameters)
+        `when`(types.findByNameIgnoreCase("Other")).thenReturn(InstitutionTypeDefinition(code = "OTHER", name = "Other"))
+        assertThrows(IllegalArgumentException::class.java) { service.update(jwt, "CUSTOM", CreateInstitutionTypeDefinitionRequest("Other")) }
+        assertThrows(IllegalArgumentException::class.java) { service.delete(jwt, "DAYCARE") }
+        `when`(organizationTypes.existsByType("CUSTOM")).thenReturn(true)
+        assertThrows(IllegalArgumentException::class.java) { service.delete(jwt, "CUSTOM") }
     }
 }

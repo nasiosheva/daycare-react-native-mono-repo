@@ -760,4 +760,159 @@ class ChildManagementServiceTest {
         service.unassignStaff(jwt, org, child.id, saved.id)
         verify(assignments).delete(saved)
     }
+
+    @Test
+    fun `child update normalizes optional fields and rejects unspecified gender`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId, firstName = "Old", lastName = "Name", gender = Gender.FEMALE)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(), emptySet(), emptySet()))
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
+        val result = service.update(jwt, organizationId, child.id, UpdateChildRequest(" New ", "  ", "  ", Gender.MALE, java.time.LocalDate.of(2022, 1, 1)))
+        assertEquals("New", result.firstName)
+        assertEquals(null, result.lastName)
+        assertEquals(null, result.nisn)
+        assertThrows(IllegalArgumentException::class.java) { service.update(jwt, organizationId, child.id, UpdateChildRequest("New", null, null, Gender.UNSPECIFIED, result.dateOfBirth)) }
+    }
+
+    @Test
+    fun `program sharing and step sharing notify guardians only on the transition`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val programSteps = mock(ChildProgramStepRepository::class.java)
+        val notifications = mock(NotificationService::class.java)
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId, firstName = "Alya")
+        val program = ChildProgram(organizationId = organizationId, childId = child.id, name = "Program", parentVisible = false)
+        val step = ChildProgramStep(organizationId = organizationId, childProgramId = program.id, title = "Langkah", parentVisible = false)
+        val scope = AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet())
+        val guardianId = UUID.randomUUID()
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(programSteps.findById(step.id)).thenReturn(Optional.of(step))
+        `when`(programs.save(any(ChildProgram::class.java))).thenAnswer { it.arguments[0] }
+        `when`(programSteps.save(any(ChildProgramStep::class.java))).thenAnswer { it.arguments[0] }
+        `when`(guardianLinks.findAllByChildId(child.id)).thenReturn(listOf(GuardianLink(childId = child.id, userId = guardianId)))
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes, programSteps = programSteps, notifications = notifications)
+
+        service.updateProgram(jwt, organizationId, child.id, program.id, UpdateChildProgramRequest(" Program ", null, ChildProgramStatus.ACTIVE, parentVisible = true))
+        service.updateProgramStep(jwt, organizationId, child.id, program.id, step.id, UpdateChildProgramStepRequest(" Step ", null, null, parentVisible = true, completed = true, displayOrder = -1))
+        assertEquals(0, step.displayOrder)
+        verify(notifications).notify(
+            organizationId, guardianId, "Program pendampingan Alya", "Program", "/parent-child-profile?childId=${child.id}", setOf(RealtimeFlag.CHILD_PROGRAMS),
+        )
+        verify(notifications).notify(
+            organizationId, guardianId, "Langkah pendampingan Alya", "Step", "/parent-child-profile?childId=${child.id}", setOf(RealtimeFlag.CHILD_PROGRAMS),
+        )
+    }
+
+    @Test
+    fun `program and step removal reject history and allow clean records`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val programSteps = mock(ChildProgramStepRepository::class.java)
+        val notes = mock(ChildProgramStaffNoteRepository::class.java)
+        val jwt = mock(Jwt::class.java)
+        val org = UUID.randomUUID()
+        val child = Child(organizationId = org)
+        val program = ChildProgram(organizationId = org, childId = child.id)
+        val step = ChildProgramStep(organizationId = org, childProgramId = program.id)
+        `when`(access.require(jwt, org, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet()))
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(programSteps.findById(step.id)).thenReturn(Optional.of(step))
+        `when`(notes.countByChildProgramStepId(step.id)).thenReturn(1)
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes, programSteps = programSteps, programStaffNotes = notes)
+        assertThrows(IllegalArgumentException::class.java) { service.removeProgramStep(jwt, org, child.id, program.id, step.id) }
+        `when`(notes.countByChildProgramStepId(step.id)).thenReturn(0)
+        service.removeProgramStep(jwt, org, child.id, program.id, step.id)
+        verify(programSteps).delete(step)
+        `when`(programSteps.countByChildProgramId(program.id)).thenReturn(0)
+        `when`(notes.countByChildProgramId(program.id)).thenReturn(0)
+        service.removeProgram(jwt, org, child.id, program.id)
+        verify(programs).delete(program)
+    }
+
+    @Test
+    fun `assign staff rejects inactive branch membership duplicate assignment and missing user`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val jwt = mock(Jwt::class.java)
+        val org = UUID.randomUUID()
+        val branch = UUID.randomUUID()
+        val child = Child(organizationId = org, branchId = branch)
+        val userId = UUID.randomUUID()
+        `when`(access.require(jwt, org, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(), emptySet(), emptySet()))
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes)
+        `when`(memberships.findAllByUserIdAndOrganizationId(userId, org)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) { service.assignStaff(jwt, org, child.id, AssignChildStaffRequest(userId, ChildCareRole.STAFF)) }
+        `when`(memberships.findAllByUserIdAndOrganizationId(userId, org)).thenReturn(listOf(Membership(userId = userId, organizationId = org, role = Role.STAFF, branchId = UUID.randomUUID(), active = true)))
+        assertThrows(IllegalArgumentException::class.java) { service.assignStaff(jwt, org, child.id, AssignChildStaffRequest(userId, ChildCareRole.STAFF)) }
+        `when`(memberships.findAllByUserIdAndOrganizationId(userId, org)).thenReturn(listOf(Membership(userId = userId, organizationId = org, role = Role.STAFF_ADMIN, active = true)))
+        `when`(assignments.existsByChildIdAndUserId(child.id, userId)).thenReturn(true)
+        assertThrows(IllegalArgumentException::class.java) { service.assignStaff(jwt, org, child.id, AssignChildStaffRequest(userId, ChildCareRole.MISS)) }
+        `when`(assignments.existsByChildIdAndUserId(child.id, userId)).thenReturn(false)
+        `when`(users.findById(userId)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) { service.assignStaff(jwt, org, child.id, AssignChildStaffRequest(userId, ChildCareRole.MISS)) }
+    }
+
+    @Test
+    fun `stale reminder falls back to active admins and skips inactive children`() {
+        val access = mock(AccessService::class.java)
+        val children = mock(ChildRepository::class.java)
+        val programs = mock(ChildProgramRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val users = mock(UserProfileRepository::class.java)
+        val guardianLinks = mock(GuardianLinkRepository::class.java)
+        val childScopes = mock(ChildScopeService::class.java)
+        val steps = mock(ChildProgramStepRepository::class.java)
+        val notifications = mock(NotificationService::class.java)
+        val org = UUID.randomUUID()
+        val child = Child(organizationId = org, firstName = "Alya")
+        val program = ChildProgram(organizationId = org, childId = child.id, name = "Program", status = ChildProgramStatus.ACTIVE)
+        val step = ChildProgramStep(organizationId = org, childProgramId = program.id, title = "Langkah", completed = false)
+        val adminId = UUID.randomUUID()
+        `when`(steps.findAllByCompletedFalseAndUpdatedAtBetween(anyInstant(), anyInstant())).thenReturn(listOf(step))
+        `when`(programs.findAllById(setOf(program.id))).thenReturn(listOf(program))
+        `when`(children.findAllById(setOf(child.id))).thenReturn(listOf(child))
+        `when`(assignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(org, child.id)).thenReturn(emptyList())
+        `when`(memberships.findAllByOrganizationId(org)).thenReturn(listOf(Membership(userId = adminId, organizationId = org, role = Role.STAFF_ADMIN, active = true)))
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes, programSteps = steps, notifications = notifications)
+        service.sendStaleProgramStepReminders()
+        verify(notifications).notify(org, adminId, "Langkah pendampingan Alya belum selesai", "Program: Langkah sudah 7 hari belum ditandai selesai.", "/child-detail?childId=${child.id}", setOf(RealtimeFlag.CHILD_PROGRAMS))
+        child.active = false
+        service.sendStaleProgramStepReminders()
+        verify(notifications, times(1)).notify(org, adminId, "Langkah pendampingan Alya belum selesai", "Program: Langkah sudah 7 hari belum ditandai selesai.", "/child-detail?childId=${child.id}", setOf(RealtimeFlag.CHILD_PROGRAMS))
+    }
 }

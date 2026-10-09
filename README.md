@@ -403,6 +403,9 @@ Reports are written to `apps/api/build/reports/jacoco/test/` and each
 workspace's ignored `coverage/` directory. Coverage is measured for trend
 tracking; the repository does not currently enforce a 99% threshold.
 
+The latest full backend suite measured 89.90% line coverage and 69.96% branch
+coverage (2026-10-09); the 90% line-and-branch target is still in progress.
+
 Run backend tests with JDK 21:
 
 ```sh
