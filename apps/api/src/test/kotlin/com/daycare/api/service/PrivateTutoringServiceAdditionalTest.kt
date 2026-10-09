@@ -35,6 +35,8 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.any
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
+import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.security.oauth2.jwt.Jwt
 import java.math.BigDecimal
@@ -101,6 +103,138 @@ class PrivateTutoringServiceAdditionalTest {
         assertEquals(PrivateTutoringRequestStatus.CANCELLED, pendingPayment.status)
     }
 
+    @Test
+    fun `parent pricing selection rejects unavailable plans and services without placement`() {
+        val fixture = fixture()
+        val serviceId = fixture.tutoringService.id
+        `when`(fixture.services.findAllByOrganizationIdAndBranchIdAndActiveTrueOrderByNameAsc(fixture.organizationId, fixture.child.branchId)).thenReturn(emptyList())
+        `when`(fixture.serviceLevels.findAllByPrivateTutoringServiceIdIn(listOf(serviceId))).thenReturn(emptyList())
+        `when`(fixture.serviceTutors.findAllByPrivateTutoringServiceIdIn(listOf(serviceId))).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.createParentRequest(fixture.jwt, fixture.organizationId, serviceId, CreatePrivateTutoringRequest(fixture.child.id, ServicePlanType.DAILY))
+        }
+
+        `when`(fixture.services.findAllByOrganizationIdAndBranchIdAndActiveTrueOrderByNameAsc(fixture.organizationId, fixture.child.branchId)).thenReturn(listOf(fixture.tutoringService))
+        `when`(fixture.placements.findByChildIdAndEndedOnIsNull(fixture.child.id)).thenReturn(null)
+        assertEquals(emptyList<PrivateTutoringServiceResponse>(), fixture.service.parentServices(fixture.jwt, fixture.organizationId, fixture.child.id))
+    }
+
+    @Test
+    fun `staff tutor creation validates membership and external display name`() {
+        val fixture = fixture()
+        `when`(fixture.memberships.findAllByUserIdAndOrganizationId(fixture.staff.id, fixture.organizationId)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.createTutor(fixture.jwt, fixture.organizationId, UpsertPrivateTutorRequest(PrivateTutorType.STAFF, staffUserId = fixture.staff.id))
+        }
+        `when`(fixture.memberships.findAllByUserIdAndOrganizationId(fixture.staff.id, fixture.organizationId)).thenReturn(listOf(Membership(organizationId = fixture.organizationId, userId = fixture.staff.id, role = Role.STAFF, active = true)))
+        `when`(fixture.users.findById(fixture.staff.id)).thenReturn(Optional.of(fixture.staff))
+        `when`(fixture.tutors.save(any(PrivateTutor::class.java))).thenAnswer { it.arguments[0] }
+        assertEquals(fixture.staff.displayName, fixture.service.createTutor(fixture.jwt, fixture.organizationId, UpsertPrivateTutorRequest(PrivateTutorType.STAFF, staffUserId = fixture.staff.id)).displayName)
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.createTutor(fixture.jwt, fixture.organizationId, UpsertPrivateTutorRequest(PrivateTutorType.EXTERNAL, displayName = "  "))
+        }
+    }
+
+    @Test
+    fun `service validation rejects invalid ages prices branch levels and tutors`() {
+        val fixture = fixture()
+        val base = UpsertPrivateTutoringServiceRequest(fixture.child.branchId, "Les", minAgeMonths = 24, maxAgeMonths = 72, durationMinutes = 60, dailyPrice = BigDecimal("100"), learningLevelIds = setOf(fixture.levelId), tutorIds = setOf(fixture.tutorId))
+        `when`(fixture.branches.findById(fixture.child.branchId)).thenReturn(Optional.of(Branch(id = fixture.child.branchId, organizationId = fixture.organizationId, active = true)))
+        `when`(fixture.levels.findById(fixture.levelId)).thenReturn(Optional.of(LearningLevel(id = fixture.levelId, organizationId = fixture.organizationId, active = true)))
+        `when`(fixture.tutors.findById(fixture.tutorId)).thenReturn(Optional.of(PrivateTutor(id = fixture.tutorId, organizationId = fixture.organizationId, active = true)))
+        val invalid = listOf(
+            base.copy(minAgeMonths = 80, maxAgeMonths = 20),
+            base.copy(dailyPrice = null, weeklyPrice = null, monthlyPrice = null),
+            base.copy(dailyPrice = BigDecimal.ZERO),
+            base.copy(learningLevelIds = emptySet()),
+            base.copy(tutorIds = emptySet()),
+        )
+        invalid.forEach { request -> assertThrows(IllegalArgumentException::class.java) { fixture.service.createService(fixture.jwt, fixture.organizationId, request) } }
+        `when`(fixture.branches.findById(fixture.child.branchId)).thenReturn(Optional.of(Branch(id = fixture.child.branchId, organizationId = UUID.randomUUID(), active = true)))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.createService(fixture.jwt, fixture.organizationId, base) }
+    }
+
+    @Test
+    fun `approved request creates pending invoice and rejects tutor conflicts`() {
+        val fixture = fixture()
+        val request = PrivateTutoringRequest(id = UUID.randomUUID(), organizationId = fixture.organizationId, branchId = fixture.child.branchId, parentUserId = fixture.parent.id, childId = fixture.child.id, privateTutoringServiceId = fixture.tutoringService.id, serviceName = "Membaca", durationMinutes = 60, price = BigDecimal("100"), status = PrivateTutoringRequestStatus.PENDING_APPROVAL)
+        val tutor = PrivateTutor(id = fixture.tutorId, organizationId = fixture.organizationId, displayName = "External", active = true)
+        val schedule = LocalDateTime.now().plusDays(1)
+        `when`(fixture.requests.findById(request.id)).thenReturn(Optional.of(request))
+        `when`(fixture.children.findById(fixture.child.id)).thenReturn(Optional.of(fixture.child))
+        `when`(fixture.services.findById(fixture.tutoringService.id)).thenReturn(Optional.of(fixture.tutoringService))
+        `when`(fixture.tutors.findById(tutor.id)).thenReturn(Optional.of(tutor))
+        `when`(fixture.serviceTutors.existsByPrivateTutoringServiceIdAndPrivateTutorId(fixture.tutoringService.id, tutor.id)).thenReturn(true)
+        `when`(fixture.requests.findAllByPrivateTutorIdAndStatusIn(tutor.id, setOf(PrivateTutoringRequestStatus.PENDING_PAYMENT, PrivateTutoringRequestStatus.CONFIRMED))).thenReturn(emptyList())
+        `when`(fixture.invoices.save(any(com.daycare.api.persistence.Invoice::class.java))).thenAnswer { it.arguments[0] }
+        val result = fixture.service.decideRequest(fixture.jwt, fixture.organizationId, request.id, DecidePrivateTutoringRequest(true, tutor.id, schedule))
+        assertEquals(PrivateTutoringRequestStatus.PENDING_PAYMENT, result.status)
+        assertNotNull(result.invoiceId)
+
+        val conflict = PrivateTutoringRequest(organizationId = fixture.organizationId, privateTutorId = tutor.id, status = PrivateTutoringRequestStatus.CONFIRMED, scheduledAt = schedule.plusMinutes(30), durationMinutes = 60)
+        val second = PrivateTutoringRequest(id = UUID.randomUUID(), organizationId = request.organizationId, branchId = request.branchId, parentUserId = request.parentUserId, childId = request.childId, privateTutoringServiceId = request.privateTutoringServiceId, serviceName = request.serviceName, durationMinutes = request.durationMinutes, price = request.price, status = PrivateTutoringRequestStatus.PENDING_APPROVAL)
+        `when`(fixture.requests.findById(second.id)).thenReturn(Optional.of(second))
+        `when`(fixture.requests.findAllByPrivateTutorIdAndStatusIn(tutor.id, setOf(PrivateTutoringRequestStatus.PENDING_PAYMENT, PrivateTutoringRequestStatus.CONFIRMED))).thenReturn(listOf(conflict))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.decideRequest(fixture.jwt, fixture.organizationId, second.id, DecidePrivateTutoringRequest(true, tutor.id, schedule)) }
+    }
+
+    @Test
+    fun `approved decision requires tutor and schedule and rejects unavailable tutor`() {
+        val fixture = fixture()
+        val request = PrivateTutoringRequest(id = UUID.randomUUID(), organizationId = fixture.organizationId, branchId = fixture.child.branchId, parentUserId = fixture.parent.id, childId = fixture.child.id, privateTutoringServiceId = fixture.tutoringService.id, serviceName = "Membaca", durationMinutes = 60, price = BigDecimal("100"), status = PrivateTutoringRequestStatus.PENDING_APPROVAL)
+        `when`(fixture.requests.findById(request.id)).thenReturn(Optional.of(request))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.decideRequest(fixture.jwt, fixture.organizationId, request.id, DecidePrivateTutoringRequest(true)) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.decideRequest(fixture.jwt, fixture.organizationId, request.id, DecidePrivateTutoringRequest(true, fixture.tutorId)) }
+        `when`(fixture.children.findById(fixture.child.id)).thenReturn(Optional.of(fixture.child))
+        `when`(fixture.services.findById(fixture.tutoringService.id)).thenReturn(Optional.of(fixture.tutoringService))
+        `when`(fixture.tutors.findById(fixture.tutorId)).thenReturn(Optional.of(PrivateTutor(id = fixture.tutorId, organizationId = fixture.organizationId, active = false)))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.decideRequest(fixture.jwt, fixture.organizationId, request.id, DecidePrivateTutoringRequest(true, fixture.tutorId, LocalDateTime.now().plusDays(1))) }
+    }
+
+    @Test
+    fun `parent cancellation voids pending invoice but never cancels paid or another parent's request`() {
+        val fixture = fixture()
+        val invoiceId = fixture.invoiceId
+        val request = PrivateTutoringRequest(id = UUID.randomUUID(), organizationId = fixture.organizationId, branchId = fixture.child.branchId, parentUserId = fixture.parent.id, childId = fixture.child.id, privateTutoringServiceId = fixture.tutoringService.id, serviceName = "Membaca", durationMinutes = 60, price = BigDecimal("100"), status = PrivateTutoringRequestStatus.PENDING_PAYMENT, invoiceId = invoiceId)
+        `when`(fixture.requests.findById(request.id)).thenReturn(Optional.of(request))
+        `when`(fixture.invoices.findById(invoiceId)).thenReturn(Optional.of(com.daycare.api.persistence.Invoice(id = invoiceId, organizationId = fixture.organizationId, status = InvoiceStatus.PENDING)))
+        assertEquals(PrivateTutoringRequestStatus.CANCELLED, fixture.service.cancelParentRequest(fixture.jwt, fixture.organizationId, request.id).status)
+        assertEquals(InvoiceStatus.VOID, fixture.invoices.findById(invoiceId).get().status)
+
+        val paid = PrivateTutoringRequest(id = UUID.randomUUID(), organizationId = request.organizationId, branchId = request.branchId, parentUserId = request.parentUserId, childId = request.childId, privateTutoringServiceId = request.privateTutoringServiceId, serviceName = request.serviceName, durationMinutes = request.durationMinutes, price = request.price, status = PrivateTutoringRequestStatus.PENDING_PAYMENT, invoiceId = invoiceId)
+        `when`(fixture.requests.findById(paid.id)).thenReturn(Optional.of(paid))
+        `when`(fixture.invoices.findById(invoiceId)).thenReturn(Optional.of(com.daycare.api.persistence.Invoice(id = invoiceId, organizationId = fixture.organizationId, status = InvoiceStatus.PAID)))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.cancelParentRequest(fixture.jwt, fixture.organizationId, paid.id) }
+
+        val foreign = PrivateTutoringRequest(id = UUID.randomUUID(), organizationId = request.organizationId, branchId = request.branchId, parentUserId = UUID.randomUUID(), childId = request.childId, privateTutoringServiceId = request.privateTutoringServiceId, serviceName = request.serviceName, durationMinutes = request.durationMinutes, price = request.price, status = PrivateTutoringRequestStatus.PENDING_APPROVAL)
+        `when`(fixture.requests.findById(foreign.id)).thenReturn(Optional.of(foreign))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.cancelParentRequest(fixture.jwt, fixture.organizationId, foreign.id) }
+    }
+
+    @Test
+    fun `invoice events ignore unknown and terminal requests and notify staff tutor after payment`() {
+        val fixture = fixture()
+        val unknown = fixture.invoiceId
+        `when`(fixture.requests.findByInvoiceId(unknown)).thenReturn(null)
+        fixture.service.invoicePaid(InvoicePaidEvent(unknown))
+
+        val request = PrivateTutoringRequest(organizationId = fixture.organizationId, parentUserId = fixture.parent.id, childId = fixture.child.id, privateTutoringServiceId = fixture.tutoringService.id, serviceName = "Membaca", durationMinutes = 60, price = BigDecimal("100"), status = PrivateTutoringRequestStatus.CONFIRMED, privateTutorId = fixture.tutorId)
+        `when`(fixture.requests.findByInvoiceId(unknown)).thenReturn(request)
+        fixture.service.invoicePaid(InvoicePaidEvent(unknown))
+        assertEquals(PrivateTutoringRequestStatus.CONFIRMED, request.status)
+
+        val pending = PrivateTutoringRequest(id = UUID.randomUUID(), organizationId = fixture.organizationId, parentUserId = fixture.parent.id, childId = fixture.child.id, privateTutoringServiceId = fixture.tutoringService.id, serviceName = "Membaca", durationMinutes = 60, price = BigDecimal("100"), status = PrivateTutoringRequestStatus.PENDING_PAYMENT, privateTutorId = fixture.tutorId)
+        `when`(fixture.requests.findByInvoiceId(unknown)).thenReturn(pending)
+        `when`(fixture.tutors.findById(fixture.tutorId)).thenReturn(Optional.of(PrivateTutor(id = fixture.tutorId, organizationId = fixture.organizationId, staffUserId = fixture.staff.id, displayName = "Staff", type = PrivateTutorType.STAFF)))
+        fixture.service.invoicePaid(InvoicePaidEvent(unknown))
+        assertEquals(PrivateTutoringRequestStatus.CONFIRMED, pending.status)
+
+        val expired = PrivateTutoringRequest(id = UUID.randomUUID(), organizationId = fixture.organizationId, parentUserId = fixture.parent.id, childId = fixture.child.id, privateTutoringServiceId = fixture.tutoringService.id, serviceName = "Membaca", durationMinutes = 60, price = BigDecimal("100"), status = PrivateTutoringRequestStatus.CONFIRMED, privateTutorId = fixture.tutorId)
+        `when`(fixture.requests.findByInvoiceId(unknown)).thenReturn(expired)
+        fixture.service.invoiceExpired(InvoiceExpiredEvent(unknown))
+        assertEquals(PrivateTutoringRequestStatus.CONFIRMED, expired.status)
+    }
+
     private data class Fixture(
         val organizationId: UUID,
         val invoiceId: UUID,
@@ -115,6 +249,8 @@ class PrivateTutoringServiceAdditionalTest {
         val services: PrivateTutoringServiceRepository,
         val serviceLevels: PrivateTutoringServiceLearningLevelRepository,
         val serviceTutors: PrivateTutoringServiceTutorRepository,
+        val placements: ChildPlacementRepository,
+        val children: ChildRepository,
         val branches: BranchRepository,
         val levels: LearningLevelRepository,
         val requests: PrivateTutoringRequestRepository,
@@ -143,6 +279,6 @@ class PrivateTutoringServiceAdditionalTest {
         `when`(tutors.findAllById(setOf(tutorId))).thenReturn(listOf(PrivateTutor(id = tutorId, organizationId = organizationId, displayName = "External", active = true)))
         `when`(children.findById(child.id)).thenReturn(Optional.of(child))
         `when`(memberships.findAllByOrganizationId(organizationId)).thenReturn(emptyList())
-        return Fixture(organizationId, invoiceId, tutorId, levelId, child, parent, staff, tutoringService, jwt, access, services, serviceLevels, serviceTutors, branches, levels, requests, tutors, invoices, memberships, users, PrivateTutoringService(access, childScopes, identities, services, serviceLevels, tutors, serviceTutors, requests, branches, levels, placements, children, memberships, users, invoices, notifications, realtime))
+        return Fixture(organizationId, invoiceId, tutorId, levelId, child, parent, staff, tutoringService, jwt, access, services, serviceLevels, serviceTutors, placements, children, branches, levels, requests, tutors, invoices, memberships, users, PrivateTutoringService(access, childScopes, identities, services, serviceLevels, tutors, serviceTutors, requests, branches, levels, placements, children, memberships, users, invoices, notifications, realtime))
     }
 }

@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  pretty-format: 29.7.0
+
 importers:
 
   .:
@@ -4834,10 +4837,6 @@ packages:
     resolution: {integrity: sha512-Pdlw/oPxN+aXdmM9R00JVC9WVFoCLTKJvDVLgmJ+qAffBMxsV85l/Lu7sNx4zSzPyoL2euImuEwHhOXdEgNFZQ==}
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
 
-  pretty-format@30.5.1:
-    resolution: {integrity: sha512-byhRAPguVKMQIj4kjJwJ5lAskVhfuiSdiYl/aLTWpgkGEmic2jYhJh1yE9ih8Ox44Xg9ccCT11/S6QrzSJuNrg==}
-    engines: {node: ^18.14.0 || ^20.0.0 || ^22.0.0 || >=24.0.0}
-
   proc-log@4.2.0:
     resolution: {integrity: sha512-g8+OnU/L2v+wyiVK+D5fA34J7EH8jZ8DDlvwhRCMxmMj7UCBvxiO1mGeN+36JXIKF4zevU4kRBd8lVgG9vLelA==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
@@ -8312,7 +8311,7 @@ snapshots:
     dependencies:
       jest-matcher-utils: 30.5.2
       picocolors: 1.1.1
-      pretty-format: 30.5.1
+      pretty-format: 29.7.0
       react: 19.0.0
       react-native: 0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0)
       react-test-renderer: 19.0.0(react@19.0.0)
@@ -8392,7 +8391,7 @@ snapshots:
   '@types/jest@30.0.0':
     dependencies:
       expect: 30.5.2
-      pretty-format: 30.5.1
+      pretty-format: 29.7.0
 
   '@types/jsdom@20.0.1':
     dependencies:
@@ -10775,7 +10774,7 @@ snapshots:
       '@jest/diff-sequences': 30.5.0
       '@jest/get-type': 30.5.0
       chalk: 4.1.2
-      pretty-format: 30.5.1
+      pretty-format: 29.7.0
 
   jest-docblock@29.7.0:
     dependencies:
@@ -10876,7 +10875,7 @@ snapshots:
       '@jest/get-type': 30.5.0
       chalk: 4.1.2
       jest-diff: 30.5.2
-      pretty-format: 30.5.1
+      pretty-format: 29.7.0
 
   jest-message-util@29.7.0:
     dependencies:
@@ -10899,7 +10898,7 @@ snapshots:
       graceful-fs: 4.2.11
       jest-util: 30.5.1
       picomatch: 4.0.5
-      pretty-format: 30.5.1
+      pretty-format: 29.7.0
       slash: 3.0.0
       stack-utils: 2.0.6
 
@@ -11835,13 +11834,6 @@ snapshots:
       '@jest/schemas': 29.6.3
       ansi-styles: 5.2.0
       react-is: 18.3.1
-
-  pretty-format@30.5.1:
-    dependencies:
-      '@jest/react-is-18': react-is@18.3.1
-      '@jest/react-is-19': react-is@19.2.7
-      '@jest/schemas': 30.5.0
-      ansi-styles: 5.2.0
 
   proc-log@4.2.0: {}
 

@@ -23,6 +23,7 @@ import com.daycare.api.persistence.OrganizationRepository
 import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.OvertimeChargeRepository
 import com.daycare.api.persistence.OvertimeChargeTierSnapshotRepository
+import com.daycare.api.persistence.OvertimeChargeTierSnapshot
 import com.daycare.api.realtime.RealtimeFlag
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -252,5 +253,76 @@ class OvertimeServiceTest {
         service.updateCharge(jwt, organizationId, existing.id, request)
         service.voidCharge(jwt, organizationId, existing.id)
         verify(notifications).notify(organizationId, parentId, "Tagihan overtime dibatalkan", "Tagihan overtime untuk $date telah dibatalkan.", null, setOf(RealtimeFlag.INVOICES))
+    }
+
+    @Test
+    fun `Parent operating hours only include linked children with published daycare offerings`() {
+        val organizationId = UUID.randomUUID()
+        val parent = UserProfile(registrationRole = com.daycare.api.domain.RegistrationRole.PARENT)
+        val jwt = mock(org.springframework.security.oauth2.jwt.Jwt::class.java)
+        val parentScope = AccessScope(parent, com.daycare.api.persistence.Membership(userId = parent.id, organizationId = organizationId, role = Role.PARENT), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)).thenReturn(parentScope)
+        val branch = Branch(organizationId = organizationId, name = "Cabang")
+        val child = Child(organizationId = organizationId, branchId = branch.id, firstName = "Alya")
+        val unrelated = Child(organizationId = UUID.randomUUID(), branchId = UUID.randomUUID(), firstName = "Lain")
+        val link = GuardianLink(childId = child.id, userId = parent.id)
+        val foreignLink = GuardianLink(childId = unrelated.id, userId = parent.id)
+        `when`(guardians.findAllByUserId(parent.id)).thenReturn(listOf(link, foreignLink))
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(children.findById(unrelated.id)).thenReturn(Optional.of(unrelated))
+        `when`(branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId)).thenReturn(listOf(branch))
+        `when`(publishedOfferings.hasPublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branch.id)).thenReturn(true)
+        `when`(hours.findAllByBranchIdOrderByDayOfWeekAsc(branch.id)).thenReturn(emptyList())
+        `when`(tiers.findAllByBranchIdOrderByDisplayOrderAsc(branch.id)).thenReturn(emptyList())
+        assertEquals(listOf(branch.id), service().parentHours(jwt, organizationId).map { it.branchId })
+    }
+
+    @Test
+    fun `Parent all-tenant operating hours skips inactive memberships missing branches and unpublished offerings`() {
+        val user = UserProfile(registrationRole = com.daycare.api.domain.RegistrationRole.PARENT)
+        val jwt = mock(org.springframework.security.oauth2.jwt.Jwt::class.java)
+        val orgA = UUID.randomUUID(); val orgB = UUID.randomUUID(); val orgMissing = UUID.randomUUID()
+        // Rebuild the service with the identity mock used by this scenario.
+        val identity = mock(IdentityService::class.java)
+        `when`(identity.sync(jwt)).thenReturn(user)
+        val organizationRepository = mock(OrganizationRepository::class.java)
+        val scopedService = OvertimeService(access, branches, children, guardians, invoices, hours, tiers, charges, snapshots, attendance, notifications, identity, memberships, organizationRepository, publishedOfferings)
+        `when`(memberships.findAllByUserId(user.id)).thenReturn(listOf(
+            com.daycare.api.persistence.Membership(userId = user.id, organizationId = orgA, role = Role.PARENT, active = true),
+            com.daycare.api.persistence.Membership(userId = user.id, organizationId = orgB, role = Role.PARENT, active = false),
+            com.daycare.api.persistence.Membership(userId = user.id, organizationId = orgMissing, role = Role.STAFF, active = true),
+        ))
+        val branch = Branch(organizationId = orgA, name = "Cabang A", timezone = "UTC")
+        val child = Child(organizationId = orgA, branchId = branch.id, firstName = "Alya")
+        val childNoBranch = Child(organizationId = orgA, branchId = UUID.randomUUID(), firstName = "Bima")
+        val childUnpublished = Child(organizationId = orgB, branchId = UUID.randomUUID(), firstName = "Citra")
+        `when`(guardians.findAllByUserId(user.id)).thenReturn(listOf(GuardianLink(childId = child.id, userId = user.id), GuardianLink(childId = childNoBranch.id, userId = user.id), GuardianLink(childId = childUnpublished.id, userId = user.id)))
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(children.findById(childNoBranch.id)).thenReturn(Optional.of(childNoBranch))
+        `when`(children.findById(childUnpublished.id)).thenReturn(Optional.of(childUnpublished))
+        `when`(publishedOfferings.hasPublishedCapability(orgA, InstitutionCapability.DAYCARE_OPERATIONS, branch.id)).thenReturn(true)
+        `when`(publishedOfferings.hasPublishedCapability(orgA, InstitutionCapability.DAYCARE_OPERATIONS, childNoBranch.branchId)).thenReturn(true)
+        `when`(publishedOfferings.hasPublishedCapability(orgB, InstitutionCapability.DAYCARE_OPERATIONS, childUnpublished.branchId)).thenReturn(false)
+        `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
+        `when`(branches.findById(childNoBranch.branchId)).thenReturn(Optional.empty())
+        `when`(hours.findAllByBranchIdOrderByDayOfWeekAsc(branch.id)).thenReturn(emptyList())
+        `when`(tiers.findAllByBranchIdOrderByDisplayOrderAsc(branch.id)).thenReturn(emptyList())
+        `when`(organizationRepository.findById(orgA)).thenReturn(Optional.of(com.daycare.api.persistence.Organization(id = orgA, name = "A")))
+        assertEquals(listOf("Alya"), scopedService.parentHoursAllTenants(jwt).map { it.childName })
+    }
+
+    @Test
+    fun `charge listing maps invoice child and snapshots`() {
+        val organizationId = UUID.randomUUID(); val branch = Branch(organizationId = organizationId); val child = Child(organizationId = organizationId, branchId = branch.id, firstName = "Alya")
+        val jwt = mock(org.springframework.security.oauth2.jwt.Jwt::class.java)
+        val scope = AccessScope(UserProfile(), com.daycare.api.persistence.Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)).thenReturn(scope)
+        val invoice = Invoice(organizationId = organizationId, payerUserId = UUID.randomUUID(), invoiceNumber = "INV", dueDate = java.time.LocalDate.now().plusDays(1), status = com.daycare.api.domain.InvoiceStatus.PENDING)
+        val charge = com.daycare.api.persistence.OvertimeCharge(organizationId = organizationId, branchId = branch.id, childId = child.id, invoiceId = invoice.id, operationalDate = java.time.LocalDate.now(), pickedUpAt = java.time.LocalTime.of(17, 0), closesAt = java.time.LocalTime.of(16, 0), overtimeMinutes = 60, totalAmount = BigDecimal("100"))
+        `when`(charges.findAllByOrganizationIdOrderByOperationalDateDesc(organizationId)).thenReturn(listOf(charge))
+        `when`(invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(snapshots.findAllByOvertimeChargeIdOrderByDisplayOrderAsc(charge.id)).thenReturn(listOf(OvertimeChargeTierSnapshot(overtimeChargeId = charge.id, displayOrder = 0, durationMinutes = 15, amount = BigDecimal("100"))))
+        assertEquals(1, service().charges(jwt, organizationId).single().tiers.size)
     }
 }

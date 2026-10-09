@@ -3,6 +3,7 @@ package com.daycare.api.service
 import com.daycare.api.domain.ChildGoalOutcome
 import com.daycare.api.domain.ChildGoalStatus
 import com.daycare.api.domain.GoalCheckInOutcome
+import com.daycare.api.domain.GoalDomain
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AuditLogRepository
 import com.daycare.api.persistence.Child
@@ -13,8 +14,10 @@ import com.daycare.api.persistence.ChildGoalConclusionCorrectionRepository
 import com.daycare.api.persistence.ChildGoalRepository
 import com.daycare.api.persistence.ChildRepository
 import com.daycare.api.persistence.ChildStaffAssignmentRepository
+import com.daycare.api.persistence.ChildStaffAssignment
 import com.daycare.api.persistence.ClassroomRepository
 import com.daycare.api.persistence.ClassroomStaffAssignmentRepository
+import com.daycare.api.persistence.ClassroomStaffAssignment
 import com.daycare.api.persistence.CurriculumProgram
 import com.daycare.api.persistence.CurriculumProgramDevelopmentProgram
 import com.daycare.api.persistence.CurriculumProgramDevelopmentProgramRepository
@@ -33,6 +36,7 @@ import com.daycare.api.realtime.RealtimePublisher
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentCaptor
 import org.mockito.Mockito.any
@@ -472,6 +476,358 @@ class GoalServiceTest {
 
         assertEquals(DevelopmentProgramError.ASSIGNED, error.message)
         verify(fixture.programs, never()).delete(program)
+    }
+
+    @Test
+    fun `global and tenant program listings cover search and curriculum filters`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val level = LearningLevel(organizationId = null, name = "Toddler")
+        val global = DevelopmentProgram(organizationId = null, learningLevelId = level.id, name = "Bahasa")
+        `when`(fixture.levels.findById(level.id)).thenReturn(Optional.of(level))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(global.id)).thenReturn(emptyList())
+        `when`(fixture.programs.findAllByOrganizationIdIsNullOrderByCreatedAtDesc()).thenReturn(listOf(global))
+        `when`(fixture.programs.searchGlobal("bahasa")).thenReturn(listOf(global))
+        assertEquals(1, fixture.service.globalPrograms(jwt).size)
+        assertEquals(1, fixture.service.globalPrograms(jwt, " bahasa ").size)
+
+        val tenant = DevelopmentProgram(organizationId = organizationId, learningLevelId = level.id, name = "Motorik")
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)).thenReturn(fixture.scope(organizationId))
+        `when`(fixture.programs.findVisibleToOrganization(organizationId)).thenReturn(listOf(tenant))
+        `when`(fixture.programs.searchVisibleToOrganization(organizationId, "motorik")).thenReturn(listOf(tenant))
+        val curriculumId = UUID.randomUUID()
+        `when`(fixture.curriculumPrograms.findById(curriculumId)).thenReturn(Optional.of(CurriculumProgram(id = curriculumId, organizationId = null, name = "Kurikulum", active = true)))
+        `when`(fixture.curriculumProgramPrograms.findAllByCurriculumProgramId(curriculumId)).thenReturn(listOf(CurriculumProgramDevelopmentProgram(curriculumProgramId = curriculumId, developmentProgramId = tenant.id)))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(tenant.id)).thenReturn(emptyList())
+        assertEquals(1, fixture.service.programs(jwt, organizationId).size)
+        assertEquals(1, fixture.service.programs(jwt, organizationId, " motorik ", curriculumId).size)
+        val inactive = CurriculumProgram(organizationId = organizationId, name = "Inactive", active = false)
+        val inactiveId = UUID.randomUUID()
+        `when`(fixture.curriculumPrograms.findById(inactiveId)).thenReturn(Optional.of(inactive))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.programs(jwt, organizationId, curriculumProgramId = inactiveId) }
+    }
+
+    @Test
+    fun `global program mutations reject invalid level and duplicate combinations`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val globalLevel = LearningLevel(organizationId = null, name = "Toddler")
+        val tenantLevel = LearningLevel(organizationId = UUID.randomUUID(), name = "Tenant")
+        val request = UpsertDevelopmentProgramRequest(globalLevel.id, " Program ", durationDays = 7, minimumYesPercent = 50, minimumYesStreak = 2, domain = GoalDomain.KEMANDIRIAN)
+        `when`(fixture.levels.findById(globalLevel.id)).thenReturn(Optional.of(globalLevel))
+        `when`(fixture.programs.findByOrganizationIdIsNullAndLearningLevelIdAndDomainAndActiveTrue(globalLevel.id, GoalDomain.KEMANDIRIAN)).thenReturn(DevelopmentProgram(learningLevelId = globalLevel.id))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.createGlobalProgram(jwt, request) }
+        `when`(fixture.levels.findById(globalLevel.id)).thenReturn(Optional.of(tenantLevel))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.createGlobalProgram(jwt, request) }
+
+        val program = DevelopmentProgram(learningLevelId = globalLevel.id, name = "Old", domain = GoalDomain.KEMANDIRIAN, isTemplate = true)
+        `when`(fixture.levels.findById(globalLevel.id)).thenReturn(Optional.of(globalLevel))
+        `when`(fixture.programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(fixture.programs.findByOrganizationIdIsNullAndLearningLevelIdAndDomainAndActiveTrue(globalLevel.id, GoalDomain.KOGNITIF)).thenReturn(DevelopmentProgram(learningLevelId = globalLevel.id, domain = GoalDomain.KOGNITIF))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.updateGlobalProgram(jwt, program.id, request.copy(domain = GoalDomain.KOGNITIF)) }
+        program.active = false
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.reviseGlobalProgram(jwt, program.id, request) }
+    }
+
+    @Test
+    fun `tenant program indicators enforce ownership and active indicator rule`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val level = LearningLevel(organizationId = organizationId, name = "Toddler")
+        val program = DevelopmentProgram(organizationId = organizationId, learningLevelId = level.id, name = "Program")
+        val global = DevelopmentProgram(organizationId = null, learningLevelId = level.id, name = "Global", isTemplate = true)
+        val indicator = DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = program.id, name = "Indikator")
+        val request = UpsertDevelopmentProgramRequest(level.id, " Program ", durationDays = 7, minimumYesPercent = 50, minimumYesStreak = 2, domain = GoalDomain.KEMANDIRIAN)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = false)).thenReturn(fixture.scope(organizationId))
+        `when`(fixture.levels.findById(level.id)).thenReturn(Optional.of(level))
+        `when`(fixture.programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(fixture.programs.findById(global.id)).thenReturn(Optional.of(global))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id)).thenReturn(listOf(indicator))
+        `when`(fixture.goalIndicators.findById(indicator.id)).thenReturn(Optional.of(indicator))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(global.id)).thenReturn(emptyList())
+        assertEquals(indicator.id, fixture.service.createIndicator(jwt, organizationId, program.id, UpsertGoalIndicatorRequest(" New ", priority = true)).indicators.single().id)
+        assertEquals("Updated", fixture.service.updateIndicator(jwt, organizationId, program.id, indicator.id, UpsertGoalIndicatorRequest("Updated")).indicators.single().name)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.createIndicator(jwt, organizationId, global.id, UpsertGoalIndicatorRequest("Nope")) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.archiveIndicator(jwt, organizationId, program.id, indicator.id) }
+        val second = DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = program.id, name = "Second")
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id)).thenReturn(listOf(indicator, second))
+        assertEquals(false, fixture.service.archiveIndicator(jwt, organizationId, program.id, indicator.id).indicators.first { it.id == indicator.id }.active)
+    }
+
+    @Test
+    fun `assign rejects inactive duplicate mismatched and indicatorless programs`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId, dateOfBirth = LocalDate.now().minusYears(2))
+        val level = LearningLevel(organizationId = null, name = "Toddler", minAgeMonths = 12, maxAgeMonths = 36)
+        val curriculum = CurriculumProgram(organizationId = null, name = "Kurikulum", active = true)
+        val program = DevelopmentProgram(organizationId = organizationId, learningLevelId = level.id, name = "Program", active = true)
+        val scope = fixture.scope(organizationId)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = false)).thenReturn(scope)
+        `when`(fixture.childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.curriculumPrograms.findById(curriculum.id)).thenReturn(Optional.of(curriculum))
+        `when`(fixture.programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(fixture.curriculumProgramPrograms.existsByCurriculumProgramIdAndDevelopmentProgramId(curriculum.id, program.id)).thenReturn(true)
+        `when`(fixture.levels.findById(level.id)).thenReturn(Optional.of(level))
+        `when`(fixture.goals.existsByChildIdAndProgramIdAndStatus(child.id, program.id, ChildGoalStatus.ACTIVE)).thenReturn(false)
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.assign(jwt, organizationId, child.id, AssignChildGoalRequest(curriculum.id, program.id)) }
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id)).thenReturn(listOf(DevelopmentProgramItem(developmentProgramId = program.id, active = true)))
+        program.active = false
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.assign(jwt, organizationId, child.id, AssignChildGoalRequest(curriculum.id, program.id)) }
+        program.active = true
+        `when`(fixture.curriculumProgramPrograms.existsByCurriculumProgramIdAndDevelopmentProgramId(curriculum.id, program.id)).thenReturn(false)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.assign(jwt, organizationId, child.id, AssignChildGoalRequest(curriculum.id, program.id)) }
+        `when`(fixture.curriculumProgramPrograms.existsByCurriculumProgramIdAndDevelopmentProgramId(curriculum.id, program.id)).thenReturn(true)
+        `when`(fixture.goals.existsByChildIdAndProgramIdAndStatus(child.id, program.id, ChildGoalStatus.ACTIVE)).thenReturn(true)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.assign(jwt, organizationId, child.id, AssignChildGoalRequest(curriculum.id, program.id)) }
+    }
+
+    @Test
+    fun `check-in media and date validation reject malformed data and expose stored media`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val date = LocalDate.of(2026, 8, 1)
+        val child = Child(organizationId = organizationId)
+        val program = DevelopmentProgram(organizationId = organizationId, name = "Program", durationDays = 2)
+        val goal = ChildGoal(organizationId = organizationId, childId = child.id, programId = program.id, startsOn = date)
+        val indicator = DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = program.id, name = "Indikator")
+        val scope = fixture.scope(organizationId)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = false)).thenReturn(scope)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), readOnly = true)).thenReturn(scope)
+        `when`(fixture.goals.findById(goal.id)).thenReturn(Optional.of(goal))
+        `when`(fixture.childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(fixture.goalIndicators.findById(indicator.id)).thenReturn(Optional.of(indicator))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id)).thenReturn(listOf(indicator))
+        `when`(fixture.checkIns.findByChildGoalIdAndIndicatorIdAndCheckInDate(goal.id, indicator.id, date)).thenReturn(null)
+        `when`(fixture.checkIns.save(any(ChildGoalCheckIn::class.java))).thenAnswer { it.arguments[0] }
+        val jpeg = Base64.getEncoder().encodeToString(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()))
+        val audio = Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3))
+        fixture.service.recordCheckIn(jwt, organizationId, goal.id, date, GoalCheckInRequest(indicator.id, GoalCheckInOutcome.NO, note = "  ", photo = GoalPhotoInput("IMAGE/JPEG", jpeg), audio = GoalAudioInput("audio/m4a", audio, 20)))
+        val saved = ChildGoalCheckIn(organizationId = organizationId, childGoalId = goal.id, indicatorId = indicator.id, checkInDate = date, photoContentType = null, photoData = byteArrayOf(1), audioContentType = null, audioData = byteArrayOf(2), audioDurationMs = 20)
+        `when`(fixture.checkIns.findByChildGoalIdAndIndicatorIdAndCheckInDate(goal.id, indicator.id, date)).thenReturn(saved)
+        assertEquals("image/jpeg", fixture.service.checkInPhoto(jwt, organizationId, goal.id, date, indicator.id).contentType)
+        assertEquals("audio/mp4", fixture.service.checkInAudio(jwt, organizationId, goal.id, date, indicator.id).contentType)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.recordCheckIn(jwt, organizationId, goal.id, date.minusDays(1), GoalCheckInRequest(indicator.id, GoalCheckInOutcome.YES)) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.recordCheckIn(jwt, organizationId, goal.id, date, GoalCheckInRequest(indicator.id, GoalCheckInOutcome.YES, photo = GoalPhotoInput("image/gif", jpeg))) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.recordCheckIn(jwt, organizationId, goal.id, date, GoalCheckInRequest(indicator.id, GoalCheckInOutcome.YES, audio = GoalAudioInput("audio/wav", audio))) }
+    }
+
+    @Test
+    fun `goal media validators reject malformed headers, sizes, and encodings`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val date = LocalDate.of(2026, 8, 1)
+        val child = Child(organizationId = organizationId)
+        val program = DevelopmentProgram(organizationId = organizationId, name = "Program", durationDays = 2)
+        val goal = ChildGoal(organizationId = organizationId, childId = child.id, programId = program.id, startsOn = date)
+        val indicator = DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = program.id, name = "Indikator")
+        val scope = fixture.scope(organizationId)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = false)).thenReturn(scope)
+        `when`(fixture.goals.findById(goal.id)).thenReturn(Optional.of(goal))
+        `when`(fixture.childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(fixture.goalIndicators.findById(indicator.id)).thenReturn(Optional.of(indicator))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id)).thenReturn(listOf(indicator))
+        `when`(fixture.checkIns.findByChildGoalIdAndIndicatorIdAndCheckInDate(goal.id, indicator.id, date)).thenReturn(null)
+        val invalidPhotos = listOf(
+            GoalPhotoInput("image/gif", "AA=="),
+            GoalPhotoInput("image/png", "not-base64"),
+            GoalPhotoInput("image/png", ""),
+            GoalPhotoInput("image/png", Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3))),
+            GoalPhotoInput("image/png", Base64.getEncoder().encodeToString(ByteArray(5 * 1024 * 1024 + 1) { 1 })),
+        )
+        invalidPhotos.forEach { photo ->
+            assertThrows(IllegalArgumentException::class.java) {
+                fixture.service.recordCheckIn(jwt, organizationId, goal.id, date, GoalCheckInRequest(indicator.id, GoalCheckInOutcome.YES, photo = photo))
+            }
+        }
+        val invalidAudio = listOf(
+            GoalAudioInput("audio/wav", "AA=="),
+            GoalAudioInput("audio/mp4", "not-base64"),
+            GoalAudioInput("audio/mp4", ""),
+            GoalAudioInput("audio/mp4", Base64.getEncoder().encodeToString(ByteArray(10 * 1024 * 1024 + 1) { 1 })),
+        )
+        invalidAudio.forEach { audio ->
+            assertThrows(IllegalArgumentException::class.java) {
+                fixture.service.recordCheckIn(jwt, organizationId, goal.id, date, GoalCheckInRequest(indicator.id, GoalCheckInOutcome.YES, audio = audio))
+            }
+        }
+    }
+
+    @Test
+    fun `tenant program can be created and updated after validating its own learning level`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val level = LearningLevel(organizationId = organizationId, name = "Toddler")
+        val scope = fixture.scope(organizationId)
+        val request = UpsertDevelopmentProgramRequest(level.id, "  Bahasa  ", "  Deskripsi  ", 14, 60, 3, GoalDomain.BAHASA_KOMUNIKASI, listOf(" Bicara "))
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = false)).thenReturn(scope)
+        `when`(fixture.levels.findById(level.id)).thenReturn(Optional.of(level))
+        `when`(fixture.programs.findByOrganizationIdAndLearningLevelIdAndDomain(organizationId, level.id, GoalDomain.BAHASA_KOMUNIKASI)).thenReturn(null)
+        `when`(fixture.programs.save(any(DevelopmentProgram::class.java))).thenAnswer { it.arguments[0] }
+        val created = fixture.service.createProgram(jwt, organizationId, request)
+        assertEquals("Bahasa", created.name)
+        assertEquals("Deskripsi", created.description)
+        assertEquals(DevelopmentProgramSource.TENANT, created.source)
+
+        val stored = DevelopmentProgram(id = created.id, organizationId = organizationId, learningLevelId = level.id, name = "Lama", domain = GoalDomain.BAHASA_KOMUNIKASI)
+        `when`(fixture.programs.findById(stored.id)).thenReturn(Optional.of(stored))
+        `when`(fixture.programs.findByOrganizationIdAndLearningLevelIdAndDomain(organizationId, level.id, GoalDomain.KOGNITIF)).thenReturn(null)
+        val updated = fixture.service.updateProgram(jwt, organizationId, stored.id, request.copy(name = "  Baru  ", domain = GoalDomain.KOGNITIF))
+        assertEquals("Baru", updated.name)
+        assertEquals(GoalDomain.KOGNITIF, updated.domain)
+    }
+
+    @Test
+    fun `tenant program mutations reject foreign levels and duplicate combinations`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val foreignLevel = LearningLevel(organizationId = UUID.randomUUID())
+        val scope = fixture.scope(organizationId)
+        val request = UpsertDevelopmentProgramRequest(foreignLevel.id, "Program", durationDays = 1, minimumYesPercent = 0, minimumYesStreak = 0, domain = GoalDomain.KOGNITIF)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = false)).thenReturn(scope)
+        `when`(fixture.levels.findById(foreignLevel.id)).thenReturn(Optional.of(foreignLevel))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.createProgram(jwt, organizationId, request) }
+
+        val level = LearningLevel(organizationId = organizationId)
+        val program = DevelopmentProgram(id = UUID.randomUUID(), organizationId = organizationId, learningLevelId = level.id, domain = GoalDomain.KOGNITIF)
+        `when`(fixture.levels.findById(level.id)).thenReturn(Optional.of(level))
+        `when`(fixture.programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(fixture.programs.findByOrganizationIdAndLearningLevelIdAndDomain(organizationId, level.id, GoalDomain.BAHASA_KOMUNIKASI)).thenReturn(DevelopmentProgram(organizationId = organizationId))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.updateProgram(jwt, organizationId, program.id, request.copy(learningLevelId = level.id, domain = GoalDomain.BAHASA_KOMUNIKASI)) }
+    }
+
+    @Test
+    fun `finalize requires an active goal and trims the final summary`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId)
+        val program = DevelopmentProgram(organizationId = organizationId, name = "Program", durationDays = 2)
+        val goal = ChildGoal(organizationId = organizationId, childId = child.id, programId = program.id, startsOn = LocalDate.now())
+        val scope = fixture.scope(organizationId)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = false)).thenReturn(scope)
+        `when`(fixture.goals.findById(goal.id)).thenReturn(Optional.of(goal))
+        `when`(fixture.childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id)).thenReturn(emptyList())
+        `when`(fixture.checkIns.findAllByChildGoalIdOrderByCheckInDateAsc(goal.id)).thenReturn(emptyList())
+
+        val result = fixture.service.finalize(jwt, organizationId, goal.id, FinalizeChildGoalRequest(ChildGoalOutcome.ACHIEVED, "  Selesai  "))
+        assertEquals(ChildGoalStatus.COMPLETED, result.status)
+        assertEquals("Selesai", result.finalSummary)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.finalize(jwt, organizationId, goal.id, FinalizeChildGoalRequest(ChildGoalOutcome.ACHIEVED, "Again")) }
+    }
+
+    @Test
+    fun `conclusion correction rejects missing outcome, unchanged values, and blank fields`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val goal = ChildGoal(organizationId = organizationId, status = ChildGoalStatus.COMPLETED, finalOutcome = ChildGoalOutcome.ACHIEVED, finalSummary = "Berhasil")
+        val scope = fixture.scope(organizationId)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = false)).thenReturn(scope)
+        `when`(fixture.goals.findById(goal.id)).thenReturn(Optional.of(goal))
+
+        goal.finalOutcome = null
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.correctConclusion(jwt, organizationId, goal.id, CorrectChildGoalConclusionRequest(ChildGoalOutcome.NOT_ACHIEVED, "x", "y")) }
+        goal.finalOutcome = ChildGoalOutcome.ACHIEVED
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.correctConclusion(jwt, organizationId, goal.id, CorrectChildGoalConclusionRequest(ChildGoalOutcome.ACHIEVED, "Berhasil", "y")) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.correctConclusion(jwt, organizationId, goal.id, CorrectChildGoalConclusionRequest(ChildGoalOutcome.NOT_ACHIEVED, "  ", "y")) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.correctConclusion(jwt, organizationId, goal.id, CorrectChildGoalConclusionRequest(ChildGoalOutcome.NOT_ACHIEVED, "x", "  ")) }
+    }
+
+    @Test
+    fun `assign matches global age bands and tenant classroom levels`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId, dateOfBirth = LocalDate.now().minusYears(5))
+        val globalLevel = LearningLevel(organizationId = null, minAgeMonths = 12, maxAgeMonths = 36)
+        val globalProgram = DevelopmentProgram(organizationId = null, learningLevelId = globalLevel.id, active = true)
+        val curriculum = CurriculumProgram(organizationId = null, active = true)
+        val scope = fixture.scope(organizationId)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = false)).thenReturn(scope)
+        `when`(fixture.childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.curriculumPrograms.findById(curriculum.id)).thenReturn(Optional.of(curriculum))
+        `when`(fixture.programs.findById(globalProgram.id)).thenReturn(Optional.of(globalProgram))
+        `when`(fixture.curriculumProgramPrograms.existsByCurriculumProgramIdAndDevelopmentProgramId(curriculum.id, globalProgram.id)).thenReturn(true)
+        `when`(fixture.levels.findById(globalLevel.id)).thenReturn(Optional.of(globalLevel))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(globalProgram.id)).thenReturn(listOf(DevelopmentProgramItem(developmentProgramId = globalProgram.id, active = true)))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.assign(jwt, organizationId, child.id, AssignChildGoalRequest(curriculum.id, globalProgram.id)) }
+
+        val tenantLevel = LearningLevel(organizationId = organizationId)
+        val classroom = com.daycare.api.persistence.Classroom(organizationId = organizationId, learningLevelId = tenantLevel.id)
+        val tenantProgram = DevelopmentProgram(organizationId = organizationId, learningLevelId = tenantLevel.id, active = true)
+        child.classroomId = classroom.id
+        `when`(fixture.programs.findById(tenantProgram.id)).thenReturn(Optional.of(tenantProgram))
+        `when`(fixture.curriculumProgramPrograms.existsByCurriculumProgramIdAndDevelopmentProgramId(curriculum.id, tenantProgram.id)).thenReturn(true)
+        `when`(fixture.levels.findById(tenantLevel.id)).thenReturn(Optional.of(tenantLevel))
+        `when`(fixture.classrooms.findById(classroom.id)).thenReturn(Optional.of(classroom))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(tenantProgram.id)).thenReturn(listOf(DevelopmentProgramItem(developmentProgramId = tenantProgram.id, active = true)))
+        `when`(fixture.goals.existsByChildIdAndProgramIdAndStatus(child.id, tenantProgram.id, ChildGoalStatus.ACTIVE)).thenReturn(false)
+        `when`(fixture.goals.save(any(ChildGoal::class.java))).thenAnswer { it.arguments[0] }
+        assertEquals(tenantProgram.id, fixture.service.assign(jwt, organizationId, child.id, AssignChildGoalRequest(curriculum.id, tenantProgram.id)).programId)
+    }
+
+    @Test
+    fun `child goal response ignores incomplete days and calculates yes and missed days`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId)
+        val program = DevelopmentProgram(organizationId = organizationId, name = "Program", durationDays = 10, minimumYesPercent = 50, minimumYesStreak = 2)
+        val goal = ChildGoal(organizationId = organizationId, childId = child.id, programId = program.id, startsOn = LocalDate.now().minusDays(2))
+        val one = DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = program.id, name = "Satu", active = true)
+        val two = DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = program.id, name = "Dua", active = true)
+        val partial = ChildGoalCheckIn(organizationId = organizationId, childGoalId = goal.id, indicatorId = one.id, checkInDate = goal.startsOn, outcome = GoalCheckInOutcome.YES)
+        val complete = ChildGoalCheckIn(organizationId = organizationId, childGoalId = goal.id, indicatorId = one.id, checkInDate = goal.startsOn.plusDays(1), outcome = GoalCheckInOutcome.YES)
+        val completeTwo = ChildGoalCheckIn(organizationId = organizationId, childGoalId = goal.id, indicatorId = two.id, checkInDate = goal.startsOn.plusDays(1), outcome = GoalCheckInOutcome.YES)
+        val scope = fixture.scope(organizationId)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), readOnly = true)).thenReturn(scope)
+        `when`(fixture.childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.goals.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id)).thenReturn(listOf(goal))
+        `when`(fixture.programs.findAllById(setOf(program.id))).thenReturn(listOf(program))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdIn(setOf(program.id))).thenReturn(listOf(one, two))
+        `when`(fixture.checkIns.findAllByChildGoalIdIn(setOf(goal.id))).thenReturn(listOf(partial, complete, completeTwo))
+        val result = fixture.service.childGoals(jwt, organizationId, child.id).single()
+        assertEquals(1, result.recordedDays)
+        assertEquals(1, result.yesDays)
+        assertTrue(result.missedDays >= 1)
+    }
+
+    @Test
+    fun `scheduled reminders skip inactive periods and complete goals, and notify assigned staff`() {
+        val fixture = GoalServiceFixture()
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId, firstName = "Alya", classroomId = UUID.randomUUID())
+        val program = DevelopmentProgram(organizationId = organizationId, durationDays = 5)
+        val goal = ChildGoal(organizationId = organizationId, childId = child.id, programId = program.id, startsOn = LocalDate.now())
+        val indicator = DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = program.id, active = true)
+        val assignedId = UUID.randomUUID()
+        val classroomId = child.classroomId!!
+        `when`(fixture.goals.findAllByStatus(ChildGoalStatus.ACTIVE)).thenReturn(listOf(goal))
+        `when`(fixture.programs.findAllById(setOf(program.id))).thenReturn(listOf(program))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdIn(setOf(program.id))).thenReturn(listOf(indicator))
+        `when`(fixture.checkIns.findAllByChildGoalIdInAndCheckInDate(setOf(goal.id), LocalDate.now())).thenReturn(emptyList())
+        `when`(fixture.children.findAllById(setOf(child.id))).thenReturn(listOf(child))
+        `when`(fixture.childStaffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id)).thenReturn(listOf(ChildStaffAssignment(organizationId = organizationId, childId = child.id, userId = assignedId)))
+        `when`(fixture.classroomStaffAssignments.findAllByOrganizationIdAndClassroomIdOrderByCreatedAtDesc(organizationId, classroomId)).thenReturn(listOf(ClassroomStaffAssignment(organizationId = organizationId, classroomId = classroomId, userId = assignedId)))
+        fixture.service.sendMissedCheckInReminders()
+        verify(fixture.notifications, times(1)).notify(organizationId, assignedId, "Check-in program belum diisi", "Check-in program hari ini untuk Alya belum diisi.", "/goals?childId=${child.id}", setOf(com.daycare.api.realtime.RealtimeFlag.GOALS))
+
+        `when`(fixture.checkIns.findAllByChildGoalIdInAndCheckInDate(setOf(goal.id), LocalDate.now())).thenReturn(listOf(ChildGoalCheckIn(indicatorId = indicator.id, childGoalId = goal.id)))
+        fixture.service.sendMissedCheckInReminders()
+        verify(fixture.notifications, times(1)).notify(organizationId, assignedId, "Check-in program belum diisi", "Check-in program hari ini untuk Alya belum diisi.", "/goals?childId=${child.id}", setOf(com.daycare.api.realtime.RealtimeFlag.GOALS))
     }
 }
 

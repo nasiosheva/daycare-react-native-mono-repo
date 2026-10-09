@@ -275,4 +275,107 @@ class PlatformAdministrationServiceTest {
         fixture.service.cancelStaffAdminInvitation(fixture.jwt, organization.id)
         assertEquals(com.daycare.api.domain.InvitationStatus.EXPIRED, invitation.status)
     }
+
+    @Test
+    fun `tenant search combines name and staff admin matches without duplicates`() {
+        val fixture = PlatformAdministrationServiceFixture()
+        fixture.allowPlatformAdmin()
+        val byName = Organization(id = UUID.randomUUID(), name = "Alpha")
+        val byStaff = Organization(id = UUID.randomUUID(), name = "Beta")
+        `when`(fixture.organizations.findAllByNameContainingIgnoreCase("admin")).thenReturn(listOf(byName))
+        `when`(fixture.memberships.findOrganizationIdsByStaffAdminSearch("admin")).thenReturn(listOf(byName.id, byStaff.id))
+        `when`(fixture.organizations.findAllById(listOf(byName.id, byStaff.id))).thenReturn(listOf(byName, byStaff))
+        fixture.stubTenantResponse(byName)
+        fixture.stubTenantResponse(byStaff)
+        assertEquals(listOf("Alpha", "Beta"), fixture.service.tenants(fixture.jwt, " admin ").map { it.name })
+
+        `when`(fixture.organizations.findAll()).thenReturn(listOf(byName, byStaff))
+        assertEquals(2, fixture.service.tenants(fixture.jwt, null).size)
+    }
+
+    @Test
+    fun `platform can create a paid tenant and rejects invalid billing choices`() {
+        val fixture = PlatformAdministrationServiceFixture()
+        fixture.allowPlatformAdmin()
+        val organization = Organization(name = "Paid")
+        `when`(fixture.organizations.save(org.mockito.ArgumentMatchers.any(Organization::class.java))).thenReturn(organization)
+        `when`(fixture.tenantUserAccounts.create("Admin", "paid@example.test", "secret", "paid-admin")).thenReturn(UserProfile(displayName = "Admin", email = "paid@example.test"))
+        `when`(fixture.branches.save(org.mockito.ArgumentMatchers.any(Branch::class.java))).thenAnswer { it.arguments[0] }
+        `when`(fixture.subscriptions.save(org.mockito.ArgumentMatchers.any(TenantSubscription::class.java))).thenAnswer { it.arguments[0] }
+        `when`(fixture.payments.save(org.mockito.ArgumentMatchers.any(TenantPayment::class.java))).thenAnswer { it.arguments[0] }
+        fixture.stubTenantResponse(organization)
+        val result = fixture.service.createTenant(fixture.jwt, CreateTenantRequest(" Paid ", " Main ", setOf("DAYCARE"), TenantSubscriptionPlan.PREMIUM, BigDecimal("250"), null, "Admin", "paid@example.test", "secret", "paid-admin"))
+        assertEquals("Paid", result.name)
+        verify(fixture.payments).save(org.mockito.ArgumentMatchers.any(TenantPayment::class.java))
+        verify(fixture.organizationTypes).saveAll(org.mockito.ArgumentMatchers.anyList())
+        verify(fixture.defaultCurriculumActivities).seed(organization.id)
+    }
+
+    @Test
+    fun `secondary staff admin can be removed or edited but primary cannot`() {
+        val fixture = PlatformAdministrationServiceFixture()
+        fixture.allowPlatformAdmin()
+        val organization = Organization(id = fixture.organizationId, name = "Tenant")
+        fixture.stubTenantResponse(organization)
+        val secondary = Membership(id = fixture.membershipId, userId = fixture.userId, organizationId = fixture.organizationId, role = Role.STAFF_ADMIN, primaryStaffAdmin = false, active = true)
+        `when`(fixture.memberships.findById(fixture.membershipId)).thenReturn(Optional.of(secondary))
+        `when`(fixture.users.findById(fixture.userId)).thenReturn(Optional.of(UserProfile(id = fixture.userId, displayName = "Old")))
+        fixture.service.removeTenantStaffAdmin(fixture.jwt, fixture.organizationId, fixture.membershipId)
+        assertEquals(false, secondary.active)
+        fixture.service.updateTenantStaffAdmin(fixture.jwt, fixture.organizationId, fixture.membershipId, UpdateTenantStaffAdminRequest(" New "))
+        assertEquals("New", fixture.users.findById(fixture.userId).get().displayName)
+
+        secondary.primaryStaffAdmin = true
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.removeTenantStaffAdmin(fixture.jwt, fixture.organizationId, fixture.membershipId) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.updateTenantStaffAdmin(fixture.jwt, fixture.organizationId, fixture.membershipId, UpdateTenantStaffAdminRequest("No")) }
+    }
+
+    @Test
+    fun `tenant update preserves offered types and updates subscription`() {
+        val fixture = PlatformAdministrationServiceFixture()
+        fixture.allowPlatformAdmin()
+        val organization = Organization(id = fixture.organizationId, name = "Old")
+        val subscription = TenantSubscription(organizationId = fixture.organizationId, status = TenantSubscriptionStatus.TRIAL, plan = TenantSubscriptionPlan.STARTER, monthlyFee = null)
+        fixture.stubTenantResponse(organization, subscription)
+        `when`(fixture.organizationTypes.findAllByOrganizationId(fixture.organizationId)).thenReturn(emptyList())
+        `when`(fixture.educationOfferings.findAllByOrganizationIdOrderByCreatedAtAsc(fixture.organizationId)).thenReturn(emptyList())
+        val result = fixture.service.updateTenant(fixture.jwt, fixture.organizationId, UpdateTenantRequest(" New ", setOf("DAYCARE", "TK"), TenantSubscriptionPlan.PREMIUM, null))
+        assertEquals("New", result.name)
+        assertEquals(TenantSubscriptionPlan.PREMIUM, subscription.plan)
+        verify(fixture.organizationTypes).deleteAll(emptyList())
+        verify(fixture.organizationTypes).flush()
+
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.updateTenant(fixture.jwt, fixture.organizationId, UpdateTenantRequest("No types", emptySet(), TenantSubscriptionPlan.STARTER, null)) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.updateTenant(fixture.jwt, fixture.organizationId, UpdateTenantRequest("Fee", setOf("DAYCARE"), TenantSubscriptionPlan.STARTER, BigDecimal("10"))) }
+    }
+
+    @Test
+    fun `void payment and invitation refresh reject missing or completed states`() {
+        val fixture = PlatformAdministrationServiceFixture()
+        fixture.allowPlatformAdmin()
+        val organization = Organization(id = fixture.organizationId, name = "Tenant")
+        fixture.stubTenantResponse(organization)
+        val pending = TenantPayment(id = UUID.randomUUID(), organizationId = fixture.organizationId, subscriptionId = UUID.randomUUID(), amount = BigDecimal("10"), status = TenantPaymentStatus.PENDING)
+        `when`(fixture.payments.findById(pending.id)).thenReturn(Optional.of(pending))
+        `when`(fixture.payments.findAllByOrganizationIdOrderByCreatedAtDesc(fixture.organizationId)).thenReturn(listOf(pending))
+        assertEquals(TenantPaymentStatus.VOID, fixture.service.voidPayment(fixture.jwt, fixture.organizationId, pending.id).payments.single().status)
+        pending.status = TenantPaymentStatus.PAID
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.voidPayment(fixture.jwt, fixture.organizationId, pending.id) }
+
+        `when`(fixture.invitations.findAllByOrganizationIdAndStatus(fixture.organizationId, com.daycare.api.domain.InvitationStatus.PENDING)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.refreshStaffAdminInvitation(fixture.jwt, fixture.organizationId) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.cancelStaffAdminInvitation(fixture.jwt, fixture.organizationId) }
+    }
+
+    @Test
+    fun `manual subscription status accepts only suspended to active and active to suspended`() {
+        val fixture = PlatformAdministrationServiceFixture()
+        fixture.allowPlatformAdmin()
+        val organization = Organization(id = fixture.organizationId, name = "Tenant")
+        val subscription = TenantSubscription(organizationId = fixture.organizationId, status = TenantSubscriptionStatus.ACTIVE, periodEnd = LocalDate.now().plusDays(5))
+        fixture.stubTenantResponse(organization, subscription)
+        assertEquals(TenantSubscriptionStatus.SUSPENDED, fixture.service.setSubscriptionStatus(fixture.jwt, fixture.organizationId, TenantSubscriptionStatus.SUSPENDED).subscriptionStatus)
+        assertEquals(TenantSubscriptionStatus.ACTIVE, fixture.service.setSubscriptionStatus(fixture.jwt, fixture.organizationId, TenantSubscriptionStatus.ACTIVE).subscriptionStatus)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.setSubscriptionStatus(fixture.jwt, fixture.organizationId, TenantSubscriptionStatus.PENDING_PAYMENT) }
+    }
 }

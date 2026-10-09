@@ -111,9 +111,10 @@ When run manually, `jarsigner` can warn about an AAB's ZIP structure and self-si
 
 ## Share with testers (Firebase App Distribution)
 
-`./scripts/distribute-android.sh` builds a signed release APK through `build-android.sh` and uploads it to Firebase App Distribution for an existing tester group:
+`./scripts/distribute-android.sh` builds a signed release APK through `build-android.sh` and uploads it to Firebase App Distribution for an existing tester group. When no environment argument is supplied, choose local/dev/prod with ↑/↓ and Enter; numeric input is not required:
 
 ```sh
+./scripts/distribute-android.sh                         # choose local/dev/prod with ↑/↓ and Enter
 ./scripts/distribute-android.sh prod                       # default group: qa-tester
 ./scripts/distribute-android.sh prod --groups qa-tester,internal
 ./scripts/distribute-android.sh prod --release-notes-file notes.txt

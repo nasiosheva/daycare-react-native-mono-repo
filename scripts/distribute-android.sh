@@ -25,6 +25,9 @@ repository_root=$(CDPATH= cd -- "$script_directory/.." && pwd)
 mobile_root="$repository_root/apps/mobile"
 artifact_path="$mobile_root/android/app/build/outputs/apk/release/app-release.apk"
 default_groups="qa-tester"
+. "$script_directory/lib/interactive-menu.sh"
+
+trap 'interactive_menu_restore' EXIT INT TERM HUP
 
 usage() {
   echo "Usage: $0 [<local|dev|prod>] [--groups <aliases>] [--release-notes-file <path>] [--skip-build]" >&2
@@ -57,17 +60,13 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -z "$environment" ]; then
-  echo "Select the API environment for this tester build:" >&2
-  echo "  1) local" >&2
-  echo "  2) dev" >&2
-  echo "  3) prod" >&2
-  printf 'Environment [1-3]: ' >&2
-  read -r selection </dev/tty
-  case "$selection" in
+  if ! interactive_menu_select "Select the API environment for this tester build" local dev prod; then
+    exit 130
+  fi
+  case "$interactive_menu_selected_index" in
     1) environment=local ;;
     2) environment=dev ;;
     3) environment=prod ;;
-    *) fail "Invalid selection: $selection" ;;
   esac
 fi
 
