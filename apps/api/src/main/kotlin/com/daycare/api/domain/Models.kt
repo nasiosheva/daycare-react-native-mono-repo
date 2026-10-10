@@ -62,6 +62,26 @@ enum class TenantPaymentStatus { PENDING, PAID, VOID }
 enum class InstitutionCapability { DAYCARE_OPERATIONS, ACADEMIC_CURRICULUM }
 enum class EducationOfferingStatus { DRAFT, PUBLISHED, PAUSED, CLOSED, ARCHIVED }
 enum class EducationEnrollmentMode { DAYCARE_SERVICE, SCHOOL_ADMISSION }
+enum class ScreeningTemplateStatus { DRAFT, PUBLISHED, RETIRED }
+enum class ScreeningCatalogProvenance { SEEDED, MANUAL }
+enum class ScreeningReviewStatus { NOT_REVIEWED, IN_REVIEW, APPROVED, REJECTED }
+enum class ScreeningSeedManifestStatus { APPLIED }
+enum class ScreeningQuestionAnswerType { SINGLE_CHOICE, MULTI_CHOICE }
+enum class ScreeningCatalogResourceType { TEMPLATE, QUESTION, CHOICE }
+enum class ScreeningSessionStatus { DRAFT, IN_PROGRESS, EXPIRED, COMPLETED, WITHDRAWN }
+enum class ScreeningAnswerCode { YA_SUDAH, KADANG, BELUM, TIDAK_DIAMATI }
+enum class ScreeningResultMainStatus { SEGERA_DISKUSIKAN, DISKUSIKAN_PERKEMBANGAN, PENGAMATAN_BELUM_CUKUP, KEMAMPUAN_DILAPORKAN_TERLIHAT }
+enum class ScreeningResultReasonCode { DISKUSIKAN_BUTIR_PERKEMBANGAN, DISKUSIKAN_KEKHAWATIRAN_PARENT, DISKUSIKAN_PENDENGARAN, DISKUSIKAN_PERBEDAAN_GERAK, OBSERVASI_BELUM_CUKUP, SEGERA_DISKUSIKAN_KEHILANGAN_KEMAMPUAN }
+enum class ScreeningRuleSetStatus { DRAFT, PUBLISHED, RETIRED }
+enum class ScreeningRuleTriggerKind { ANSWER, CONTEXT }
+
+object ScreeningLocaleCodes {
+    // Mories Deo Hutapea,S.E.,S.Kom
+    // The screening catalog is currently reviewed and published in Indonesian
+    // and English. The application shell still supports all seven UI locales;
+    // adding more screening locales requires translated, reviewed catalog text.
+    val supported = setOf("id", "en")
+}
 
 object InstitutionTypeCodes {
     const val DAYCARE = "DAYCARE"

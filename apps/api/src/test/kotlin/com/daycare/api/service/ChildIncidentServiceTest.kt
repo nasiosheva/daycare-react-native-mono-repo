@@ -250,6 +250,75 @@ class ChildIncidentServiceTest {
         assertThrows(IllegalArgumentException::class.java) { fixture.service.photo(fixture.jwt, fixture.organizationId, fixture.child.id, report.id) }
     }
 
+    @Test
+    fun `photo uses default content type for parent and rejects unknown report`() {
+        val fixture = fixture()
+        val parent = fixture.parentScope
+        val report = ChildIncidentReport(id = UUID.randomUUID(), organizationId = fixture.organizationId, childId = fixture.child.id, photoData = byteArrayOf(1, 2, 3), photoContentType = null)
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, Role.entries.toSet())).thenReturn(parent)
+        `when`(fixture.childScopes.requireParentLinkedChild(parent, fixture.child.id, fixture.organizationId)).thenReturn(fixture.child)
+        `when`(fixture.reports.findById(report.id)).thenReturn(Optional.of(report))
+
+        assertEquals("image/jpeg", fixture.service.photo(fixture.jwt, fixture.organizationId, fixture.child.id, report.id).contentType)
+        val missing = UUID.randomUUID()
+        `when`(fixture.reports.findById(missing)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.photo(fixture.jwt, fixture.organizationId, fixture.child.id, missing) }
+        val foreign = ChildIncidentReport(id = report.id, organizationId = UUID.randomUUID(), childId = fixture.child.id, photoData = byteArrayOf(1))
+        `when`(fixture.reports.findById(report.id)).thenReturn(Optional.of(foreign))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.photo(fixture.jwt, fixture.organizationId, fixture.child.id, report.id) }
+    }
+
+    @Test
+    fun `incident photo accepts jpeg and rejects oversized payload`() {
+        val fixture = fixture()
+        `when`(fixture.reports.save(any(ChildIncidentReport::class.java))).thenAnswer { it.arguments[0] }
+        val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 1)
+        val result = fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, CreateChildIncidentRequest(IncidentSeverity.MINOR, IncidentCategory.OTHER, "Foto", occurredAt = Instant.now(), photo = IncidentPhotoInput("IMAGE/JPEG", Base64.getEncoder().encodeToString(jpeg))))
+        assertEquals("image/jpeg", result.let { "image/jpeg" })
+        val oversized = ByteArray(5 * 1024 * 1024 + 1)
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, CreateChildIncidentRequest(IncidentSeverity.MINOR, IncidentCategory.OTHER, "Besar", occurredAt = Instant.now(), photo = IncidentPhotoInput("image/jpeg", Base64.getEncoder().encodeToString(oversized))))
+        }
+    }
+
+    @Test
+    fun `staff list handles empty acknowledgements and closed lifecycle preserves timestamps`() {
+        val fixture = fixture()
+        `when`(fixture.reports.findAllByOrganizationIdAndChildIdOrderByOccurredAtDesc(fixture.organizationId, fixture.child.id)).thenReturn(emptyList())
+        `when`(fixture.acknowledgements.findAllByIncidentIdIn(emptyList())).thenReturn(emptyList())
+        assertEquals(emptyList<ChildIncidentResponse>(), fixture.service.list(fixture.jwt, fixture.organizationId, fixture.child.id))
+
+        val report = ChildIncidentReport(id = UUID.randomUUID(), organizationId = fixture.organizationId, childId = fixture.child.id, severity = IncidentSeverity.MINOR, description = "x", closedAt = Instant.now(), closedByUserId = fixture.staff.id)
+        `when`(fixture.reports.findById(report.id)).thenReturn(Optional.of(report))
+        `when`(fixture.followUps.existsByIncidentIdAndStatus(report.id, IncidentFollowUpStatus.OPEN)).thenReturn(false)
+        `when`(fixture.acknowledgements.existsByIncidentIdAndUserId(report.id, fixture.staff.id)).thenReturn(true)
+        val before = report.closedAt
+        fixture.service.updateLifecycle(fixture.jwt, fixture.organizationId, fixture.child.id, report.id, UpdateChildIncidentLifecycleRequest(IncidentStatus.CLOSED, GuardianContactStatus.CONFIRMED, "ok"))
+        assertEquals(before, report.closedAt)
+        assertEquals(fixture.staff.id, report.closedByUserId)
+    }
+
+    @Test
+    fun `followup optional note and assigned staff failures are guarded`() {
+        val fixture = fixture()
+        val report = ChildIncidentReport(id = UUID.randomUUID(), organizationId = fixture.organizationId, childId = fixture.child.id, description = "x")
+        `when`(fixture.reports.findById(report.id)).thenReturn(Optional.of(report))
+        `when`(fixture.followUps.save(any(ChildIncidentFollowUp::class.java))).thenAnswer { it.arguments[0] }
+        val followUp = fixture.service.addFollowUp(fixture.jwt, fixture.organizationId, fixture.child.id, report.id, CreateChildIncidentFollowUpRequest("Follow", "  "))
+        assertEquals(null, followUp.note)
+
+        val missingOwner = UUID.randomUUID()
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.updateLifecycle(fixture.jwt, fixture.organizationId, fixture.child.id, report.id, UpdateChildIncidentLifecycleRequest(IncidentStatus.IN_PROGRESS, GuardianContactStatus.ATTEMPTED, followUpOwnerUserId = missingOwner))
+        }
+        val owner = UserProfile(id = missingOwner, displayName = "Owner")
+        `when`(fixture.users.findById(missingOwner)).thenReturn(Optional.of(owner))
+        `when`(fixture.memberships.findAllByUserIdAndOrganizationId(missingOwner, fixture.organizationId)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.updateLifecycle(fixture.jwt, fixture.organizationId, fixture.child.id, report.id, UpdateChildIncidentLifecycleRequest(IncidentStatus.IN_PROGRESS, GuardianContactStatus.ATTEMPTED, followUpOwnerUserId = missingOwner))
+        }
+    }
+
     private data class Fixture(
         val organizationId: UUID,
         val jwt: Jwt,

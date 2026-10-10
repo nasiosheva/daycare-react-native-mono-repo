@@ -2455,3 +2455,83 @@ bukan pengganti test domain yang lebih rinci.
   tidak otomatis berubah menjadi `AcademicPlacement`, dan data baru tidak
   di-backfill dari nama tingkatan atau jenis tenant tanpa keputusan Staff Admin
   yang dapat diaudit.
+
+### 13.18 Cek perkembangan dan modul skrining perhatian/perilaku
+
+- **Locale rilis saat ini:** katalog, kuesioner, hasil, dan PDF Cek perkembangan
+  hanya dipublikasikan untuk Bahasa Indonesia (`id`) dan Inggris (`en`). Shell
+  aplikasi tetap memiliki tujuh locale, tetapi locale screening tambahan tidak
+  boleh dipenuhi dengan fallback atau terjemahan otomatis; setiap penambahan
+  locale harus memiliki teks, review bahasa, dan validasi publish tersendiri.
+
+- **Cek perkembangan anak** adalah fitur pemantauan non-diagnostik untuk Parent,
+  termasuk Parent yang belum memiliki tenant terhubung. Profil subjek, sesi,
+  jawaban, hasil, dan PDF dimiliki Parent pengisi; tenant, Staff, Staff Admin,
+  dan Platform Admin tidak mendapat akses ke jawaban atau hasil tersebut.
+- Hasil Cek perkembangan hanya memakai status tindak lanjut yang ditetapkan
+  server dari template berversi. Ia tidak menghasilkan diagnosis, severity,
+  persentil, skor risiko klinis, label “normal/terlambat”, atau rekomendasi
+  terapi. UI dan PDF wajib menyebut bahwa laporan adalah ringkasan jawaban
+  Parent dan bukan diagnosis atau skrining klinis tervalidasi.
+- Daftar alasan pada UI dan PDF wajib menampilkan teks pertanyaan yang diambil
+  dari snapshot hasil serta label jawaban Parent. Kode internal alasan,
+  seperti `DISKUSIKAN_BUTIR_PERKEMBANGAN` atau `OBSERVASI_BELUM_CUKUP`, tidak
+  boleh ditampilkan sebagai narasi kepada Parent.
+- Hasil juga wajib menyediakan **ringkasan jawaban versi Usia Emas** yang
+  bersifat praktis dan non-diagnostik. Ringkasan minimal menampilkan
+  kemampuan yang dilaporkan sudah terlihat, butir pertanyaan dan jawaban yang
+  perlu diamati/dibahas, serta langkah pengamatan berikutnya yang dapat
+  dilakukan Parent di rumah. Langkah tersebut tidak boleh menyatakan diagnosis,
+  tingkat keparahan, terapi, atau menggantikan penilaian tenaga kesehatan.
+  Bagian ini ditampilkan di UI hasil dan ikut masuk ke PDF agar laporan tetap
+  berguna sebelum atau sambil menunggu konsultasi medis.
+- Ringkasan domain di UI/PDF wajib memakai nama area yang mudah dipahami
+  (`Bahasa dan komunikasi`, `Motorik kasar`, dan seterusnya) serta status
+  naratif terjemahan. Kode domain dan enum internal tidak boleh tampil kepada
+  Parent; beberapa baris untuk subbutir yang sama harus digabung menjadi satu
+  area sebelum dihitung dan ditampilkan.
+- UI hasil menyediakan aksi **Pratinjau PDF** sebelum aksi unduh/bagikan.
+  Pratinjau harus memakai endpoint PDF yang sama, authorization Parent yang
+  sama, snapshot hasil yang sama, dan tidak membuat versi laporan berbeda.
+  Jika perangkat/browser tidak dapat membuka pratinjau, UI harus menampilkan
+  error yang jelas dan tetap menyediakan aksi unduh/bagikan.
+- Katalog template, butir, pilihan, terjemahan, aturan hasil, dan narasi
+  dikelola Platform Admin melalui katalog global. Seed/batch awal hanya membuat
+  `DRAFT`; publikasi memerlukan review klinis, privasi, bahasa, dan validasi
+  versi. Deploy, startup API, restart, rollback, dan CI/CD rutin tidak boleh
+  menjalankan seed katalog secara otomatis. Batch manual mengikuti ID batch,
+  checksum, preview, flag apply sementara, manifest audit, dan idempotensi yang
+  ditetapkan pada plan screening.
+- Pertanyaan perkembangan memakai satu pilihan (`YA_SUDAH`, `KADANG`, `BELUM`,
+  atau `TIDAK_DIAMATI`). Pertanyaan konteks yang memang membutuhkan beberapa
+  jawaban (bahasa dan area kekhawatiran) memakai `MULTI_CHOICE`; server menyimpan
+  kode pilihan terurut secara kanonik, memvalidasi setiap kode aktif, dan tidak
+  memperlakukan “tidak tahu” sebagai kemampuan yang belum ada.
+- Rule trigger bertipe `ANSWER` boleh memiliki `stableQuestionId` kosong hanya
+  untuk fallback global yang sudah direview, misalnya semua butir perkembangan
+  dengan jawaban `BELUM` atau `TIDAK_DIAMATI`. Jika `stableQuestionId` diisi,
+  trigger hanya berlaku untuk butir tersebut. Trigger tetap wajib memiliki kode
+  jawaban, tidak boleh menjalankan ekspresi bebas, dan harus lolos test matriks
+  sebelum publish.
+- Target produk adalah usia 2 bulan sampai sebelum 18 tahun, tetapi seed awal
+  hanya 2–60 bulan. Rentang usia 61–215 bulan hanya dapat dibuka melalui template
+  baru yang dirancang dan direview tersendiri; sistem tidak memperpanjang butir
+  balita secara otomatis.
+- Katalog admin tidak memberi Platform Admin hak melihat data Parent. Staff dan
+  Staff Admin tenant tidak memiliki menu, deep link, endpoint, atau fallback
+  untuk membaca katalog privat, sesi, jawaban, hasil, atau PDF Parent.
+- ADHD **bukan** status hasil dan bukan diagnosis pada Cek perkembangan. Area
+  seperti belajar, interaksi, atau perilaku hanya dapat menjadi jawaban yang
+  mengarahkan Parent untuk berdiskusi dengan tenaga profesional.
+- Jika produk memerlukan skrining ADHD, fitur itu harus menjadi modul terpisah
+  bernama **Skrining perhatian dan perilaku**. Modul tersebut baru boleh
+  dipublikasikan setelah instrumen tervalidasi dan berizin, desain usia serta
+  persetujuan ditetapkan, data dari lebih dari satu lingkungan/informan
+  didukung bila tersedia, dan review klinis/privasi selesai. Keluaran yang
+  diperbolehkan hanya “perlu evaluasi profesional” atau “data belum lengkap”;
+  aplikasi tidak boleh menampilkan “ADHD”, “tidak ADHD”, diagnosis, obat, atau
+  terapi otomatis.
+- Cek perkembangan dan modul perhatian/perilaku memiliki template, versi,
+  evaluator, consent, retention, audit, dan PDF yang terpisah. Menambah kode
+  ADHD ke empat status atau enam alasan Cek perkembangan dianggap perubahan
+  kontrak yang tidak sah dan harus ditolak pada validasi publish.

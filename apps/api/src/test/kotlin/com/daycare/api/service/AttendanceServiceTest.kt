@@ -122,7 +122,9 @@ class AttendanceServiceTest {
         val fixtures = Fixtures()
         val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
         val operationalDate = LocalDate.now(ZoneId.of(fixtures.branch.timezone))
-        val at = Instant.now().minusSeconds(90)
+        val localNow = java.time.ZonedDateTime.now(ZoneId.of(fixtures.branch.timezone))
+        val candidate = localNow.toLocalDate().atStartOfDay(ZoneId.of(fixtures.branch.timezone)).plusSeconds(30)
+        val at = if (candidate.isAfter(localNow)) localNow.minusNanos(1_000_000).toInstant() else candidate.toInstant()
         `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF))).thenReturn(fixtures.scope)
         `when`(fixtures.childScopes.requireStaffManagedChild(fixtures.scope, child.id, fixtures.organizationId)).thenReturn(child)
         `when`(fixtures.branches.findById(child.branchId)).thenReturn(Optional.of(fixtures.branch))
@@ -269,6 +271,88 @@ class AttendanceServiceTest {
 
         assertEquals(checkedOutAt, response.checkedOutAt)
         verify(fixtures.pickupAuthorizations).verifyCheckout(staffScope, child, authorizationId, "exception")
+    }
+
+    @Test
+    fun `attendance guards cover qr token, duplicate check-in, closed days, and missing check-in`() {
+        val fixtures = Fixtures()
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
+        val today = LocalDate.now(ZoneId.of(fixtures.branch.timezone))
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF))).thenReturn(fixtures.scope)
+        `when`(fixtures.childScopes.requireStaffManagedChild(fixtures.scope, child.id, fixtures.organizationId)).thenReturn(child)
+        `when`(fixtures.branches.findById(child.branchId)).thenReturn(Optional.of(fixtures.branch))
+        assertThrows(IllegalArgumentException::class.java) {
+            fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_IN, AttendanceMethod.QR, "qr", qrToken = null))
+        }
+
+        val open = AttendanceRecord(organizationId = fixtures.organizationId, branchId = child.branchId, childId = child.id, operationalDate = today, checkedInAt = Instant.now().minusSeconds(60), checkInIdempotencyKey = "same")
+        `when`(fixtures.attendance.findByChildIdAndOperationalDate(child.id, today)).thenReturn(open)
+        assertEquals(open.id, fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_IN, AttendanceMethod.MANUAL, "same")).id)
+        assertThrows(AttendanceConflict::class.java) { fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_IN, AttendanceMethod.MANUAL, "different")) }
+
+        open.checkedOutAt = Instant.now().minusSeconds(20)
+        assertThrows(AttendanceConflict::class.java) { fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_IN, AttendanceMethod.MANUAL, "closed")) }
+
+        `when`(fixtures.attendance.findByChildIdAndOperationalDate(child.id, today)).thenReturn(null)
+        assertThrows(AttendanceConflict::class.java) { fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_OUT, AttendanceMethod.MANUAL, "out")) }
+    }
+
+    @Test
+    fun `attendance validates operational day and checkout ordering`() {
+        val fixtures = Fixtures()
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
+        val today = LocalDate.now(ZoneId.of(fixtures.branch.timezone))
+        val checkInAt = today.atStartOfDay(ZoneId.of(fixtures.branch.timezone)).plusHours(8).toInstant()
+        val existing = AttendanceRecord(organizationId = fixtures.organizationId, branchId = child.branchId, childId = child.id, operationalDate = today, checkedInAt = checkInAt, checkInIdempotencyKey = "in")
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF))).thenReturn(fixtures.scope)
+        `when`(fixtures.childScopes.requireStaffManagedChild(fixtures.scope, child.id, fixtures.organizationId)).thenReturn(child)
+        `when`(fixtures.branches.findById(child.branchId)).thenReturn(Optional.of(fixtures.branch))
+        `when`(fixtures.attendance.findByChildIdAndOperationalDate(child.id, today)).thenReturn(existing)
+        assertThrows(IllegalArgumentException::class.java) {
+            fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_OUT, AttendanceMethod.MANUAL, "before", at = checkInAt.minusSeconds(1)))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_OUT, AttendanceMethod.MANUAL, "past", at = today.minusDays(1).atStartOfDay(ZoneId.of(fixtures.branch.timezone)).toInstant()))
+        }
+    }
+
+    @Test
+    fun `staff child filters and attendance context cover optional references and denied eligibility`() {
+        val fixtures = Fixtures()
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, classroomId = fixtures.classroom.id, firstName = "Alya")
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, Role.entries.toSet(), allowSubscriptionRestrictedForRoles = setOf(Role.PARENT))).thenReturn(fixtures.scope)
+        `when`(fixtures.childScopes.visibleChildren(fixtures.scope, fixtures.organizationId)).thenReturn(listOf(child))
+        `when`(fixtures.branches.findById(fixtures.branch.id)).thenReturn(Optional.of(fixtures.branch))
+        `when`(fixtures.levels.findById(fixtures.level.id)).thenReturn(Optional.of(fixtures.level))
+        `when`(fixtures.classrooms.findById(fixtures.classroom.id)).thenReturn(Optional.of(fixtures.classroom))
+        `when`(fixtures.branches.findAllById(listOf(child.branchId))).thenReturn(listOf(fixtures.branch))
+        `when`(fixtures.attendance.findAllByChildIdInAndOperationalDateIn(listOf(child.id), listOf(LocalDate.now(ZoneId.of(fixtures.branch.timezone))))).thenReturn(emptyList())
+        `when`(fixtures.publishedOfferings.hasPublishedCapability(fixtures.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)).thenReturn(true)
+        `when`(fixtures.bookingEligibility.checkInEligibility(fixtures.organizationId, child.id, LocalDate.now(ZoneId.of(fixtures.branch.timezone)))).thenReturn(BookingEligibility(false, "Tidak ada booking"))
+        assertEquals(emptySet<AttendanceAction>(), fixtures.service.listChildren(fixtures.jwt, fixtures.organizationId).single().attendanceContext?.allowedActions)
+
+        val foreignBranch = Branch(organizationId = UUID.randomUUID())
+        assertThrows(IllegalArgumentException::class.java) { fixtures.service.listChildren(fixtures.jwt, fixtures.organizationId, ChildListFilter(branchId = foreignBranch.id)) }
+        val foreignLevel = LearningLevel(organizationId = UUID.randomUUID())
+        `when`(fixtures.levels.findById(foreignLevel.id)).thenReturn(Optional.of(foreignLevel))
+        assertThrows(IllegalArgumentException::class.java) { fixtures.service.listChildren(fixtures.jwt, fixtures.organizationId, ChildListFilter(learningLevelId = foreignLevel.id)) }
+    }
+
+    @Test
+    fun `attendance report handles foreign branch and filters records by organization`() {
+        val fixtures = Fixtures()
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(fixtures.scope)
+        `when`(fixtures.branches.findById(fixtures.branch.id)).thenReturn(Optional.of(Branch(id = fixtures.branch.id, organizationId = UUID.randomUUID())))
+        assertThrows(IllegalArgumentException::class.java) {
+            fixtures.service.childAttendanceReport(fixtures.jwt, fixtures.organizationId, fixtures.branch.id, LocalDate.now(), LocalDate.now())
+        }
+
+        `when`(fixtures.branches.findById(fixtures.branch.id)).thenReturn(Optional.of(fixtures.branch))
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
+        `when`(fixtures.childScopes.visibleChildren(fixtures.scope, fixtures.organizationId)).thenReturn(listOf(child))
+        val wrong = AttendanceRecord(organizationId = UUID.randomUUID(), branchId = fixtures.branch.id, childId = child.id, operationalDate = LocalDate.now(), checkedInAt = Instant.now())
+        `when`(fixtures.attendance.findAllByChildIdInAndOperationalDateBetween(listOf(child.id), LocalDate.now(), LocalDate.now())).thenReturn(listOf(wrong))
+        assertEquals(0, fixtures.service.childAttendanceReport(fixtures.jwt, fixtures.organizationId, fixtures.branch.id, LocalDate.now(), LocalDate.now()).rows.single().totalCheckIns)
     }
 
     private class Fixtures {

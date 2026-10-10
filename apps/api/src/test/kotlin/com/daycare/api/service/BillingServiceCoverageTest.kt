@@ -499,6 +499,251 @@ class BillingServiceCoverageTest {
         assertThrows(IllegalArgumentException::class.java) { f.service.quoteEnrollment(f.organizationId, f.planId, "USED") }
     }
 
+    @Test
+    fun `deferred and immediate purchase paths cover period, discount and booking variants`() {
+        val f = fixture()
+        val today = LocalDate.now()
+        val monthly = ServicePlan(id = f.planId, organizationId = f.organizationId, name = "Bulanan", type = ServicePlanType.MONTHLY, price = BigDecimal("300"))
+        `when`(f.plans.findById(f.planId)).thenReturn(Optional.of(monthly))
+        val monthlyInvoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-M", totalAmount = BigDecimal("300"), branchId = f.child.branchId, childId = f.child.id)
+        `when`(f.invoices.save(any(Invoice::class.java))).thenReturn(monthlyInvoice)
+        `when`(f.entitlements.save(any(ServiceEntitlement::class.java))).thenAnswer { it.arguments[0] }
+        `when`(f.entitlements.findAllByInvoiceId(f.invoiceId)).thenReturn(emptyList())
+        `when`(f.users.findById(f.parent.id)).thenReturn(Optional.of(f.parent))
+        `when`(f.paymentProofs.findByInvoiceId(f.invoiceId)).thenReturn(null)
+        `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), today)).thenReturn(emptyList())
+        val deferred = f.service.purchaseForEnrollment(f.parent, f.organizationId, f.child, PurchaseServiceRequest(f.planId, f.child.id, emptyList()))
+        assertEquals(YearMonth.from(today).atEndOfMonth(), deferred.entitlement.validUntil)
+
+        val weekly = ServicePlan(id = f.planId, organizationId = f.organizationId, name = "Mingguan", type = ServicePlanType.WEEKLY, price = BigDecimal("100"), creditCount = 2, unusedCreditPolicy = UnusedCreditPolicy.CARRY_FORWARD, carryForwardDays = null)
+        `when`(f.plans.findById(f.planId)).thenReturn(Optional.of(weekly))
+        `when`(f.capacity.requireAvailability(f.organizationId, f.child.branchId, f.planId, listOf(today))).thenReturn(weekly)
+        val weeklyInvoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-W", totalAmount = BigDecimal("100"), branchId = f.child.branchId, childId = f.child.id)
+        `when`(f.invoices.save(any(Invoice::class.java))).thenReturn(weeklyInvoice)
+        `when`(f.entitlements.save(any(ServiceEntitlement::class.java))).thenAnswer { it.arguments[0] }
+        `when`(f.bookings.save(any(Booking::class.java))).thenAnswer { it.arguments[0] }
+        `when`(f.invoices.findById(f.invoiceId)).thenReturn(Optional.of(weeklyInvoice))
+        val immediate = f.service.purchase(f.jwt, f.organizationId, PurchaseServiceRequest(f.planId, f.child.id, listOf(today)))
+        assertEquals(today.plusDays(6).plusDays(30), immediate.entitlement.validUntil)
+        assertEquals(1, immediate.bookings.size)
+    }
+
+    @Test
+    fun `booking and payment lifecycle guards cover terminal and ownership states`() {
+        val f = fixture()
+        val today = LocalDate.now()
+        val entitlement = ServiceEntitlement(id = UUID.randomUUID(), organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, ownerUserId = f.parent.id, invoiceId = f.invoiceId, planId = f.planId, planName = "Harian", planType = ServicePlanType.DAILY, status = EntitlementStatus.EXPIRED, totalCredits = 1, validUntil = today.plusDays(1))
+        `when`(f.entitlements.findById(entitlement.id)).thenReturn(Optional.of(entitlement))
+        `when`(f.childScopes.requireParentLinkedChild(f.parentScope, entitlement.childId, f.organizationId)).thenReturn(f.child)
+        `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), today)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(today))) }
+        entitlement.status = EntitlementStatus.ACTIVE
+        entitlement.planType = ServicePlanType.MONTHLY
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(today))) }
+
+        val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV", status = InvoiceStatus.PAID, branchId = f.child.branchId, childId = f.child.id)
+        `when`(f.invoices.findById(f.invoiceId)).thenReturn(Optional.of(invoice))
+        assertThrows(IllegalArgumentException::class.java) { f.service.markInvoicePaid(f.jwt, f.organizationId, f.invoiceId) }
+        `when`(f.identity.sync(f.jwt)).thenReturn(f.parent)
+        assertThrows(IllegalArgumentException::class.java) { f.service.submitPaymentProof(f.jwt, f.organizationId, f.invoiceId, SubmitPaymentProofRequest("a.png", "image/png", "bad")) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.invoice(f.jwt, UUID.randomUUID(), f.invoiceId) }
+        `when`(f.paymentProofs.findByInvoiceId(f.invoiceId)).thenReturn(null)
+        assertThrows(IllegalArgumentException::class.java) { f.service.paymentProof(f.jwt, f.organizationId, f.invoiceId) }
+    }
+
+    @Test
+    fun `billing catalog exposes active plans and rejects foreign or missing admin records`() {
+        val f = fixture()
+        val plan = ServicePlan(id = f.planId, organizationId = f.organizationId, name = "Harian", type = ServicePlanType.DAILY, price = BigDecimal("100"), creditCount = 1)
+        `when`(f.plans.findAllByOrganizationIdAndActiveTrue(f.organizationId)).thenReturn(listOf(plan))
+        assertEquals(1, f.service.plans(f.jwt, f.organizationId).size)
+
+        `when`(f.plans.findById(f.planId)).thenReturn(Optional.of(plan))
+        val discount = ServicePlanDiscount(id = f.discountId, organizationId = f.organizationId, servicePlanId = f.planId, kind = ServicePlanDiscountKind.AUTOMATIC, name = "Auto", type = ServicePlanDiscountType.FIXED_AMOUNT, value = BigDecimal("10"))
+        `when`(f.discounts.findAllByOrganizationIdAndServicePlanIdOrderByCreatedAtDesc(f.organizationId, f.planId)).thenReturn(listOf(discount))
+        assertEquals(1, f.service.planDiscounts(f.jwt, f.organizationId, f.planId).size)
+        `when`(f.discounts.findById(f.discountId)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) { f.service.deactivatePlanDiscount(f.jwt, f.organizationId, f.planId, f.discountId) }
+        `when`(f.discounts.findById(f.discountId)).thenReturn(Optional.of(ServicePlanDiscount(id = f.discountId, organizationId = UUID.randomUUID(), servicePlanId = f.planId, kind = ServicePlanDiscountKind.AUTOMATIC, name = "Auto", type = ServicePlanDiscountType.FIXED_AMOUNT, value = BigDecimal("10"))))
+        assertThrows(IllegalArgumentException::class.java) { f.service.deactivatePlanDiscount(f.jwt, f.organizationId, f.planId, f.discountId) }
+
+        val templateId = UUID.randomUUID()
+        `when`(f.templates.findById(templateId)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) { f.service.updatePlanTemplate(f.jwt, f.organizationId, templateId, UpsertServicePlanTemplateRequest("X", ServicePlanType.DAILY, BigDecimal("10"), 1, null, null, false, null)) }
+        val foreignTemplate = com.daycare.api.persistence.ServicePlanTemplate(id = templateId, organizationId = UUID.randomUUID(), name = "X")
+        `when`(f.templates.findById(templateId)).thenReturn(Optional.of(foreignTemplate))
+        assertThrows(IllegalArgumentException::class.java) { f.service.deletePlanTemplate(f.jwt, f.organizationId, templateId) }
+
+        val branch = com.daycare.api.persistence.Branch(id = UUID.randomUUID(), organizationId = f.organizationId, name = "Cabang")
+        `when`(f.capacity.branchSettings(f.organizationId)).thenReturn(listOf(BranchCapacitySetting(organizationId = f.organizationId, branchId = branch.id, dailyCapacity = 7)))
+        assertEquals(7, f.service.branchCapacityForCatalog(f.organizationId, branch.id))
+    }
+
+    @Test
+    fun `payment completion handles absent, expired, and approval-required entitlements`() {
+        val noEntitlement = fixture()
+        val invoice = Invoice(id = noEntitlement.invoiceId, organizationId = noEntitlement.organizationId, payerUserId = noEntitlement.parent.id, invoiceNumber = "INV-NONE", status = InvoiceStatus.PENDING, branchId = noEntitlement.child.branchId, childId = noEntitlement.child.id)
+        `when`(noEntitlement.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(noEntitlement.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())).thenReturn(emptyList())
+        `when`(noEntitlement.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        `when`(noEntitlement.entitlements.findAllByInvoiceId(invoice.id)).thenReturn(emptyList())
+        `when`(noEntitlement.users.findById(noEntitlement.parent.id)).thenReturn(Optional.of(noEntitlement.parent))
+        `when`(noEntitlement.children.findById(noEntitlement.child.id)).thenReturn(Optional.of(noEntitlement.child))
+        `when`(noEntitlement.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(null)
+        assertEquals(InvoiceStatus.PAID, noEntitlement.service.markInvoicePaid(noEntitlement.jwt, noEntitlement.organizationId, invoice.id).status)
+
+        val expired = fixture()
+        val expiredInvoice = Invoice(id = expired.invoiceId, organizationId = expired.organizationId, payerUserId = expired.parent.id, invoiceNumber = "INV-EXPIRED-PAID", status = InvoiceStatus.PENDING, branchId = expired.child.branchId, childId = expired.child.id)
+        val expiredEntitlement = ServiceEntitlement(organizationId = expired.organizationId, branchId = expired.child.branchId, childId = expired.child.id, ownerUserId = expired.parent.id, invoiceId = expiredInvoice.id, planName = "Lama", planType = ServicePlanType.DAILY, status = EntitlementStatus.PENDING_PAYMENT, totalCredits = 1, bookingRequiresApproval = false, validUntil = LocalDate.now().minusDays(1))
+        val pendingBooking = Booking(organizationId = expired.organizationId, branchId = expired.child.branchId, childId = expired.child.id, entitlementId = expiredEntitlement.id, invoiceId = expiredInvoice.id, planName = "Lama", status = BookingStatus.PENDING_PAYMENT)
+        `when`(expired.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(expired.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())).thenReturn(emptyList())
+        `when`(expired.invoices.findById(expiredInvoice.id)).thenReturn(Optional.of(expiredInvoice))
+        `when`(expired.entitlements.findAllByInvoiceId(expiredInvoice.id)).thenReturn(listOf(expiredEntitlement))
+        `when`(expired.bookings.findAllByInvoiceId(expiredInvoice.id)).thenReturn(listOf(pendingBooking))
+        `when`(expired.users.findById(expired.parent.id)).thenReturn(Optional.of(expired.parent))
+        `when`(expired.children.findById(expired.child.id)).thenReturn(Optional.of(expired.child))
+        `when`(expired.paymentProofs.findByInvoiceId(expiredInvoice.id)).thenReturn(null)
+        assertEquals(InvoiceStatus.PAID, expired.service.markInvoicePaid(expired.jwt, expired.organizationId, expiredInvoice.id).status)
+        assertEquals(EntitlementStatus.EXPIRED, expiredEntitlement.status)
+        assertEquals(BookingStatus.CONFIRMED, pendingBooking.status)
+
+        val approval = fixture()
+        val approvalInvoice = Invoice(id = approval.invoiceId, organizationId = approval.organizationId, payerUserId = approval.parent.id, invoiceNumber = "INV-APPROVAL", status = InvoiceStatus.PENDING, branchId = approval.child.branchId, childId = approval.child.id)
+        val approvalEntitlement = ServiceEntitlement(organizationId = approval.organizationId, branchId = approval.child.branchId, childId = approval.child.id, ownerUserId = approval.parent.id, invoiceId = approvalInvoice.id, planName = "Harian", planType = ServicePlanType.DAILY, status = EntitlementStatus.PENDING_PAYMENT, totalCredits = 1, bookingRequiresApproval = true, validUntil = LocalDate.now().plusDays(1))
+        val approvalBooking = Booking(organizationId = approval.organizationId, branchId = approval.child.branchId, childId = approval.child.id, entitlementId = approvalEntitlement.id, invoiceId = approvalInvoice.id, planName = "Harian", status = BookingStatus.PENDING_PAYMENT)
+        `when`(approval.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(approval.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())).thenReturn(emptyList())
+        `when`(approval.invoices.findById(approvalInvoice.id)).thenReturn(Optional.of(approvalInvoice))
+        `when`(approval.entitlements.findAllByInvoiceId(approvalInvoice.id)).thenReturn(listOf(approvalEntitlement))
+        `when`(approval.bookings.findAllByInvoiceId(approvalInvoice.id)).thenReturn(listOf(approvalBooking))
+        `when`(approval.users.findById(approval.parent.id)).thenReturn(Optional.of(approval.parent))
+        `when`(approval.children.findById(approval.child.id)).thenReturn(Optional.of(approval.child))
+        `when`(approval.paymentProofs.findByInvoiceId(approvalInvoice.id)).thenReturn(null)
+        approval.service.markInvoicePaid(approval.jwt, approval.organizationId, approvalInvoice.id)
+        assertEquals(BookingStatus.PENDING_APPROVAL, approvalBooking.status)
+    }
+
+    @Test
+    fun `payment proof review and cancellation reject invalid lifecycle states`() {
+        val f = fixture()
+        val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-GUARD", status = InvoiceStatus.PENDING, branchId = f.child.branchId, childId = f.child.id)
+        `when`(f.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        assertThrows(IllegalArgumentException::class.java) { f.service.reviewPaymentProof(f.jwt, f.organizationId, invoice.id, ReviewPaymentProofRequest(approved = true)) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.cancelPendingEnrollmentPurchase(invoice.id, UUID.randomUUID()) }
+        invoice.status = InvoiceStatus.PAID
+        assertThrows(IllegalArgumentException::class.java) { f.service.cancelPendingEnrollmentPurchase(invoice.id, UUID.randomUUID()) }
+
+        invoice.status = InvoiceStatus.PAYMENT_SUBMITTED
+        `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(null)
+        assertThrows(IllegalArgumentException::class.java) { f.service.reviewPaymentProof(f.jwt, f.organizationId, invoice.id, ReviewPaymentProofRequest(approved = true)) }
+        val proof = PaymentProof(invoiceId = invoice.id, imageData = byteArrayOf(1))
+        `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(proof)
+        assertThrows(IllegalArgumentException::class.java) { f.service.reviewPaymentProof(f.jwt, f.organizationId, invoice.id, ReviewPaymentProofRequest(approved = false, rejectionReason = "  ")) }
+    }
+
+    @Test
+    fun `staff can approve and reject ordinary bookings with lifecycle guards`() {
+        val f = fixture()
+        val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-BOOK-DECISION", totalAmount = BigDecimal("100"), branchId = f.child.branchId, childId = f.child.id)
+        val entitlement = ServiceEntitlement(id = UUID.randomUUID(), organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, ownerUserId = f.parent.id, invoiceId = invoice.id, planId = f.planId, planName = "Harian", planType = ServicePlanType.DAILY, totalCredits = 2, reservedCredits = 1, status = EntitlementStatus.ACTIVE, validUntil = LocalDate.now().plusDays(1))
+        val booking = Booking(id = UUID.randomUUID(), organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, entitlementId = entitlement.id, invoiceId = invoice.id, bookingDate = LocalDate.now(), planName = "Harian", status = BookingStatus.PENDING_APPROVAL)
+        `when`(f.access.require(f.jwt, f.organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(f.adminScope)
+        `when`(f.bookings.findById(booking.id)).thenReturn(Optional.of(booking))
+        `when`(f.parentEnrollments.findByInvoiceId(invoice.id)).thenReturn(null)
+        `when`(f.entitlements.findById(entitlement.id)).thenReturn(Optional.of(entitlement))
+        `when`(f.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        org.mockito.Mockito.doReturn(f.child).`when`(f.childScopes).requireStaffManagedChild(f.adminScope, booking.childId, f.organizationId)
+        assertEquals(BookingStatus.CONFIRMED, f.service.approveBooking(f.jwt, f.organizationId, booking.id, BookingApprovalRequest(true)).status)
+
+        booking.status = BookingStatus.PENDING_APPROVAL
+        assertEquals(BookingStatus.REJECTED, f.service.approveBooking(f.jwt, f.organizationId, booking.id, BookingApprovalRequest(false)).status)
+        assertEquals(0, entitlement.reservedCredits)
+        org.mockito.Mockito.verify(f.capacity).releaseForBooking(booking.id)
+
+        booking.status = BookingStatus.CONFIRMED
+        assertThrows(IllegalArgumentException::class.java) { f.service.approveBooking(f.jwt, f.organizationId, booking.id, BookingApprovalRequest(true)) }
+        booking.status = BookingStatus.PENDING_APPROVAL
+        `when`(f.parentEnrollments.findByInvoiceId(invoice.id)).thenReturn(com.daycare.api.persistence.ParentEnrollment(id = UUID.randomUUID(), organizationId = f.organizationId))
+        assertThrows(IllegalArgumentException::class.java) { f.service.approveBooking(f.jwt, f.organizationId, booking.id, BookingApprovalRequest(true)) }
+    }
+
+    @Test
+    fun `booking creation rejects unavailable dates, invalid ranges, and exhausted credits`() {
+        val f = fixture()
+        val today = LocalDate.now()
+        val entitlement = ServiceEntitlement(id = UUID.randomUUID(), organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, ownerUserId = f.parent.id, invoiceId = f.invoiceId, planId = f.planId, planName = "Mingguan", planType = ServicePlanType.WEEKLY, totalCredits = 2, reservedCredits = 1, status = EntitlementStatus.ACTIVE, validUntil = today.plusDays(2))
+        `when`(f.entitlements.findById(entitlement.id)).thenReturn(Optional.of(entitlement))
+        `when`(f.childScopes.requireParentLinkedChild(f.parentScope, entitlement.childId, f.organizationId)).thenReturn(f.child)
+        `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), today)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(emptyList())) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(today.minusDays(1)))) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(today.plusDays(3)))) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(today, today.plusDays(1)))) }
+        `when`(f.bookings.existsByOrganizationIdAndChildIdAndBookingDateAndStatusIn(f.organizationId, f.child.id, today, setOf(BookingStatus.PENDING_PAYMENT, BookingStatus.PENDING_APPROVAL, BookingStatus.CONFIRMED, BookingStatus.COMPLETED))).thenReturn(true)
+        entitlement.reservedCredits = 0
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(today))) }
+    }
+
+    @Test
+    fun `billing covers no discount, fixed discount exhaustion and deferred period variants`() {
+        val f = fixture()
+        val today = LocalDate.now()
+        val monthly = ServicePlan(id = f.planId, organizationId = f.organizationId, name = "Bulanan", type = ServicePlanType.MONTHLY, price = BigDecimal("100"), bookingRequiresApproval = false)
+        `when`(f.plans.findById(f.planId)).thenReturn(Optional.of(monthly))
+        `when`(f.discounts.findAllByOrganizationIdAndServicePlanIdAndActiveTrue(f.organizationId, f.planId)).thenReturn(emptyList())
+        assertEquals(BigDecimal.ZERO, f.service.quoteEnrollment(f.organizationId, f.planId, null).discountAmount)
+
+        val fixed = ServicePlanDiscount(organizationId = f.organizationId, servicePlanId = f.planId, kind = ServicePlanDiscountKind.AUTOMATIC, name = "Hampir gratis", type = ServicePlanDiscountType.FIXED_AMOUNT, value = BigDecimal("100"))
+        `when`(f.discounts.findAllByOrganizationIdAndServicePlanIdAndActiveTrue(f.organizationId, f.planId)).thenReturn(listOf(fixed))
+        assertThrows(IllegalArgumentException::class.java) { f.service.quoteEnrollment(f.organizationId, f.planId, null) }
+
+        val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-DEFER", subtotalAmount = BigDecimal("100"), totalAmount = BigDecimal("100"), branchId = f.child.branchId, childId = f.child.id)
+        val entitlement = ServiceEntitlement(id = UUID.randomUUID(), organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, ownerUserId = f.parent.id, planId = f.planId, invoiceId = invoice.id, planName = monthly.name, planType = monthly.type, validUntil = today.plusDays(1))
+        `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), today)).thenReturn(emptyList())
+        `when`(f.invoices.save(any(Invoice::class.java))).thenReturn(invoice)
+        `when`(f.entitlements.save(any(ServiceEntitlement::class.java))).thenReturn(entitlement)
+        `when`(f.entitlements.findAllByInvoiceId(invoice.id)).thenReturn(listOf(entitlement))
+        `when`(f.users.findById(f.parent.id)).thenReturn(Optional.empty())
+        `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(null)
+        val result = f.service.purchaseApprovedEnrollment(f.parent, f.organizationId, f.child, EnrollmentPlanSnapshot(f.planId, monthly.name, ServicePlanType.MONTHLY, BigDecimal("100"), BigDecimal.ZERO, null, null, BigDecimal("100"), null, null, null, false))
+        assertEquals(today.plusDays(1), result.entitlement.validUntil)
+    }
+
+    @Test
+    fun `billing payment proof and invoice listing cover existing proof optional names and filters`() {
+        val f = fixture()
+        val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-OPTIONAL", subtotalAmount = BigDecimal("100"), totalAmount = BigDecimal("100"), branchId = f.child.branchId, childId = f.child.id, status = InvoiceStatus.PENDING)
+        val existingProof = PaymentProof(invoiceId = invoice.id, fileName = "old.png", contentType = "image/png", imageData = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A), note = "old")
+        `when`(f.identity.sync(f.jwt)).thenReturn(f.parent)
+        `when`(f.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(existingProof)
+        `when`(f.entitlements.findAllByInvoiceId(invoice.id)).thenReturn(emptyList())
+        `when`(f.users.findById(f.parent.id)).thenReturn(Optional.empty())
+        `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
+        `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())).thenReturn(emptyList())
+        val png = java.util.Base64.getEncoder().encodeToString(existingProof.imageData)
+        f.service.submitPaymentProof(f.jwt, f.organizationId, invoice.id, SubmitPaymentProofRequest("new.png", "IMAGE/PNG", png, "  "))
+        assertEquals(null, existingProof.note)
+
+        `when`(f.invoices.findAllByOrganizationIdOrderByCreatedAtDesc(f.organizationId)).thenReturn(listOf(invoice))
+        assertEquals(1, f.service.invoices(f.jwt, f.organizationId, BranchListFilter(branchId = f.child.branchId), "INV").size)
+        assertEquals(0, f.service.invoices(f.jwt, f.organizationId, BranchListFilter(branchId = UUID.randomUUID())).size)
+    }
+
+    @Test
+    fun `billing booking listing covers parent ownership denial and missing invoice`() {
+        val f = fixture()
+        val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-LIST", totalAmount = BigDecimal("100"), branchId = f.child.branchId, childId = f.child.id)
+        val entitlement = ServiceEntitlement(id = UUID.randomUUID(), organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, ownerUserId = UUID.randomUUID(), invoiceId = invoice.id, planName = "Harian", planType = ServicePlanType.DAILY, validUntil = LocalDate.now().plusDays(1))
+        val booking = Booking(organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, entitlementId = entitlement.id, invoiceId = invoice.id, bookingDate = LocalDate.now(), status = BookingStatus.CONFIRMED, planName = entitlement.planName)
+        `when`(f.access.require(f.jwt, f.organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, true)).thenReturn(f.parentScope)
+        `when`(f.bookings.findAllByOrganizationIdOrderByBookingDateDesc(f.organizationId)).thenReturn(listOf(booking))
+        `when`(f.entitlements.findById(entitlement.id)).thenReturn(Optional.of(entitlement))
+        assertTrue(f.service.bookings(f.jwt, f.organizationId, pendingOnly = false).isEmpty())
+
+        entitlement.ownerUserId = f.parent.id
+        `when`(f.invoices.findAllById(setOf(invoice.id))).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) { f.service.bookings(f.jwt, f.organizationId, pendingOnly = false) }
+    }
+
     private data class Fixture(
         val organizationId: UUID,
         val planId: UUID,
