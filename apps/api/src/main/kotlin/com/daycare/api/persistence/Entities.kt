@@ -33,6 +33,18 @@ import com.daycare.api.domain.TenantSubscriptionStatus
 import com.daycare.api.domain.EducationEnrollmentMode
 import com.daycare.api.domain.EducationOfferingStatus
 import com.daycare.api.domain.EmergencyContactStatus
+import com.daycare.api.domain.ScreeningCatalogProvenance
+import com.daycare.api.domain.ScreeningCatalogResourceType
+import com.daycare.api.domain.ScreeningQuestionAnswerType
+import com.daycare.api.domain.ScreeningResultMainStatus
+import com.daycare.api.domain.ScreeningResultReasonCode
+import com.daycare.api.domain.ScreeningReviewStatus
+import com.daycare.api.domain.ScreeningRuleSetStatus
+import com.daycare.api.domain.ScreeningRuleTriggerKind
+import com.daycare.api.domain.ScreeningSessionStatus
+import com.daycare.api.domain.ScreeningAnswerCode
+import com.daycare.api.domain.ScreeningSeedManifestStatus
+import com.daycare.api.domain.ScreeningTemplateStatus
 import com.daycare.api.domain.PickupAuthorizationStatus
 import com.daycare.api.domain.PickupVerificationMethod
 import com.daycare.api.domain.ConsentPurpose
@@ -45,6 +57,7 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
+import jakarta.persistence.Version
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
 import java.time.Instant
@@ -997,4 +1010,249 @@ class DevelopmentCategoryConfig(
     @Column(nullable = false) var active: Boolean = true,
     @Column(name = "created_by_user_id") var createdByUserId: UUID? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "screening_seed_manifests")
+class ScreeningSeedManifest(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "batch_id", nullable = false, unique = true, length = 120) var batchId: String = "",
+    @Column(name = "seed_version", nullable = false, length = 80) var seedVersion: String = "",
+    @Column(nullable = false, length = 128) var checksum: String = "",
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) var status: ScreeningSeedManifestStatus = ScreeningSeedManifestStatus.APPLIED,
+    @Column(name = "applied_by", nullable = false, length = 200) var appliedBy: String = "",
+    @Column(name = "template_count", nullable = false) var templateCount: Int = 0,
+    @Column(name = "question_count", nullable = false) var questionCount: Int = 0,
+    @Column(name = "choice_count", nullable = false) var choiceCount: Int = 0,
+    @Column(name = "translation_count", nullable = false) var translationCount: Int = 0,
+    @Column(name = "applied_at", nullable = false) var appliedAt: Instant = Instant.now(),
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "screening_templates")
+class ScreeningTemplate(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(nullable = false, length = 120) var code: String = "",
+    @Column(nullable = false) var version: Int = 1,
+    @Column(name = "min_age_months", nullable = false) var minAgeMonths: Int = 0,
+    @Column(name = "max_age_months", nullable = false) var maxAgeMonths: Int = 0,
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) var status: ScreeningTemplateStatus = ScreeningTemplateStatus.DRAFT,
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) var provenance: ScreeningCatalogProvenance = ScreeningCatalogProvenance.MANUAL,
+    @Column(name = "seed_manifest_id") var seedManifestId: UUID? = null,
+    @Column(name = "rule_set_id") var ruleSetId: UUID? = null,
+    @Column(name = "rule_version", nullable = false) var ruleVersion: Int = 1,
+    @Column(nullable = false, length = 128) var checksum: String = "",
+    @Column(name = "copied_from_id") var copiedFromId: UUID? = null,
+    @Version @Column(nullable = false) var revision: Long = 0,
+    @Column(name = "created_by_user_id") var createdByUserId: UUID? = null,
+    @Column(name = "published_by_user_id") var publishedByUserId: UUID? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+    @Column(name = "published_at") var publishedAt: Instant? = null,
+    @Column(name = "retired_at") var retiredAt: Instant? = null,
+)
+
+@Entity @Table(name = "screening_questions")
+class ScreeningQuestion(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "template_id", nullable = false) var templateId: UUID = UUID.randomUUID(),
+    @Column(name = "stable_question_id", nullable = false, length = 120) var stableQuestionId: String = "",
+    @Column(nullable = false, length = 80) var domain: String = "",
+    @Column(length = 120) var subdomain: String? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "answer_type", nullable = false, length = 32) var answerType: ScreeningQuestionAnswerType = ScreeningQuestionAnswerType.SINGLE_CHOICE,
+    @Column(nullable = false) var required: Boolean = true,
+    @Column(name = "needs_opportunity", nullable = false) var needsOpportunity: Boolean = false,
+    @Column(name = "informational_only", nullable = false) var informationalOnly: Boolean = false,
+    @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
+    @Column(name = "min_age_months") var minAgeMonths: Int? = null,
+    @Column(name = "max_age_months") var maxAgeMonths: Int? = null,
+    @Column(name = "condition_code", length = 120) var conditionCode: String? = null,
+    @Column(name = "observation_instruction", length = 2_000) var observationInstruction: String? = null,
+    @Column(name = "source_version", length = 120) var sourceVersion: String? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "review_status", nullable = false, length = 20) var reviewStatus: ScreeningReviewStatus = ScreeningReviewStatus.NOT_REVIEWED,
+    @Column(name = "seed_manifest_id") var seedManifestId: UUID? = null,
+    @Version @Column(nullable = false) var revision: Long = 0,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "screening_choices")
+class ScreeningChoice(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "question_id", nullable = false) var questionId: UUID = UUID.randomUUID(),
+    @Column(nullable = false, length = 64) var code: String = "",
+    @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
+    @Column(nullable = false) var enabled: Boolean = true,
+    @Column(name = "seed_manifest_id") var seedManifestId: UUID? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "screening_catalog_texts")
+class ScreeningCatalogText(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(name = "resource_type", nullable = false, length = 20) var resourceType: ScreeningCatalogResourceType = ScreeningCatalogResourceType.TEMPLATE,
+    @Column(name = "resource_id", nullable = false) var resourceId: UUID = UUID.randomUUID(),
+    @Column(nullable = false, length = 16) var locale: String = "id",
+    @Column(name = "text_key", nullable = false, length = 120) var textKey: String = "",
+    @Column(name = "text_value", nullable = false, length = 4_000) var textValue: String = "",
+    @Column(name = "seed_manifest_id") var seedManifestId: UUID? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "screening_child_profiles")
+class ScreeningChildProfile(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "owner_user_id", nullable = false) var ownerUserId: UUID = UUID.randomUUID(),
+    @Column(name = "subject_name", nullable = false, length = 160) var subjectName: String = "",
+    @Column(name = "date_of_birth", nullable = false) var dateOfBirth: LocalDate = LocalDate.now(),
+    @Column(name = "premature_birth") var prematureBirth: Boolean? = null,
+    @Column(nullable = false) var active: Boolean = true,
+    @Column(name = "archived_at") var archivedAt: Instant? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "screening_sessions")
+class ScreeningSession(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "profile_id", nullable = false) var profileId: UUID = UUID.randomUUID(),
+    @Column(name = "owner_user_id", nullable = false) var ownerUserId: UUID = UUID.randomUUID(),
+    @Column(name = "template_id", nullable = false) var templateId: UUID = UUID.randomUUID(),
+    @Column(name = "template_code", nullable = false, length = 120) var templateCode: String = "",
+    @Column(name = "template_version", nullable = false) var templateVersion: Int = 1,
+    @Column(name = "organization_id") var organizationId: UUID? = null,
+    @Column(name = "child_id") var childId: UUID? = null,
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) var status: ScreeningSessionStatus = ScreeningSessionStatus.DRAFT,
+    @Column(nullable = false, length = 16) var locale: String = "id",
+    @Column(name = "observation_language", length = 120) var observationLanguage: String? = null,
+    @Column(name = "consent_version", nullable = false, length = 80) var consentVersion: String = "",
+    @Column(name = "consented_at", nullable = false) var consentedAt: Instant = Instant.now(),
+    @Column(name = "started_at", nullable = false) var startedAt: Instant = Instant.now(),
+    @Column(name = "expires_at", nullable = false) var expiresAt: Instant = Instant.now(),
+    @Column(name = "completed_at") var completedAt: Instant? = null,
+    @Column(name = "withdrawn_at") var withdrawnAt: Instant? = null,
+    @Column(name = "age_months", nullable = false) var ageMonths: Int = 0,
+    @Column(name = "corrected_age_months") var correctedAgeMonths: Int? = null,
+    @Column(name = "subject_name_snapshot", nullable = false, length = 160) var subjectNameSnapshot: String = "",
+    @Column(name = "date_of_birth_snapshot", nullable = false) var dateOfBirthSnapshot: LocalDate = LocalDate.now(),
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "screening_answers")
+class ScreeningAnswer(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "session_id", nullable = false) var sessionId: UUID = UUID.randomUUID(),
+    @Column(name = "question_id", nullable = false) var questionId: UUID = UUID.randomUUID(),
+    @Column(name = "stable_question_id", nullable = false, length = 120) var stableQuestionId: String = "",
+    @Column(name = "answer_code", nullable = false, length = 80) var answerCode: String = ScreeningAnswerCode.TIDAK_DIAMATI.name,
+    @Column(name = "context_code", length = 120) var contextCode: String? = null,
+    @Column(length = 2_000) var note: String? = null,
+    @Column(name = "answered_at", nullable = false) var answeredAt: Instant = Instant.now(),
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "screening_results")
+class ScreeningResult(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "session_id", nullable = false, unique = true) var sessionId: UUID = UUID.randomUUID(),
+    @Column(name = "template_id", nullable = false) var templateId: UUID = UUID.randomUUID(),
+    @Column(name = "template_code", nullable = false, length = 120) var templateCode: String = "",
+    @Column(name = "template_version", nullable = false) var templateVersion: Int = 1,
+    @Column(name = "rule_version", nullable = false) var ruleVersion: Int = 1,
+    @Column(nullable = false, length = 16) var locale: String = "id",
+    @Enumerated(EnumType.STRING) @Column(name = "main_status", nullable = false, length = 40) var mainStatus: ScreeningResultMainStatus = ScreeningResultMainStatus.PENGAMATAN_BELUM_CUKUP,
+    @Column(name = "completeness_status", nullable = false, length = 40) var completenessStatus: String = "COMPLETE",
+    @Column(name = "disclaimer_version", nullable = false, length = 80) var disclaimerVersion: String = "v1",
+    @Column(name = "status_title_snapshot", nullable = false, length = 4_000) var statusTitleSnapshot: String = "",
+    @Column(name = "status_summary_snapshot", nullable = false, length = 4_000) var statusSummarySnapshot: String = "",
+    @Column(name = "next_step_snapshot", nullable = false, length = 4_000) var nextStepSnapshot: String = "",
+    @Column(name = "disclaimer_text_snapshot", nullable = false, length = 4_000) var disclaimerTextSnapshot: String = "",
+    @Column(name = "subject_name_snapshot", nullable = false, length = 160) var subjectNameSnapshot: String = "",
+    @Column(name = "date_of_birth_snapshot", nullable = false) var dateOfBirthSnapshot: LocalDate = LocalDate.now(),
+    @Column(name = "age_months", nullable = false) var ageMonths: Int = 0,
+    @Column(name = "corrected_age_months") var correctedAgeMonths: Int? = null,
+    @Column(name = "generated_at", nullable = false) var generatedAt: Instant = Instant.now(),
+    @Column(name = "review_at") var reviewAt: Instant? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "screening_result_domains")
+class ScreeningResultDomain(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "result_id", nullable = false) var resultId: UUID = UUID.randomUUID(),
+    @Column(name = "domain_code", nullable = false, length = 80) var domainCode: String = "",
+    @Enumerated(EnumType.STRING) @Column(name = "status_code", nullable = false, length = 40) var statusCode: ScreeningResultMainStatus = ScreeningResultMainStatus.PENGAMATAN_BELUM_CUKUP,
+    @Column(name = "observed_count", nullable = false) var observedCount: Int = 0,
+    @Column(name = "incomplete_count", nullable = false) var incompleteCount: Int = 0,
+    @Column(name = "attention_count", nullable = false) var attentionCount: Int = 0,
+    @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
+)
+
+@Entity @Table(name = "screening_result_reasons")
+class ScreeningResultReason(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "result_id", nullable = false) var resultId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(name = "reason_code", nullable = false, length = 80) var reasonCode: ScreeningResultReasonCode = ScreeningResultReasonCode.OBSERVASI_BELUM_CUKUP,
+    @Column(name = "question_id") var questionId: UUID? = null,
+    @Column(name = "answer_id") var answerId: UUID? = null,
+    @Column(name = "stable_question_id", length = 120) var stableQuestionId: String? = null,
+    @Column(name = "answer_code", length = 80) var answerCode: String? = null,
+    @Column(name = "domain_code", length = 80) var domainCode: String? = null,
+    @Column(name = "text_snapshot", nullable = false, length = 4_000) var textSnapshot: String = "",
+    @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
+)
+
+@Entity @Table(name = "screening_result_items")
+class ScreeningResultItem(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "result_id", nullable = false) var resultId: UUID = UUID.randomUUID(),
+    @Column(name = "question_id", nullable = false) var questionId: UUID = UUID.randomUUID(),
+    @Column(name = "answer_id") var answerId: UUID? = null,
+    @Column(name = "stable_question_id", nullable = false, length = 120) var stableQuestionId: String = "",
+    @Column(name = "domain_code", nullable = false, length = 80) var domainCode: String = "",
+    @Column(name = "question_text_snapshot", nullable = false, length = 4_000) var questionTextSnapshot: String = "",
+    @Column(name = "answer_code", length = 80) var answerCode: String? = null,
+    @Column(name = "answer_label_snapshot", length = 1_000) var answerLabelSnapshot: String? = null,
+    @Column(name = "note_snapshot", length = 2_000) var noteSnapshot: String? = null,
+    @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
+)
+
+@Entity @Table(name = "screening_rule_sets")
+class ScreeningRuleSet(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(nullable = false, length = 120) var code: String = "",
+    @Column(nullable = false) var version: Int = 1,
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) var status: ScreeningRuleSetStatus = ScreeningRuleSetStatus.DRAFT,
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) var provenance: ScreeningCatalogProvenance = ScreeningCatalogProvenance.MANUAL,
+    @Column(nullable = false, length = 128) var checksum: String = "",
+    @Enumerated(EnumType.STRING) @Column(name = "review_status", nullable = false, length = 20) var reviewStatus: ScreeningReviewStatus = ScreeningReviewStatus.NOT_REVIEWED,
+    @Column(name = "seed_manifest_id") var seedManifestId: UUID? = null,
+    @Version @Column(nullable = false) var revision: Long = 0,
+    @Column(name = "created_by_user_id") var createdByUserId: UUID? = null,
+    @Column(name = "published_by_user_id") var publishedByUserId: UUID? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+    @Column(name = "published_at") var publishedAt: Instant? = null,
+    @Column(name = "retired_at") var retiredAt: Instant? = null,
+)
+
+@Entity @Table(name = "screening_rule_triggers")
+class ScreeningRuleTrigger(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "rule_set_id", nullable = false) var ruleSetId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING) @Column(name = "trigger_kind", nullable = false, length = 20) var triggerKind: ScreeningRuleTriggerKind = ScreeningRuleTriggerKind.ANSWER,
+    @Column(nullable = false) var priority: Int = 0,
+    @Column(name = "stable_question_id", length = 120) var stableQuestionId: String? = null,
+    @Column(name = "answer_code", length = 80) var answerCode: String? = null,
+    @Column(name = "context_code", length = 120) var contextCode: String? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "output_status", length = 40) var outputStatus: ScreeningResultMainStatus? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "reason_code", length = 80) var reasonCode: ScreeningResultReasonCode? = null,
+    @Column(name = "domain_code", length = 80) var domainCode: String? = null,
+    @Column(nullable = false) var enabled: Boolean = true,
+    @Column(name = "display_order", nullable = false) var displayOrder: Int = 0,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
 )

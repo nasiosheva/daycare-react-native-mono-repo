@@ -22,6 +22,7 @@ export default function PlatformCatalogScreen() {
       <MenuItem icon="flag-outline" title={t("globalDevelopmentPrograms.menu")} description={t("globalDevelopmentPrograms.subtitle")} onPress={() => router.push("/global-development-programs")} />
       <MenuItem icon="pricetags-outline" title={t("development.globalCategories")} description={t("development.globalCategoriesSubtitle")} onPress={() => router.push("/global-development-categories")} />
       <MenuItem icon="layers-outline" title={t("globalLearningLevels.menu")} description={t("globalLearningLevels.subtitle")} onPress={() => router.push("/global-learning-levels")} />
+      <MenuItem icon="analytics-outline" title={t("screening.title")} description={t("screening.description")} onPress={() => router.push("/screening-catalog" as never)} />
     </MenuSection>
   </AppScreen>;
 }

@@ -6,6 +6,7 @@ export const parentSelfServicePaths = new Set([
   "/parent-enrollment-form",
   "/parent-payment",
   "/payment-proof",
+  "/parent-screening",
 ]);
 
 export const parentUnscopedReadOnlyPaths = new Set(["/operational-hours"]);

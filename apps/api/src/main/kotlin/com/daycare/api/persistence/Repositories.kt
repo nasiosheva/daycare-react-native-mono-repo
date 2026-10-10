@@ -2,6 +2,8 @@ package com.daycare.api.persistence
 
 import com.daycare.api.domain.ChildProgramStatus
 import com.daycare.api.domain.InvitationStatus
+import com.daycare.api.domain.ScreeningCatalogResourceType
+import com.daycare.api.domain.ScreeningTemplateStatus
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
@@ -284,6 +286,69 @@ interface DevelopmentCategoryConfigRepository : JpaRepository<DevelopmentCategor
     fun findAllByOrganizationIdIsNullOrderByNameAsc(): List<DevelopmentCategoryConfig>
     fun existsByOrganizationIdAndNameIgnoreCase(organizationId: UUID, name: String): Boolean
     fun existsByOrganizationIdIsNullAndNameIgnoreCase(name: String): Boolean
+}
+interface ScreeningSeedManifestRepository : JpaRepository<ScreeningSeedManifest, UUID> {
+    fun findByBatchId(batchId: String): ScreeningSeedManifest?
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select manifest from ScreeningSeedManifest manifest where manifest.batchId = :batchId")
+    fun findByBatchIdForUpdate(@Param("batchId") batchId: String): ScreeningSeedManifest?
+}
+interface ScreeningTemplateRepository : JpaRepository<ScreeningTemplate, UUID> {
+    fun findByCodeAndVersion(code: String, version: Int): ScreeningTemplate?
+    fun findAllBySeedManifestId(seedManifestId: UUID): List<ScreeningTemplate>
+    fun findAllByStatusOrderByMinAgeMonthsAscMaxAgeMonthsAscCodeAsc(status: ScreeningTemplateStatus): List<ScreeningTemplate>
+    fun findAllByOrderByMinAgeMonthsAscMaxAgeMonthsAscCodeAsc(): List<ScreeningTemplate>
+}
+interface ScreeningQuestionRepository : JpaRepository<ScreeningQuestion, UUID> {
+    fun findByTemplateIdAndStableQuestionId(templateId: UUID, stableQuestionId: String): ScreeningQuestion?
+    fun findAllByTemplateIdOrderByDisplayOrderAsc(templateId: UUID): List<ScreeningQuestion>
+    fun findAllBySeedManifestId(seedManifestId: UUID): List<ScreeningQuestion>
+}
+interface ScreeningChoiceRepository : JpaRepository<ScreeningChoice, UUID> {
+    fun findByQuestionIdAndCode(questionId: UUID, code: String): ScreeningChoice?
+    fun findAllByQuestionIdOrderByDisplayOrderAsc(questionId: UUID): List<ScreeningChoice>
+    fun findAllByQuestionIdIn(questionIds: Collection<UUID>): List<ScreeningChoice>
+    fun findAllBySeedManifestId(seedManifestId: UUID): List<ScreeningChoice>
+}
+interface ScreeningCatalogTextRepository : JpaRepository<ScreeningCatalogText, UUID> {
+    fun findAllBySeedManifestId(seedManifestId: UUID): List<ScreeningCatalogText>
+    fun findAllByResourceTypeAndResourceIdInAndLocale(resourceType: ScreeningCatalogResourceType, resourceIds: Collection<UUID>, locale: String): List<ScreeningCatalogText>
+    fun findAllByResourceTypeAndResourceIdIn(resourceType: ScreeningCatalogResourceType, resourceIds: Collection<UUID>): List<ScreeningCatalogText>
+}
+interface ScreeningChildProfileRepository : JpaRepository<ScreeningChildProfile, UUID> {
+    fun findAllByOwnerUserIdAndActiveTrueOrderByCreatedAtDesc(ownerUserId: UUID): List<ScreeningChildProfile>
+    fun findByIdAndOwnerUserId(id: UUID, ownerUserId: UUID): ScreeningChildProfile?
+}
+interface ScreeningSessionRepository : JpaRepository<ScreeningSession, UUID> {
+    fun findAllByOwnerUserIdOrderByCreatedAtDesc(ownerUserId: UUID): List<ScreeningSession>
+    fun findAllByOwnerUserIdAndProfileIdOrderByCreatedAtDesc(ownerUserId: UUID, profileId: UUID): List<ScreeningSession>
+    fun findByIdAndOwnerUserId(id: UUID, ownerUserId: UUID): ScreeningSession?
+}
+interface ScreeningAnswerRepository : JpaRepository<ScreeningAnswer, UUID> {
+    fun findAllBySessionIdOrderByAnsweredAtAscIdAsc(sessionId: UUID): List<ScreeningAnswer>
+    fun findBySessionIdAndQuestionId(sessionId: UUID, questionId: UUID): ScreeningAnswer?
+}
+interface ScreeningResultRepository : JpaRepository<ScreeningResult, UUID> {
+    fun findBySessionId(sessionId: UUID): ScreeningResult?
+    fun findByIdAndSessionId(id: UUID, sessionId: UUID): ScreeningResult?
+}
+interface ScreeningResultDomainRepository : JpaRepository<ScreeningResultDomain, UUID> {
+    fun findAllByResultIdOrderByDisplayOrderAsc(resultId: UUID): List<ScreeningResultDomain>
+}
+interface ScreeningResultReasonRepository : JpaRepository<ScreeningResultReason, UUID> {
+    fun findAllByResultIdOrderByDisplayOrderAsc(resultId: UUID): List<ScreeningResultReason>
+}
+interface ScreeningResultItemRepository : JpaRepository<ScreeningResultItem, UUID> {
+    fun findAllByResultIdOrderByDisplayOrderAsc(resultId: UUID): List<ScreeningResultItem>
+}
+interface ScreeningRuleSetRepository : JpaRepository<ScreeningRuleSet, UUID> {
+    fun findByCodeAndVersion(code: String, version: Int): ScreeningRuleSet?
+    fun findByIdAndStatus(id: UUID, status: com.daycare.api.domain.ScreeningRuleSetStatus): ScreeningRuleSet?
+}
+interface ScreeningRuleTriggerRepository : JpaRepository<ScreeningRuleTrigger, UUID> {
+    fun findAllByRuleSetIdAndEnabledTrueOrderByDisplayOrderAsc(ruleSetId: UUID): List<ScreeningRuleTrigger>
+    fun findAllByRuleSetIdOrderByDisplayOrderAsc(ruleSetId: UUID): List<ScreeningRuleTrigger>
 }
 interface DevelopmentProgramRepository : JpaRepository<DevelopmentProgram, UUID> {
     fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<DevelopmentProgram>
