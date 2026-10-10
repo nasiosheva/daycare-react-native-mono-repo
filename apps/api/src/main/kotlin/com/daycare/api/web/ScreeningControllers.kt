@@ -8,6 +8,8 @@ import com.daycare.api.service.ScreeningParentProfileService
 import com.daycare.api.service.ScreeningResultExportService
 import com.daycare.api.service.ScreeningLinkedChildService
 import com.daycare.api.service.ScreeningSessionService
+import com.daycare.api.service.ScreeningSeedBatchAdminService
+import com.daycare.api.service.ScreeningSeedBatchApplyRequest
 import com.daycare.api.service.SaveScreeningAnswersRequest
 import com.daycare.api.service.SaveScreeningAnswerRequest
 import com.daycare.api.service.StartScreeningSessionRequest
@@ -30,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import jakarta.validation.Valid
 import java.util.UUID
 
 @RestController
@@ -95,7 +98,19 @@ class ParentScreeningController(
 
 @RestController
 @RequestMapping("/v1/platform/screening")
-class PlatformScreeningCatalogController(private val catalog: ScreeningCatalogAdminService) {
+class PlatformScreeningCatalogController(
+    private val catalog: ScreeningCatalogAdminService,
+    private val seedBatches: ScreeningSeedBatchAdminService,
+) {
+    @GetMapping("/seed-batches")
+    fun seedBatches(@AuthenticationPrincipal jwt: Jwt) = seedBatches.list(jwt)
+
+    @PostMapping("/seed-batches/{batchId}/preview")
+    fun previewSeedBatch(@AuthenticationPrincipal jwt: Jwt, @PathVariable batchId: String) = seedBatches.preview(jwt, batchId)
+
+    @PostMapping("/seed-batches/{batchId}/apply")
+    fun applySeedBatch(@AuthenticationPrincipal jwt: Jwt, @PathVariable batchId: String, @Valid @RequestBody request: ScreeningSeedBatchApplyRequest) = seedBatches.apply(jwt, batchId, request)
+
     @GetMapping("/templates")
     fun list(@AuthenticationPrincipal jwt: Jwt) = catalog.list(jwt)
 
