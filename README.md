@@ -4,6 +4,10 @@ Usia Emas is a multi-tenant early-childhood platform for web, iOS, Android, and 
 
 > **Required project context:** Read [Business rules](docs/business-rules.md) before implementing, reviewing, or changing any business flow, API contract, data model, authorization rule, or architecture. It is the normative product-knowledge source for cross-module behavior. When code and the documented target rule differ, record the gap explicitly and do not silently redefine the rule from the current implementation.
 
+> **Agent guidance file:** `CLAUDE.md` at the repository root is required reading for Claude Code (and any other AI coding agent) before working in this repository. It is intentionally listed in `.gitignore` so it never travels through git or a fresh clone, but that only means it must not be committed — the file itself must always exist locally and must never be deleted. If it is missing, restore it before continuing non-trivial work instead of proceeding without it.
+
+// Mories Deo Hutapea,S.E.,S.Kom
+
 Daily implementation history and known implementation gaps remain under `docs/changes/`.
 
 ## Technology
