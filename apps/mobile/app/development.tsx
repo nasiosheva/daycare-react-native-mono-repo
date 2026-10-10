@@ -27,13 +27,11 @@ export default function DevelopmentScreen() {
   // A Parent always reaches this screen with a fixed childId, which may belong to a tenant other
   // than the active one; Staff/Staff Admin never pass this param, so their own tenant-wide
   // multi-child picker below keeps resolving to the active tenant as before.
-  const organizationId = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
+  const routeOrganization = (typeof routeOrganizationId === "string" ? routeOrganizationId : undefined) ?? activeOrganizationId ?? undefined;
   const { t } = useI18n();
-  const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
-  const isStaffAdmin = membership?.role === "STAFF_ADMIN";
-  const isParent = membership?.role === "PARENT";
-  const access = useUiAccessContext(Boolean(membership), organizationId);
-  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
+  const baseMembership = profile?.memberships.find((item) => item.organizationId === routeOrganization);
+  const isStaffAdmin = baseMembership?.role === "STAFF_ADMIN";
+  const isParent = baseMembership?.role === "PARENT";
   const hasFixedChild = typeof routeChildId === "string";
   const [filterVisible, setFilterVisible] = useState(false);
   const [childFilter, setChildFilter] = useState<ChildListFilter>({});
@@ -51,6 +49,13 @@ export default function DevelopmentScreen() {
   const imagePicker = useImagePicker();
   const audioRecording = useAudioRecording();
   const selectedChild = useMemo(() => availableChildren.find((child) => child.id === childId) ?? null, [availableChildren, childId]);
+  // Parent child pickers aggregate across tenants. The selected child's own
+  // organization is the legal scope for history, media, quick links, and any
+  // future mutation; never reuse the active tenant when these differ.
+  const organizationId = selectedChild?.organizationId ?? routeOrganization;
+  const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
+  const access = useUiAccessContext(Boolean(membership), organizationId);
+  const hasAcademicOffering = hasOfferingCapability(access.data, "ACADEMIC_CURRICULUM");
   const entries = useDevelopmentEntries(childId, organizationId);
   const developmentCategories = useDevelopmentCategories();
   const createEntry = useCreateDevelopmentEntry(childId);

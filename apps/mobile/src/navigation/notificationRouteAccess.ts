@@ -78,5 +78,5 @@ export function canOpenNotificationRoute(profile: CurrentUser | null, organizati
   const membership = profile.memberships.find((item) => item.organizationId === organizationId);
   if (!membership || !policy.roles.includes(membership.role)) return false;
   if (policy.requireActiveMembership && !membership.active) return false;
-  return !policy.requireDaycareCapability || hasDaycareOffering;
+  return !policy.requireDaycareCapability || policy.resolvesTenantInScreen || hasDaycareOffering;
 }

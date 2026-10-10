@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { AppText, Badge, BottomSheet, Button, Card, Chip, ChipGroup, EmptyState, MenuItem, NavigationCard, SectionHeader, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Badge, Banner, BottomSheet, Button, Card, Chip, ChipGroup, EmptyState, ErrorState, MenuItem, NavigationCard, SectionHeader, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { statusTone } from "@/ui/statusTone";
 import { AppScreen } from "@/navigation/AppScreen";
 import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
@@ -32,8 +32,13 @@ function BookingScreenContent() {
   const showsTenantLabel = parentMemberships.length > 1;
   const children = useParentChildrenAcrossTenants(parentMemberships, true);
   const [childId, setChildId] = useState<string | null>(null); const [planId, setPlanId] = useState<string | null>(null); const [creditEntitlementId, setCreditEntitlementId] = useState<string | null>(null); const [bookingDates, setBookingDates] = useState<string[]>([]);
-  const selectedOrganizationId = children.data.find((child) => child.id === childId)?.organizationId;
-  const plans = useServicePlans(selectedOrganizationId); const entitlements = useEntitlements({}, true, selectedOrganizationId); const bookings = useBookings(false, {}, true, selectedOrganizationId); const invoices = useInvoices({}, true, selectedOrganizationId); const purchase = usePurchaseService(); const bookEntitlement = useBookEntitlement();
+  const selectedChild = children.data.find((child) => child.id === childId);
+  const selectedOrganizationId = selectedChild?.organizationId;
+  const selectedChildRestricted = selectedChild?.tenantSubscriptionRestricted === true;
+  const operationalQueryEnabled = Boolean(selectedOrganizationId && !selectedChildRestricted);
+  // Invoices are the documented billing exception for a restricted tenant;
+  // plans, entitlements, and bookings must not issue operational requests.
+  const plans = useServicePlans(selectedOrganizationId, operationalQueryEnabled); const entitlements = useEntitlements({}, operationalQueryEnabled, selectedOrganizationId); const bookings = useBookings(false, {}, operationalQueryEnabled, selectedOrganizationId); const invoices = useInvoices({}, Boolean(selectedOrganizationId), selectedOrganizationId); const purchase = usePurchaseService(); const bookEntitlement = useBookEntitlement();
   const { t, formatCurrency, formatDate } = useI18n();
   const [listSheet, setListSheet] = useState<ListSheet>(null);
   const [bookFormOpen, setBookFormOpen] = useState(false);
@@ -59,6 +64,7 @@ function BookingScreenContent() {
   const applyRemainingCredit = (entitlementId: string, entitlementChildId: string) => { setCreditEntitlementId(entitlementId); setChildId(entitlementChildId); setBookingDates([]); setListSheet(null); setBookFormOpen(true); };
   const closeBookForm = () => { setBookFormOpen(false); setPlanId(null); setCreditEntitlementId(null); setBookingDates([]); };
   const submit = async () => {
+    if (selectedChildRestricted) return;
     if (creditEntitlement) {
       if (bookingDates.length === 0) return Alert.alert(t("booking.selectDate"), t("booking.selectDateDescription"));
       try { await bookEntitlement.mutateAsync({ entitlementId: creditEntitlement.id, bookingDates, organizationId: selectedOrganizationId }); closeBookForm(); Alert.alert(t("booking.created"), t("booking.usingCredit")); }
@@ -74,10 +80,13 @@ function BookingScreenContent() {
   return <AppScreen title={t("booking.title")}>
     <AppText tone="muted">{t("booking.subtitle")}</AppText>
     <SectionHeader title={t("booking.child")} />
+    {children.failedTenants.length > 0 && !children.allFailed && <Banner tone="warning" title={t("common.loadFailed")} action={<Button variant="secondary" onPress={children.retryFailed}>{t("common.retry")}</Button>} />}
+    {children.allFailed && !children.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={children.retryFailed} />}
     {children.isFetching && <ShimmerList variant="tile" />}
     {!children.isFetching && <ChipGroup accessibilityLabel={t("booking.child")}>{children.data.map((child) => <Chip key={child.id} label={showsTenantLabel ? `${child.fullName} (${child.organizationName})` : child.fullName} selected={child.id === childId} onPress={() => selectChild(child.id)} />)}</ChipGroup>}
-    {!children.isFetching && children.data.length === 0 && <EmptyState compact icon="happy-outline" title={t("children.empty")} />}
-    <Button leadingIcon={<Ionicons name="add-circle-outline" size={18} color={colors.onPrimary} />} disabled={!childId} onPress={() => setListSheet("plan")}>{t("booking.bookNow")}</Button>
+    {!children.isFetching && !children.allFailed && children.data.length === 0 && <EmptyState compact icon="happy-outline" title={t("children.empty")} />}
+    {selectedChildRestricted && <Banner tone="warning" title={t("tenantReadiness.issueSubscription")} />}
+    <Button leadingIcon={<Ionicons name="add-circle-outline" size={18} color={colors.onPrimary} />} disabled={!childId || selectedChildRestricted} onPress={() => setListSheet("plan")}>{t("booking.bookNow")}</Button>
     <View style={styles.grid}>
       <NavigationCard accessibilityLabel={t("booking.plan")} onPress={() => setListSheet("plan")} style={styles.tile} leading={<TileIcon name="pricetags-outline" />}>
         <AppText variant="label">{t("booking.plan")}</AppText>
