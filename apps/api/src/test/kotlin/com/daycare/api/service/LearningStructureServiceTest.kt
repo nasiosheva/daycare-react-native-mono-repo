@@ -25,6 +25,7 @@ import com.daycare.api.persistence.LearningLevel
 import com.daycare.api.persistence.LearningLevelCurriculumProgram
 import com.daycare.api.persistence.ChildPlacement
 import com.daycare.api.domain.ChildCareRole
+import com.daycare.api.domain.InstitutionTypeCodes
 import java.time.LocalDate
 import com.daycare.api.persistence.Membership
 import com.daycare.api.persistence.MembershipRepository
@@ -442,6 +443,83 @@ class LearningStructureServiceTest {
         child.enrollmentStatus = ChildEnrollmentStatus.ACTIVE
         child.active = false
         assertThrows(IllegalArgumentException::class.java) { service().placements(jwt, organizationId, child.id) }
+    }
+
+    @Test
+    fun `learning catalog selects every institution template and academic offering path`() {
+        val scope = AccessScope(
+            UserProfile(),
+            Membership(role = Role.STAFF_ADMIN),
+            setOf(InstitutionTypeCodes.DAYCARE, InstitutionTypeCodes.PAUD, InstitutionTypeCodes.TK),
+            setOf(InstitutionCapability.DAYCARE_OPERATIONS, InstitutionCapability.ACADEMIC_CURRICULUM),
+        )
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)).thenReturn(scope)
+        `when`(access.hasPublishedOfferingCapability(organizationId, InstitutionCapability.ACADEMIC_CURRICULUM)).thenReturn(true)
+        `when`(levels.findAllByOrganizationIdIsNullOrderByDisplayOrderAscNameAsc()).thenReturn(emptyList())
+        assertEquals(5, service().templates(jwt, organizationId).size)
+
+        val program = CurriculumProgram(id = UUID.randomUUID(), organizationId = organizationId, active = true, name = "Tenant")
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(scope)
+        `when`(programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(levels.save(any(LearningLevel::class.java))).thenAnswer { it.arguments[0] }
+        service().createLevel(jwt, organizationId, UpsertLearningLevelRequest("Level", curriculumProgramIds = setOf(program.id)))
+        verify(access, org.mockito.Mockito.atLeastOnce()).requirePublishedOfferingCapability(organizationId, InstitutionCapability.ACADEMIC_CURRICULUM)
+    }
+
+    @Test
+    fun `learning validation covers archived programs optional periods and staff visibility`() {
+        allowStaffAccess()
+        val level = LearningLevel(id = UUID.randomUUID(), organizationId = organizationId, name = "Level")
+        val activeProgram = CurriculumProgram(id = UUID.randomUUID(), organizationId = organizationId, active = true, name = "Aktif")
+        val archivedProgram = CurriculumProgram(id = UUID.randomUUID(), organizationId = organizationId, active = false, name = "Arsip")
+        val foreignProgram = CurriculumProgram(id = UUID.randomUUID(), organizationId = UUID.randomUUID(), active = true, name = "Asing")
+        `when`(levels.findById(level.id)).thenReturn(Optional.of(level))
+        `when`(programs.findById(activeProgram.id)).thenReturn(Optional.of(activeProgram))
+        `when`(programs.findById(archivedProgram.id)).thenReturn(Optional.of(archivedProgram))
+        `when`(programs.findById(foreignProgram.id)).thenReturn(Optional.of(foreignProgram))
+        assertThrows(IllegalArgumentException::class.java) { service().updateLevel(jwt, organizationId, level.id, UpsertLearningLevelRequest("X", curriculumProgramIds = setOf(foreignProgram.id))) }
+        assertThrows(IllegalArgumentException::class.java) { service().updateLevel(jwt, organizationId, level.id, UpsertLearningLevelRequest("X", curriculumProgramIds = setOf(archivedProgram.id))) }
+        `when`(levelPrograms.existsByLearningLevelIdAndCurriculumProgramId(level.id, archivedProgram.id)).thenReturn(true)
+        `when`(levelPrograms.findAllByLearningLevelId(level.id)).thenReturn(listOf(LearningLevelCurriculumProgram(learningLevelId = level.id, curriculumProgramId = archivedProgram.id)))
+        service().updateLevel(jwt, organizationId, level.id, UpsertLearningLevelRequest("Existing", curriculumProgramIds = setOf(archivedProgram.id)))
+
+        val period = com.daycare.api.persistence.AcademicYear(id = UUID.randomUUID(), organizationId = organizationId, name = "2026")
+        val branch = Branch(id = UUID.randomUUID(), organizationId = organizationId, active = true, name = "Utama")
+        `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
+        `when`(levels.findById(level.id)).thenReturn(Optional.of(level))
+        `when`(academicYears.findById(period.id)).thenReturn(Optional.of(period))
+        `when`(classrooms.save(any(Classroom::class.java))).thenAnswer { it.arguments[0] }
+        assertEquals(period.id, service().createClassroom(jwt, organizationId, UpsertClassroomRequest(branch.id, level.id, period.id, "Kelas")).learningPeriodId)
+
+        val staff = UserProfile()
+        val staffScope = AccessScope(staff, Membership(organizationId = organizationId, role = Role.STAFF), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)).thenReturn(staffScope)
+        val classroom = Classroom(id = UUID.randomUUID(), organizationId = organizationId, branchId = branch.id, name = "Kelas")
+        `when`(classrooms.findById(classroom.id)).thenReturn(Optional.of(classroom))
+        `when`(classroomAssignments.findAllByOrganizationIdAndUserId(organizationId, staff.id)).thenReturn(emptyList())
+        assertThrows(AccessDeniedException::class.java) { service().classroomPrograms(jwt, organizationId, classroom.id) }
+    }
+
+    @Test
+    fun `classroom assignment and placement response cover missing references and optional levels`() {
+        allowStaffAccess()
+        val branch = Branch(id = UUID.randomUUID(), organizationId = organizationId, name = "Utama")
+        val classroom = Classroom(id = UUID.randomUUID(), organizationId = organizationId, branchId = branch.id, name = "Kelas")
+        `when`(classrooms.findById(classroom.id)).thenReturn(Optional.of(classroom))
+        val unknownStaffId = UUID.randomUUID()
+        `when`(memberships.findAllByUserIdAndOrganizationId(unknownStaffId, organizationId)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) { service().assignClassroomStaff(jwt, organizationId, classroom.id, AssignClassroomStaffRequest(unknownStaffId, ChildCareRole.STAFF)) }
+
+        val assignment = ClassroomStaffAssignment(id = UUID.randomUUID(), organizationId = organizationId, classroomId = UUID.randomUUID(), userId = UUID.randomUUID(), assignmentRole = ChildCareRole.STAFF.name)
+        `when`(classroomAssignments.findById(assignment.id)).thenReturn(Optional.of(assignment))
+        assertThrows(IllegalArgumentException::class.java) { service().unassignClassroomStaff(jwt, organizationId, classroom.id, assignment.id) }
+
+        val child = Child(id = UUID.randomUUID(), organizationId = organizationId, branchId = branch.id, firstName = "Anak", dateOfBirth = LocalDate.now().minusYears(2), enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        val placement = ChildPlacement(organizationId = organizationId, childId = child.id, classroomId = classroom.id, startsOn = LocalDate.now())
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(placements.findAllByOrganizationIdAndChildIdOrderByStartsOnDesc(organizationId, child.id)).thenReturn(listOf(placement))
+        `when`(levels.findById(placement.learningLevelId ?: UUID.randomUUID())).thenReturn(Optional.empty())
+        assertEquals(null, service().placements(jwt, organizationId, child.id).single().learningLevelId)
     }
 
     private fun service() = LearningStructureService(

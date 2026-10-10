@@ -91,6 +91,51 @@ class StaffReminderServiceTest {
         }
     }
 
+    @Test
+    fun `reminder list and activation avoid unnecessary revisions`() {
+        val fixture = fixture()
+        val reminder = StaffReminder(organizationId = fixture.organizationId, userId = fixture.staff.id, title = "A", description = "B", weekdays = "1,garbage,8,2")
+        `when`(fixture.reminders.findAllByOrganizationIdAndUserIdOrderByCreatedAtDesc(fixture.organizationId, fixture.staff.id)).thenReturn(listOf(reminder))
+        assertEquals(listOf(1, 2), fixture.service.list(fixture.jwt, fixture.organizationId).single().weekdays)
+        `when`(fixture.reminders.findById(reminder.id)).thenReturn(Optional.of(reminder))
+        fixture.service.setActive(fixture.jwt, fixture.organizationId, reminder.id, UpdateStaffReminderActiveRequest(true))
+        assertEquals(1, reminder.ruleVersion)
+        fixture.service.setActive(fixture.jwt, fixture.organizationId, reminder.id, UpdateStaffReminderActiveRequest(false))
+        assertEquals(2, reminder.ruleVersion)
+    }
+
+    @Test
+    fun `schedule sync removes stale acknowledgements and rejects foreign devices`() {
+        val fixture = fixture()
+        val reminder = StaffReminder(id = UUID.randomUUID(), organizationId = fixture.organizationId, userId = fixture.staff.id, ruleVersion = 3)
+        val device = DeviceToken(organizationId = fixture.organizationId, userId = fixture.staff.id, installationId = "install", token = "token", platform = "android")
+        val existing = StaffReminderDeviceSchedule(reminderId = reminder.id, installationId = "install", ruleVersion = 2)
+        `when`(fixture.devices.findByInstallationId("install")).thenReturn(device)
+        `when`(fixture.reminders.findById(reminder.id)).thenReturn(Optional.of(reminder))
+        `when`(fixture.schedules.findByReminderIdAndInstallationId(reminder.id, "install")).thenReturn(existing)
+        fixture.service.syncLocalSchedules(fixture.jwt, fixture.organizationId, SyncStaffReminderSchedulesRequest("install", listOf(StaffReminderScheduleAcknowledgement(reminder.id, 2, scheduled = true))))
+        verify(fixture.schedules).delete(existing)
+        fixture.service.syncLocalSchedules(fixture.jwt, fixture.organizationId, SyncStaffReminderSchedulesRequest("install", listOf(StaffReminderScheduleAcknowledgement(reminder.id, 3, scheduled = false))))
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.syncLocalSchedules(fixture.jwt, fixture.organizationId, SyncStaffReminderSchedulesRequest("missing", emptyList()))
+        }
+    }
+
+    @Test
+    fun `fallback push skips empty, foreign, scheduled and malformed timezone devices`() {
+        val fixture = fixture()
+        fixture.service.sendFallbackPushes()
+        val now = ZonedDateTime.now(ZoneId.of("Asia/Jakarta"))
+        val reminder = StaffReminder(id = UUID.randomUUID(), organizationId = fixture.organizationId, userId = fixture.staff.id, hour = now.hour, minute = now.minute, weekdays = now.dayOfWeek.value.toString())
+        val foreign = DeviceToken(organizationId = UUID.randomUUID(), userId = fixture.staff.id, token = "foreign", platform = "android", installationId = "f", timeZone = "bad")
+        val malformed = DeviceToken(organizationId = fixture.organizationId, userId = fixture.staff.id, token = "local", platform = "android", installationId = "local", timeZone = "bad")
+        `when`(fixture.reminders.findAllByActiveTrue()).thenReturn(listOf(reminder))
+        `when`(fixture.devices.findAllByUserIdIn(setOf(fixture.staff.id))).thenReturn(listOf(foreign, malformed))
+        `when`(fixture.schedules.findAllByReminderIdIn(setOf(reminder.id))).thenReturn(listOf(StaffReminderDeviceSchedule(reminderId = reminder.id, installationId = "local", ruleVersion = reminder.ruleVersion)))
+        fixture.service.sendFallbackPushes()
+        org.mockito.Mockito.verifyNoInteractions(fixture.notifications)
+    }
+
     private data class Fixture(
         val organizationId: UUID,
         val jwt: Jwt,

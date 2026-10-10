@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.InvoiceSource
 import com.daycare.api.domain.InvoiceStatus
@@ -39,6 +41,7 @@ import org.mockito.Mockito.`when`
 import java.math.BigDecimal
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.time.Instant
 import java.util.Optional
 import java.util.UUID
 
@@ -324,5 +327,109 @@ class OvertimeServiceTest {
         `when`(children.findById(child.id)).thenReturn(Optional.of(child))
         `when`(snapshots.findAllByOvertimeChargeIdOrderByDisplayOrderAsc(charge.id)).thenReturn(listOf(OvertimeChargeTierSnapshot(overtimeChargeId = charge.id, displayOrder = 0, durationMinutes = 15, amount = BigDecimal("100"))))
         assertEquals(1, service().charges(jwt, organizationId).single().tiers.size)
+    }
+
+    @Test
+    fun `overtime mutations fail closed for ownership, schedule and payment invariants`() {
+        val organizationId = UUID.randomUUID()
+        val branch = Branch(organizationId = organizationId, name = "Utama")
+        val child = Child(organizationId = organizationId, branchId = branch.id, firstName = "Alya")
+        val jwt = mock(org.springframework.security.oauth2.jwt.Jwt::class.java)
+        val scope = AccessScope(UserProfile(), com.daycare.api.persistence.Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(scope)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)).thenReturn(scope)
+        `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        val date = java.time.LocalDate.now()
+        val validHour = BranchOperatingHour(branchId = branch.id, dayOfWeek = date.dayOfWeek, active = true, closesAt = java.time.LocalTime.of(16, 0))
+        val tier = BranchOvertimeRateTier(branchId = branch.id, durationMinutes = 30, amount = BigDecimal("10000"))
+        `when`(hours.findAllByBranchIdOrderByDayOfWeekAsc(branch.id)).thenReturn(listOf(validHour))
+        `when`(tiers.findAllByBranchIdOrderByDisplayOrderAsc(branch.id)).thenReturn(listOf(tier))
+        val valid = CreateOvertimeChargeRequest(child.id, date, java.time.LocalTime.of(16, 30), date.plusDays(1))
+        val svc = service()
+
+        assertThrows(IllegalArgumentException::class.java) { svc.createCharge(jwt, organizationId, valid.copy(dueDate = date.minusDays(1))) }
+        assertThrows(IllegalArgumentException::class.java) { svc.createCharge(jwt, organizationId, valid.copy(pickedUpAt = java.time.LocalTime.of(16, 0))) }
+        `when`(hours.findAllByBranchIdOrderByDayOfWeekAsc(branch.id)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) { svc.createCharge(jwt, organizationId, valid) }
+        `when`(hours.findAllByBranchIdOrderByDayOfWeekAsc(branch.id)).thenReturn(listOf(validHour))
+        `when`(tiers.findAllByBranchIdOrderByDisplayOrderAsc(branch.id)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) { svc.createCharge(jwt, organizationId, valid) }
+        `when`(tiers.findAllByBranchIdOrderByDisplayOrderAsc(branch.id)).thenReturn(listOf(tier))
+        `when`(guardians.findAllByChildId(child.id)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) { svc.createCharge(jwt, organizationId, valid) }
+
+        val charge = com.daycare.api.persistence.OvertimeCharge(organizationId = organizationId, branchId = branch.id, childId = child.id, payerUserId = UUID.randomUUID(), invoiceId = UUID.randomUUID(), operationalDate = date)
+        `when`(charges.findById(charge.id)).thenReturn(Optional.of(charge))
+        `when`(invoices.findById(charge.invoiceId)).thenReturn(Optional.of(Invoice(id = charge.invoiceId, organizationId = organizationId, status = InvoiceStatus.PAID)))
+        assertThrows(IllegalArgumentException::class.java) { svc.updateCharge(jwt, organizationId, charge.id, valid) }
+        `when`(invoices.findById(charge.invoiceId)).thenReturn(Optional.of(Invoice(id = charge.invoiceId, organizationId = organizationId, status = InvoiceStatus.PENDING)))
+        assertThrows(IllegalArgumentException::class.java) { svc.updateCharge(jwt, organizationId, charge.id, valid.copy(childId = UUID.randomUUID())) }
+        `when`(invoices.findById(charge.invoiceId)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) { svc.voidCharge(jwt, organizationId, charge.id) }
+    }
+
+    @Test
+    fun `overtime alert loop skips missing or unusable operational context`() {
+        val organizationId = UUID.randomUUID()
+        val now = ZonedDateTime.now(ZoneId.of("UTC"))
+        val branch = Branch(organizationId = organizationId, timezone = "not-a-zone")
+        val child = Child(organizationId = organizationId, branchId = branch.id, firstName = "Alya")
+        val record = AttendanceRecord(organizationId = organizationId, branchId = branch.id, childId = child.id, operationalDate = now.toLocalDate(), checkedInAt = now.toInstant())
+        `when`(attendance.findAllByCheckedOutAtIsNull()).thenReturn(listOf(record))
+        `when`(branches.findAllById(setOf(branch.id))).thenReturn(emptyList())
+        service().sendOvertimeAlerts()
+        verifyNoInteractions(notifications)
+
+        `when`(branches.findAllById(setOf(branch.id))).thenReturn(listOf(branch))
+        `when`(hours.findAllByBranchIdIn(setOf(branch.id))).thenReturn(emptyList())
+        `when`(tiers.findAllByBranchIdIn(setOf(branch.id))).thenReturn(listOf(BranchOvertimeRateTier(branchId = branch.id, durationMinutes = 15, amount = BigDecimal.ONE)))
+        `when`(publishedOfferings.hasPublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branch.id)).thenReturn(false)
+        service().sendOvertimeAlerts()
+        verifyNoInteractions(notifications)
+
+        `when`(publishedOfferings.hasPublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branch.id)).thenReturn(true)
+        `when`(hours.findAllByBranchIdIn(setOf(branch.id))).thenReturn(listOf(BranchOperatingHour(branchId = branch.id, dayOfWeek = now.dayOfWeek, active = false, closesAt = now.toLocalTime().minusMinutes(1))))
+        service().sendOvertimeAlerts()
+        verifyNoInteractions(notifications)
+    }
+
+    @Test
+    fun `operating hours and charge guards cover duplicate days and ownership failures`() {
+        val organizationId = UUID.randomUUID()
+        val foreignOrganizationId = UUID.randomUUID()
+        val branch = Branch(organizationId = organizationId, name = "Utama")
+        val jwt = mock(org.springframework.security.oauth2.jwt.Jwt::class.java)
+        val scope = AccessScope(UserProfile(), com.daycare.api.persistence.Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(scope)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)).thenReturn(scope)
+        `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
+        val duplicateDays = (0 until 7).map { OperatingHourInput(java.time.DayOfWeek.MONDAY, false) }
+        assertThrows(IllegalArgumentException::class.java) { service().updateBranchHours(jwt, organizationId, branch.id, UpdateBranchOperatingHoursRequest(duplicateDays, emptyList())) }
+
+        val child = Child(organizationId = foreignOrganizationId, branchId = branch.id)
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        assertThrows(IllegalArgumentException::class.java) { service().createCharge(jwt, organizationId, CreateOvertimeChargeRequest(child.id, java.time.LocalDate.now(), java.time.LocalTime.of(18, 0), java.time.LocalDate.now().plusDays(1))) }
+        `when`(children.findById(child.id)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) { service().createCharge(jwt, organizationId, CreateOvertimeChargeRequest(child.id, java.time.LocalDate.now(), java.time.LocalTime.of(18, 0), java.time.LocalDate.now().plusDays(1))) }
+    }
+
+    @Test
+    fun `overtime alerts skip records outside date and already alerted records`() {
+        val organizationId = UUID.randomUUID()
+        val now = ZonedDateTime.now(ZoneId.of("UTC"))
+        val branch = Branch(organizationId = organizationId, timezone = "UTC")
+        val child = Child(organizationId = organizationId, branchId = branch.id, firstName = "Alya")
+        val wrongDate = AttendanceRecord(organizationId = organizationId, branchId = branch.id, childId = child.id, operationalDate = now.toLocalDate().minusDays(1), checkedInAt = now.toInstant())
+        val alreadyAlerted = AttendanceRecord(organizationId = organizationId, branchId = branch.id, childId = child.id, operationalDate = now.toLocalDate(), checkedInAt = now.toInstant(), overtimeAlertSentAt = Instant.now())
+        `when`(attendance.findAllByCheckedOutAtIsNull()).thenReturn(listOf(wrongDate, alreadyAlerted))
+        `when`(branches.findAllById(setOf(branch.id))).thenReturn(listOf(branch))
+        `when`(hours.findAllByBranchIdIn(setOf(branch.id))).thenReturn(listOf(BranchOperatingHour(branchId = branch.id, dayOfWeek = now.dayOfWeek, active = true, closesAt = now.toLocalTime().minusMinutes(1))))
+        `when`(tiers.findAllByBranchIdIn(setOf(branch.id))).thenReturn(listOf(BranchOvertimeRateTier(branchId = branch.id, durationMinutes = 15, amount = BigDecimal("10000"))))
+        `when`(publishedOfferings.hasPublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branch.id)).thenReturn(true)
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        service().sendOvertimeAlerts()
+        verifyNoInteractions(notifications)
+        verify(attendance, never()).save(wrongDate)
     }
 }

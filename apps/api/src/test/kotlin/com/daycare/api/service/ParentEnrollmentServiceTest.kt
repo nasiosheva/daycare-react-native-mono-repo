@@ -6,6 +6,7 @@ import com.daycare.api.domain.Gender
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.InstitutionTypeCodes
 import com.daycare.api.domain.ParentEnrollmentStatus
+import com.daycare.api.domain.InvoiceStatus
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.ServicePlanType
@@ -32,6 +33,7 @@ import com.daycare.api.persistence.UserProfileRepository
 import com.daycare.api.realtime.RealtimeFlag
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentCaptor
 import org.mockito.Mockito.any
@@ -517,6 +519,72 @@ class ParentEnrollmentServiceTest {
         enrollment.status = ParentEnrollmentStatus.APPROVED
         fixture.service.invoiceExpired(InvoiceExpiredEvent(fixture.invoice.id))
         verify(fixture.notifications, times(1)).notify(fixture.organizationId, fixture.parent.id, "Tagihan kedaluwarsa", "Akses tenant dibatasi sampai Anda mengajukan pendaftaran baru.", "/parent-enrollment", setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.PROFILE, RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS))
+    }
+
+    @Test
+    fun `parent enrollment mine exposes every access state and pending cancellation`() {
+        val fixture = enrollmentFixture()
+        val pending = ParentEnrollment(userId = fixture.parent.id, organizationId = fixture.organizationId, branchId = fixture.branch.id, childId = fixture.child.id, selectedPlanName = "Pending", status = ParentEnrollmentStatus.PENDING_APPROVAL)
+        val rejected = ParentEnrollment(userId = fixture.parent.id, organizationId = fixture.organizationId, branchId = fixture.branch.id, childId = fixture.child.id, selectedPlanName = "Rejected", status = ParentEnrollmentStatus.REJECTED)
+        val cancelled = ParentEnrollment(userId = fixture.parent.id, organizationId = fixture.organizationId, branchId = fixture.branch.id, childId = fixture.child.id, selectedPlanName = "Cancelled", status = ParentEnrollmentStatus.CANCELLED)
+        val expired = ParentEnrollment(userId = fixture.parent.id, organizationId = fixture.organizationId, branchId = fixture.branch.id, childId = fixture.child.id, selectedPlanName = "Expired", status = ParentEnrollmentStatus.EXPIRED)
+        val invoiceStatuses = listOf(InvoiceStatus.OVERDUE, InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED, InvoiceStatus.PAID)
+        val paidEnrollments = invoiceStatuses.mapIndexed { index, status ->
+            val invoiceId = UUID.randomUUID()
+            `when`(fixture.invoices.findById(invoiceId)).thenReturn(Optional.of(Invoice(id = invoiceId, organizationId = fixture.organizationId, status = status)))
+            ParentEnrollment(userId = fixture.parent.id, organizationId = fixture.organizationId, branchId = fixture.branch.id, childId = fixture.child.id, selectedPlanName = status.name, status = ParentEnrollmentStatus.APPROVED, invoiceId = invoiceId)
+        }
+        val all = listOf(pending, rejected, cancelled, expired) + paidEnrollments
+        `when`(fixture.enrollments.findAllByUserIdOrderByCreatedAtDesc(fixture.parent.id)).thenReturn(all)
+        val states = fixture.service.mine(fixture.jwt).map { it.accessState }
+        assertTrue(states.contains(ParentEnrollmentAccessState.PENDING_APPROVAL))
+        assertTrue(states.count { it == ParentEnrollmentAccessState.CLOSED } >= 3)
+        assertTrue(states.contains(ParentEnrollmentAccessState.BILLING_LIMITED))
+        assertTrue(states.contains(ParentEnrollmentAccessState.PAYMENT_DUE))
+        assertTrue(states.contains(ParentEnrollmentAccessState.PAYMENT_REVIEW))
+        assertTrue(states.contains(ParentEnrollmentAccessState.ACTIVE))
+
+        `when`(fixture.enrollments.findById(pending.id)).thenReturn(Optional.of(pending))
+        val cancelledResult = fixture.service.cancel(fixture.jwt, pending.id)
+        assertEquals(ParentEnrollmentStatus.CANCELLED, cancelledResult.status)
+        assertEquals(false, fixture.child.active)
+        fixture.service.invoicePaid(InvoicePaidEvent(UUID.randomUUID()))
+    }
+
+    @Test
+    fun `transfer checkout enforces guardian, lifecycle, destination, and catalog guards`() {
+        val f = enrollmentFixture()
+        val origin = Child(organizationId = UUID.randomUUID(), firstName = "Asal", enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        `when`(f.children.findById(origin.id)).thenReturn(Optional.of(origin))
+        `when`(f.guardians.existsByChildIdAndUserId(origin.id, f.parent.id)).thenReturn(false)
+        val request = ParentChildTransferRequest(origin.id, f.organizationId, f.branch.id, UUID.randomUUID())
+        assertThrows(IllegalArgumentException::class.java) { f.service.transferCheckout(f.jwt, request) }
+        `when`(f.guardians.existsByChildIdAndUserId(origin.id, f.parent.id)).thenReturn(true)
+        origin.active = false
+        assertThrows(IllegalArgumentException::class.java) { f.service.transferCheckout(f.jwt, request) }
+        origin.active = true
+        origin.enrollmentStatus = ChildEnrollmentStatus.PENDING
+        assertThrows(IllegalArgumentException::class.java) { f.service.transferCheckout(f.jwt, request) }
+        origin.enrollmentStatus = ChildEnrollmentStatus.ACTIVE
+        origin.organizationId = f.organizationId
+        assertThrows(IllegalArgumentException::class.java) { f.service.transferCheckout(f.jwt, request) }
+        origin.organizationId = UUID.randomUUID()
+        `when`(f.enrollments.existsByTransferredFromChildIdAndStatus(origin.id, ParentEnrollmentStatus.PENDING_APPROVAL)).thenReturn(true)
+        assertThrows(IllegalArgumentException::class.java) { f.service.transferCheckout(f.jwt, request) }
+        `when`(f.enrollments.existsByTransferredFromChildIdAndStatus(origin.id, ParentEnrollmentStatus.PENDING_APPROVAL)).thenReturn(false)
+        `when`(f.memberships.findAllByUserIdAndOrganizationId(f.parent.id, f.organizationId)).thenReturn(listOf(Membership(userId = f.parent.id, organizationId = f.organizationId, role = Role.PARENT, active = true)))
+        assertThrows(IllegalArgumentException::class.java) { f.service.transferCheckout(f.jwt, request) }
+        `when`(f.memberships.findAllByUserIdAndOrganizationId(f.parent.id, f.organizationId)).thenReturn(emptyList())
+        `when`(f.branches.findById(f.branch.id)).thenReturn(Optional.of(Branch(id = f.branch.id, organizationId = f.organizationId, active = false)))
+        assertThrows(IllegalArgumentException::class.java) { f.service.transferCheckout(f.jwt, request) }
+        `when`(f.branches.findById(f.branch.id)).thenReturn(Optional.of(Branch(id = f.branch.id, organizationId = UUID.randomUUID(), active = true)))
+        assertThrows(IllegalArgumentException::class.java) { f.service.transferCheckout(f.jwt, request) }
+        `when`(f.branches.findById(f.branch.id)).thenReturn(Optional.of(f.branch))
+        `when`(f.subscriptions.findByOrganizationId(f.organizationId)).thenReturn(TenantSubscription(organizationId = f.organizationId, status = TenantSubscriptionStatus.SUSPENDED))
+        assertThrows(IllegalArgumentException::class.java) { f.service.transferCheckout(f.jwt, request) }
+        `when`(f.subscriptions.findByOrganizationId(f.organizationId)).thenReturn(TenantSubscription(organizationId = f.organizationId, status = TenantSubscriptionStatus.ACTIVE))
+        `when`(f.published.hasPublishedCapability(f.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, f.branch.id)).thenReturn(false)
+        assertThrows(IllegalArgumentException::class.java) { f.service.transferCheckout(f.jwt, request) }
     }
 
     private fun snapshot(planId: UUID) = EnrollmentPlanSnapshot(planId, "Paket", com.daycare.api.domain.ServicePlanType.MONTHLY, java.math.BigDecimal.ONE, java.math.BigDecimal.ZERO, null, null, java.math.BigDecimal.ONE, null, null, null, true)

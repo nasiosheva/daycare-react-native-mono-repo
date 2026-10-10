@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.ChildCareLogType
 import com.daycare.api.domain.ChildMealAmount
 import com.daycare.api.domain.ChildMealType
@@ -103,6 +105,45 @@ class ChildCareLogServiceTest {
         val listed = fixture.service.list(fixture.jwt, fixture.organizationId, fixture.child.id)
         assertEquals(1, listed.size)
         assertEquals(ChildCareLogType.MEAL, listed.single().type)
+    }
+
+    @Test
+    fun `care log validation covers every incompatible field combination`() {
+        val fixture = Fixture()
+        val napStarted = Instant.now().minusSeconds(100)
+        val invalidRequests = listOf(
+            CreateChildCareLogRequest(ChildCareLogType.MEAL, Instant.now(), mealType = ChildMealType.LUNCH, mealAmount = ChildMealAmount.ALL, toiletType = ChildToiletType.WET),
+            CreateChildCareLogRequest(ChildCareLogType.NAP, Instant.now(), napStartedAt = napStarted),
+            CreateChildCareLogRequest(ChildCareLogType.NAP, Instant.now(), napStartedAt = napStarted, napEndedAt = napStarted.plusSeconds(10), mealType = ChildMealType.LUNCH, mealAmount = ChildMealAmount.ALL),
+            CreateChildCareLogRequest(ChildCareLogType.TOILET, Instant.now()),
+            CreateChildCareLogRequest(ChildCareLogType.TOILET, Instant.now(), toiletType = ChildToiletType.WET, napStartedAt = napStarted, napEndedAt = napStarted.plusSeconds(10)),
+            fixture.mealRequest(correctionReason = "tidak boleh tanpa koreksi"),
+        )
+        invalidRequests.forEach { request -> assertThrows(IllegalArgumentException::class.java) { fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, request) } }
+    }
+
+    @Test
+    fun `care log correction rejects missing original and list supports staff branch`() {
+        val fixture = Fixture()
+        val missingOriginalId = UUID.randomUUID()
+        `when`(fixture.logs.findById(missingOriginalId)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.mealRequest(missingOriginalId, "Alasan"))
+        }
+
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)).thenReturn(fixture.scope)
+        `when`(fixture.childScopes.requireStaffManagedChild(fixture.scope, fixture.child.id, fixture.organizationId)).thenReturn(fixture.child)
+        `when`(fixture.logs.findAllByOrganizationIdAndChildIdOrderByOccurredAtDesc(fixture.organizationId, fixture.child.id)).thenReturn(emptyList())
+        assertEquals(emptyList<ChildCareLogResponse>(), fixture.service.list(fixture.jwt, fixture.organizationId, fixture.child.id))
+    }
+
+    @Test
+    fun `care log listing fails when daycare capability is not published`() {
+        val fixture = Fixture()
+        org.mockito.Mockito.doThrow(IllegalArgumentException("unpublished")).`when`(fixture.capabilities).requirePublishedCapability(fixture.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, fixture.child.branchId)
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)).thenReturn(fixture.scope)
+        `when`(fixture.childScopes.requireStaffManagedChild(fixture.scope, fixture.child.id, fixture.organizationId)).thenReturn(fixture.child)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.list(fixture.jwt, fixture.organizationId, fixture.child.id) }
     }
 
     private class Fixture {

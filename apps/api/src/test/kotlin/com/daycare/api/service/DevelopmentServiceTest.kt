@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.DevelopmentMediaKind
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AuditLogRepository
@@ -227,6 +229,62 @@ class DevelopmentServiceTest {
         `when`(fixture.entries.findById(fixture.entryId)).thenReturn(Optional.of(entry))
         `when`(fixture.media.findAllByDevelopmentEntryIdOrderByDisplayOrderAsc(entry.id)).thenReturn(listOf(media))
         assertThrows(IllegalArgumentException::class.java) { fixture.service.mediaContent(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.entryId, UUID.randomUUID()) }
+    }
+
+    @Test
+    fun `category creator and listing branches enforce role, duplicate and ownership rules`() {
+        val fixture = fixture()
+        fixture.scope.membership.role = Role.STAFF
+        fixture.scope.membership.canManageDevelopmentCategories = false
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.createCategory(fixture.jwt, fixture.organizationId, CreateDevelopmentCategoryRequest("Baru"))
+        }
+        fixture.scope.membership.canManageDevelopmentCategories = true
+        `when`(fixture.categories.existsByOrganizationIdIsNullAndNameIgnoreCase("BuiltIn")).thenReturn(true)
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.createCategory(fixture.jwt, fixture.organizationId, CreateDevelopmentCategoryRequest("BuiltIn"))
+        }
+        `when`(fixture.categories.existsByOrganizationIdIsNullAndNameIgnoreCase("Local")).thenReturn(false)
+        `when`(fixture.categories.existsByOrganizationIdAndNameIgnoreCase(fixture.organizationId, "Local")).thenReturn(true)
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.createCategory(fixture.jwt, fixture.organizationId, CreateDevelopmentCategoryRequest("Local"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.createCategory(fixture.jwt, fixture.organizationId, CreateDevelopmentCategoryRequest("   "))
+        }
+
+        `when`(fixture.categories.findById(fixture.categoryId)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.updateCategory(fixture.jwt, fixture.organizationId, fixture.categoryId, UpdateDevelopmentCategoryRequest())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.deleteCategory(fixture.jwt, fixture.organizationId, fixture.categoryId)
+        }
+        val local = DevelopmentCategoryConfig(id = fixture.categoryId, organizationId = fixture.organizationId, name = "Motorik")
+        `when`(fixture.categories.findById(fixture.categoryId)).thenReturn(Optional.of(local))
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.updateCategory(fixture.jwt, fixture.organizationId, fixture.categoryId, UpdateDevelopmentCategoryRequest("   "))
+        }
+
+        val staffScope = AccessScope(fixture.staff, Membership(organizationId = fixture.organizationId, role = Role.STAFF), emptySet(), emptySet())
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, Role.entries.toSet(), readOnly = true)).thenReturn(staffScope)
+        `when`(fixture.childScopes.requireStaffManagedChild(staffScope, fixture.child.id, fixture.organizationId)).thenReturn(fixture.child)
+        `when`(fixture.entries.findAllByOrganizationIdAndChildIdOrderByRecordedAtDesc(fixture.organizationId, fixture.child.id)).thenReturn(emptyList())
+        assertTrue(fixture.service.list(fixture.jwt, fixture.organizationId, fixture.child.id).isEmpty())
+    }
+
+    @Test
+    fun `media and category responses cover optional content and foreign references`() {
+        val fixture = fixture()
+        val entry = DevelopmentEntry(id = fixture.entryId, organizationId = fixture.organizationId, childId = fixture.child.id, authorUserId = fixture.staff.id, photoData = byteArrayOf(1), photoContentType = null)
+        `when`(fixture.entries.findById(fixture.entryId)).thenReturn(Optional.of(entry))
+        `when`(fixture.media.findAllByDevelopmentEntryIdOrderByDisplayOrderAsc(fixture.entryId)).thenReturn(emptyList())
+        assertEquals("image/jpeg", fixture.service.photo(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.entryId).contentType)
+        val foreignOrganization = DevelopmentEntry(id = fixture.entryId, organizationId = UUID.randomUUID(), childId = fixture.child.id, authorUserId = fixture.staff.id, photoData = byteArrayOf(1))
+        `when`(fixture.entries.findById(fixture.entryId)).thenReturn(Optional.of(foreignOrganization))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.mediaContent(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.entryId, fixture.mediaId) }
+        `when`(fixture.entries.findById(fixture.entryId)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.mediaContent(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.entryId, fixture.mediaId) }
     }
 
     private data class Fixture(

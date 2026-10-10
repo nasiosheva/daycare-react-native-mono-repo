@@ -378,4 +378,58 @@ class PlatformAdministrationServiceTest {
         assertEquals(TenantSubscriptionStatus.ACTIVE, fixture.service.setSubscriptionStatus(fixture.jwt, fixture.organizationId, TenantSubscriptionStatus.ACTIVE).subscriptionStatus)
         assertThrows(IllegalArgumentException::class.java) { fixture.service.setSubscriptionStatus(fixture.jwt, fixture.organizationId, TenantSubscriptionStatus.PENDING_PAYMENT) }
     }
+
+    @Test
+    fun `platform tenant response expires stale trial and active subscriptions and maps staff invitations`() {
+        val fixture = PlatformAdministrationServiceFixture(); fixture.allowPlatformAdmin()
+        val organization = Organization(id = fixture.organizationId, name = "Tenant")
+        val expiredTrial = TenantSubscription(organizationId = organization.id, status = TenantSubscriptionStatus.TRIAL, trialEndsAt = LocalDate.now().minusDays(1), periodEnd = LocalDate.now())
+        val primary = Membership(id = UUID.randomUUID(), organizationId = organization.id, userId = fixture.userId, role = Role.STAFF_ADMIN, primaryStaffAdmin = true, active = false)
+        val pending = Invitation(organizationId = organization.id, role = Role.STAFF_ADMIN, email = "pending@test")
+        fixture.stubTenantResponse(organization, expiredTrial)
+        `when`(fixture.memberships.findAllByOrganizationId(organization.id)).thenReturn(listOf(primary))
+        `when`(fixture.users.findById(primary.userId)).thenReturn(Optional.empty())
+        `when`(fixture.invitations.findAllByOrganizationIdAndStatus(organization.id, com.daycare.api.domain.InvitationStatus.PENDING)).thenReturn(listOf(pending))
+        val result = fixture.service.tenant(fixture.jwt, organization.id)
+        assertEquals(TenantSubscriptionStatus.PENDING_PAYMENT, result.subscriptionStatus)
+        assertEquals("pending@test", result.staffAdmin?.email)
+
+        val activeExpired = TenantSubscription(organizationId = organization.id, status = TenantSubscriptionStatus.ACTIVE, periodEnd = LocalDate.now().minusDays(1))
+        fixture.stubTenantResponse(organization, activeExpired)
+        assertEquals(TenantSubscriptionStatus.EXPIRED, fixture.service.tenant(fixture.jwt, organization.id).subscriptionStatus)
+    }
+
+    @Test
+    fun `platform parent and tenant searches cover empty results and subscription guards`() {
+        val fixture = PlatformAdministrationServiceFixture(); fixture.allowPlatformAdmin()
+        `when`(fixture.users.findRegisteredParents("")).thenReturn(emptyList())
+        assertTrue(fixture.service.parents(fixture.jwt, null).isEmpty())
+        val organization = Organization(id = fixture.organizationId, name = "Tenant")
+        val subscription = TenantSubscription(organizationId = organization.id, status = TenantSubscriptionStatus.ACTIVE, periodEnd = LocalDate.now().plusDays(4), monthlyFee = BigDecimal("100"))
+        fixture.stubTenantResponse(organization, subscription)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.renewSubscription(fixture.jwt, organization.id, RenewTenantSubscriptionRequest(BigDecimal("200"))) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.setSubscriptionStatus(fixture.jwt, organization.id, TenantSubscriptionStatus.ACTIVE) }
+    }
+
+    @Test
+    fun `platform creates additional staff admin and enforces singleton platform admin`() {
+        val fixture = PlatformAdministrationServiceFixture(); fixture.allowPlatformAdmin()
+        val organization = Organization(id = fixture.organizationId, name = "Tenant")
+        fixture.stubTenantResponse(organization)
+        val staff = UserProfile(id = fixture.userId, displayName = "Staff", email = "staff@test")
+        `when`(fixture.tenantUserAccounts.create("Staff", "staff@test", "secret", "staff")).thenReturn(staff)
+        assertEquals(organization.id, fixture.service.createTenantStaffAdmin(fixture.jwt, organization.id, CreateTenantStaffAdminRequest("Staff", "staff", "staff@test", "secret")).id)
+        assertThrows(IllegalStateException::class.java) { fixture.service.createPlatformAdmin(fixture.jwt, CreatePlatformAdminRequest("admin@test", "admin", "secret")) }
+    }
+
+    @Test
+    fun `platform tenant update rejects offered type removal and trial fee`() {
+        val fixture = PlatformAdministrationServiceFixture(); fixture.allowPlatformAdmin()
+        val organization = Organization(id = fixture.organizationId, name = "Tenant")
+        val subscription = TenantSubscription(organizationId = organization.id, status = TenantSubscriptionStatus.TRIAL, periodEnd = LocalDate.now(), monthlyFee = null)
+        fixture.stubTenantResponse(organization, subscription)
+        `when`(fixture.educationOfferings.findAllByOrganizationIdOrderByCreatedAtAsc(organization.id)).thenReturn(listOf(com.daycare.api.persistence.EducationOffering(organizationId = organization.id, institutionType = "TK")))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.updateTenant(fixture.jwt, organization.id, UpdateTenantRequest("Tenant", setOf("DAYCARE"), TenantSubscriptionPlan.STARTER, null)) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.updateTenant(fixture.jwt, organization.id, UpdateTenantRequest("Tenant", setOf("DAYCARE", "TK"), TenantSubscriptionPlan.STARTER, BigDecimal("10"))) }
+    }
 }
