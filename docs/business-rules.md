@@ -2499,9 +2499,16 @@ bukan pengganti test domain yang lebih rinci.
   dikelola Platform Admin melalui katalog global. Seed/batch awal hanya membuat
   `DRAFT`; publikasi memerlukan review klinis, privasi, bahasa, dan validasi
   versi. Deploy, startup API, restart, rollback, dan CI/CD rutin tidak boleh
-  menjalankan seed katalog secara otomatis. Batch manual mengikuti ID batch,
-  checksum, preview, flag apply sementara, manifest audit, dan idempotensi yang
-  ditetapkan pada plan screening.
+  menjalankan seed katalog secara otomatis. Platform Admin boleh menjalankan
+  batch yang sudah di-allowlist dari UI **Batch Data** pada Katalog Screening.
+  UI hanya mengirim ID batch; isi dataset dan checksum tetap berasal dari
+  server. Preview bersifat read-only, sedangkan apply wajib memakai konfirmasi
+  eksplisit `APPLY`, transaksi, manifest audit, dan idempotensi. Batch yang
+  sudah diterapkan dengan checksum yang sama menghasilkan `ALREADY_APPLIED`,
+  sedangkan checksum berbeda ditolak. Tidak ada operasi delete atau overwrite
+  melalui batch. Akses ini hanya untuk Platform Admin dan tidak membuka data
+  screening Parent. Detail kontraknya ada di
+  `docs/plans/platform-admin-screening-seed-batch.md`.
 - Pertanyaan perkembangan memakai satu pilihan (`YA_SUDAH`, `KADANG`, `BELUM`,
   atau `TIDAK_DIAMATI`). Pertanyaan konteks yang memang membutuhkan beberapa
   jawaban (bahasa dan area kekhawatiran) memakai `MULTI_CHOICE`; server menyimpan

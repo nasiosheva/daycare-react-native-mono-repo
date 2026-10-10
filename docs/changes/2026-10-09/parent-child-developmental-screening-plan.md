@@ -36,10 +36,14 @@ termasuk Parent yang belum memiliki tenant terhubung.
   mengisi katalog sebagai `DRAFT`, sementara publikasi memerlukan review dan
   aksi terpisah. Revisi konten membuat versi baru tanpa mengubah snapshot hasil
   Parent lama.
-- Bootstrap awal tetap dijalankan satu kali per database. Protokol batch manual
-  ber-ID dan berflag juga mengizinkan dataset besar/terkurasi ditambahkan di
-  masa depan; penambahan konten rutin tetap dilakukan Platform Admin melalui
-  UI katalog sebagai draft versi baru. Baris seed read-only, template
+- Bootstrap awal tetap dijalankan satu kali per database. Jalur production yang
+  direkomendasikan adalah Batch Data pada UI Platform Admin: Admin memilih batch
+  allowlist, melihat preview, lalu mengonfirmasi penerapan. Protokol batch manual
+  ber-ID dan berflag tetap mengizinkan dataset besar/terkurasi ditambahkan di
+  masa depan; script runner hanya menjadi fallback terkontrol untuk development,
+  recovery, atau operasi yang sudah disetujui, bukan langkah deploy rutin.
+  Penambahan konten rutin tetap dilakukan Platform Admin melalui UI katalog
+  sebagai draft versi baru. Baris seed read-only, template
   terbit/pensiun immutable, dan
   editor draft memiliki preview sintetis, validasi locale screening aktif (`id` dan `en`), kontrol
   revisi, review metadata, serta publish/retire yang diaudit. Perubahan
@@ -103,11 +107,13 @@ termasuk Parent yang belum memiliki tenant terhubung.
   aktif (`id` dan `en`)
   sebelum dipublish. PDF menggunakan narasi sama dan jawaban lengkap.
 - Seed katalog screening awal ditetapkan sebagai bootstrap manual satu kali
-  per database lingkungan setelah skema tersedia. Startup API, Flyway, deploy
-  berikutnya, restart, rollback, dan pipeline rutin tidak menjalankannya.
-  Penambahan rutin lewat draft `MANUAL` di UI Platform Admin; batch dataset
-  besar/terkurasi baru boleh diterapkan kelak melalui runner manual terpisah,
-  bukan otomatis saat deploy.
+  per database lingkungan setelah skema tersedia. Pada production, penerapan
+  dilakukan melalui UI Platform Admin dengan preview, konfirmasi `APPLY`,
+  manifest audit, dan idempotensi per `batchId`/checksum. Startup API, Flyway,
+  deploy berikutnya, restart, rollback, dan pipeline rutin tidak menjalankannya.
+  Penambahan rutin lewat draft `MANUAL` di UI Platform Admin; runner manual
+  terpisah hanya fallback terkontrol untuk batch yang memang disetujui, bukan
+  otomatis saat deploy.
 - Protokol batch masa depan menetapkan ID batch wajib, pratinjau tanpa mutasi,
   dan `SCREENING_SEED_APPLY=true` sementara hanya pada invocation runner
   yang disetujui. Manifest unik per batch menyimpan checksum/aktor/waktu;
@@ -211,9 +217,11 @@ lengkap pada locale sesi; tidak ada fallback bahasa atau string buatan client.
 Route/API/UI fase Parent dan katalog Platform Admin kini tersedia: Parent memakai
 `/v1/parent/screening` dan `/parent-screening`, sedangkan Platform Admin memakai
 `/v1/platform/screening` dan `/screening-catalog`. Seeder awal tidak berjalan saat
-startup; operator memakai `scripts/run-screening-seed.sh` dengan preview default dan
-flag apply eksplisit. Seed membuat DRAFT kandidat usia 2–60 bulan saja. Publish tetap
-terkunci oleh review rule/question, kelengkapan katalog, dan persetujuan eksternal.
+startup. Jalur production utama adalah Batch Data pada `/screening-catalog`;
+operator dapat memakai `scripts/run-screening-seed.sh` hanya sebagai fallback
+terkontrol dengan preview default dan flag apply eksplisit. Seed membuat DRAFT
+kandidat usia 2–60 bulan saja. Publish tetap terkunci oleh review rule/question,
+kelengkapan katalog, dan persetujuan eksternal.
 
 ## Verifikasi
 
@@ -275,8 +283,9 @@ terkunci oleh review rule/question, kelengkapan katalog, dan persetujuan ekstern
   katalog. Publish memerlukan rule/question review dan seluruh locale yang didukung.
 - Seed awal manual menghasilkan 12 template usia 2–60 bulan, 238 pertanyaan
   (166 perkembangan + 72 konteks), 964 pilihan, rule typed, dan teks id/en sebagai
-  `DRAFT`. Tidak ada startup/deploy seeder otomatis; `scripts/run-screening-seed.sh`
-  wajib dipanggil operator dengan batch ID dan konfirmasi apply.
+  `DRAFT`. Tidak ada startup/deploy seeder otomatis; jalur production memakai
+  Batch Data pada UI Platform Admin, sedangkan `scripts/run-screening-seed.sh`
+  hanya fallback terkontrol dengan batch ID dan konfirmasi apply.
 - CTX-03 dan CTX-04 disimpan sebagai `MULTI_CHOICE`; kode pilihan dinormalisasi
   server dalam urutan katalog, dievaluasi secara fail-closed, dan label snapshot
   digabungkan ke hasil/PDF.
