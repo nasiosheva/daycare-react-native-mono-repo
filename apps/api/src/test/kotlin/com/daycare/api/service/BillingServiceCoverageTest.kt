@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.BookingStatus
 import com.daycare.api.domain.InstitutionCapability
@@ -805,6 +807,47 @@ class BillingServiceCoverageTest {
         val noChild = Invoice(id = UUID.randomUUID(), organizationId = invoice.organizationId, payerUserId = invoice.payerUserId, invoiceNumber = invoice.invoiceNumber, subtotalAmount = invoice.subtotalAmount, totalAmount = invoice.totalAmount, branchId = invoice.branchId, childId = null, status = invoice.status)
         `when`(f.invoices.findById(noChild.id)).thenReturn(Optional.of(noChild))
         assertThrows(IllegalArgumentException::class.java) { f.service.invoice(f.jwt, f.organizationId, noChild.id) }
+    }
+
+    @Test
+    fun `billing validates plan and discount boundaries`() {
+        val f = fixture()
+        `when`(f.plans.save(any(ServicePlan::class.java))).thenAnswer { it.arguments[0] }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createPlan(f.jwt, f.organizationId, CreateServicePlanRequest("Harga", ServicePlanType.DAILY, BigDecimal.ZERO, 1, null, null, true)) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createPlan(f.jwt, f.organizationId, CreateServicePlanRequest("Kapasitas", ServicePlanType.DAILY, BigDecimal.ONE, 1, null, null, true, 0)) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createPlan(f.jwt, f.organizationId, CreateServicePlanRequest("Bulanan", ServicePlanType.MONTHLY, BigDecimal.ONE, 1, null, null, true)) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createPlan(f.jwt, f.organizationId, CreateServicePlanRequest("Harian", ServicePlanType.DAILY, BigDecimal.ONE, 2, null, null, true)) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createPlan(f.jwt, f.organizationId, CreateServicePlanRequest("Carry", ServicePlanType.WEEKLY, BigDecimal.ONE, 2, UnusedCreditPolicy.CARRY_FORWARD, null, true)) }
+
+        val plan = ServicePlan(id = f.planId, organizationId = f.organizationId, name = "Paket", type = ServicePlanType.DAILY, price = BigDecimal("100"), creditCount = 1)
+        `when`(f.plans.findById(f.planId)).thenReturn(Optional.of(plan))
+        fun discount(request: CreateServicePlanDiscountRequest) = assertThrows(IllegalArgumentException::class.java) {
+            f.service.createPlanDiscount(f.jwt, f.organizationId, f.planId, request)
+        }
+        discount(CreateServicePlanDiscountRequest(ServicePlanDiscountKind.AUTOMATIC, "Tanggal", null, ServicePlanDiscountType.FIXED_AMOUNT, BigDecimal.TEN, LocalDate.now().plusDays(1), LocalDate.now(), null))
+        discount(CreateServicePlanDiscountRequest(ServicePlanDiscountKind.AUTOMATIC, "Limit", null, ServicePlanDiscountType.FIXED_AMOUNT, BigDecimal.TEN, null, null, 0))
+        discount(CreateServicePlanDiscountRequest(ServicePlanDiscountKind.PROMO_CODE, "Kode", " ", ServicePlanDiscountType.FIXED_AMOUNT, BigDecimal.TEN, null, null, null))
+        discount(CreateServicePlanDiscountRequest(ServicePlanDiscountKind.AUTOMATIC, "Otomatis", "PROMO", ServicePlanDiscountType.FIXED_AMOUNT, BigDecimal.TEN, null, null, null))
+        discount(CreateServicePlanDiscountRequest(ServicePlanDiscountKind.AUTOMATIC, "Nol", null, ServicePlanDiscountType.FIXED_AMOUNT, BigDecimal.ZERO, null, null, null))
+        discount(CreateServicePlanDiscountRequest(ServicePlanDiscountKind.AUTOMATIC, "Seratus", null, ServicePlanDiscountType.PERCENTAGE, BigDecimal(100), null, null, null))
+        discount(CreateServicePlanDiscountRequest(ServicePlanDiscountKind.AUTOMATIC, "Lebih", null, ServicePlanDiscountType.FIXED_AMOUNT, BigDecimal(100), null, null, null))
+    }
+
+    @Test
+    fun `billing invoice search reaches optional parent email and child filters`() {
+        val f = fixture()
+        val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-EMAIL", subtotalAmount = BigDecimal("10"), totalAmount = BigDecimal("10"), branchId = f.child.branchId, childId = f.child.id)
+        f.parent.email = "parent@example.com"
+        `when`(f.identity.sync(f.jwt)).thenReturn(f.staff)
+        `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())).thenReturn(emptyList())
+        `when`(f.invoices.findAllByOrganizationIdOrderByCreatedAtDesc(f.organizationId)).thenReturn(listOf(invoice))
+        `when`(f.entitlements.findAllByInvoiceId(invoice.id)).thenReturn(emptyList())
+        `when`(f.users.findById(f.parent.id)).thenReturn(Optional.of(f.parent))
+        `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
+        `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(null)
+        assertEquals(1, f.service.invoices(f.jwt, f.organizationId, search = "parent@example.com").size)
+        assertEquals(1, f.service.invoices(f.jwt, f.organizationId, search = "INV-EMAIL").size)
+        assertEquals(1, f.service.invoices(f.jwt, f.organizationId, search = "Ayu").size)
     }
 
     private data class Fixture(
