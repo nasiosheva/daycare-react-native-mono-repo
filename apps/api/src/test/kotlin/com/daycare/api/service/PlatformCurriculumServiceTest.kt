@@ -2,6 +2,7 @@ package com.daycare.api.service
 
 import com.daycare.api.persistence.CurriculumProgramDevelopmentProgramRepository
 import com.daycare.api.persistence.CurriculumProgramRepository
+import com.daycare.api.persistence.CurriculumProgram
 import com.daycare.api.persistence.DevelopmentProgramRepository
 import com.daycare.api.persistence.LearningLevel
 import com.daycare.api.persistence.LearningLevelCurriculumProgram
@@ -130,5 +131,55 @@ class PlatformCurriculumServiceTest {
 
         verify(levelPrograms).deleteAll(listOf(previousGlobalLink))
         verify(levelPrograms, never()).deleteAll(listOf(tenantLink))
+    }
+
+    @Test
+    fun `global curriculum lifecycle covers archived listings activation and validation guards`() {
+        val platformAccess = mock(PlatformAccessService::class.java)
+        val programs = mock(CurriculumProgramRepository::class.java)
+        val programGoals = mock(CurriculumProgramDevelopmentProgramRepository::class.java)
+        val developmentPrograms = mock(DevelopmentProgramRepository::class.java)
+        val levels = mock(LearningLevelRepository::class.java)
+        val levelPrograms = mock(LearningLevelCurriculumProgramRepository::class.java)
+        val service = PlatformCurriculumService(platformAccess, programs, programGoals, developmentPrograms, levels, levelPrograms, mock(GlobalCurriculumSeedingService::class.java))
+        val jwt = mock(Jwt::class.java)
+        val globalLevel = LearningLevel(organizationId = null, active = true)
+        val archived = CurriculumProgram(organizationId = null, active = false, name = "Arsip")
+        val active = CurriculumProgram(organizationId = null, active = true, name = "Aktif")
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
+        `when`(programs.findAllByOrganizationIdIsNullAndActiveTrueOrderByNameAsc()).thenReturn(listOf(active))
+        `when`(programs.findAllByOrganizationIdIsNullOrderByNameAsc()).thenReturn(listOf(active, archived))
+        `when`(programGoals.findAllByCurriculumProgramId(active.id)).thenReturn(emptyList())
+        `when`(programGoals.findAllByCurriculumProgramId(archived.id)).thenReturn(emptyList())
+        `when`(levelPrograms.findAllByCurriculumProgramId(active.id)).thenReturn(emptyList())
+        `when`(levelPrograms.findAllByCurriculumProgramId(archived.id)).thenReturn(emptyList())
+        assertEquals(listOf(active.id), service.programs(jwt).map { it.id })
+        assertEquals(listOf(active.id, archived.id), service.programs(jwt, includeArchived = true).map { it.id })
+
+        `when`(programs.findById(active.id)).thenReturn(Optional.of(active))
+        assertEquals(false, service.setProgramActive(jwt, active.id, false).active)
+        assertEquals(true, service.setProgramActive(jwt, active.id, true).active)
+
+        `when`(levels.findById(globalLevel.id)).thenReturn(Optional.of(globalLevel))
+        val archivedGoal = com.daycare.api.persistence.DevelopmentProgram(organizationId = null, learningLevelId = globalLevel.id, active = false)
+        `when`(developmentPrograms.findById(archivedGoal.id)).thenReturn(Optional.of(archivedGoal))
+        assertThrows(IllegalArgumentException::class.java) {
+            service.createProgram(jwt, CreateGlobalCurriculumProgramRequest(globalLevel.id, "Baru", developmentProgramIds = setOf(archivedGoal.id)))
+        }
+        `when`(programGoals.existsByCurriculumProgramIdAndDevelopmentProgramId(active.id, archivedGoal.id)).thenReturn(true)
+        `when`(programs.findById(active.id)).thenReturn(Optional.of(active))
+        `when`(programGoals.findAllByCurriculumProgramId(active.id)).thenReturn(emptyList())
+        service.updateProgram(jwt, active.id, CreateGlobalCurriculumProgramRequest(globalLevel.id, "Dipakai", developmentProgramIds = setOf(archivedGoal.id)))
+
+        val inactiveLevel = LearningLevel(organizationId = null, active = false)
+        `when`(levels.findById(inactiveLevel.id)).thenReturn(Optional.of(inactiveLevel))
+        assertThrows(IllegalArgumentException::class.java) {
+            service.createProgram(jwt, CreateGlobalCurriculumProgramRequest(inactiveLevel.id, "Tidak boleh"))
+        }
+        val missingLevelId = UUID.randomUUID()
+        `when`(levels.findById(missingLevelId)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) {
+            service.createProgram(jwt, CreateGlobalCurriculumProgramRequest(missingLevelId, "Tidak ada"))
+        }
     }
 }

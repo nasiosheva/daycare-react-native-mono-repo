@@ -69,6 +69,38 @@ class LearningStructureServiceTest {
     private val jwt = mock(Jwt::class.java)
     private val defaultStaffScope = AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet())
 
+    private fun invokePrivate(name: String, vararg args: Any?): Any? = invokePrivate(service(), name, *args)
+
+    @Test
+    fun `learning structure helper boundaries cover optional ages capacity and placement warnings`() {
+        invokePrivate("validateLevel", UpsertLearningLevelRequest("Level"))
+        invokePrivate("validateLevel", UpsertLearningLevelRequest("Level", minAgeMonths = 0, maxAgeMonths = 0))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("validateLevel", UpsertLearningLevelRequest("Level", minAgeMonths = -1)) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("validateLevel", UpsertLearningLevelRequest("Level", maxAgeMonths = -1)) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("validateLevel", UpsertLearningLevelRequest("Level", minAgeMonths = 10, maxAgeMonths = 9)) }
+
+        val classroom = Classroom(organizationId = organizationId, branchId = UUID.randomUUID(), capacity = null)
+        invokePrivate("requireCapacity", classroom)
+        `when`(branchCapacities.findByOrganizationIdAndBranchId(organizationId, classroom.branchId)).thenReturn(com.daycare.api.persistence.BranchCapacitySetting(organizationId = organizationId, branchId = classroom.branchId, dailyCapacity = 2))
+        `when`(placements.countByClassroomIdAndActiveEnrollmentStatus(classroom.id, ChildEnrollmentStatus.ACTIVE)).thenReturn(1)
+        invokePrivate("requireCapacity", classroom)
+        `when`(placements.countByClassroomIdAndActiveEnrollmentStatus(classroom.id, ChildEnrollmentStatus.ACTIVE)).thenReturn(2)
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("requireCapacity", classroom) }
+
+        val branch = Branch(id = classroom.branchId, organizationId = organizationId, active = true, name = "Cabang")
+        val level = LearningLevel(organizationId = organizationId, name = "Level", minAgeMonths = 36, maxAgeMonths = 48)
+        val child = Child(organizationId = organizationId, branchId = classroom.branchId, dateOfBirth = LocalDate.of(2020, 1, 1), enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        val placement = ChildPlacement(organizationId = organizationId, childId = child.id, classroomId = classroom.id, learningLevelId = level.id, startsOn = LocalDate.of(2026, 1, 1))
+        `when`(classrooms.findById(classroom.id)).thenReturn(Optional.of(classroom))
+        `when`(levels.findById(level.id)).thenReturn(Optional.of(level))
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        assertTrue((invokePrivate("placementResponse", placement) as ChildPlacementResponse).ageGuidanceWarning)
+        level.minAgeMonths = null; level.maxAgeMonths = null
+        assertEquals(false, (invokePrivate("placementResponse", placement) as ChildPlacementResponse).ageGuidanceWarning)
+        `when`(levels.findById(level.id)).thenReturn(Optional.empty())
+        assertEquals(null, (invokePrivate("placementResponse", placement) as ChildPlacementResponse).learningLevelName)
+    }
+
     @Test
     fun `classroom active total counts only approved Parent enrollments`() {
         val classroom = Classroom(organizationId = organizationId, name = "Kelas Matahari")
@@ -165,6 +197,24 @@ class LearningStructureServiceTest {
         `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
         `when`(classrooms.findById(classroom.id)).thenReturn(Optional.of(classroom))
         `when`(childScopes.canStaffPlaceChildInClassroom(scope, child.id, classroom.id, organizationId)).thenReturn(false)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            service().placeChild(jwt, organizationId, child.id, CreateChildPlacementRequest(classroom.id))
+        }
+    }
+
+    @Test
+    fun `placement mutation rejects a classroom whose branch has been archived`() {
+        val staffId = UUID.randomUUID()
+        val branch = Branch(organizationId = organizationId, active = false, name = "Cabang Arsip")
+        val child = Child(organizationId = organizationId, branchId = branch.id, enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        val classroom = Classroom(organizationId = organizationId, branchId = branch.id, learningLevelId = UUID.randomUUID(), name = "Kelas Arsip")
+        val scope = AccessScope(UserProfile(id = staffId), Membership(userId = staffId, organizationId = organizationId, role = Role.STAFF), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
+        `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(classrooms.findById(classroom.id)).thenReturn(Optional.of(classroom))
+        `when`(childScopes.canStaffPlaceChildInClassroom(scope, child.id, classroom.id, organizationId)).thenReturn(true)
+        `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
 
         assertThrows(IllegalArgumentException::class.java) {
             service().placeChild(jwt, organizationId, child.id, CreateChildPlacementRequest(classroom.id))

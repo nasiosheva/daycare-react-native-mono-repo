@@ -77,6 +77,46 @@ class ScreeningCompletionServiceTest {
     private val parent = UserProfile(id = UUID.randomUUID(), registrationRole = RegistrationRole.PARENT)
     private val jwt = mock(org.springframework.security.oauth2.jwt.Jwt::class.java)
 
+    private fun invokePrivate(name: String, vararg args: Any?): Any? = invokePrivate(service, name, *args)
+
+    @Test
+    fun `completion text and writable helpers cover duplicate missing blank and terminal branches`() {
+        val first = UUID.randomUUID()
+        val second = UUID.randomUUID()
+        val validRows = listOf(
+            text(ScreeningCatalogResourceType.QUESTION, first, "question.label", " Pertanyaan "),
+            text(ScreeningCatalogResourceType.QUESTION, second, "question.label", "Jawaban"),
+        )
+        `when`(catalogTexts.findAllByResourceTypeAndResourceIdInAndLocale(ScreeningCatalogResourceType.QUESTION, listOf(first, second), "id")).thenReturn(validRows)
+        assertEquals(mapOf(first to "Pertanyaan", second to "Jawaban"), invokePrivate("requireTexts", ScreeningCatalogResourceType.QUESTION, listOf(first, second), "id", "question.label"))
+        `when`(catalogTexts.findAllByResourceTypeAndResourceIdInAndLocale(ScreeningCatalogResourceType.QUESTION, listOf(first, second), "id")).thenReturn(validRows + validRows.first())
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("requireTexts", ScreeningCatalogResourceType.QUESTION, listOf(first, second), "id", "question.label") }
+        validRows.first().textValue = " "
+        `when`(catalogTexts.findAllByResourceTypeAndResourceIdInAndLocale(ScreeningCatalogResourceType.QUESTION, listOf(first, second), "id")).thenReturn(listOf(validRows.first()))
+        assertThrows(IllegalStateException::class.java) { invokePrivate("requireTexts", ScreeningCatalogResourceType.QUESTION, listOf(first, second), "id", "question.label") }
+
+        val session = session()
+        val narrative = listOf(
+            text(ScreeningCatalogResourceType.TEMPLATE, session.templateId, "result.status.KEMAMPUAN_DILAPORKAN_TERLIHAT.title", "Terlihat"),
+            text(ScreeningCatalogResourceType.TEMPLATE, session.templateId, "result.status.KEMAMPUAN_DILAPORKAN_TERLIHAT.summary", "Ringkas"),
+            text(ScreeningCatalogResourceType.TEMPLATE, session.templateId, "result.status.KEMAMPUAN_DILAPORKAN_TERLIHAT.next_step", "Pantau"),
+            text(ScreeningCatalogResourceType.TEMPLATE, session.templateId, "disclaimer.v1", "Bukan diagnosis"),
+        )
+        `when`(catalogTexts.findAllByResourceTypeAndResourceIdInAndLocale(ScreeningCatalogResourceType.TEMPLATE, listOf(session.templateId), "id")).thenReturn(narrative)
+        val prepared = invokePrivate("prepareResultTexts", session, ScreeningResultMainStatus.KEMAMPUAN_DILAPORKAN_TERLIHAT, emptyList<ScreeningEvaluationReason>())
+        assertTrue(prepared.toString().contains("Terlihat"))
+        `when`(catalogTexts.findAllByResourceTypeAndResourceIdInAndLocale(ScreeningCatalogResourceType.TEMPLATE, listOf(session.templateId), "id")).thenReturn(narrative.dropLast(1))
+        assertThrows(IllegalStateException::class.java) { invokePrivate("prepareResultTexts", session, ScreeningResultMainStatus.KEMAMPUAN_DILAPORKAN_TERLIHAT, emptyList<ScreeningEvaluationReason>()) }
+
+        val writable = session()
+        invokePrivate("ensureWritable", writable)
+        writable.status = ScreeningSessionStatus.COMPLETED
+        assertThrows(IllegalStateException::class.java) { invokePrivate("ensureWritable", writable) }
+        val expired = session().apply { expiresAt = Instant.now().minusSeconds(1) }
+        `when`(sessions.save(expired)).thenReturn(expired)
+        assertThrows(IllegalStateException::class.java) { invokePrivate("ensureWritable", expired) }
+    }
+
     @Test
     fun `complete snapshots reviewed catalog and closes session atomically`() {
         val session = session()

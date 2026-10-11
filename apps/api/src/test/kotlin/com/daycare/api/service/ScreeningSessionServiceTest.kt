@@ -50,6 +50,44 @@ class ScreeningSessionServiceTest {
     private val parent = UserProfile(id = UUID.randomUUID(), registrationRole = RegistrationRole.PARENT)
     private val jwt = mock(Jwt::class.java)
 
+    private fun invokePrivate(name: String, vararg args: Any?): Any? = invokePrivate(service, name, *args)
+
+    @Test
+    fun `screening validation helpers cover locale age answer and writable state boundaries`() {
+        assertEquals("en", invokePrivate("normalizeLocale", " EN "))
+        assertEquals("id", invokePrivate("normalizeLocale", "id"))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("normalizeLocale", "fr") }
+        assertEquals(12, invokePrivate("completedMonths", LocalDate.now().minusMonths(12), LocalDate.now()))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("completedMonths", LocalDate.now().plusDays(1), LocalDate.now()) }
+
+        val single = ScreeningQuestion(id = UUID.randomUUID(), answerType = ScreeningQuestionAnswerType.SINGLE_CHOICE)
+        val enabled = ScreeningChoice(questionId = single.id, code = "YA_SUDAH", enabled = true)
+        `when`(choices.findByQuestionIdAndCode(single.id, "YA_SUDAH")).thenReturn(enabled)
+        assertEquals("YA_SUDAH", invokePrivate("normalizeAnswerCode", single, " YA_SUDAH "))
+        listOf("", "YA_SUDAH,YA_SUDAH", "x".repeat(65), "YA_SUDAH,BELUM").forEach { raw ->
+            assertThrows(IllegalArgumentException::class.java) { invokePrivate("normalizeAnswerCode", single, raw) }
+        }
+        `when`(choices.findByQuestionIdAndCode(single.id, "BELUM")).thenReturn(null)
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("normalizeAnswerCode", single, "BELUM") }
+
+        val multi = ScreeningQuestion(id = UUID.randomUUID(), answerType = ScreeningQuestionAnswerType.MULTI_CHOICE)
+        val first = ScreeningChoice(questionId = multi.id, code = "A", displayOrder = 2, enabled = true)
+        val second = ScreeningChoice(questionId = multi.id, code = "B", displayOrder = 1, enabled = true)
+        `when`(choices.findAllByQuestionIdOrderByDisplayOrderAsc(multi.id)).thenReturn(listOf(second, first, ScreeningChoice(questionId = multi.id, code = "OFF", enabled = false)))
+        assertEquals("B,A", invokePrivate("normalizeAnswerCode", multi, "A,B"))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("normalizeAnswerCode", multi, "A,A") }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("normalizeAnswerCode", multi, "A,OFF") }
+
+        val writable = session()
+        invokePrivate("ensureWritable", writable)
+        writable.status = ScreeningSessionStatus.COMPLETED
+        assertThrows(IllegalStateException::class.java) { invokePrivate("ensureWritable", writable) }
+        val expiredByTime = session().apply { expiresAt = Instant.now().minusSeconds(1) }
+        `when`(sessions.save(expiredByTime)).thenReturn(expiredByTime)
+        assertThrows(IllegalStateException::class.java) { invokePrivate("ensureWritable", expiredByTime) }
+        assertEquals(ScreeningSessionStatus.EXPIRED, expiredByTime.status)
+    }
+
     @Test
     fun `start accepts only published template and stores 30 day expiry`() {
         val profile = profile()

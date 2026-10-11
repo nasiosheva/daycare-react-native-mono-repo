@@ -44,6 +44,55 @@ class ScreeningResultExportServiceTest {
         assertTrue(export.fileName.startsWith("screening-anak-"))
     }
 
+    @Test
+    fun `pdf renders every supported locale status domain and optional snapshot branch`() {
+        val domains = listOf("CTX", "BK1", "MK2", "MH3", "KG4", "SE5", "AD6", "OTHER9")
+            .mapIndexed { index, code ->
+                ScreeningResultDomainResponse(
+                    domainCode = code,
+                    statusCode = ScreeningResultMainStatus.entries[index % ScreeningResultMainStatus.entries.size],
+                    observedCount = index,
+                    incompleteCount = if (index % 2 == 0) 1 else 0,
+                    attentionCount = if (index % 3 == 0) 1 else 0,
+                    displayOrder = index,
+                )
+            }
+        val items = listOf(
+            ScreeningResultItemResponse(UUID.randomUUID(), null, "Q-OBSERVED", "BK", "Kemampuan terlihat\u0000", "YA_SUDAH", "Ya, terlihat", null, 1),
+            ScreeningResultItemResponse(UUID.randomUUID(), null, "Q-NO-LABEL", "BK", "Tanpa label", "YA_SUDAH", null, null, 2),
+            ScreeningResultItemResponse(UUID.randomUUID(), null, "Q-NOT-OBSERVED", "CTX", "Belum diamati", "TIDAK_DIAMATI", "Tidak diamati", null, 3),
+            ScreeningResultItemResponse(UUID.randomUUID(), null, "Q-NO-CODE", "OTHER", "Tanpa jawaban", null, null, null, 4),
+        )
+        val reasons = listOf(
+            ScreeningResultReasonResponse("R1", null, null, null, null, null, "Reason fallback", 1, null, null),
+            ScreeningResultReasonResponse("R2", null, null, null, null, "BK", "Reason with answer", 2, "Question", "Answer"),
+        )
+
+        ScreeningResultMainStatus.entries.forEach { status ->
+            listOf("id", "en").forEach { locale ->
+                val result = result(
+                    subjectName = "Nama é\nAnak",
+                    longText = true,
+                ).copy(
+                    locale = locale,
+                    mainStatus = status,
+                    statusSummarySnapshot = "Ringkasan\u0000" + "x".repeat(160),
+                    nextStepSnapshot = "Langkah\u0000" + "x".repeat(160),
+                    disclaimerTextSnapshot = "Disclaimer\u0000" + "x".repeat(160),
+                    domains = domains,
+                    reasons = reasons,
+                    items = items,
+                )
+                `when`(completion.result(jwt, result.sessionId)).thenReturn(result)
+
+                val export = service.pdf(jwt, result.sessionId)
+
+                assertEquals("application/pdf", export.contentType)
+                assertTrue(export.bytes.size > 500)
+            }
+        }
+    }
+
     private fun result(subjectName: String, longText: Boolean): ScreeningResultResponse {
         val id = UUID.randomUUID()
         val text = if (longText) "x".repeat(160) else "Ringkasan"
