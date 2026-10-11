@@ -37,11 +37,16 @@ export function OfflineProvider({ children }: PropsWithChildren) {
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const tasksRef = useRef(tasks);
   const scopeRef = useRef<OfflineScope | null>(scope);
+  const onlineRef = useRef(online);
+  const syncingRef = useRef(syncing);
   const previousScopeRef = useRef<OfflineScope | null>(null);
   const bundlesRef = useRef<SnapshotBundle>({});
   const restoringRef = useRef(false);
+  const flushRef = useRef<() => Promise<void>>(async () => {});
   tasksRef.current = tasks;
   scopeRef.current = scope;
+  onlineRef.current = online;
+  syncingRef.current = syncing;
 
   const persistTasks = useCallback(async (next: ChildCareLogOutboxTask[]) => {
     const currentScope = scopeRef.current;
@@ -52,10 +57,15 @@ export function OfflineProvider({ children }: PropsWithChildren) {
   }, []);
 
   const flush = useCallback(async () => {
+    // Refs, not the online/syncing state variables: this can run synchronously right after
+    // setOnline()/markNetworkOnline() in the same event, before React has re-rendered and
+    // rebuilt this closure with the new value, which would otherwise make the guard below act on
+    // a stale "offline"/"syncing" snapshot and silently skip the retry.
     const currentScope = scopeRef.current;
-    if (!currentScope || currentScope.role === "PARENT" || !online || syncing) return;
+    if (!currentScope || currentScope.role === "PARENT" || !onlineRef.current || syncingRef.current) return;
     const pending = tasksRef.current.filter((task) => task.status === "READY_TO_SYNC" || task.status === "CONFLICT");
     if (!pending.length) return;
+    syncingRef.current = true;
     setSyncing(true);
     setConflict(false);
     let remaining = [...tasksRef.current];
@@ -74,6 +84,7 @@ export function OfflineProvider({ children }: PropsWithChildren) {
           if (isApiNetworkError(error) || isApiTimeoutError(error) || isRetryableOutboxError(status)) {
             remaining = remaining.map((item) => item.id === task.id ? { ...item, status: "READY_TO_SYNC", lastError: error instanceof Error ? error.message : "network" } : item);
             await persistTasks(remaining);
+            onlineRef.current = false;
             setOnline(false);
             break;
           }
@@ -83,9 +94,11 @@ export function OfflineProvider({ children }: PropsWithChildren) {
         }
       }
     } finally {
+      syncingRef.current = false;
       setSyncing(false);
     }
-  }, [api, online, persistTasks, queryClient, syncing]);
+  }, [api, persistTasks, queryClient]);
+  flushRef.current = flush;
 
   const enqueueChildCareLog = useCallback(async (childId: string, input: CreateChildCareLogInput) => {
     const currentScope = scopeRef.current;
@@ -98,15 +111,18 @@ export function OfflineProvider({ children }: PropsWithChildren) {
   }, [flush, persistTasks]);
 
   useEffect(() => {
+    // flushRef (not flush itself) so this subscribes once instead of re-subscribing every time
+    // flush's identity changes, which happens mid-flush as `syncing`/`online` toggle.
     const unsubscribe = subscribeNetworkSignal((nextOnline) => {
+      onlineRef.current = nextOnline;
       setOnline(nextOnline);
-      if (nextOnline) void flush();
+      if (nextOnline) void flushRef.current();
     });
     if (Platform.OS === "web") {
-      const handleOffline = () => { setOnline(false); };
+      const handleOffline = () => { onlineRef.current = false; setOnline(false); };
       globalThis.addEventListener?.("online", markNetworkOnline);
       globalThis.addEventListener?.("offline", handleOffline);
-      const appState = AppState.addEventListener("change", (state) => { if (state === "active") void flush(); });
+      const appState = AppState.addEventListener("change", (state) => { if (state === "active") void flushRef.current(); });
       return () => {
         unsubscribe();
         globalThis.removeEventListener?.("online", markNetworkOnline);
@@ -114,12 +130,12 @@ export function OfflineProvider({ children }: PropsWithChildren) {
         appState.remove();
       };
     }
-    const appState = AppState.addEventListener("change", (state) => { if (state === "active") void flush(); });
+    const appState = AppState.addEventListener("change", (state) => { if (state === "active") void flushRef.current(); });
     return () => {
       unsubscribe();
       appState.remove();
     };
-  }, [flush]);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -143,10 +159,13 @@ export function OfflineProvider({ children }: PropsWithChildren) {
       restoringRef.current = true;
       Object.values(bundlesRef.current).forEach((entry) => queryClient.setQueryData(entry.queryKey, entry.data));
       restoringRef.current = false;
-      void flush();
+      void flushRef.current();
     });
     return () => { active = false; };
-  }, [flush, queryClient, scope, scopeKey]);
+    // flushRef (not flush) so this restoration only re-runs when the scope itself changes, not
+    // every time flush's identity changes mid-flush as `syncing`/`online` toggle — otherwise it
+    // would re-read the (stale, pre-write) persisted outbox and stomp on an in-flight sync.
+  }, [queryClient, scope, scopeKey]);
 
   useEffect(() => {
     const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
@@ -170,7 +189,7 @@ export function OfflineProvider({ children }: PropsWithChildren) {
   return <OfflineContext.Provider value={value}><OfflineStatusBanner />{children}</OfflineContext.Provider>;
 }
 
-function cacheDescriptor(queryKey: QueryKey, role: OfflineRole, organizationId: string, rawData: unknown): { key: string; maxAgeMs: number; sanitize: (data: unknown) => unknown } | null {
+export function cacheDescriptor(queryKey: QueryKey, role: OfflineRole, organizationId: string, rawData: unknown): { key: string; maxAgeMs: number; sanitize: (data: unknown) => unknown } | null {
   if (queryKey[1] !== organizationId) return null;
   if ((role === "STAFF" || role === "STAFF_ADMIN") && queryKey[0] === "child-care-logs" && typeof queryKey[2] === "string" && typeof queryKey[3] === "string") {
     const childId = queryKey[2];
@@ -186,7 +205,7 @@ function cacheDescriptor(queryKey: QueryKey, role: OfflineRole, organizationId: 
   return null;
 }
 
-function sanitizeParentProfile(data: unknown): unknown {
+export function sanitizeParentProfile(data: unknown): unknown {
   if (!data || typeof data !== "object") return null;
   const profile = data as ParentChildProfile;
   return { child: profile.child, branch: profile.branch, placement: profile.placement ?? null, programs: profile.programs, staffAssignments: [] } satisfies Partial<ParentChildProfile>;
