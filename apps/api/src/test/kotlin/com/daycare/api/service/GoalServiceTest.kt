@@ -48,6 +48,7 @@ import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.oauth2.jwt.Jwt
 import java.time.LocalDate
 import java.time.Instant
@@ -56,6 +57,88 @@ import java.util.UUID
 import java.util.Base64
 
 class GoalServiceTest {
+    @Test
+    fun `goal helper matrices cover media headers and child program matching boundaries`() {
+        val fixture = GoalServiceFixture()
+        val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0x01)
+        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        assertEquals(jpeg.toList(), (invokePrivate(fixture.service, "decodePhoto", GoalPhotoInput("image/jpeg", Base64.getEncoder().encodeToString(jpeg))) as ByteArray).toList())
+        assertEquals(png.toList(), (invokePrivate(fixture.service, "decodePhoto", GoalPhotoInput("image/png", Base64.getEncoder().encodeToString(png))) as ByteArray).toList())
+        listOf(
+            GoalPhotoInput("image/gif", "AA=="),
+            GoalPhotoInput("image/jpeg", "not-base64"),
+            GoalPhotoInput("image/jpeg", ""),
+            GoalPhotoInput("image/jpeg", Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3, 4))),
+        ).forEach { input -> assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "decodePhoto", input) } }
+
+        val child = Child(dateOfBirth = LocalDate.now().minusMonths(24))
+        val missingLevel = DevelopmentProgram(organizationId = null)
+        `when`(fixture.levels.findById(missingLevel.learningLevelId)).thenReturn(Optional.empty())
+        assertEquals(false, invokePrivate(fixture.service, "matchesChildProgram", child, missingLevel))
+
+        val unboundedLevel = LearningLevel(organizationId = null)
+        val unboundedProgram = DevelopmentProgram(organizationId = null, learningLevelId = unboundedLevel.id)
+        `when`(fixture.levels.findById(unboundedLevel.id)).thenReturn(Optional.of(unboundedLevel))
+        assertEquals(true, invokePrivate(fixture.service, "matchesChildProgram", child, unboundedProgram))
+
+        val boundedLevel = LearningLevel(organizationId = null, minAgeMonths = 12, maxAgeMonths = 36)
+        val boundedProgram = DevelopmentProgram(organizationId = null, learningLevelId = boundedLevel.id)
+        `when`(fixture.levels.findById(boundedLevel.id)).thenReturn(Optional.of(boundedLevel))
+        assertEquals(true, invokePrivate(fixture.service, "matchesChildProgram", child, boundedProgram))
+        child.dateOfBirth = LocalDate.now().minusMonths(48)
+        assertEquals(false, invokePrivate(fixture.service, "matchesChildProgram", child, boundedProgram))
+
+        val tenantLevel = LearningLevel(organizationId = UUID.randomUUID())
+        val tenantProgram = DevelopmentProgram(organizationId = tenantLevel.organizationId, learningLevelId = tenantLevel.id)
+        child.dateOfBirth = LocalDate.now().minusMonths(24)
+        child.classroomId = null
+        `when`(fixture.levels.findById(tenantLevel.id)).thenReturn(Optional.of(tenantLevel))
+        assertEquals(false, invokePrivate(fixture.service, "matchesChildProgram", child, tenantProgram))
+        val classroom = com.daycare.api.persistence.Classroom(organizationId = tenantLevel.organizationId!!, learningLevelId = tenantLevel.id)
+        child.classroomId = classroom.id
+        `when`(fixture.classrooms.findById(classroom.id)).thenReturn(Optional.empty())
+        assertEquals(false, invokePrivate(fixture.service, "matchesChildProgram", child, tenantProgram))
+        `when`(fixture.classrooms.findById(classroom.id)).thenReturn(Optional.of(classroom))
+        assertEquals(true, invokePrivate(fixture.service, "matchesChildProgram", child, tenantProgram))
+        classroom.learningLevelId = UUID.randomUUID()
+        assertEquals(false, invokePrivate(fixture.service, "matchesChildProgram", child, tenantProgram))
+    }
+
+    @Test
+    fun `goal response helper covers incomplete days, empty indicators, future starts and completed periods`() {
+        val fixture = GoalServiceFixture()
+        val organizationId = UUID.randomUUID()
+        val childId = UUID.randomUUID()
+        val program = DevelopmentProgram(organizationId = organizationId, durationDays = 4, minimumYesPercent = 50, minimumYesStreak = 2)
+        val goal = ChildGoal(organizationId = organizationId, childId = childId, programId = program.id, startsOn = LocalDate.now().minusDays(1))
+        val empty = invokePrivate(fixture.service, "buildGoalResponse", goal, program, null, emptyList<DevelopmentProgramItem>(), emptyList<ChildGoalCheckIn>(), emptyList<ChildGoalConclusionCorrection>()) as ChildGoalResponse
+        assertEquals(0, empty.recordedDays)
+
+        val first = DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = program.id, active = true)
+        val archived = DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = program.id, active = false)
+        val partial = ChildGoalCheckIn(organizationId = organizationId, childGoalId = goal.id, indicatorId = first.id, checkInDate = goal.startsOn, outcome = GoalCheckInOutcome.YES)
+        val complete = ChildGoalCheckIn(organizationId = organizationId, childGoalId = goal.id, indicatorId = first.id, checkInDate = goal.startsOn.plusDays(1), outcome = GoalCheckInOutcome.NO)
+        val response = invokePrivate(fixture.service, "buildGoalResponse", goal, program, "Curriculum", listOf(first, archived), listOf(partial, complete), emptyList<ChildGoalConclusionCorrection>()) as ChildGoalResponse
+        assertEquals(2, response.recordedDays)
+        assertEquals(1, response.noDays)
+
+        val future = ChildGoal(organizationId = organizationId, childId = childId, programId = program.id, startsOn = LocalDate.now().plusDays(2))
+        // targetEndsOn (startsOn + 3) lands after today, so a COMPLETED goal only reports the full
+        // 4-day duration as missed if its elapsed window stays targetEndsOn instead of being
+        // clamped to LocalDate.now() like the ACTIVE branch.
+        val completed = ChildGoal(organizationId = organizationId, childId = childId, programId = program.id, startsOn = LocalDate.now().minusDays(1), status = ChildGoalStatus.COMPLETED)
+        assertEquals(0, (invokePrivate(fixture.service, "buildGoalResponse", future, program, null, listOf(first), emptyList<ChildGoalCheckIn>(), emptyList<ChildGoalConclusionCorrection>()) as ChildGoalResponse).missedDays)
+        assertEquals(4, (invokePrivate(fixture.service, "buildGoalResponse", completed, program, null, listOf(first), emptyList<ChildGoalCheckIn>(), emptyList<ChildGoalConclusionCorrection>()) as ChildGoalResponse).missedDays)
+    }
+
+    @Test
+    fun `goal authorization helper rejects platform admins`() {
+        val fixture = GoalServiceFixture()
+        val scope = fixture.scope(UUID.randomUUID()).copy(membership = Membership(role = Role.ADMIN))
+        assertThrows(AccessDeniedException::class.java) {
+            invokePrivate(fixture.service, "authorizeChild", scope, UUID.randomUUID(), UUID.randomUUID())
+        }
+    }
     @Test
     fun `filters development programs by the selected curriculum program`() {
         val fixture = GoalServiceFixture()

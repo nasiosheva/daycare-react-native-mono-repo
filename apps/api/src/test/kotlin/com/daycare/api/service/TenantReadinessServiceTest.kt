@@ -236,6 +236,36 @@ class TenantReadinessServiceTest {
         assertTrue(response.issues.isEmpty())
     }
 
+    @Test
+    fun `readiness treats incomplete operating-hour shapes as not configured`() {
+        val organizationId = UUID.randomUUID()
+        stubStaffAdminAccess(organizationId)
+        val branch = Branch(organizationId = organizationId, name = "Utama")
+        `when`(subscriptions.findByOrganizationId(organizationId)).thenReturn(TenantSubscription(organizationId = organizationId, status = TenantSubscriptionStatus.ACTIVE))
+        `when`(memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(Membership(organizationId = organizationId, role = Role.STAFF_ADMIN, active = true)))
+        `when`(branches.findAllByOrganizationId(organizationId)).thenReturn(listOf(branch))
+        `when`(educationOfferings.findAllByOrganizationIdOrderByCreatedAtAsc(organizationId)).thenReturn(listOf(EducationOffering(organizationId = organizationId, branchId = branch.id, institutionType = "DAYCARE", status = EducationOfferingStatus.PUBLISHED)))
+        `when`(classrooms.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId)).thenReturn(listOf(Classroom(organizationId = organizationId, branchId = branch.id, name = "Matahari", active = true)))
+        `when`(plans.findAllByOrganizationIdAndActiveTrue(organizationId)).thenReturn(listOf(ServicePlan(organizationId = organizationId, name = "Harian", active = true)))
+        `when`(capacities.findAllByOrganizationId(organizationId)).thenReturn(listOf(BranchCapacitySetting(organizationId = organizationId, branchId = branch.id, dailyCapacity = 10)))
+        `when`(instructions.findAllByOrganizationIdAndActiveTrueOrderByDisplayOrderAscCreatedAtAsc(organizationId)).thenReturn(listOf(TenantPaymentInstruction(organizationId = organizationId, name = "BCA", accountHolder = "Usia Emas", accountNumber = "123", active = true)))
+
+        val valid = operatingHoursFor(branch.id)
+        val duplicateDays = valid.map { hour -> BranchOperatingHour(branchId = branch.id, dayOfWeek = DayOfWeek.MONDAY, active = hour.active, opensAt = hour.opensAt, closesAt = hour.closesAt) }
+        val inactive = valid.map { hour -> BranchOperatingHour(branchId = branch.id, dayOfWeek = hour.dayOfWeek, active = false, opensAt = null, closesAt = null) }
+        val missingTimes = valid.map { hour -> BranchOperatingHour(branchId = branch.id, dayOfWeek = hour.dayOfWeek, active = hour.active, opensAt = null, closesAt = null) }
+        val reversedTimes = valid.map { hour -> BranchOperatingHour(branchId = branch.id, dayOfWeek = hour.dayOfWeek, active = hour.active, opensAt = LocalTime.of(16, 0), closesAt = LocalTime.of(7, 0)) }
+        listOf(emptyList(), valid.take(6), duplicateDays, inactive, missingTimes, reversedTimes).forEach { hours ->
+            `when`(operatingHours.findAllByBranchIdOrderByDayOfWeekAsc(branch.id)).thenReturn(hours)
+            val response = service().organizationReadiness(jwt, organizationId)
+            assertEquals(TenantReadinessStatus.NEEDS_ATTENTION, response.status)
+            assertTrue(TenantReadinessIssue.OPERATING_HOURS_REQUIRED in response.issues)
+        }
+
+        `when`(operatingHours.findAllByBranchIdOrderByDayOfWeekAsc(branch.id)).thenReturn(valid)
+        assertFalse(TenantReadinessIssue.OPERATING_HOURS_REQUIRED in service().organizationReadiness(jwt, organizationId).issues)
+    }
+
     private fun stubStaffAdminAccess(organizationId: UUID) {
         val scope = AccessScope(mock(UserProfile::class.java), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN, active = true), emptySet(), emptySet())
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), null, true)).thenReturn(scope)

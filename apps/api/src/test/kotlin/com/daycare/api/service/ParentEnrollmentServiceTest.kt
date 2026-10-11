@@ -47,6 +47,32 @@ import java.util.Optional
 import java.util.UUID
 
 class ParentEnrollmentServiceTest {
+
+    @Test
+    fun `parent enrollment access state and catalog guards cover every billing outcome`() {
+        val fixture = enrollmentFixture()
+        val pending = invokePrivate(fixture.service, "accessState", ParentEnrollmentStatus.PENDING_APPROVAL, null) as Pair<*, *>
+        assertEquals(ParentEnrollmentAccessState.PENDING_APPROVAL, pending.first)
+        assertEquals(ParentEnrollmentAllowedAction.CANCEL, (pending.second as Set<*>).single())
+        listOf(ParentEnrollmentStatus.REJECTED, ParentEnrollmentStatus.CANCELLED, ParentEnrollmentStatus.EXPIRED).forEach { status ->
+            val state = invokePrivate(fixture.service, "accessState", status, null) as Pair<*, *>
+            assertEquals(ParentEnrollmentAccessState.CLOSED, state.first)
+        }
+        assertEquals(ParentEnrollmentAccessState.BILLING_LIMITED, (invokePrivate(fixture.service, "accessState", ParentEnrollmentStatus.APPROVED, InvoiceStatus.OVERDUE) as Pair<*, *>).first)
+        assertEquals(ParentEnrollmentAccessState.PAYMENT_DUE, (invokePrivate(fixture.service, "accessState", ParentEnrollmentStatus.APPROVED, InvoiceStatus.PENDING) as Pair<*, *>).first)
+        assertEquals(ParentEnrollmentAccessState.PAYMENT_REVIEW, (invokePrivate(fixture.service, "accessState", ParentEnrollmentStatus.APPROVED, InvoiceStatus.PAYMENT_SUBMITTED) as Pair<*, *>).first)
+        assertEquals(ParentEnrollmentAccessState.ACTIVE, (invokePrivate(fixture.service, "accessState", ParentEnrollmentStatus.APPROVED, InvoiceStatus.PAID) as Pair<*, *>).first)
+        assertEquals(ParentEnrollmentAccessState.PAYMENT_DUE, (invokePrivate(fixture.service, "accessState", ParentEnrollmentStatus.APPROVED, null) as Pair<*, *>).first)
+
+        val organizationId = fixture.organizationId
+        val branchId = fixture.branch.id
+        invokePrivate(fixture.service, "requireCatalogTenant", organizationId, branchId)
+        `when`(fixture.subscriptions.findByOrganizationId(organizationId)).thenReturn(TenantSubscription(organizationId = organizationId, status = TenantSubscriptionStatus.SUSPENDED))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "requireCatalogTenant", organizationId, branchId) }
+        `when`(fixture.subscriptions.findByOrganizationId(organizationId)).thenReturn(TenantSubscription(organizationId = organizationId, status = TenantSubscriptionStatus.ACTIVE))
+        `when`(fixture.published.hasPublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branchId)).thenReturn(false)
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "requireCatalogTenant", organizationId, branchId) }
+    }
     @Test
     fun `one Parent checkout creates an enrollment for every submitted child`() {
         val identity = mock(IdentityService::class.java)
