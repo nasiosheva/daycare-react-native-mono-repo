@@ -21,6 +21,7 @@ import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAcce
 import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
 import { isDuplicateRemoteNotification } from "@/notifications/localNotificationContent";
 import { getNativeNotificationPermission, nativeNotificationPlatform, registerNativePushDevice, requestNativeNotificationPermission, type NativeNotificationPermission } from "@/notifications/nativePush";
+import { OfflineProvider } from "@/offline/OfflineProvider";
 
 if (Platform.OS !== "web") {
   SplashScreen.setOptions({ duration: 250, fade: true });
@@ -160,7 +161,7 @@ function Providers({ children }: PropsWithChildren) {
       },
     },
   }));
-  return <QueryClientProvider client={queryClient}><I18nProvider><AuthProvider><NativeSplashGate><NotificationRouteHandler /><NativeNotificationRegistration /><RealtimeConnection />{children}</NativeSplashGate></AuthProvider></I18nProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><I18nProvider><AuthProvider><OfflineProvider><NativeSplashGate><NotificationRouteHandler /><NativeNotificationRegistration /><RealtimeConnection />{children}</NativeSplashGate></OfflineProvider></AuthProvider></I18nProvider></QueryClientProvider>;
 }
 
 function NativeSplashGate({ children }: PropsWithChildren) {

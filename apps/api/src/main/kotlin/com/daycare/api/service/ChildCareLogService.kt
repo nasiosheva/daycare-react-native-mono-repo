@@ -75,11 +75,18 @@ class ChildCareLogService(
     }
 
     @Transactional
-    fun create(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreateChildCareLogRequest): ChildCareLogResponse {
+    fun create(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreateChildCareLogRequest, idempotencyKey: UUID? = null): ChildCareLogResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS)
         access.requireWritable(scope)
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         publishedCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)
+        idempotencyKey?.let { mutationId ->
+            val existing = logs.findByOrganizationIdAndClientMutationId(organizationId, mutationId)
+            if (existing != null) {
+                require(existing.childId == child.id) { DaycareOperationError.UNAVAILABLE }
+                return response(existing)
+            }
+        }
         validate(request, organizationId, childId)
         val log = logs.save(ChildCareLog(
             organizationId = organizationId,
@@ -96,6 +103,7 @@ class ChildCareLogService(
             note = request.note?.trim()?.ifBlank { null },
             correctsLogId = request.correctsLogId,
             correctionReason = request.correctionReason?.trim()?.ifBlank { null },
+            clientMutationId = idempotencyKey,
         ))
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "CHILD_CARE_LOG", entityId = log.id, action = if (log.correctsLogId == null) "CREATED" else "CORRECTED", source = "DAYCARE_CARE"))
         realtime.publishToTenantRoles(organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), setOf(RealtimeFlag.CHILD_CARE_LOGS), mapOf("childId" to child.id))

@@ -56,6 +56,8 @@ export type ApiClientOptions = {
   getOrganizationId: () => string | null;
   getLanguage: () => string;
   onRequestLog?: (entry: ApiRequestLogEntry) => void;
+  onNetworkFailure?: () => void;
+  onNetworkResponse?: () => void;
 };
 
 export type ApiRequestLogEntry = {
@@ -153,7 +155,7 @@ export type ChildMealType = "BREAKFAST" | "SNACK" | "LUNCH" | "OTHER";
 export type ChildMealAmount = "NONE" | "LESS_THAN_HALF" | "ABOUT_HALF" | "MOST" | "ALL";
 export type ChildToiletType = "WET" | "SOILED" | "TOILET_ATTEMPT";
 export type ChildCareLog = { id: string; childId: string; type: ChildCareLogType; occurredAt: string; mealType?: ChildMealType | null; mealAmount?: ChildMealAmount | null; napStartedAt?: string | null; napEndedAt?: string | null; toiletType?: ChildToiletType | null; note?: string | null; correctsLogId?: string | null; correctionReason?: string | null; createdAt: string };
-export type CreateChildCareLogInput = { type: ChildCareLogType; occurredAt: string; mealType?: ChildMealType; mealAmount?: ChildMealAmount; napStartedAt?: string; napEndedAt?: string; toiletType?: ChildToiletType; note?: string; correctsLogId?: string; correctionReason?: string };
+export type CreateChildCareLogInput = { type: ChildCareLogType; occurredAt: string; mealType?: ChildMealType; mealAmount?: ChildMealAmount; napStartedAt?: string; napEndedAt?: string; toiletType?: ChildToiletType; note?: string; correctsLogId?: string; correctionReason?: string; clientMutationId?: string };
 export type StaffHandoverStatus = "OPEN" | "ACKNOWLEDGED";
 export type StaffHandover = { id: string; childId: string; recipientUserId: string; recipientName: string; summary: string; status: StaffHandoverStatus; acknowledgedAt?: string | null; createdAt: string };
 export type StaffHandoverRecipient = { userId: string; displayName: string };
@@ -675,7 +677,10 @@ export class ApiClient {
   }
 
   async childCareLogs(childId: string, organizationId?: string): Promise<ChildCareLog[]> { return this.request(`/children/${childId}/care-logs`, this.orgOverride(organizationId)); }
-  async createChildCareLog(childId: string, input: CreateChildCareLogInput, organizationId?: string): Promise<ChildCareLog> { return this.request(`/children/${childId}/care-logs`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async createChildCareLog(childId: string, input: CreateChildCareLogInput, organizationId?: string): Promise<ChildCareLog> {
+    const { clientMutationId, ...body } = input;
+    return this.request(`/children/${childId}/care-logs`, { method: "POST", body: JSON.stringify(body), headers: clientMutationId ? { "Idempotency-Key": clientMutationId } : undefined, ...this.orgOverride(organizationId) });
+  }
   async childHandovers(childId: string, organizationId?: string): Promise<StaffHandover[]> { return this.request(`/children/${childId}/handovers`, this.orgOverride(organizationId)); }
   async childHandoverRecipients(childId: string, organizationId?: string): Promise<StaffHandoverRecipient[]> { return this.request(`/children/${childId}/handovers/recipients`, this.orgOverride(organizationId)); }
   async createChildHandover(childId: string, input: CreateStaffHandoverInput, organizationId?: string): Promise<StaffHandover> { return this.request(`/children/${childId}/handovers`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
@@ -826,9 +831,11 @@ export class ApiClient {
           ...init.headers,
         },
       });
+      this.options.onNetworkResponse?.();
       this.logRequest({ phase: "RESPONSE", method, url, status: response.status, durationMs: Date.now() - startedAt });
       return response;
     } catch (error) {
+      this.options.onNetworkFailure?.();
       if (isApiTimeoutError(error)) {
         this.logRequest({ phase: "FAILURE", method, url, durationMs: Date.now() - startedAt, failure: "TIMEOUT" });
         throw error;

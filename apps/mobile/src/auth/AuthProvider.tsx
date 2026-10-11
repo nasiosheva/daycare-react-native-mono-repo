@@ -12,6 +12,7 @@ import { hasOrganizationMembership, requiresOrganizationSelection, selectedOrgan
 import { profileForCurrentIdentity, profileIdentityChanged } from "./profileIdentity";
 import { cancelOperationalCloseReminderSchedules } from "@/reminders/operationalCloseReminderScheduler";
 import type { AuthUser, PhoneChallenge } from "./types";
+import { markNetworkOffline, markNetworkOnline } from "@/offline/networkSignal";
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -73,6 +74,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     getOrganizationId: () => organizationIdRef.current,
     getLanguage: () => locale,
     onRequestLog: Platform.OS === "android" && env.apiUrl.startsWith(localAndroidApiUrlPrefix) ? logLocalAndroidApi : undefined,
+    onNetworkFailure: markNetworkOffline,
+    onNetworkResponse: markNetworkOnline,
   }), [localSession, organizationId, locale]);
   const user = localSession?.user ?? firebaseUser;
   const profileLoadKey = isSigningOut ? null : localSession?.token ?? (firebaseUser && firebaseIdentityState === "existing" ? `firebase:${firebaseUser.uid}:${firebaseIdentityVersion}` : null);

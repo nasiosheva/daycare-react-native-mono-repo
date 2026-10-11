@@ -12,6 +12,8 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { notify } from "@/notify/notify";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { dateFromIsoTime, formatIsoTime } from "@/date-picker/date";
+import { useChildProfile } from "@/children/useChildManagement";
+import { useOffline } from "@/offline/OfflineProvider";
 
 type FormState = {
   type: ChildCareLogType;
@@ -54,12 +56,23 @@ export default function ChildCareLogsScreen() {
   const queryClient = useQueryClient();
   const membership = profile?.memberships.find((item) => item.organizationId === organizationId);
   const canRecord = Boolean(membership?.active && (membership.role === "STAFF" || membership.role === "STAFF_ADMIN"));
-  const logs = useQuery({ queryKey: ["child-care-logs", organizationId, childId], queryFn: () => api.childCareLogs(childId!, organizationId), enabled: Boolean(childId && organizationId && membership) });
+  const childProfile = useChildProfile(childId);
+  const branchId = childProfile.data?.child.branchId ?? null;
+  const logs = useQuery({ queryKey: ["child-care-logs", organizationId, childId, branchId], queryFn: () => api.childCareLogs(childId!, organizationId), enabled: Boolean(childId && organizationId && membership && branchId) });
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["child-care-logs", organizationId, childId] });
+  const { enqueueChildCareLog } = useOffline();
   const [form, setForm] = useState<FormState | null>(null);
   const create = useMutation({
-    mutationFn: (input: CreateChildCareLogInput) => api.createChildCareLog(childId!, input, organizationId),
-    onSuccess: () => { invalidate(); setForm(null); notify(t("operations.careSaved"), undefined, "success"); },
+    mutationFn: (input: CreateChildCareLogInput) => enqueueChildCareLog(childId!, input),
+    onSuccess: ({ synced }) => {
+      setForm(null);
+      if (synced) {
+        invalidate();
+        notify(t("operations.careSaved"), undefined, "success");
+      } else {
+        notify(t("offline.careLogQueued"), undefined, "info");
+      }
+    },
   });
 
   if (!profile) return null;
@@ -88,12 +101,16 @@ export default function ChildCareLogsScreen() {
     void create.mutateAsync(input).catch((error: unknown) => notify(t("operations.careSaveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"));
   };
 
+  const loading = childProfile.isLoading || logs.isLoading;
+  const loadFailed = (childProfile.isError && !childProfile.isFetching) || (logs.isError && !logs.isFetching);
+  const retry = () => { void childProfile.refetch(); void logs.refetch(); };
+
   return <AppScreen showBottomNavigation={false} title={t("operations.careLogs")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canRecord ? <FloatingActionButton icon="add" accessibilityLabel={t("operations.addCareLog")} onPress={() => setForm(initialForm())}>{t("operations.addCareLog")}</FloatingActionButton> : undefined}>
     <AppText tone="muted">{t("operations.careLogsDescription")}</AppText>
-    {logs.isLoading && <ShimmerList />}
-    {logs.isError && !logs.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void logs.refetch()} />}
-    {!logs.isLoading && !logs.isError && logs.data?.map((log) => <CareLogCard key={log.id} log={log} formatDateTime={formatDateTime} typeLabel={typeLabel} mealTypeLabel={mealTypeLabel} mealAmountLabel={mealAmountLabel} toiletTypeLabel={toiletTypeLabel} canCorrect={canRecord && !log.correctsLogId} correctLabel={t("operations.correctCareLog")} onCorrect={() => setForm(initialForm(log))} />)}
-    {!logs.isLoading && !logs.isError && logs.data?.length === 0 && <EmptyState icon="restaurant-outline" title={t("operations.careEmpty")} action={canRecord ? { label: t("operations.addCareLog"), onPress: () => setForm(initialForm()) } : undefined} />}
+    {loading && <ShimmerList />}
+    {loadFailed && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={retry} />}
+    {!loading && !loadFailed && logs.data?.map((log) => <CareLogCard key={log.id} log={log} formatDateTime={formatDateTime} typeLabel={typeLabel} mealTypeLabel={mealTypeLabel} mealAmountLabel={mealAmountLabel} toiletTypeLabel={toiletTypeLabel} canCorrect={canRecord && !log.correctsLogId} correctLabel={t("operations.correctCareLog")} onCorrect={() => setForm(initialForm(log))} />)}
+    {!loading && !loadFailed && logs.data?.length === 0 && <EmptyState icon="restaurant-outline" title={t("operations.careEmpty")} action={canRecord ? { label: t("operations.addCareLog"), onPress: () => setForm(initialForm()) } : undefined} />}
 
     <BottomSheet visible={form !== null} onClose={() => setForm(null)} closeAccessibilityLabel={t("common.close")} title={t(form?.correctsLogId ? "operations.correctCareLog" : "operations.addCareLog")} negativeAction={{ label: t("common.cancel"), onPress: () => setForm(null) }} positiveAction={{ label: t("common.save"), loading: create.isPending, onPress: save }}>
       <View style={styles.field}><AppText variant="label">{t("operations.careType")}</AppText><ChipGroup accessibilityLabel={t("operations.careType")}>{careTypes.map((type) => <Chip key={type} label={typeLabel(type)} selected={form?.type === type} onPress={() => setForm((current) => current ? { ...current, type } : current)} />)}</ChipGroup></View>
