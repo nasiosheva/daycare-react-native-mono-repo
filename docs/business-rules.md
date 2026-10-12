@@ -1,5 +1,7 @@
 # Aturan Bisnis dan Platform Knowledge Usia Emas
 
+<!-- Mories Deo Hutapea,S.E.,S.Kom -->
+
 Dokumen ini adalah sumber normatif aturan bisnis dan pengetahuan produk lintas modul. Dokumen ini wajib dibaca sebelum implementasi, review, atau perubahan flow, kontrak API, model data, otorisasi, dan arsitektur. Detail implementasi, perubahan harian, hasil verifikasi, serta gap antara aturan target dan implementasi dicatat terpisah di `docs/changes/`.
 
 Aturan yang ditandai sebagai **target** menyatakan arah produk yang telah disetujui tetapi belum tentu sudah tersedia di code atau database. Implementasi yang belum sesuai tidak boleh dijadikan alasan untuk mengubah aturan secara diam-diam.
@@ -910,6 +912,92 @@ bagian ini adalah **target** sampai migrasi dan kontraknya tersedia.
 - Semua label status, alasan disabled, error validasi, dan aksi harus berasal
   dari enum/kode typed serta i18n. Client tidak boleh menurunkan status dari
   warna, urutan tanggal, atau isi pesan error bebas.
+
+### 13.2.1 Mode offline Staff dan data anak
+
+Mode offline adalah kemampuan **target** untuk membantu operasi saat koneksi
+terputus; ia bukan sumber authority baru dan tidak mengubah aturan scope,
+role, capability, membership, assignment, atau lifecycle server.
+
+- **Cakupan Staff:** `STAFF` dan `STAFF_ADMIN` hanya boleh menyimpan cache dan
+  draft offline untuk tenant aktif, cabang, offering, serta anak yang sudah
+  lolos scope Staff pada sinkronisasi terakhir. `STAFF_ADMIN` tetap terikat
+  tenant aktif dan tidak memperoleh akses tenant lain hanya karena perangkat
+  sedang offline. Cache wajib diberi key minimal
+  `userId/organizationId/branchId/offeringId/childId-or-learnerId/contextRevision`;
+  identifier anak tanpa tenant asal tidak boleh dipakai sebagai key tunggal.
+- **Cakupan data anak:** cache Staff boleh memuat roster operasional minimal,
+  identitas tampilan, relasi kelas/kelompok yang sedang berlaku, jadwal hari
+  ini, serta ringkasan keselamatan yang memang diizinkan oleh assignment.
+  Detail kesehatan, obat, kontak wali, dokumen, bukti media, handover privat,
+  dan insiden lengkap tidak boleh dipersistenkan offline kecuali modul
+  tersebut memiliki kontrak cache terenkripsi dan grant eksplisit tersendiri.
+  Cache tidak pernah menjadi bukti otorisasi atau pengganti response server.
+- **Draft Staff yang boleh dibuat offline:** catatan perkembangan, catatan
+  perawatan harian, handover, dan event kehadiran/check-in/out yang sudah
+  ditampilkan sebagai action legal oleh server. Draft menyimpan
+  `clientMutationId`, `idempotencyKey`, `organizationId`, `childId` (atau
+  `learnerId` pada modul target),
+  `recordedAt` dalam timezone cabang, actor, context revision, dan payload
+  minimum. Setiap event kehadiran tetap direkonsiliasi server terhadap
+  booking, jam operasional, assignment, dan aturan waktu ketika disinkronkan.
+- **Mutasi yang dilarang offline:** pembayaran/invoice, approval atau
+  rejection, consent, perubahan akses/membership/assignment, publish/retire,
+  perubahan profil anak, perubahan kesehatan/obat, penutupan insiden, upload
+  bukti, penghapusan data, dan tindakan lain yang memerlukan keputusan atau
+  authority real-time. UI boleh menyimpan catatan lokal yang belum terkirim
+  hanya bila kontrak modul secara eksplisit mengizinkannya; catatan itu bukan
+  status berhasil.
+- **Cakupan Parent untuk anak:** Parent dapat membaca snapshot terenkripsi
+  dari anak yang masih memiliki relasi guardian aktif pada tenant asal.
+  Snapshot read-only dibatasi pada profil anak, kelas/layanan yang boleh
+  dilihat, ringkasan perkembangan/Goal yang telah tersimpan, dan linimasa
+  harian yang memang sudah dipublikasikan kepada Parent. Snapshot tidak boleh
+  memuat data anak lain, Parent lain, handover Staff, detail internal
+  insiden, draft, atau data health/medication yang tidak memiliki grant
+  eksplisit. Parent tidak dapat membuat atau mengubah data tenant melalui
+  mode offline.
+- **Tidak ada mode offline Student:** istilah “offline untuk anak” berarti
+  cache data anak yang sah untuk Staff/Parent, bukan membuat akun atau role
+  `STUDENT`. Akun Student tetap target terpisah pada §12.8.
+- **Outbox dan state:** setiap draft lokal memiliki state typed
+  `LOCAL_DRAFT`, `READY_TO_SYNC`, `SYNCING`, `SYNCED`, `CONFLICT`, `REJECTED`,
+  atau `DISCARDED`. Hanya response kanonis server yang boleh mengubahnya ke
+  `SYNCED`. UI menampilkan waktu sinkronisasi terakhir, jumlah draft belum
+  terkirim, dan konflik; kegagalan jaringan tidak boleh ditampilkan sebagai
+  empty state atau success.
+- **Sinkronisasi:** sinkronisasi hanya dimulai setelah pengguna authenticated
+  dan context server terbaru berhasil dimuat. Mutasi dikirim satu per satu
+  dengan `Idempotency-Key` dan `expectedRevision` sesuai §13.2. Server kembali
+  memeriksa scope, capability, assignment, status, timezone cabang, kapasitas,
+  dan lifecycle. Retry otomatis hanya boleh untuk request idempoten yang belum
+  mendapat outcome; bila outcome mutasi tidak diketahui, UI berhenti dan
+  meminta pengguna memuat ulang resource kanonis sebelum mencoba lagi.
+- **Konflik:** server selalu menang. `CONFLICT` atau `NOT_AUTHORIZED` tidak
+  boleh di-merge atau ditimpa diam-diam. UI menampilkan data server, alasan
+  konflik, dan aksi aman untuk membuang draft atau mengedit ulang ketika actor
+  masih berwenang. Draft yang sudah ditolak tidak boleh otomatis dikirim ulang.
+- **Pembersihan dan retensi:** cache operasional Staff kedaluwarsa paling lama
+  24 jam setelah sinkronisasi terakhir; snapshot read-only Parent kedaluwarsa
+  paling lama 7 hari. Draft yang belum terkirim dipertahankan sampai berhasil,
+  ditolak, atau dibuang secara eksplisit, tetapi selalu dienkripsi dan tidak
+  boleh diekspor. Logout, session expiry, pergantian tenant/cabang/offering/
+  anak, revocation membership/guardian/assignment, atau response
+  `NOT_AUTHORIZED` menghapus cache dan draft untuk scope terkait sebelum data
+  scope baru dirender. Bila perangkat offline ketika authority dicabut,
+  pembersihan wajib terjadi segera setelah context online berhasil dimuat.
+- **UI dan deep link:** banner offline harus membedakan `ONLINE`, `OFFLINE`,
+  `SYNCING`, `CONFLICT`, dan `STALE`; banner tidak boleh menawarkan action
+  yang server sudah tidak mengizinkan. Deep link, push action, dan screen
+  restore tetap menjalankan guard live saat online; cache lama tidak boleh
+  membuka route sensitif atau melewati tenant/child scope.
+- **Verifikasi implementasi:** modul offline wajib memiliki unit test untuk
+  key scope, expiry, idempotency, duplicate event, conflict, revocation, dan
+  purge; integration test untuk authorization serta rekonsiliasi server; dan
+  UI test untuk indikator offline, draft, retry yang aman, konflik, selector
+  reset, serta tidak menampilkan empty state palsu. Sampai kontrak ini benar-
+  benar diimplementasikan, semua layar tetap online-only dan tidak boleh
+  mengklaim dukungan offline hanya karena React Query memiliki cache.
 
 ### 13.3 Model target `EducationOffering`
 

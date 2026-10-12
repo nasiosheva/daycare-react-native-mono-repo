@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.ChildEnrollmentStatus
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.Role
@@ -99,6 +101,103 @@ class LearningStructureServiceTest {
         assertEquals(false, (invokePrivate("placementResponse", placement) as ChildPlacementResponse).ageGuidanceWarning)
         `when`(levels.findById(level.id)).thenReturn(Optional.empty())
         assertEquals(null, (invokePrivate("placementResponse", placement) as ChildPlacementResponse).learningLevelName)
+    }
+
+    @Test
+    fun `learning structure ownership helpers cover missing foreign and archived references`() {
+        val tenantLevel = LearningLevel(id = UUID.randomUUID(), organizationId = organizationId)
+        val globalLevel = LearningLevel(id = UUID.randomUUID(), organizationId = null)
+        val foreignLevel = LearningLevel(id = UUID.randomUUID(), organizationId = UUID.randomUUID())
+        `when`(levels.findById(tenantLevel.id)).thenReturn(Optional.of(tenantLevel))
+        `when`(levels.findById(globalLevel.id)).thenReturn(Optional.of(globalLevel))
+        `when`(levels.findById(foreignLevel.id)).thenReturn(Optional.of(foreignLevel))
+        assertEquals(tenantLevel, invokePrivate("level", tenantLevel.id, organizationId))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("level", foreignLevel.id, organizationId) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("level", UUID.randomUUID(), organizationId) }
+        assertEquals(globalLevel, invokePrivate("globalLevel", globalLevel.id))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("globalLevel", tenantLevel.id) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("globalLevel", UUID.randomUUID()) }
+
+        val classroom = Classroom(id = UUID.randomUUID(), organizationId = organizationId)
+        val foreignClassroom = Classroom(id = UUID.randomUUID(), organizationId = UUID.randomUUID())
+        `when`(classrooms.findById(classroom.id)).thenReturn(Optional.of(classroom))
+        `when`(classrooms.findById(foreignClassroom.id)).thenReturn(Optional.of(foreignClassroom))
+        assertEquals(classroom, invokePrivate("classroom", classroom.id, organizationId))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("classroom", foreignClassroom.id, organizationId) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("classroom", UUID.randomUUID(), organizationId) }
+
+        val activeChild = Child(id = UUID.randomUUID(), organizationId = organizationId, active = true)
+        val foreignChild = Child(id = UUID.randomUUID(), organizationId = UUID.randomUUID(), active = true)
+        val inactiveChild = Child(id = UUID.randomUUID(), organizationId = organizationId, active = false)
+        `when`(children.findById(activeChild.id)).thenReturn(Optional.of(activeChild))
+        `when`(children.findById(foreignChild.id)).thenReturn(Optional.of(foreignChild))
+        `when`(children.findById(inactiveChild.id)).thenReturn(Optional.of(inactiveChild))
+        assertEquals(activeChild, invokePrivate("requireChild", activeChild.id, organizationId))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("requireChild", foreignChild.id, organizationId) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("requireChild", inactiveChild.id, organizationId) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("requireChild", UUID.randomUUID(), organizationId) }
+
+        val activeGlobal = CurriculumProgram(organizationId = null, active = true)
+        val activeTenant = CurriculumProgram(organizationId = organizationId, active = true)
+        val archived = CurriculumProgram(organizationId = organizationId, active = false)
+        val existingLevelId = UUID.randomUUID()
+        `when`(programs.findById(activeGlobal.id)).thenReturn(Optional.of(activeGlobal))
+        `when`(programs.findById(activeTenant.id)).thenReturn(Optional.of(activeTenant))
+        `when`(programs.findById(archived.id)).thenReturn(Optional.of(archived))
+        invokePrivate("validatePrograms", organizationId, setOf(activeGlobal.id, activeTenant.id), null)
+        `when`(levelPrograms.existsByLearningLevelIdAndCurriculumProgramId(existingLevelId, archived.id)).thenReturn(true)
+        invokePrivate("validatePrograms", organizationId, setOf(archived.id), existingLevelId)
+        `when`(programs.findById(archived.id)).thenReturn(Optional.of(CurriculumProgram(organizationId = UUID.randomUUID(), active = true)))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate("validatePrograms", organizationId, setOf(archived.id), null) }
+    }
+
+    @Test
+    fun `learning structure covers optional filters assignments and reference lifecycle guards`() {
+        allowStaffAccess()
+        val staff = UserProfile(id = UUID.randomUUID(), displayName = "Staff")
+        val branch = Branch(id = UUID.randomUUID(), organizationId = organizationId, active = true, name = "Utama")
+        val level = LearningLevel(id = UUID.randomUUID(), organizationId = organizationId, name = "Level")
+        val classroom = Classroom(id = UUID.randomUUID(), organizationId = organizationId, branchId = branch.id, learningLevelId = level.id, name = "A")
+        `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
+        `when`(levels.findById(level.id)).thenReturn(Optional.of(level))
+        `when`(classrooms.findById(classroom.id)).thenReturn(Optional.of(classroom))
+        `when`(classrooms.findAllByOrganizationIdOrderByNameAsc(organizationId)).thenReturn(listOf(classroom))
+        `when`(classroomAssignments.findAllByOrganizationIdAndUserId(organizationId, defaultStaffScope.user.id)).thenReturn(emptyList())
+        assertEquals(listOf(classroom.id), service().classrooms(jwt, organizationId, BranchListFilter(branchId = branch.id)).map { it.id })
+
+        val membership = Membership(userId = staff.id, organizationId = organizationId, role = Role.STAFF_ADMIN, active = true)
+        `when`(memberships.findAllByUserIdAndOrganizationId(staff.id, organizationId)).thenReturn(listOf(membership))
+        `when`(classroomAssignments.existsByOrganizationIdAndClassroomIdAndUserId(organizationId, classroom.id, staff.id)).thenReturn(false)
+        `when`(classroomAssignments.save(any(ClassroomStaffAssignment::class.java))).thenAnswer { it.arguments[0] }
+        `when`(users.findById(staff.id)).thenReturn(Optional.of(staff))
+        assertEquals(staff.id, service().assignClassroomStaff(jwt, organizationId, classroom.id, AssignClassroomStaffRequest(staff.id, ChildCareRole.STAFF)).userId)
+        val assignment = ClassroomStaffAssignment(id = UUID.randomUUID(), organizationId = organizationId, classroomId = classroom.id, userId = staff.id, assignmentRole = ChildCareRole.STAFF.name)
+        `when`(classroomAssignments.findById(assignment.id)).thenReturn(Optional.of(assignment))
+        service().unassignClassroomStaff(jwt, organizationId, classroom.id, assignment.id)
+        verify(classroomAssignments).delete(assignment)
+        assignment.organizationId = UUID.randomUUID()
+        assertThrows(IllegalArgumentException::class.java) { service().unassignClassroomStaff(jwt, organizationId, classroom.id, assignment.id) }
+        `when`(classroomAssignments.findById(UUID.randomUUID())).thenReturn(Optional.empty())
+
+        val global = CurriculumProgram(id = UUID.randomUUID(), organizationId = null, active = false, name = "Arsip")
+        `when`(programs.findById(global.id)).thenReturn(Optional.of(global))
+        assertThrows(IllegalArgumentException::class.java) { service().createLevel(jwt, organizationId, UpsertLearningLevelRequest("X", curriculumProgramIds = setOf(global.id))) }
+        `when`(levelPrograms.existsByLearningLevelIdAndCurriculumProgramId(level.id, global.id)).thenReturn(true)
+        `when`(levelPrograms.findAllByLearningLevelId(level.id)).thenReturn(listOf(LearningLevelCurriculumProgram(level.id, global.id)))
+        service().updateLevel(jwt, organizationId, level.id, UpsertLearningLevelRequest("X", curriculumProgramIds = setOf(global.id)))
+
+        val noCapacity = Classroom(id = classroom.id, organizationId = organizationId, branchId = branch.id, learningLevelId = level.id, name = "A", capacity = 3)
+        `when`(branchCapacities.findByOrganizationIdAndBranchId(organizationId, noCapacity.branchId)).thenReturn(null)
+        invokePrivate("requireCapacity", noCapacity)
+        val minOnly = LearningLevel(organizationId = organizationId, name = "Min", minAgeMonths = 100)
+        val maxOnly = LearningLevel(organizationId = organizationId, name = "Max", maxAgeMonths = 12)
+        val child = Child(organizationId = organizationId, branchId = branch.id, dateOfBirth = LocalDate.of(2020, 1, 1), active = true)
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(classrooms.findById(classroom.id)).thenReturn(Optional.of(classroom))
+        `when`(levels.findById(minOnly.id)).thenReturn(Optional.of(minOnly))
+        assertTrue((invokePrivate("placementResponse", ChildPlacement(organizationId = organizationId, childId = child.id, classroomId = classroom.id, learningLevelId = minOnly.id, startsOn = LocalDate.of(2026, 1, 1))) as ChildPlacementResponse).ageGuidanceWarning)
+        `when`(levels.findById(maxOnly.id)).thenReturn(Optional.of(maxOnly))
+        assertTrue((invokePrivate("placementResponse", ChildPlacement(organizationId = organizationId, childId = child.id, classroomId = classroom.id, learningLevelId = maxOnly.id, startsOn = LocalDate.of(2026, 1, 1))) as ChildPlacementResponse).ageGuidanceWarning)
     }
 
     @Test
@@ -514,6 +613,20 @@ class LearningStructureServiceTest {
         `when`(levels.save(any(LearningLevel::class.java))).thenAnswer { it.arguments[0] }
         service().createLevel(jwt, organizationId, UpsertLearningLevelRequest("Level", curriculumProgramIds = setOf(program.id)))
         verify(access, org.mockito.Mockito.atLeastOnce()).requirePublishedOfferingCapability(organizationId, InstitutionCapability.ACADEMIC_CURRICULUM)
+    }
+
+    @Test
+    fun `learning templates honor empty and daycare-only institution scopes`() {
+        val emptyScope = AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)).thenReturn(emptyScope)
+        `when`(access.hasPublishedOfferingCapability(organizationId, InstitutionCapability.ACADEMIC_CURRICULUM)).thenReturn(false)
+
+        assertTrue(service().templates(jwt, organizationId).isEmpty())
+
+        val daycareScope = emptyScope.copy(institutionTypes = setOf("DAYCARE"))
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)).thenReturn(daycareScope)
+        assertEquals(listOf("NURSERY", "TODDLER"), service().templates(jwt, organizationId).map { it.code })
+        verify(access, org.mockito.Mockito.atLeastOnce()).requirePublishedOfferingCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS)
     }
 
     @Test

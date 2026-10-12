@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.BookingStatus
 import com.daycare.api.domain.InstitutionCapability
@@ -47,6 +49,7 @@ import org.springframework.security.oauth2.jwt.Jwt
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.YearMonth
+import java.util.Base64
 import java.util.Optional
 import java.util.UUID
 
@@ -807,6 +810,293 @@ class BillingServiceCoverageTest {
         assertThrows(IllegalArgumentException::class.java) { f.service.invoice(f.jwt, f.organizationId, noChild.id) }
     }
 
+    @Test
+    fun `billing validates plan and discount boundaries`() {
+        val f = fixture()
+        `when`(f.plans.save(any(ServicePlan::class.java))).thenAnswer { it.arguments[0] }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createPlan(f.jwt, f.organizationId, CreateServicePlanRequest("Harga", ServicePlanType.DAILY, BigDecimal.ZERO, 1, null, null, true)) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createPlan(f.jwt, f.organizationId, CreateServicePlanRequest("Kapasitas", ServicePlanType.DAILY, BigDecimal.ONE, 1, null, null, true, 0)) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createPlan(f.jwt, f.organizationId, CreateServicePlanRequest("Bulanan", ServicePlanType.MONTHLY, BigDecimal.ONE, 1, null, null, true)) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createPlan(f.jwt, f.organizationId, CreateServicePlanRequest("Harian", ServicePlanType.DAILY, BigDecimal.ONE, 2, null, null, true)) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createPlan(f.jwt, f.organizationId, CreateServicePlanRequest("Carry", ServicePlanType.WEEKLY, BigDecimal.ONE, 2, UnusedCreditPolicy.CARRY_FORWARD, null, true)) }
+
+        val plan = ServicePlan(id = f.planId, organizationId = f.organizationId, name = "Paket", type = ServicePlanType.DAILY, price = BigDecimal("100"), creditCount = 1)
+        `when`(f.plans.findById(f.planId)).thenReturn(Optional.of(plan))
+        fun discount(request: CreateServicePlanDiscountRequest) = assertThrows(IllegalArgumentException::class.java) {
+            f.service.createPlanDiscount(f.jwt, f.organizationId, f.planId, request)
+        }
+        discount(CreateServicePlanDiscountRequest(ServicePlanDiscountKind.AUTOMATIC, "Tanggal", null, ServicePlanDiscountType.FIXED_AMOUNT, BigDecimal.TEN, LocalDate.now().plusDays(1), LocalDate.now(), null))
+        discount(CreateServicePlanDiscountRequest(ServicePlanDiscountKind.AUTOMATIC, "Limit", null, ServicePlanDiscountType.FIXED_AMOUNT, BigDecimal.TEN, null, null, 0))
+        discount(CreateServicePlanDiscountRequest(ServicePlanDiscountKind.PROMO_CODE, "Kode", " ", ServicePlanDiscountType.FIXED_AMOUNT, BigDecimal.TEN, null, null, null))
+        discount(CreateServicePlanDiscountRequest(ServicePlanDiscountKind.AUTOMATIC, "Otomatis", "PROMO", ServicePlanDiscountType.FIXED_AMOUNT, BigDecimal.TEN, null, null, null))
+        discount(CreateServicePlanDiscountRequest(ServicePlanDiscountKind.AUTOMATIC, "Nol", null, ServicePlanDiscountType.FIXED_AMOUNT, BigDecimal.ZERO, null, null, null))
+        discount(CreateServicePlanDiscountRequest(ServicePlanDiscountKind.AUTOMATIC, "Seratus", null, ServicePlanDiscountType.PERCENTAGE, BigDecimal(100), null, null, null))
+        discount(CreateServicePlanDiscountRequest(ServicePlanDiscountKind.AUTOMATIC, "Lebih", null, ServicePlanDiscountType.FIXED_AMOUNT, BigDecimal(100), null, null, null))
+    }
+
+    @Test
+    fun `billing invoice search reaches optional parent email and child filters`() {
+        val f = fixture()
+        val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-EMAIL", subtotalAmount = BigDecimal("10"), totalAmount = BigDecimal("10"), branchId = f.child.branchId, childId = f.child.id)
+        f.parent.email = "parent@example.com"
+        `when`(f.identity.sync(f.jwt)).thenReturn(f.staff)
+        `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())).thenReturn(emptyList())
+        `when`(f.invoices.findAllByOrganizationIdOrderByCreatedAtDesc(f.organizationId)).thenReturn(listOf(invoice))
+        `when`(f.entitlements.findAllByInvoiceId(invoice.id)).thenReturn(emptyList())
+        `when`(f.users.findById(f.parent.id)).thenReturn(Optional.of(f.parent))
+        `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
+        `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(null)
+        assertEquals(1, f.service.invoices(f.jwt, f.organizationId, search = "parent@example.com").size)
+        assertEquals(1, f.service.invoices(f.jwt, f.organizationId, search = "INV-EMAIL").size)
+        assertEquals(1, f.service.invoices(f.jwt, f.organizationId, search = "Ayu").size)
+    }
+
+    @Test
+    fun `billing purchase covers automatic and promo discounts and valid daily booking`() {
+        val f = fixture()
+        val today = LocalDate.now()
+        val plan = ServicePlan(id = f.planId, organizationId = f.organizationId, name = "Harian", type = ServicePlanType.DAILY, price = BigDecimal("100"), creditCount = 1)
+        `when`(f.plans.findById(f.planId)).thenReturn(Optional.of(plan))
+        `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), today)).thenReturn(emptyList())
+        `when`(f.invoices.save(any(Invoice::class.java))).thenAnswer {
+            (it.arguments[0] as Invoice).apply { branchId = f.child.branchId; childId = f.child.id }
+        }
+        `when`(f.entitlements.save(any(ServiceEntitlement::class.java))).thenAnswer { it.arguments[0] }
+        `when`(f.users.findById(f.parent.id)).thenReturn(Optional.of(f.parent))
+
+        assertEquals(BigDecimal.ZERO, f.service.purchaseForEnrollment(f.parent, f.organizationId, f.child, PurchaseServiceRequest(f.planId, f.child.id, emptyList())).invoice.discountAmount)
+
+        val automatic = ServicePlanDiscount(organizationId = f.organizationId, servicePlanId = f.planId, kind = ServicePlanDiscountKind.AUTOMATIC, name = "Auto", type = ServicePlanDiscountType.FIXED_AMOUNT, value = BigDecimal("10"))
+        val promo = ServicePlanDiscount(id = f.discountId, organizationId = f.organizationId, servicePlanId = f.planId, kind = ServicePlanDiscountKind.PROMO_CODE, name = "Promo", promoCode = "HEMAT", type = ServicePlanDiscountType.PERCENTAGE, value = BigDecimal("20"))
+        `when`(f.discounts.findAllByOrganizationIdAndServicePlanIdAndActiveTrue(f.organizationId, f.planId)).thenReturn(listOf(automatic, promo))
+        `when`(f.discountRedemptions.countByDiscountId(f.discountId)).thenReturn(0)
+        val discounted = f.service.purchaseForEnrollment(f.parent, f.organizationId, f.child, PurchaseServiceRequest(f.planId, f.child.id, emptyList(), " hemat "))
+        assertTrue(discounted.invoice.discountAmount > BigDecimal.ZERO)
+        verify(f.discountRedemptions).save(any(com.daycare.api.persistence.ServicePlanDiscountRedemption::class.java))
+
+        val fullDiscount = ServicePlanDiscount(organizationId = f.organizationId, servicePlanId = f.planId, kind = ServicePlanDiscountKind.AUTOMATIC, name = "Full", type = ServicePlanDiscountType.FIXED_AMOUNT, value = BigDecimal("100"))
+        `when`(f.discounts.findAllByOrganizationIdAndServicePlanIdAndActiveTrue(f.organizationId, f.planId)).thenReturn(listOf(fullDiscount))
+        assertThrows(IllegalArgumentException::class.java) { f.service.quoteEnrollment(f.organizationId, f.planId, null) }
+    }
+
+    @Test
+    fun `billing invoice and payment proof branches cover reviewer rejection and access fallbacks`() {
+        val f = fixture()
+        val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-REVIEW", subtotalAmount = BigDecimal("100"), totalAmount = BigDecimal("100"), branchId = f.child.branchId, childId = f.child.id, status = InvoiceStatus.PAYMENT_SUBMITTED)
+        val proof = PaymentProof(invoiceId = invoice.id, imageData = byteArrayOf(1, 2), fileName = "proof.png", contentType = "image/png")
+        `when`(f.access.require(f.jwt, f.organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(f.adminScope)
+        `when`(f.access.require(f.jwt, f.organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)).thenReturn(f.adminScope)
+        `when`(f.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(proof)
+        `when`(f.entitlements.findAllByInvoiceId(invoice.id)).thenReturn(emptyList())
+        `when`(f.users.findById(f.parent.id)).thenReturn(Optional.of(f.parent))
+        `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
+        `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(proof)
+        val rejected = f.service.reviewPaymentProof(f.jwt, f.organizationId, invoice.id, ReviewPaymentProofRequest(false, "  Tidak sesuai  "))
+        assertEquals(InvoiceStatus.PENDING, rejected.status)
+        assertEquals("Tidak sesuai", proof.rejectionReason)
+
+        `when`(f.identity.sync(f.jwt)).thenReturn(f.staff)
+        assertEquals("AQI=", f.service.paymentProof(f.jwt, f.organizationId, invoice.id).dataBase64)
+        assertEquals(f.child.id, f.service.invoice(f.jwt, f.organizationId, invoice.id).childId)
+
+        `when`(f.identity.sync(f.jwt)).thenReturn(f.parent)
+        assertThrows(IllegalArgumentException::class.java) { f.service.submitPaymentProof(f.jwt, f.organizationId, invoice.id, SubmitPaymentProofRequest("a.png", "image/png", "bad")) }
+    }
+
+    @Test
+    fun `billing lifecycle guards cover foreign records, pending ownership, and confirmed booking`() {
+        val f = fixture()
+        val plan = ServicePlan(id = f.planId, organizationId = f.organizationId, name = "Harian", type = ServicePlanType.DAILY, price = BigDecimal("100"), creditCount = 1)
+        `when`(f.plans.findById(f.planId)).thenReturn(Optional.of(plan))
+        val foreignDiscount = ServicePlanDiscount(id = f.discountId, organizationId = UUID.randomUUID(), servicePlanId = f.planId, kind = ServicePlanDiscountKind.AUTOMATIC, name = "Asing", type = ServicePlanDiscountType.FIXED_AMOUNT, value = BigDecimal("5"))
+        `when`(f.discounts.findById(f.discountId)).thenReturn(Optional.of(foreignDiscount))
+        assertThrows(IllegalArgumentException::class.java) { f.service.deactivatePlanDiscount(f.jwt, f.organizationId, f.planId, f.discountId) }
+
+        val foreignTemplate = com.daycare.api.persistence.ServicePlanTemplate(id = UUID.randomUUID(), organizationId = UUID.randomUUID(), name = "Asing")
+        `when`(f.templates.findById(foreignTemplate.id)).thenReturn(Optional.of(foreignTemplate))
+        assertThrows(IllegalArgumentException::class.java) { f.service.updatePlanTemplate(f.jwt, f.organizationId, foreignTemplate.id, UpsertServicePlanTemplateRequest("x", ServicePlanType.DAILY, BigDecimal.ONE, 1, null, null, false, null)) }
+
+        val entitlement = ServiceEntitlement(id = UUID.randomUUID(), organizationId = f.organizationId, ownerUserId = UUID.randomUUID(), childId = f.child.id, planId = f.planId, invoiceId = f.invoiceId, planName = plan.name, planType = plan.type, totalCredits = 1, status = EntitlementStatus.ACTIVE, validUntil = LocalDate.now().plusDays(1))
+        `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())).thenReturn(emptyList())
+        `when`(f.entitlements.findById(entitlement.id)).thenReturn(Optional.of(entitlement))
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(LocalDate.now()))) }
+
+        val pendingInvoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-PENDING", status = InvoiceStatus.PENDING, branchId = f.child.branchId, childId = f.child.id)
+        val paidEntitlement = ServiceEntitlement(id = UUID.randomUUID(), organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, ownerUserId = f.parent.id, planId = f.planId, invoiceId = pendingInvoice.id, planName = plan.name, planType = ServicePlanType.DAILY, status = EntitlementStatus.PENDING_PAYMENT, totalCredits = 1, bookingRequiresApproval = false, validUntil = LocalDate.now().plusDays(1))
+        val booking = Booking(organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, entitlementId = paidEntitlement.id, invoiceId = pendingInvoice.id, bookingDate = LocalDate.now(), planName = plan.name, status = BookingStatus.PENDING_PAYMENT)
+        `when`(f.invoices.findById(pendingInvoice.id)).thenReturn(Optional.of(pendingInvoice))
+        `when`(f.entitlements.findAllByInvoiceId(pendingInvoice.id)).thenReturn(listOf(paidEntitlement))
+        `when`(f.bookings.findAllByInvoiceId(pendingInvoice.id)).thenReturn(listOf(booking))
+        `when`(f.users.findById(f.parent.id)).thenReturn(Optional.of(f.parent))
+        `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
+        `when`(f.paymentProofs.findByInvoiceId(pendingInvoice.id)).thenReturn(null)
+        f.service.markInvoicePaid(f.jwt, f.organizationId, pendingInvoice.id)
+        assertEquals(BookingStatus.CONFIRMED, booking.status)
+
+        val mismatchedEntitlement = ServiceEntitlement(id = UUID.randomUUID(), organizationId = f.organizationId, invoiceId = UUID.randomUUID(), status = EntitlementStatus.PENDING_PAYMENT)
+        `when`(f.invoices.findById(pendingInvoice.id)).thenReturn(Optional.of(pendingInvoice))
+        `when`(f.entitlements.findById(mismatchedEntitlement.id)).thenReturn(Optional.of(mismatchedEntitlement))
+        assertThrows(IllegalArgumentException::class.java) { f.service.cancelPendingEnrollmentPurchase(pendingInvoice.id, mismatchedEntitlement.id) }
+
+        val wrongOrgInvoice = Invoice(id = UUID.randomUUID(), organizationId = UUID.randomUUID(), payerUserId = f.parent.id, invoiceNumber = "INV-OTHER", status = InvoiceStatus.PENDING, branchId = f.child.branchId, childId = f.child.id)
+        `when`(f.identity.sync(f.jwt)).thenReturn(f.parent)
+        `when`(f.invoices.findById(wrongOrgInvoice.id)).thenReturn(Optional.of(wrongOrgInvoice))
+        assertThrows(IllegalArgumentException::class.java) { f.service.submitPaymentProof(f.jwt, f.organizationId, wrongOrgInvoice.id, SubmitPaymentProofRequest("x.png", "image/png", "AA==")) }
+        val wrongPayerInvoice = Invoice(id = UUID.randomUUID(), organizationId = f.organizationId, payerUserId = UUID.randomUUID(), invoiceNumber = "INV-PAYER", status = InvoiceStatus.PENDING, branchId = f.child.branchId, childId = f.child.id)
+        `when`(f.invoices.findById(wrongPayerInvoice.id)).thenReturn(Optional.of(wrongPayerInvoice))
+        assertThrows(IllegalArgumentException::class.java) { f.service.submitPaymentProof(f.jwt, f.organizationId, wrongPayerInvoice.id, SubmitPaymentProofRequest("x.png", "image/png", "AA==")) }
+    }
+
+    @Test
+    fun `billing calculation helpers cover all plan periods and expiry boundaries`() {
+        val f = fixture()
+        val today = LocalDate.now()
+        assertEquals(today, invokePrivate(f.service, "periodEnd", ServicePlanType.DAILY, listOf(today), today))
+        assertEquals(today.plusDays(6), invokePrivate(f.service, "periodEnd", ServicePlanType.WEEKLY, listOf(today), today))
+        assertEquals(YearMonth.from(today).atEndOfMonth(), invokePrivate(f.service, "periodEnd", ServicePlanType.MONTHLY, emptyList<LocalDate>(), today))
+        assertEquals(YearMonth.from(today).atEndOfMonth(), invokePrivate(f.service, "deferredPeriodEnd", ServicePlanType.MONTHLY, today))
+        assertEquals(today.plusDays(6), invokePrivate(f.service, "deferredPeriodEnd", ServicePlanType.DAILY, today))
+        assertEquals(7, (invokePrivate(f.service, "capacityDates", ServicePlanType.MONTHLY, emptyList<LocalDate>(), today, today.plusDays(6)) as List<*>).size)
+        assertEquals(listOf(today), invokePrivate(f.service, "capacityDates", ServicePlanType.DAILY, listOf(today), today, today))
+
+        val expired = ServiceEntitlement(status = EntitlementStatus.ACTIVE, totalCredits = 3, usedCredits = 1, reservedCredits = 1, validUntil = today.minusDays(1))
+        assertEquals(1, invokePrivate(f.service, "remainingCredits", expired))
+        invokePrivate(f.service, "expireIfNeeded", expired)
+        assertEquals(EntitlementStatus.EXPIRED, expired.status)
+        val future = ServiceEntitlement(status = EntitlementStatus.ACTIVE, totalCredits = 1, usedCredits = 2, reservedCredits = 2, validUntil = today.plusDays(1))
+        invokePrivate(f.service, "expireIfNeeded", future)
+        assertEquals(0, invokePrivate(f.service, "remainingCredits", future))
+        val pending = ServiceEntitlement(status = EntitlementStatus.PENDING_PAYMENT, totalCredits = 1, validUntil = today.minusDays(1))
+        invokePrivate(f.service, "expireIfNeeded", pending)
+        assertEquals(EntitlementStatus.PENDING_PAYMENT, pending.status)
+
+        val percentage = ServicePlanDiscount(type = ServicePlanDiscountType.PERCENTAGE, value = BigDecimal("12.5"))
+        val fixed = ServicePlanDiscount(type = ServicePlanDiscountType.FIXED_AMOUNT, value = BigDecimal("20"))
+        assertEquals(BigDecimal("12.50"), invokePrivate(f.service, "discountAmount", percentage, BigDecimal("100")))
+        assertEquals(BigDecimal("20"), invokePrivate(f.service, "discountAmount", fixed, BigDecimal("100")))
+    }
+
+    @Test
+    fun `billing valid helper combinations cover optional and short circuit branches`() {
+        val f = fixture()
+        invokePrivate(f.service, "validatePlanConfiguration", ServicePlanType.MONTHLY, null, null, null, null, null)
+        invokePrivate(f.service, "validatePlanConfiguration", ServicePlanType.DAILY, BigDecimal.ONE, 1, null, null, 1)
+        invokePrivate(f.service, "validatePlanConfiguration", ServicePlanType.WEEKLY, BigDecimal.ONE, 2, UnusedCreditPolicy.CARRY_FORWARD, 7, null)
+
+        val today = LocalDate.now()
+        val fixed = CreateServicePlanDiscountRequest(ServicePlanDiscountKind.AUTOMATIC, " Auto ", null, ServicePlanDiscountType.FIXED_AMOUNT, BigDecimal("10"), null, null, null)
+        val promo = CreateServicePlanDiscountRequest(ServicePlanDiscountKind.PROMO_CODE, " Promo ", " SAVE ", ServicePlanDiscountType.PERCENTAGE, BigDecimal("10"), today.minusDays(1), today.plusDays(1), 2)
+        invokePrivate(f.service, "validateDiscount", fixed, BigDecimal("100"))
+        invokePrivate(f.service, "validateDiscount", promo, BigDecimal("100"))
+        val daily = ServicePlan(id = f.planId, organizationId = f.organizationId, type = ServicePlanType.DAILY, price = BigDecimal("100"), creditCount = 1)
+        val weekly = ServicePlan(id = f.planId, organizationId = f.organizationId, type = ServicePlanType.WEEKLY, price = BigDecimal("100"), creditCount = 2)
+        val monthly = ServicePlan(id = f.planId, organizationId = f.organizationId, type = ServicePlanType.MONTHLY, price = BigDecimal("100"), creditCount = null)
+        invokePrivate(f.service, "validatePurchase", monthly, emptyList<LocalDate>(), today, false)
+        invokePrivate(f.service, "validatePurchase", daily, listOf(today), today, false)
+        invokePrivate(f.service, "validatePurchase", weekly, listOf(today, today.plusDays(1)), today, false)
+        invokePrivate(f.service, "validatePurchase", daily, emptyList<LocalDate>(), today, true)
+        val weeklyExpire = ServicePlan(id = f.planId, organizationId = f.organizationId, type = ServicePlanType.WEEKLY, price = BigDecimal("100"), creditCount = 2, unusedCreditPolicy = UnusedCreditPolicy.EXPIRE)
+        invokePrivate(f.service, "validatePurchase", weeklyExpire, listOf(today), today, false)
+        listOf(
+            { invokePrivate(f.service, "validatePurchase", daily, emptyList<LocalDate>(), today, false) },
+            { invokePrivate(f.service, "validatePurchase", daily, listOf(today, today.plusDays(1)), today, false) },
+            { invokePrivate(f.service, "validatePurchase", weekly, emptyList<LocalDate>(), today, false) },
+            { invokePrivate(f.service, "validatePurchase", weekly, listOf(today.minusDays(1)), today, false) },
+            { invokePrivate(f.service, "validatePurchase", weekly, listOf(today.plusDays(7)), today, false) },
+            { invokePrivate(f.service, "validatePurchase", daily, listOf(today), today, true) },
+        ).forEach { check -> assertThrows(IllegalArgumentException::class.java) { check() } }
+
+        val automatic = ServicePlanDiscount(organizationId = f.organizationId, servicePlanId = f.planId, kind = ServicePlanDiscountKind.AUTOMATIC, type = ServicePlanDiscountType.FIXED_AMOUNT, value = BigDecimal("5"), startsOn = today, endsOn = today)
+        val promoDiscount = ServicePlanDiscount(organizationId = f.organizationId, servicePlanId = f.planId, kind = ServicePlanDiscountKind.PROMO_CODE, promoCode = "SAVE", type = ServicePlanDiscountType.PERCENTAGE, value = BigDecimal("10"), startsOn = null, endsOn = null, usageLimit = null)
+        `when`(f.discounts.findAllByOrganizationIdAndServicePlanIdAndActiveTrue(f.organizationId, f.planId)).thenReturn(listOf(automatic, promoDiscount))
+        invokePrivate(f.service, "applicableDiscount", f.organizationId, daily, null, today)
+        invokePrivate(f.service, "applicableDiscount", f.organizationId, daily, " save ", today)
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "applicableDiscount", f.organizationId, daily, "UNKNOWN", today) }
+        val expired = ServicePlanDiscount(organizationId = f.organizationId, servicePlanId = f.planId, kind = ServicePlanDiscountKind.AUTOMATIC, type = ServicePlanDiscountType.FIXED_AMOUNT, value = BigDecimal.ONE, startsOn = today.plusDays(1))
+        val usedUp = ServicePlanDiscount(organizationId = f.organizationId, servicePlanId = f.planId, kind = ServicePlanDiscountKind.AUTOMATIC, type = ServicePlanDiscountType.FIXED_AMOUNT, value = BigDecimal.ONE, usageLimit = 1)
+        `when`(f.discounts.findAllByOrganizationIdAndServicePlanIdAndActiveTrue(f.organizationId, f.planId)).thenReturn(listOf(expired, usedUp))
+        `when`(f.discountRedemptions.countByDiscountId(usedUp.id)).thenReturn(1)
+        assertEquals(null, invokePrivate(f.service, "applicableDiscount", f.organizationId, daily, null, today))
+
+        val jpeg = Base64.getEncoder().encodeToString(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()))
+        val png = Base64.getEncoder().encodeToString(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
+        invokePrivate(f.service, "decodePaymentProof", SubmitPaymentProofRequest("a.jpg", "IMAGE/JPEG", jpeg))
+        invokePrivate(f.service, "decodePaymentProof", SubmitPaymentProofRequest("a.png", "image/png", png))
+        `when`(f.plans.findById(f.planId)).thenReturn(Optional.of(daily))
+        assertEquals(daily.id, (invokePrivate(f.service, "requirePlan", f.planId, f.organizationId) as ServicePlan).id)
+        val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, payerUserId = f.parent.id)
+        `when`(f.invoices.findById(f.invoiceId)).thenReturn(Optional.of(invoice))
+        assertEquals(invoice.id, (invokePrivate(f.service, "requireInvoice", f.invoiceId, f.organizationId) as Invoice).id)
+    }
+
+    @Test
+    fun `billing list filters reach plan invoice parent and empty query branches`() {
+        val f = fixture()
+        val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-FILTER", subtotalAmount = BigDecimal.TEN, totalAmount = BigDecimal.TEN, branchId = f.child.branchId, childId = f.child.id)
+        f.parent.displayName = "Parent Name"
+        f.parent.email = "parent@example.test"
+        `when`(f.identity.sync(f.jwt)).thenReturn(f.staff)
+        `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())).thenReturn(emptyList())
+        `when`(f.invoices.findAllByOrganizationIdOrderByCreatedAtDesc(f.organizationId)).thenReturn(listOf(invoice))
+        `when`(f.entitlements.findAllByInvoiceId(invoice.id)).thenReturn(emptyList())
+        `when`(f.users.findById(f.parent.id)).thenReturn(Optional.of(f.parent))
+        `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
+        `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(null)
+        assertEquals(1, f.service.invoices(f.jwt, f.organizationId, search = "Parent Name").size)
+        assertEquals(1, f.service.invoices(f.jwt, f.organizationId, search = "parent@example.test").size)
+        assertEquals(1, f.service.invoices(f.jwt, f.organizationId, search = "").size)
+    }
+
+    @Test
+    fun `billing pure helpers cover period expiry ownership and proof boundaries`() {
+        val f = fixture()
+        val today = LocalDate.of(2026, 10, 12)
+        assertEquals(today, invokePrivate(f.service, "periodEnd", ServicePlanType.DAILY, listOf(today), today))
+        assertEquals(today.plusDays(6), invokePrivate(f.service, "periodEnd", ServicePlanType.WEEKLY, listOf(today), today))
+        assertEquals(YearMonth.from(today).atEndOfMonth(), invokePrivate(f.service, "periodEnd", ServicePlanType.MONTHLY, emptyList<LocalDate>(), today))
+        assertEquals(YearMonth.from(today).atEndOfMonth(), invokePrivate(f.service, "deferredPeriodEnd", ServicePlanType.MONTHLY, today))
+        assertEquals(today.plusDays(6), invokePrivate(f.service, "deferredPeriodEnd", ServicePlanType.DAILY, today))
+        assertEquals(listOf(today), invokePrivate(f.service, "capacityDates", ServicePlanType.DAILY, listOf(today), today, today.plusDays(5)))
+        assertTrue((invokePrivate(f.service, "capacityDates", ServicePlanType.MONTHLY, emptyList<LocalDate>(), today, today.plusDays(2)) as List<*>).size == 3)
+
+        val expired = ServiceEntitlement(status = EntitlementStatus.ACTIVE, validUntil = LocalDate.now().minusDays(1), totalCredits = 2, usedCredits = 3, reservedCredits = 1)
+        invokePrivate(f.service, "expireIfNeeded", expired)
+        assertEquals(EntitlementStatus.EXPIRED, expired.status)
+        val current = ServiceEntitlement(status = EntitlementStatus.ACTIVE, validUntil = LocalDate.now().plusDays(1), totalCredits = 5, usedCredits = 1, reservedCredits = 1)
+        invokePrivate(f.service, "expireIfNeeded", current)
+        assertEquals(EntitlementStatus.ACTIVE, current.status)
+        assertEquals(3, invokePrivate(f.service, "remainingCredits", current))
+        current.usedCredits = 8
+        assertEquals(0, invokePrivate(f.service, "remainingCredits", current))
+
+        val plan = ServicePlan(id = f.planId, organizationId = f.organizationId, active = true)
+        `when`(f.plans.findById(f.planId)).thenReturn(Optional.of(plan))
+        assertEquals(plan, invokePrivate(f.service, "requirePlan", f.planId, f.organizationId))
+        `when`(f.plans.findById(f.planId)).thenReturn(Optional.of(ServicePlan(id = f.planId, organizationId = f.organizationId, active = false)))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "requirePlan", f.planId, f.organizationId) }
+        `when`(f.plans.findById(f.planId)).thenReturn(Optional.of(ServicePlan(id = f.planId, organizationId = UUID.randomUUID(), active = true)))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "requirePlan", f.planId, f.organizationId) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "requirePlan", UUID.randomUUID(), f.organizationId) }
+
+        val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV")
+        `when`(f.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        assertEquals(invoice, invokePrivate(f.service, "requireInvoice", invoice.id, f.organizationId))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "requireInvoice", invoice.id, UUID.randomUUID()) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "requireInvoice", UUID.randomUUID(), f.organizationId) }
+        `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
+        assertEquals("Ayu", invokePrivate(f.service, "childName", f.child.id))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "childName", UUID.randomUUID()) }
+
+        val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 1)
+        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        assertEquals(jpeg.toList(), (invokePrivate(f.service, "decodePaymentProof", SubmitPaymentProofRequest("proof.jpg", "image/jpeg", Base64.getEncoder().encodeToString(jpeg))) as ByteArray).toList())
+        assertEquals(png.toList(), (invokePrivate(f.service, "decodePaymentProof", SubmitPaymentProofRequest("proof.png", "image/png", Base64.getEncoder().encodeToString(png))) as ByteArray).toList())
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "decodePaymentProof", SubmitPaymentProofRequest("proof.gif", "image/gif", "AA==")) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "decodePaymentProof", SubmitPaymentProofRequest("proof.jpg", "image/jpeg", "bad")) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "decodePaymentProof", SubmitPaymentProofRequest("proof.jpg", "image/jpeg", Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3))) ) }
+    }
+
     private data class Fixture(
         val organizationId: UUID,
         val planId: UUID,
@@ -849,6 +1139,16 @@ class BillingServiceCoverageTest {
         `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(proof)
         `when`(f.bookings.findAllByInvoiceId(invoice.id)).thenReturn(if (booking == null) emptyList() else listOf(booking))
         `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())).thenReturn(emptyList())
+    }
+
+    private fun invokePrivate(service: BillingService, name: String, vararg args: Any?): Any? {
+        val method = BillingService::class.java.declaredMethods.first { it.name == name && it.parameterCount == args.size }
+        method.isAccessible = true
+        return try {
+            method.invoke(service, *args)
+        } catch (error: java.lang.reflect.InvocationTargetException) {
+            throw (error.targetException ?: error)
+        }
     }
 
     private fun fixture(): Fixture {

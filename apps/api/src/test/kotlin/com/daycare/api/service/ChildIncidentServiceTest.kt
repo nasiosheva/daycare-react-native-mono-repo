@@ -319,6 +319,32 @@ class ChildIncidentServiceTest {
         }
     }
 
+    @Test
+    fun `incident helpers cover photo headers, descriptions, names, and assignment roles`() {
+        val fixture = fixture()
+        fun invoke(name: String, vararg args: Any?): Any? {
+            val method = ChildIncidentService::class.java.declaredMethods.single { it.name == name }
+            method.isAccessible = true
+            try { return method.invoke(fixture.service, *args) }
+            catch (error: java.lang.reflect.InvocationTargetException) { throw error.targetException }
+        }
+        val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 1)
+        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        assertEquals(jpeg.toList(), (invoke("decodePhoto", IncidentPhotoInput("image/jpeg", Base64.getEncoder().encodeToString(jpeg))) as ByteArray).toList())
+        assertEquals(png.toList(), (invoke("decodePhoto", IncidentPhotoInput("image/png", Base64.getEncoder().encodeToString(png))) as ByteArray).toList())
+        assertThrows(IllegalArgumentException::class.java) { invoke("decodePhoto", IncidentPhotoInput("image/gif", "AA==")) }
+        val report = ChildIncidentReport(description = "x".repeat(300), photoData = byteArrayOf(1))
+        assertEquals(200, (invoke("describeIncident", report) as String).length)
+        assertEquals("Ayu", invoke("fullName", fixture.child))
+        val owner = UserProfile(id = UUID.randomUUID())
+        `when`(fixture.users.findById(owner.id)).thenReturn(Optional.of(owner))
+        val ownerMembership = Membership(organizationId = fixture.organizationId, userId = owner.id, role = Role.STAFF_ADMIN, active = true)
+        `when`(fixture.memberships.findAllByUserIdAndOrganizationId(owner.id, fixture.organizationId)).thenReturn(listOf(ownerMembership))
+        val ownerScope = AccessScope(owner, ownerMembership, emptySet(), emptySet())
+        `when`(fixture.childScopes.isStaffManagedChild(ownerScope, fixture.child.id, fixture.organizationId)).thenReturn(true)
+        invoke("requireAssignedStaff", owner.id, fixture.child, fixture.organizationId)
+    }
+
     private data class Fixture(
         val organizationId: UUID,
         val jwt: Jwt,

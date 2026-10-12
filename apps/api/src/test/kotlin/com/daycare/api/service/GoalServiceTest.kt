@@ -1039,6 +1039,176 @@ class GoalServiceTest {
         fixture.service.sendMissedCheckInReminders()
         verifyNoInteractions(fixture.notifications)
     }
+
+    @Test
+    fun `remaining global and check-in guards cover unchanged ownership and media branches`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val globalLevel = LearningLevel(organizationId = null, name = "Global")
+        val global = DevelopmentProgram(organizationId = null, learningLevelId = globalLevel.id, domain = GoalDomain.KEMANDIRIAN, isTemplate = true)
+        `when`(fixture.platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
+        `when`(fixture.levels.findById(globalLevel.id)).thenReturn(Optional.of(globalLevel))
+        `when`(fixture.programs.findById(global.id)).thenReturn(Optional.of(global))
+        `when`(fixture.programs.findByOrganizationIdIsNullAndLearningLevelIdAndDomainAndActiveTrue(globalLevel.id, GoalDomain.KOGNITIF)).thenReturn(null)
+        fixture.service.updateGlobalProgram(jwt, global.id, UpsertDevelopmentProgramRequest(globalLevel.id, "No duplicate", durationDays = 3, minimumYesPercent = 0, minimumYesStreak = 0, domain = GoalDomain.KOGNITIF))
+        `when`(fixture.programs.findByOrganizationIdIsNullAndLearningLevelIdAndDomainAndActiveTrue(globalLevel.id, GoalDomain.BAHASA_KOMUNIKASI)).thenReturn(global)
+        fixture.service.updateGlobalProgram(jwt, global.id, UpsertDevelopmentProgramRequest(globalLevel.id, "Same global", durationDays = 3, minimumYesPercent = 0, minimumYesStreak = 0, domain = GoalDomain.BAHASA_KOMUNIKASI))
+
+        `when`(fixture.programs.save(any(DevelopmentProgram::class.java))).thenAnswer { it.arguments[0] }
+        global.active = true
+        `when`(fixture.programs.findByOrganizationIdIsNullAndLearningLevelIdAndDomainAndActiveTrue(globalLevel.id, GoalDomain.SOSIAL_EMOSI)).thenReturn(null)
+        fixture.service.reviseGlobalProgram(jwt, global.id, UpsertDevelopmentProgramRequest(globalLevel.id, "Revision", durationDays = 3, minimumYesPercent = 0, minimumYesStreak = 0, domain = GoalDomain.SOSIAL_EMOSI))
+
+        val assigned = DevelopmentProgram(organizationId = null, learningLevelId = globalLevel.id, isTemplate = true)
+        `when`(fixture.programs.findById(assigned.id)).thenReturn(Optional.of(assigned))
+        `when`(fixture.goals.existsByProgramId(assigned.id)).thenReturn(true)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.deleteGlobalProgram(jwt, assigned.id) }
+
+        val program = DevelopmentProgram(organizationId = organizationId, name = "Goal", durationDays = 2)
+        val goal = ChildGoal(organizationId = organizationId, childId = UUID.randomUUID(), programId = program.id, startsOn = LocalDate.of(2026, 8, 1))
+        val indicator = DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = program.id, active = true)
+        val scope = fixture.scope(organizationId)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = false)).thenReturn(scope)
+        `when`(fixture.goals.findById(goal.id)).thenReturn(Optional.of(goal))
+        `when`(fixture.childScopes.requireStaffManagedChild(scope, goal.childId, organizationId)).thenReturn(Child(organizationId = organizationId))
+        `when`(fixture.programs.findById(program.id)).thenReturn(Optional.of(program))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.recordCheckInBatch(jwt, organizationId, goal.id, goal.startsOn, GoalCheckInBatchRequest(emptyList()))
+        }
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(program.id)).thenReturn(listOf(indicator))
+        val duplicate = GoalCheckInBatchRequest(listOf(GoalCheckInBatchItemRequest(indicator.id, GoalCheckInOutcome.YES), GoalCheckInBatchItemRequest(indicator.id, GoalCheckInOutcome.NO)))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.recordCheckInBatch(jwt, organizationId, goal.id, goal.startsOn, duplicate) }
+        goal.status = ChildGoalStatus.COMPLETED
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.recordCheckIn(jwt, organizationId, goal.id, goal.startsOn, GoalCheckInRequest(indicator.id, GoalCheckInOutcome.YES)) }
+
+        goal.status = ChildGoalStatus.ACTIVE
+        val saved = ChildGoalCheckIn(organizationId = organizationId, childGoalId = goal.id, indicatorId = indicator.id, checkInDate = goal.startsOn, photoData = null, audioData = null)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), readOnly = true)).thenReturn(scope)
+        `when`(fixture.checkIns.findByChildGoalIdAndIndicatorIdAndCheckInDate(goal.id, indicator.id, goal.startsOn)).thenReturn(saved)
+        `when`(fixture.goalIndicators.findById(indicator.id)).thenReturn(Optional.of(indicator))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.checkInPhoto(jwt, organizationId, goal.id, goal.startsOn, indicator.id) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.checkInAudio(jwt, organizationId, goal.id, goal.startsOn, indicator.id) }
+    }
+
+    @Test
+    fun `scheduled reminders notify assigned staff and fall back to active admins`() {
+        val fixture = GoalServiceFixture()
+        val organizationId = UUID.randomUUID()
+        val activeChild = Child(organizationId = organizationId, firstName = "Aktif", classroomId = UUID.randomUUID(), active = true)
+        val fallbackChild = Child(organizationId = organizationId, firstName = "Fallback", classroomId = null, active = true)
+        val inactiveChild = Child(organizationId = organizationId, firstName = "Nonaktif", active = false)
+        val assignedGoal = ChildGoal(organizationId = organizationId, childId = activeChild.id, programId = UUID.randomUUID(), startsOn = LocalDate.now())
+        val completedGoal = ChildGoal(organizationId = organizationId, childId = activeChild.id, programId = assignedGoal.programId, startsOn = LocalDate.now())
+        val fallbackGoal = ChildGoal(organizationId = organizationId, childId = fallbackChild.id, programId = UUID.randomUUID(), startsOn = LocalDate.now())
+        val inactiveGoal = ChildGoal(organizationId = organizationId, childId = inactiveChild.id, programId = fallbackGoal.programId, startsOn = LocalDate.now())
+        val assignedProgram = DevelopmentProgram(organizationId = organizationId, id = assignedGoal.programId, durationDays = 3)
+        val fallbackProgram = DevelopmentProgram(organizationId = organizationId, id = fallbackGoal.programId, durationDays = 3)
+        val assignedIndicator = DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = assignedProgram.id, active = true)
+        val fallbackIndicator = DevelopmentProgramItem(organizationId = organizationId, developmentProgramId = fallbackProgram.id, active = true)
+        val staffId = UUID.randomUUID()
+        val classroomStaffId = UUID.randomUUID()
+        val adminId = UUID.randomUUID()
+
+        `when`(fixture.goals.findAllByStatus(ChildGoalStatus.ACTIVE)).thenReturn(listOf(assignedGoal, completedGoal, fallbackGoal, inactiveGoal))
+        `when`(fixture.programs.findAllById(setOf(assignedProgram.id, fallbackProgram.id))).thenReturn(listOf(assignedProgram, fallbackProgram))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdIn(setOf(assignedProgram.id, fallbackProgram.id))).thenReturn(listOf(assignedIndicator, fallbackIndicator))
+        `when`(fixture.checkIns.findAllByChildGoalIdInAndCheckInDate(setOf(assignedGoal.id, completedGoal.id, fallbackGoal.id, inactiveGoal.id), LocalDate.now()))
+            .thenReturn(listOf(ChildGoalCheckIn(childGoalId = completedGoal.id, indicatorId = assignedIndicator.id, checkInDate = LocalDate.now())))
+        `when`(fixture.children.findAllById(setOf(activeChild.id, fallbackChild.id, inactiveChild.id))).thenReturn(listOf(activeChild, fallbackChild, inactiveChild))
+        `when`(fixture.childStaffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, activeChild.id))
+            .thenReturn(listOf(com.daycare.api.persistence.ChildStaffAssignment(organizationId = organizationId, childId = activeChild.id, userId = staffId)))
+        `when`(fixture.classroomStaffAssignments.findAllByOrganizationIdAndClassroomIdOrderByCreatedAtDesc(organizationId, activeChild.classroomId!!))
+            .thenReturn(listOf(com.daycare.api.persistence.ClassroomStaffAssignment(organizationId = organizationId, classroomId = activeChild.classroomId!!, userId = classroomStaffId)))
+        `when`(fixture.memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(
+            com.daycare.api.persistence.Membership(organizationId = organizationId, userId = adminId, role = Role.STAFF_ADMIN, active = true),
+            com.daycare.api.persistence.Membership(organizationId = organizationId, userId = UUID.randomUUID(), role = Role.STAFF_ADMIN, active = false),
+        ))
+
+        fixture.service.sendMissedCheckInReminders()
+
+        verify(fixture.notifications).notify(organizationId, staffId, "Check-in program belum diisi", "Check-in program hari ini untuk Aktif belum diisi.", actionPath = "/goals?childId=${activeChild.id}", realtimeFlags = setOf(com.daycare.api.realtime.RealtimeFlag.GOALS))
+        verify(fixture.notifications).notify(organizationId, classroomStaffId, "Check-in program belum diisi", "Check-in program hari ini untuk Aktif belum diisi.", actionPath = "/goals?childId=${activeChild.id}", realtimeFlags = setOf(com.daycare.api.realtime.RealtimeFlag.GOALS))
+        verify(fixture.notifications).notify(organizationId, adminId, "Check-in program belum diisi", "Check-in program hari ini untuk Fallback belum diisi.", actionPath = "/goals?childId=${fallbackChild.id}", realtimeFlags = setOf(com.daycare.api.realtime.RealtimeFlag.GOALS))
+    }
+
+    @Test
+    fun `goal ownership and response helpers cover present missing and foreign records`() {
+        val fixture = GoalServiceFixture()
+        val organizationId = UUID.randomUUID()
+        val otherOrganizationId = UUID.randomUUID()
+        val globalProgram = DevelopmentProgram(organizationId = null)
+        val tenantProgram = DevelopmentProgram(organizationId = organizationId)
+        val foreignProgram = DevelopmentProgram(organizationId = otherOrganizationId)
+        `when`(fixture.programs.findById(globalProgram.id)).thenReturn(Optional.of(globalProgram))
+        `when`(fixture.programs.findById(tenantProgram.id)).thenReturn(Optional.of(tenantProgram))
+        `when`(fixture.programs.findById(foreignProgram.id)).thenReturn(Optional.of(foreignProgram))
+        assertEquals(globalProgram, invokePrivate(fixture.service, "program", globalProgram.id, organizationId))
+        assertEquals(tenantProgram, invokePrivate(fixture.service, "program", tenantProgram.id, organizationId))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "program", foreignProgram.id, organizationId) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "program", UUID.randomUUID(), organizationId) }
+        assertEquals(globalProgram, invokePrivate(fixture.service, "globalProgram", globalProgram.id))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "globalProgram", tenantProgram.id) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "globalProgram", UUID.randomUUID()) }
+
+        val goal = ChildGoal(organizationId = organizationId, programId = tenantProgram.id)
+        `when`(fixture.goals.findById(goal.id)).thenReturn(Optional.of(goal))
+        assertEquals(goal, invokePrivate(fixture.service, "goal", goal.id, organizationId))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "goal", goal.id, otherOrganizationId) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "goal", UUID.randomUUID(), organizationId) }
+
+        val indicator = DevelopmentProgramItem(developmentProgramId = tenantProgram.id)
+        val foreignIndicator = DevelopmentProgramItem(developmentProgramId = globalProgram.id)
+        `when`(fixture.goalIndicators.findById(indicator.id)).thenReturn(Optional.of(indicator))
+        `when`(fixture.goalIndicators.findById(foreignIndicator.id)).thenReturn(Optional.of(foreignIndicator))
+        assertEquals(indicator, invokePrivate(fixture.service, "indicator", indicator.id, tenantProgram.id))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "indicator", foreignIndicator.id, tenantProgram.id) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "indicator", UUID.randomUUID(), tenantProgram.id) }
+
+        val globalLevel = LearningLevel(organizationId = null, minAgeMonths = 12, maxAgeMonths = 24)
+        val tenantLevel = LearningLevel(organizationId = organizationId)
+        `when`(fixture.levels.findById(globalProgram.learningLevelId)).thenReturn(Optional.of(globalLevel))
+        `when`(fixture.levels.findById(tenantProgram.learningLevelId)).thenReturn(Optional.of(tenantLevel))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(globalProgram.id)).thenReturn(emptyList())
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdOrderByDisplayOrderAsc(tenantProgram.id)).thenReturn(listOf(indicator))
+        val globalResponse = invokePrivate(fixture.service, "programResponse", globalProgram) as DevelopmentProgramResponse
+        val tenantResponse = invokePrivate(fixture.service, "programResponse", tenantProgram) as DevelopmentProgramResponse
+        assertEquals(DevelopmentProgramSource.GLOBAL, globalResponse.source)
+        assertEquals(DevelopmentProgramSource.TENANT, tenantResponse.source)
+        assertEquals(12, globalResponse.minAgeMonths)
+        assertEquals(null, tenantResponse.minAgeMonths)
+    }
+
+    @Test
+    fun `goal helper boundaries cover audio decoding indicators and learning-level scope`() {
+        val fixture = GoalServiceFixture()
+        val audio = byteArrayOf(0x00, 0x01, 0x02)
+        assertEquals(audio.toList(), (invokePrivate(fixture.service, "decodeAudio", GoalAudioInput("audio/mp4", Base64.getEncoder().encodeToString(audio), 120)) as ByteArray).toList())
+        assertEquals(audio.toList(), (invokePrivate(fixture.service, "decodeAudio", GoalAudioInput("audio/m4a", Base64.getEncoder().encodeToString(audio))) as ByteArray).toList())
+        assertEquals(audio.toList(), (invokePrivate(fixture.service, "decodeAudio", GoalAudioInput("audio/x-m4a", Base64.getEncoder().encodeToString(audio))) as ByteArray).toList())
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "decodeAudio", GoalAudioInput("audio/wav", Base64.getEncoder().encodeToString(audio))) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "decodeAudio", GoalAudioInput("audio/mp4", "!")) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "decodeAudio", GoalAudioInput("audio/mp4", "")) }
+
+        val program = DevelopmentProgram(name = " Kosakata ")
+        `when`(fixture.goalIndicators.save(any(DevelopmentProgramItem::class.java))).thenAnswer { it.arguments[0] }
+        invokePrivate(fixture.service, "saveIndicators", UUID.randomUUID(), program, listOf(" ", "  Bunyi  ", "Kata"))
+        invokePrivate(fixture.service, "saveIndicators", null, program, emptyList<String>())
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "requireTenantOwned", DevelopmentProgram(isTemplate = true)) }
+        invokePrivate(fixture.service, "requireTenantOwned", DevelopmentProgram(isTemplate = false))
+
+        val organizationId = UUID.randomUUID()
+        val level = LearningLevel(organizationId = organizationId)
+        `when`(fixture.levels.findById(level.id)).thenReturn(Optional.of(level))
+        assertNull(invokePrivate(fixture.service, "validateProgramScope", organizationId, level.id))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "validateProgramScope", UUID.randomUUID(), level.id) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "validateProgramScope", organizationId, UUID.randomUUID()) }
+        val global = LearningLevel(organizationId = null)
+        `when`(fixture.levels.findById(global.id)).thenReturn(Optional.of(global))
+        assertNull(invokePrivate(fixture.service, "validateGlobalLearningLevel", global.id))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "validateGlobalLearningLevel", level.id) }
+    }
 }
 
 private class GoalServiceFixture {

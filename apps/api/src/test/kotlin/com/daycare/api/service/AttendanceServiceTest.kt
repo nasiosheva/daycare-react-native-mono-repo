@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.AttendanceAction
 import com.daycare.api.domain.AttendanceMethod
 import com.daycare.api.domain.InstitutionCapability
@@ -29,6 +31,7 @@ import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.security.access.AccessDeniedException
 import java.util.Optional
 import java.util.UUID
 import java.time.Instant
@@ -355,6 +358,97 @@ class AttendanceServiceTest {
         assertEquals(0, fixtures.service.childAttendanceReport(fixtures.jwt, fixtures.organizationId, fixtures.branch.id, LocalDate.now(), LocalDate.now()).rows.single().totalCheckIns)
     }
 
+    @Test
+    fun `child filters cover mismatched branch classroom learning level and closed attendance context`() {
+        val fixtures = Fixtures()
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, classroomId = fixtures.classroom.id, firstName = "Alya")
+        val noClassroom = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, classroomId = null, firstName = "Bima")
+        val otherBranch = Child(organizationId = fixtures.organizationId, branchId = UUID.randomUUID(), classroomId = null, firstName = "Citra")
+        val staffScope = AccessScope(UserProfile(), Membership(organizationId = fixtures.organizationId, role = Role.STAFF), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, Role.entries.toSet(), allowSubscriptionRestrictedForRoles = setOf(Role.PARENT))).thenReturn(staffScope)
+        `when`(fixtures.childScopes.visibleChildren(staffScope, fixtures.organizationId)).thenReturn(listOf(child, noClassroom, otherBranch))
+        `when`(fixtures.branches.findById(fixtures.branch.id)).thenReturn(Optional.of(fixtures.branch))
+        `when`(fixtures.levels.findById(fixtures.level.id)).thenReturn(Optional.of(fixtures.level))
+        `when`(fixtures.classrooms.findById(fixtures.classroom.id)).thenReturn(Optional.of(fixtures.classroom))
+        `when`(fixtures.branches.findAllById(listOf(child.branchId))).thenReturn(listOf(fixtures.branch))
+        val today = LocalDate.now(ZoneId.of(fixtures.branch.timezone))
+        val closed = AttendanceRecord(organizationId = fixtures.organizationId, branchId = child.branchId, childId = child.id, operationalDate = today, checkedInAt = Instant.now().minusSeconds(120), checkedOutAt = Instant.now().minusSeconds(30))
+        `when`(fixtures.attendance.findAllByChildIdInAndOperationalDateIn(listOf(child.id), listOf(today))).thenReturn(listOf(closed))
+        `when`(fixtures.publishedOfferings.hasPublishedCapability(fixtures.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)).thenReturn(true)
+
+        assertEquals(listOf("Alya"), fixtures.service.listChildren(fixtures.jwt, fixtures.organizationId, ChildListFilter(learningLevelId = fixtures.level.id)).map { it.fullName })
+        assertEquals(emptySet<AttendanceAction>(), fixtures.service.listChildren(fixtures.jwt, fixtures.organizationId, ChildListFilter(learningLevelId = fixtures.level.id)).single().attendanceContext?.allowedActions)
+        assertThrows(AccessDeniedException::class.java) { fixtures.service.listChildren(fixtures.jwt, fixtures.organizationId, ChildListFilter(guardianStatus = ChildGuardianStatus.LINKED)) }
+    }
+
+    @Test
+    fun `attendance record covers daycare consumption and non-daycare checkout`() {
+        val daycare = Fixtures()
+        val child = Child(organizationId = daycare.organizationId, branchId = daycare.branch.id, firstName = "Alya")
+        val scope = AccessScope(UserProfile(), Membership(organizationId = daycare.organizationId, role = Role.STAFF), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(daycare.access.require(daycare.jwt, daycare.organizationId, setOf(Role.STAFF))).thenReturn(scope)
+        `when`(daycare.childScopes.requireStaffManagedChild(scope, child.id, daycare.organizationId)).thenReturn(child)
+        `when`(daycare.branches.findById(child.branchId)).thenReturn(Optional.of(daycare.branch))
+        `when`(daycare.attendance.findByChildIdAndOperationalDate(child.id, LocalDate.now(ZoneId.of(daycare.branch.timezone)))).thenReturn(null)
+        `when`(daycare.attendance.save(any(AttendanceRecord::class.java))).thenAnswer { it.arguments[0] }
+        `when`(daycare.publishedOfferings.hasPublishedCapability(daycare.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)).thenReturn(true)
+        `when`(daycare.bookingEligibility.checkInEligibility(daycare.organizationId, child.id, LocalDate.now(ZoneId.of(daycare.branch.timezone)))).thenReturn(BookingEligibility(true))
+        daycare.service.record(daycare.jwt, daycare.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_IN, AttendanceMethod.MANUAL, "daycare-in"))
+        verify(daycare.bookingEligibility).consumeCheckIn(daycare.organizationId, child.id, LocalDate.now(ZoneId.of(daycare.branch.timezone)))
+
+        val plain = Fixtures()
+        val plainChild = Child(organizationId = plain.organizationId, branchId = plain.branch.id, firstName = "Bima")
+        val plainScope = AccessScope(UserProfile(), Membership(organizationId = plain.organizationId, role = Role.STAFF), emptySet(), emptySet())
+        val existing = AttendanceRecord(organizationId = plain.organizationId, branchId = plain.branch.id, childId = plainChild.id, operationalDate = LocalDate.now(ZoneId.of(plain.branch.timezone)), checkedInAt = Instant.now().minusSeconds(60))
+        `when`(plain.access.require(plain.jwt, plain.organizationId, setOf(Role.STAFF))).thenReturn(plainScope)
+        `when`(plain.childScopes.requireStaffManagedChild(plainScope, plainChild.id, plain.organizationId)).thenReturn(plainChild)
+        `when`(plain.branches.findById(plainChild.branchId)).thenReturn(Optional.of(plain.branch))
+        `when`(plain.attendance.findByChildIdAndOperationalDate(plainChild.id, existing.operationalDate)).thenReturn(existing)
+        `when`(plain.attendance.save(any(AttendanceRecord::class.java))).thenAnswer { it.arguments[0] }
+        val response = plain.service.record(plain.jwt, plain.organizationId, plainChild.id, AttendanceCommand(AttendanceAction.CHECK_OUT, AttendanceMethod.MANUAL, "plain-out"))
+        assertEquals(existing.id, response.id)
+    }
+
+    @Test
+    fun `attendance helper contexts and guardian statuses cover every visibility branch`() {
+        val f = Fixtures()
+        val child = Child(organizationId = f.organizationId, branchId = f.branch.id, classroomId = f.classroom.id, firstName = "Alya")
+        val today = LocalDate.now(ZoneId.of(f.branch.timezone))
+        val parentScope = AccessScope(UserProfile(), Membership(organizationId = f.organizationId, role = Role.PARENT), emptySet(), emptySet())
+        assertEquals(null, invokePrivate(f.service, "attendanceContext", parentScope, child, f.branch.timezone, today, null))
+        val staffScope = AccessScope(UserProfile(), Membership(organizationId = f.organizationId, role = Role.STAFF), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(f.publishedOfferings.hasPublishedCapability(f.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)).thenReturn(false)
+        val unavailable = invokePrivate(f.service, "attendanceContext", staffScope, child, f.branch.timezone, today, null) as AttendanceContext
+        assertEquals(AttendancePolicy.NONE, unavailable.attendancePolicy)
+        `when`(f.publishedOfferings.hasPublishedCapability(f.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)).thenReturn(true)
+        val closed = AttendanceRecord(organizationId = f.organizationId, childId = child.id, branchId = child.branchId, operationalDate = today, checkedInAt = Instant.now(), checkedOutAt = Instant.now())
+        assertEquals(emptySet<AttendanceAction>(), (invokePrivate(f.service, "attendanceContext", staffScope, child, f.branch.timezone, today, closed) as AttendanceContext).allowedActions)
+        val open = AttendanceRecord(organizationId = f.organizationId, childId = child.id, branchId = child.branchId, operationalDate = today, checkedInAt = Instant.now())
+        assertEquals(setOf(AttendanceAction.CHECK_OUT), (invokePrivate(f.service, "attendanceContext", staffScope, child, f.branch.timezone, today, open) as AttendanceContext).allowedActions)
+        `when`(f.bookingEligibility.checkInEligibility(f.organizationId, child.id, today)).thenReturn(BookingEligibility(true))
+        assertEquals(setOf(AttendanceAction.CHECK_IN), (invokePrivate(f.service, "attendanceContext", staffScope, child, f.branch.timezone, today, null) as AttendanceContext).allowedActions)
+        `when`(f.bookingEligibility.checkInEligibility(f.organizationId, child.id, today)).thenReturn(BookingEligibility(false, "Tidak ada booking"))
+        assertEquals(emptySet<AttendanceAction>(), (invokePrivate(f.service, "attendanceContext", staffScope, child, f.branch.timezone, today, null) as AttendanceContext).allowedActions)
+
+        assertEquals(true, invokePrivate(f.service, "matchesFilter", child, ChildListFilter()))
+        assertEquals(false, invokePrivate(f.service, "matchesFilter", child, ChildListFilter(branchId = UUID.randomUUID())))
+        assertEquals(false, invokePrivate(f.service, "matchesFilter", child, ChildListFilter(classroomId = UUID.randomUUID())))
+        assertEquals(false, invokePrivate(f.service, "matchesFilter", Child(organizationId = f.organizationId, branchId = child.branchId), ChildListFilter(learningLevelId = f.level.id)))
+        `when`(f.classrooms.findById(child.classroomId!!)).thenReturn(Optional.of(f.classroom))
+        assertEquals(true, invokePrivate(f.service, "matchesFilter", child, ChildListFilter(learningLevelId = f.level.id)))
+        val noLinks = invokePrivate(f.service, "guardianStatuses", listOf(child, Child(organizationId = f.organizationId, branchId = f.branch.id))) as Map<*, *>
+        assertEquals(ChildGuardianStatus.UNLINKED, noLinks[child.id])
+        val parent = UserProfile(registrationRole = RegistrationRole.PARENT)
+        val nonParent = UserProfile(registrationRole = null)
+        `when`(f.guardians.findAllByChildIdIn(listOf(child.id))).thenReturn(listOf(GuardianLink(childId = child.id, userId = parent.id)))
+        `when`(f.users.findAllById(listOf(parent.id))).thenReturn(listOf(parent))
+        assertEquals(ChildGuardianStatus.LINKED, (invokePrivate(f.service, "guardianStatuses", listOf(child)) as Map<*, *>)[child.id])
+        `when`(f.guardians.findAllByChildIdIn(listOf(child.id))).thenReturn(listOf(GuardianLink(childId = child.id, userId = UUID.randomUUID())))
+        `when`(f.users.findAllById(any())).thenReturn(listOf(nonParent))
+        assertEquals(ChildGuardianStatus.REVIEW_REQUIRED, (invokePrivate(f.service, "guardianStatuses", listOf(child)) as Map<*, *>)[child.id])
+        assertEquals(emptyMap<UUID, ChildGuardianStatus>(), invokePrivate(f.service, "guardianStatuses", emptyList<Child>()))
+    }
+
     private class Fixtures {
         val organizationId: UUID = UUID.randomUUID()
         val jwt: Jwt = mock(Jwt::class.java)
@@ -370,6 +464,7 @@ class AttendanceServiceTest {
         val bookingEligibility: BookingEligibilityService = mock(BookingEligibilityService::class.java)
         val pickupAuthorizations: PickupAuthorizationService = mock(PickupAuthorizationService::class.java)
         val publishedOfferings: PublishedOfferingCapabilityService = mock(PublishedOfferingCapabilityService::class.java)
+        val notifications: NotificationService = mock(NotificationService::class.java)
         val branch = Branch(organizationId = organizationId)
         val level = LearningLevel(organizationId = organizationId)
         val classroom = Classroom(organizationId = organizationId, branchId = branch.id, learningLevelId = level.id)
@@ -385,7 +480,7 @@ class AttendanceServiceTest {
             attendance,
             mock(AuditLogRepository::class.java),
             qr,
-            mock(NotificationService::class.java),
+            notifications,
             bookingEligibility,
             pickupAuthorizations,
             publishedOfferings,

@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.InvoiceStatus
@@ -339,6 +341,110 @@ class PrivateTutoringServiceTest {
         f.service.invoiceExpired(InvoiceExpiredEvent(request.invoiceId!!))
         `when`(f.requests.findByInvoiceId(UUID.randomUUID())).thenReturn(null)
         f.service.invoiceExpired(InvoiceExpiredEvent(UUID.randomUUID()))
+    }
+
+    @Test
+    fun `private tutoring catalogs cover empty projections optional invoice and filter branches`() {
+        val f = PrivateTutoringFixture()
+        val adminJwt = mock(Jwt::class.java)
+        f.stubAdmin(adminJwt)
+        `when`(f.services.findAllByOrganizationIdOrderByCreatedAtDesc(f.organizationId)).thenReturn(emptyList())
+        assertTrue(f.service.managedServices(adminJwt, f.organizationId).isEmpty())
+        `when`(f.tutors.findAllByOrganizationIdOrderByDisplayNameAsc(f.organizationId)).thenReturn(listOf(f.externalTutor))
+        assertEquals(listOf(f.externalTutor.id), f.service.managedTutors(adminJwt, f.organizationId).map { it.id })
+
+        val parentJwt = mock(Jwt::class.java)
+        f.stubParent(parentJwt)
+        `when`(f.childScopes.requireParentLinkedChild(f.parentScope, f.child.id, f.organizationId)).thenReturn(f.child)
+        val request = PrivateTutoringRequest(
+            organizationId = f.organizationId,
+            parentUserId = f.parent.id,
+            childId = f.child.id,
+            privateTutoringServiceId = f.serviceEntity.id,
+            serviceName = f.serviceEntity.name,
+            status = PrivateTutoringRequestStatus.PENDING_APPROVAL,
+            parentNote = null,
+        )
+        `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
+        `when`(f.requests.findAllByOrganizationIdAndParentUserIdOrderByCreatedAtDesc(f.organizationId, f.parent.id)).thenReturn(listOf(request))
+        `when`(f.requests.findAllByOrganizationIdOrderByCreatedAtDesc(f.organizationId)).thenReturn(listOf(request))
+        assertEquals(null, f.service.parentRequests(parentJwt, f.organizationId).single().invoiceStatus)
+        assertEquals(PrivateTutoringRequestStatus.PENDING_APPROVAL, f.service.managedRequests(adminJwt, f.organizationId).single().status)
+
+        val wrongAge = PrivateTutoringService(organizationId = f.organizationId, branchId = f.child.branchId, name = "Bayi", minAgeMonths = 0, maxAgeMonths = 1, durationMinutes = 30, dailyPrice = BigDecimal("5"))
+        val wrongLevel = PrivateTutoringService(organizationId = f.organizationId, branchId = f.child.branchId, name = "Level lain", minAgeMonths = 36, maxAgeMonths = 72, durationMinutes = 30, dailyPrice = BigDecimal("5"))
+        val noActiveTutor = PrivateTutoringService(organizationId = f.organizationId, branchId = f.child.branchId, name = "Tanpa tutor", minAgeMonths = 36, maxAgeMonths = 72, durationMinutes = 30, dailyPrice = BigDecimal("5"))
+        val inactiveTutor = PrivateTutor(organizationId = f.organizationId, displayName = "Tutor nonaktif", active = false)
+        `when`(f.placements.findByChildIdAndEndedOnIsNull(f.child.id)).thenReturn(ChildPlacement(organizationId = f.organizationId, childId = f.child.id, learningLevelId = f.level.id))
+        `when`(f.services.findAllByOrganizationIdAndBranchIdAndActiveTrueOrderByNameAsc(f.organizationId, f.child.branchId)).thenReturn(listOf(f.serviceEntity, wrongAge, wrongLevel, noActiveTutor))
+        `when`(f.serviceLevels.findAllByPrivateTutoringServiceIdIn(listOf(f.serviceEntity.id, wrongAge.id, wrongLevel.id, noActiveTutor.id)))
+            .thenReturn(listOf(
+                PrivateTutoringServiceLearningLevel(privateTutoringServiceId = f.serviceEntity.id, learningLevelId = f.level.id),
+                PrivateTutoringServiceLearningLevel(privateTutoringServiceId = wrongAge.id, learningLevelId = f.level.id),
+                PrivateTutoringServiceLearningLevel(privateTutoringServiceId = wrongLevel.id, learningLevelId = UUID.randomUUID()),
+                PrivateTutoringServiceLearningLevel(privateTutoringServiceId = noActiveTutor.id, learningLevelId = f.level.id),
+            ))
+        `when`(f.serviceTutors.findAllByPrivateTutoringServiceIdIn(listOf(f.serviceEntity.id, wrongAge.id, wrongLevel.id, noActiveTutor.id)))
+            .thenReturn(listOf(
+                PrivateTutoringServiceTutor(privateTutoringServiceId = f.serviceEntity.id, privateTutorId = f.externalTutor.id),
+                PrivateTutoringServiceTutor(privateTutoringServiceId = wrongAge.id, privateTutorId = f.externalTutor.id),
+                PrivateTutoringServiceTutor(privateTutoringServiceId = wrongLevel.id, privateTutorId = f.externalTutor.id),
+                PrivateTutoringServiceTutor(privateTutoringServiceId = noActiveTutor.id, privateTutorId = inactiveTutor.id),
+            ))
+        `when`(f.tutors.findAllById(setOf(f.externalTutor.id, inactiveTutor.id))).thenReturn(listOf(f.externalTutor, inactiveTutor))
+        assertEquals(listOf(f.serviceEntity.id), f.service.parentServices(parentJwt, f.organizationId, f.child.id).map { it.id })
+    }
+
+    @Test
+    fun `private tutoring helpers cover tutor identity, placement and ownership boundaries`() {
+        val f = PrivateTutoringFixture()
+        val staffUser = UserProfile(displayName = "Staff Tutor", email = "staff@example.test")
+        val staffMembership = Membership(userId = staffUser.id, organizationId = f.organizationId, role = Role.STAFF, active = true)
+        `when`(f.memberships.findAllByUserIdAndOrganizationId(staffUser.id, f.organizationId)).thenReturn(listOf(staffMembership))
+        `when`(f.users.findById(staffUser.id)).thenReturn(Optional.of(staffUser))
+        val staffTutor = invokePrivate(f.service, "tutorFromRequest", f.organizationId, UpsertPrivateTutorRequest(PrivateTutorType.STAFF, staffUserId = staffUser.id, bio = " bio ")) as PrivateTutor
+        assertEquals(PrivateTutorType.STAFF, staffTutor.type)
+        assertEquals("Staff Tutor", staffTutor.displayName)
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "tutorFromRequest", f.organizationId, UpsertPrivateTutorRequest(PrivateTutorType.STAFF)) }
+        `when`(f.memberships.findAllByUserIdAndOrganizationId(staffUser.id, f.organizationId)).thenReturn(listOf(Membership(userId = staffUser.id, organizationId = f.organizationId, role = Role.STAFF, active = false)))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "tutorFromRequest", f.organizationId, UpsertPrivateTutorRequest(PrivateTutorType.STAFF, staffUserId = staffUser.id)) }
+        `when`(f.memberships.findAllByUserIdAndOrganizationId(staffUser.id, f.organizationId)).thenReturn(listOf(staffMembership))
+        `when`(f.users.findById(staffUser.id)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "tutorFromRequest", f.organizationId, UpsertPrivateTutorRequest(PrivateTutorType.STAFF, staffUserId = staffUser.id)) }
+        assertEquals("External", (invokePrivate(f.service, "tutorFromRequest", f.organizationId, UpsertPrivateTutorRequest(PrivateTutorType.EXTERNAL, displayName = " External ")) as PrivateTutor).displayName)
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "tutorFromRequest", f.organizationId, UpsertPrivateTutorRequest(PrivateTutorType.EXTERNAL, displayName = " ")) }
+
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "matchingServices", f.organizationId, Child(id = f.child.id, organizationId = f.organizationId, branchId = f.child.branchId, active = false, dateOfBirth = f.child.dateOfBirth), LocalDate.now()) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "matchingServices", UUID.randomUUID(), f.child, LocalDate.now()) }
+        `when`(f.placements.findByChildIdAndEndedOnIsNull(f.child.id)).thenReturn(null)
+        assertTrue((invokePrivate(f.service, "matchingServices", f.organizationId, f.child, LocalDate.now()) as List<*>).isEmpty())
+        `when`(f.placements.findByChildIdAndEndedOnIsNull(f.child.id)).thenReturn(ChildPlacement(organizationId = f.organizationId, childId = f.child.id, learningLevelId = null))
+        assertTrue((invokePrivate(f.service, "matchingServices", f.organizationId, f.child, LocalDate.now()) as List<*>).isEmpty())
+
+        val requestId = UUID.randomUUID()
+        `when`(f.requests.findAllByPrivateTutorIdAndStatusIn(f.externalTutor.id, setOf(PrivateTutoringRequestStatus.PENDING_PAYMENT, PrivateTutoringRequestStatus.CONFIRMED))).thenReturn(emptyList())
+        invokePrivate(f.service, "requireNoTutorConflict", f.externalTutor.id, LocalDateTime.of(2026, 10, 12, 10, 0), 60, requestId)
+        val overlapping = PrivateTutoringRequest(id = UUID.randomUUID(), privateTutorId = f.externalTutor.id, status = PrivateTutoringRequestStatus.CONFIRMED, scheduledAt = LocalDateTime.of(2026, 10, 12, 10, 30), durationMinutes = 60)
+        `when`(f.requests.findAllByPrivateTutorIdAndStatusIn(f.externalTutor.id, setOf(PrivateTutoringRequestStatus.PENDING_PAYMENT, PrivateTutoringRequestStatus.CONFIRMED))).thenReturn(listOf(overlapping))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "requireNoTutorConflict", f.externalTutor.id, LocalDateTime.of(2026, 10, 12, 10, 0), 60, requestId) }
+        invokePrivate(f.service, "requireNoTutorConflict", f.externalTutor.id, LocalDateTime.of(2026, 10, 12, 10, 0), 60, overlapping.id)
+        val unscheduled = PrivateTutoringRequest(id = UUID.randomUUID(), privateTutorId = f.externalTutor.id, status = PrivateTutoringRequestStatus.CONFIRMED, scheduledAt = null, durationMinutes = 60)
+        `when`(f.requests.findAllByPrivateTutorIdAndStatusIn(f.externalTutor.id, setOf(PrivateTutoringRequestStatus.PENDING_PAYMENT, PrivateTutoringRequestStatus.CONFIRMED))).thenReturn(listOf(unscheduled))
+        invokePrivate(f.service, "requireNoTutorConflict", f.externalTutor.id, LocalDateTime.of(2026, 10, 12, 10, 0), 60, requestId)
+
+        `when`(f.services.findById(f.serviceEntity.id)).thenReturn(Optional.of(f.serviceEntity))
+        `when`(f.tutors.findById(f.externalTutor.id)).thenReturn(Optional.of(f.externalTutor))
+        val tutoringRequest = PrivateTutoringRequest(id = requestId, organizationId = f.organizationId, childId = f.child.id)
+        `when`(f.requests.findById(requestId)).thenReturn(Optional.of(tutoringRequest))
+        `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
+        assertEquals(f.serviceEntity, invokePrivate(f.service, "service", f.serviceEntity.id, f.organizationId))
+        assertEquals(f.externalTutor, invokePrivate(f.service, "tutor", f.externalTutor.id, f.organizationId))
+        assertEquals(tutoringRequest, invokePrivate(f.service, "request", requestId, f.organizationId))
+        assertEquals(f.child, invokePrivate(f.service, "child", f.child.id, f.organizationId))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "service", f.serviceEntity.id, UUID.randomUUID()) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "tutor", f.externalTutor.id, UUID.randomUUID()) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "request", UUID.randomUUID(), f.organizationId) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "child", f.child.id, UUID.randomUUID()) }
     }
 }
 

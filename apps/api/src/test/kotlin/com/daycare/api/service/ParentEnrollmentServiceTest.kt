@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.ChildEnrollmentStatus
 import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.Gender
@@ -118,7 +120,8 @@ class ParentEnrollmentServiceTest {
         `when`(children.findById(secondChild.id)).thenReturn(Optional.of(secondChild))
         `when`(children.findById(thirdChild.id)).thenReturn(Optional.of(thirdChild))
         `when`(enrollments.save(any(ParentEnrollment::class.java))).thenAnswer { it.arguments[0] }
-        `when`(memberships.findAllByOrganizationId(organizationId)).thenReturn(emptyList())
+        val staffAdminId = UUID.randomUUID()
+        `when`(memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(Membership(userId = staffAdminId, organizationId = organizationId, role = Role.STAFF_ADMIN, active = true)))
         `when`(memberships.findAllByOrganizationId(additionalOrganizationId)).thenReturn(emptyList())
         `when`(billing.quoteEnrollment(organizationId, planId, null)).thenReturn(snapshot(planId))
         `when`(billing.quoteEnrollment(additionalOrganizationId, additionalPlanId, null)).thenReturn(snapshot(additionalPlanId))
@@ -430,6 +433,7 @@ class ParentEnrollmentServiceTest {
         `when`(enrollments.findById(enrollment.id)).thenReturn(Optional.of(enrollment))
         `when`(children.findById(newChild.id)).thenReturn(Optional.of(newChild))
         `when`(children.findById(originChild.id)).thenReturn(Optional.of(originChild))
+        `when`(organizations.findById(originOrganizationId)).thenReturn(Optional.of(com.daycare.api.persistence.Organization(id = originOrganizationId, name = "Tenant Asal")))
         `when`(paymentInstructions.hasActiveInstruction(destinationOrganizationId)).thenReturn(true)
         `when`(users.findById(parent.id)).thenReturn(Optional.of(parent))
         val snapshot = EnrollmentPlanSnapshot(enrollment.selectedPlanId, enrollment.selectedPlanName, enrollment.selectedPlanType, enrollment.selectedSubtotalAmount, enrollment.selectedDiscountAmount, enrollment.selectedDiscountName, enrollment.selectedDiscountCode, enrollment.selectedTotalAmount, enrollment.selectedCreditCount, enrollment.selectedUnusedCreditPolicy, enrollment.selectedCarryForwardDays, enrollment.selectedBookingRequiresApproval)
@@ -439,11 +443,12 @@ class ParentEnrollmentServiceTest {
         `when`(invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
         val service = ParentEnrollmentService(identity, access, organizations, subscriptions, branches, plans, children, enrollments, memberships, guardians, users, entitlements, invoices, billing, notifications, branchFilters, paymentInstructions, familyProfileVisibility, publishedOfferings)
 
-        service.decide(jwt, destinationOrganizationId, enrollment.id, ParentEnrollmentApprovalRequest(approved = true))
+        val response = service.decide(jwt, destinationOrganizationId, enrollment.id, ParentEnrollmentApprovalRequest(approved = true))
 
         assertEquals(ChildEnrollmentStatus.ACTIVE, newChild.enrollmentStatus)
         assertEquals(ChildEnrollmentStatus.TRANSFERRED, originChild.enrollmentStatus)
         assertEquals(false, originChild.active)
+        assertEquals("Tenant Asal", response.transferredFromOrganizationName)
     }
 
     @Test
@@ -612,6 +617,58 @@ class ParentEnrollmentServiceTest {
         `when`(f.published.hasPublishedCapability(f.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, f.branch.id)).thenReturn(false)
         assertThrows(IllegalArgumentException::class.java) { f.service.transferCheckout(f.jwt, request) }
     }
+
+    @Test
+    fun `catalog and invoice lifecycle cover query, optional snapshots, and notification filters`() {
+        val f = enrollmentFixture()
+        val otherOrg = UUID.randomUUID()
+        val otherBranch = Branch(organizationId = otherOrg, name = "Cabang Lain", fullAddress = "Alamat", googleMapsUrl = "https://maps.example")
+        val validPlan = com.daycare.api.persistence.ServicePlan(organizationId = otherOrg, name = "Harian", type = ServicePlanType.DAILY, price = java.math.BigDecimal.TEN, creditCount = 1)
+        `when`(f.organizations.findAllByNameContainingIgnoreCase("lain")).thenReturn(listOf(otherOrgEntity(otherOrg)))
+        `when`(f.subscriptions.findByOrganizationId(otherOrg)).thenReturn(TenantSubscription(organizationId = otherOrg, status = TenantSubscriptionStatus.TRIAL))
+        `when`(f.branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(otherOrg)).thenReturn(listOf(otherBranch))
+        `when`(f.published.hasPublishedCapability(otherOrg, InstitutionCapability.DAYCARE_OPERATIONS, otherBranch.id)).thenReturn(true)
+        `when`(f.billing.branchCapacityForCatalog(otherOrg, otherBranch.id)).thenReturn(4)
+        `when`(f.plans.findAllByOrganizationIdAndActiveTrue(otherOrg)).thenReturn(listOf(validPlan))
+        assertEquals(4, f.service.catalog(f.jwt, " lain ").single().branches.single().dailyCapacity)
+
+        val pending = ParentEnrollment(userId = f.parent.id, organizationId = f.organizationId, branchId = f.branch.id, childId = f.child.id, selectedPlanName = "Paket", status = ParentEnrollmentStatus.PENDING_APPROVAL)
+        `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
+        val plain = invokePrivate(f.service, "response", pending, false) as ParentEnrollmentResponse
+        assertEquals(null, plain.parentFamilyProfile)
+        `when`(f.familyProfiles.forTenant(f.organizationId, f.parent.id)).thenReturn(ParentFamilyProfileForTenantResponse(null, null, null, null))
+        assertTrue((invokePrivate(f.service, "response", pending, true) as ParentEnrollmentResponse).parentFamilyProfile != null)
+
+        val missingInvoice = UUID.randomUUID()
+        `when`(f.enrollments.findByInvoiceId(missingInvoice)).thenReturn(null)
+        f.service.invoiceExpired(InvoiceExpiredEvent(missingInvoice))
+        val rejected = pending.apply { status = ParentEnrollmentStatus.REJECTED }
+        `when`(f.enrollments.findByInvoiceId(f.invoice.id)).thenReturn(rejected)
+        f.service.invoiceExpired(InvoiceExpiredEvent(f.invoice.id))
+        verify(f.notifications, times(0)).notify(f.organizationId, f.parent.id, "Tagihan kedaluwarsa", "Akses tenant dibatasi sampai Anda mengajukan pendaftaran baru.", "/parent-enrollment", setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.PROFILE, RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS))
+    }
+
+    @Test
+    fun `enrollment response handles invoice transfer and staff notification variants`() {
+        val f = enrollmentFixture()
+        val enrollment = ParentEnrollment(organizationId = f.organizationId, branchId = f.branch.id, childId = f.child.id, userId = f.parent.id, status = ParentEnrollmentStatus.APPROVED, invoiceId = f.invoice.id, transferredFromChildId = UUID.randomUUID())
+        `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
+        `when`(f.invoices.findById(f.invoice.id)).thenReturn(Optional.of(f.invoice))
+        `when`(f.children.findById(enrollment.transferredFromChildId!!)).thenReturn(Optional.empty())
+        val noOrigin = invokePrivate(f.service, "response", enrollment, false) as ParentEnrollmentResponse
+        assertEquals(null, noOrigin.transferredFromOrganizationName)
+        val origin = Child(organizationId = UUID.randomUUID(), firstName = "Origin")
+        `when`(f.children.findById(enrollment.transferredFromChildId!!)).thenReturn(Optional.of(origin))
+        `when`(f.organizations.findById(origin.organizationId)).thenReturn(Optional.empty())
+        assertEquals(null, (invokePrivate(f.service, "response", enrollment, false) as ParentEnrollmentResponse).transferredFromOrganizationName)
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "response", enrollment.apply { invoiceId = UUID.randomUUID() }, false) }
+        val admin = Membership(organizationId = f.organizationId, userId = f.staff.id, role = Role.STAFF_ADMIN, active = true)
+        `when`(f.memberships.findAllByOrganizationId(f.organizationId)).thenReturn(listOf(admin, Membership(organizationId = f.organizationId, role = Role.STAFF_ADMIN, active = false)))
+        invokePrivate(f.service, "notifyStaffAdmins", f.organizationId, "Title", "Body", "/path")
+        verify(f.notifications).notify(f.organizationId, f.staff.id, "Title", "Body", "/path", setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.BOOKINGS))
+    }
+
+    private fun otherOrgEntity(id: UUID) = com.daycare.api.persistence.Organization(id = id, name = "Lain")
 
     private fun snapshot(planId: UUID) = EnrollmentPlanSnapshot(planId, "Paket", com.daycare.api.domain.ServicePlanType.MONTHLY, java.math.BigDecimal.ONE, java.math.BigDecimal.ZERO, null, null, java.math.BigDecimal.ONE, null, null, null, true)
 }

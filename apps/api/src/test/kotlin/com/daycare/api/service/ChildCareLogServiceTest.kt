@@ -21,6 +21,7 @@ import com.daycare.api.realtime.RealtimePublisher
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentCaptor
 import org.mockito.Mockito.any
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
@@ -138,12 +139,76 @@ class ChildCareLogServiceTest {
     }
 
     @Test
+    fun `create replays the existing log when client mutation id was already stored for the same child`() {
+        val fixture = Fixture()
+        val mutationId = UUID.randomUUID()
+        val existing = ChildCareLog(organizationId = fixture.organizationId, childId = fixture.child.id, type = ChildCareLogType.MEAL, mealType = ChildMealType.LUNCH, mealAmount = ChildMealAmount.ALL, clientMutationId = mutationId)
+        `when`(fixture.logs.findByOrganizationIdAndClientMutationId(fixture.organizationId, mutationId)).thenReturn(existing)
+
+        val replayed = fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.mealRequest(), mutationId)
+
+        assertEquals(existing.id, replayed.id)
+        verify(fixture.logs, never()).save(any(ChildCareLog::class.java))
+        verify(fixture.audits, never()).save(any(com.daycare.api.persistence.AuditLog::class.java))
+    }
+
+    @Test
+    fun `create rejects a client mutation id already stored for a different child`() {
+        val fixture = Fixture()
+        val mutationId = UUID.randomUUID()
+        val existing = ChildCareLog(organizationId = fixture.organizationId, childId = UUID.randomUUID(), type = ChildCareLogType.MEAL, mealType = ChildMealType.LUNCH, mealAmount = ChildMealAmount.ALL, clientMutationId = mutationId)
+        `when`(fixture.logs.findByOrganizationIdAndClientMutationId(fixture.organizationId, mutationId)).thenReturn(existing)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.mealRequest(), mutationId)
+        }
+        verify(fixture.logs, never()).save(any(ChildCareLog::class.java))
+    }
+
+    @Test
+    fun `create stores a new client mutation id so a later retry can be replayed`() {
+        val fixture = Fixture()
+        val mutationId = UUID.randomUUID()
+        `when`(fixture.logs.findByOrganizationIdAndClientMutationId(fixture.organizationId, mutationId)).thenReturn(null)
+        `when`(fixture.logs.save(any(ChildCareLog::class.java))).thenAnswer { it.arguments[0] }
+
+        fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.mealRequest(), mutationId)
+
+        val saved = ArgumentCaptor.forClass(ChildCareLog::class.java)
+        verify(fixture.logs).save(saved.capture())
+        assertEquals(mutationId, saved.value.clientMutationId)
+    }
+
+    @Test
     fun `care log listing fails when daycare capability is not published`() {
         val fixture = Fixture()
         org.mockito.Mockito.doThrow(IllegalArgumentException("unpublished")).`when`(fixture.capabilities).requirePublishedCapability(fixture.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, fixture.child.branchId)
         `when`(fixture.access.require(fixture.jwt, fixture.organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)).thenReturn(fixture.scope)
         `when`(fixture.childScopes.requireStaffManagedChild(fixture.scope, fixture.child.id, fixture.organizationId)).thenReturn(fixture.child)
         assertThrows(IllegalArgumentException::class.java) { fixture.service.list(fixture.jwt, fixture.organizationId, fixture.child.id) }
+    }
+
+    @Test
+    fun `care log validator exercises valid payloads and correction ownership branches`() {
+        val fixture = Fixture()
+        fun validate(request: CreateChildCareLogRequest) {
+            val method = ChildCareLogService::class.java.declaredMethods.single { it.name == "validate" }
+            method.isAccessible = true
+            try { method.invoke(fixture.service, request, fixture.organizationId, fixture.child.id) }
+            catch (error: java.lang.reflect.InvocationTargetException) { throw error.targetException }
+        }
+        validate(fixture.mealRequest())
+        val start = Instant.now().minusSeconds(20)
+        validate(CreateChildCareLogRequest(ChildCareLogType.NAP, Instant.now(), napStartedAt = start, napEndedAt = start.plusSeconds(10)))
+        validate(CreateChildCareLogRequest(ChildCareLogType.TOILET, Instant.now(), toiletType = ChildToiletType.TOILET_ATTEMPT))
+        val original = ChildCareLog(organizationId = fixture.organizationId, childId = fixture.child.id)
+        `when`(fixture.logs.findById(original.id)).thenReturn(Optional.of(original))
+        validate(fixture.mealRequest(original.id, " correction "))
+        assertThrows(IllegalArgumentException::class.java) { validate(fixture.mealRequest(original.id, " ")) }
+        val foreign = ChildCareLog(organizationId = UUID.randomUUID(), childId = fixture.child.id)
+        `when`(fixture.logs.findById(foreign.id)).thenReturn(Optional.of(foreign))
+        assertThrows(IllegalArgumentException::class.java) { validate(fixture.mealRequest(foreign.id, "reason")) }
+        assertThrows(IllegalArgumentException::class.java) { validate(fixture.mealRequest(correctionReason = "orphan reason")) }
     }
 
     private class Fixture {

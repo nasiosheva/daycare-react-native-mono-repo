@@ -24,6 +24,7 @@
     "@react-native-firebase/app": "^22.0.0",
     "@react-native-firebase/auth": "^22.0.0",
     "@react-native-google-signin/google-signin": "^14.0.1",
+    "@shopify/flash-list": "1.7.6",
     "@tanstack/react-query": "^5.81.5",
     "expo": "~53.0.12",
     "expo-application": "~6.1.5",

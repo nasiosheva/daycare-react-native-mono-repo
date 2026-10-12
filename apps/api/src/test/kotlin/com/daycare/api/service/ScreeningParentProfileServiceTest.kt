@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.persistence.ScreeningChildProfile
 import com.daycare.api.persistence.ScreeningChildProfileRepository
@@ -62,5 +64,30 @@ class ScreeningParentProfileServiceTest {
 
         assertEquals(false, result.active)
         assertEquals(parent.id, profile.ownerUserId)
+    }
+
+    @Test
+    fun `mine and update remain owner scoped and archive is idempotent`() {
+        `when`(identity.sync(jwt)).thenReturn(parent)
+        val profile = ScreeningChildProfile(id = UUID.randomUUID(), ownerUserId = parent.id, subjectName = "Anak", dateOfBirth = LocalDate.of(2022, 1, 1))
+        `when`(profiles.findAllByOwnerUserIdAndActiveTrueOrderByCreatedAtDesc(parent.id)).thenReturn(listOf(profile))
+        `when`(profiles.findByIdAndOwnerUserId(profile.id, parent.id)).thenReturn(profile)
+        `when`(profiles.save(profile)).thenReturn(profile)
+        assertEquals(listOf(profile.id), service.mine(jwt).map { it.id })
+        assertEquals("Anak Baru", service.update(jwt, profile.id, ScreeningChildProfileRequest(" Anak Baru ", LocalDate.of(2021, 1, 1))).subjectName)
+        profile.active = false
+        assertEquals(false, service.archive(jwt, profile.id).active)
+    }
+
+    @Test
+    fun `update rejects missing and archived profiles and oversized names`() {
+        `when`(identity.sync(jwt)).thenReturn(parent)
+        val id = UUID.randomUUID()
+        `when`(profiles.findByIdAndOwnerUserId(id, parent.id)).thenReturn(null)
+        assertThrows(IllegalArgumentException::class.java) { service.update(jwt, id, ScreeningChildProfileRequest("Anak", LocalDate.of(2022, 1, 1))) }
+        val archived = ScreeningChildProfile(id = id, ownerUserId = parent.id, active = false)
+        `when`(profiles.findByIdAndOwnerUserId(id, parent.id)).thenReturn(archived)
+        assertThrows(IllegalStateException::class.java) { service.update(jwt, id, ScreeningChildProfileRequest("Anak", LocalDate.of(2022, 1, 1))) }
+        assertThrows(IllegalArgumentException::class.java) { service.create(jwt, ScreeningChildProfileRequest("x".repeat(161), LocalDate.of(2022, 1, 1))) }
     }
 }

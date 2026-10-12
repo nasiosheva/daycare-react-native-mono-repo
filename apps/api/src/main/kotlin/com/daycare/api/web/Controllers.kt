@@ -748,7 +748,7 @@ class InstitutionController(private val attendance: AttendanceService, private v
     fun childCareLogs(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = childCareLogs.list(jwt, organizationId, childId)
 
     @PostMapping("/children/{childId}/care-logs") @ResponseStatus(HttpStatus.CREATED)
-    fun createChildCareLog(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreateChildCareLogRequest) = childCareLogs.create(jwt, organizationId, childId, request)
+    fun createChildCareLog(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestHeader(value = "Idempotency-Key", required = false) idempotencyKey: UUID?, @PathVariable childId: UUID, @Valid @RequestBody request: CreateChildCareLogRequest) = childCareLogs.create(jwt, organizationId, childId, request, idempotencyKey)
 
     @GetMapping("/children/{childId}/handovers")
     fun childHandovers(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = staffHandovers.list(jwt, organizationId, childId)

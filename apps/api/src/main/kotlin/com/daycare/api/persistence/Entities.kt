@@ -854,6 +854,7 @@ class ChildCareLog(
     @Column(length = 500) var note: String? = null,
     @Column(name = "corrects_log_id") var correctsLogId: UUID? = null,
     @Column(name = "correction_reason", length = 500) var correctionReason: String? = null,
+    @Column(name = "client_mutation_id") var clientMutationId: UUID? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 

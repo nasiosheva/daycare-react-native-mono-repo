@@ -432,4 +432,89 @@ class PlatformAdministrationServiceTest {
         assertThrows(IllegalArgumentException::class.java) { fixture.service.updateTenant(fixture.jwt, organization.id, UpdateTenantRequest("Tenant", setOf("DAYCARE"), TenantSubscriptionPlan.STARTER, null)) }
         assertThrows(IllegalArgumentException::class.java) { fixture.service.updateTenant(fixture.jwt, organization.id, UpdateTenantRequest("Tenant", setOf("DAYCARE", "TK"), TenantSubscriptionPlan.STARTER, BigDecimal("10"))) }
     }
+
+    @Test
+    fun `tenant response maps staff admins branches payments and pending invitation fallback`() {
+        val fixture = PlatformAdministrationServiceFixture(); fixture.allowPlatformAdmin()
+        val organization = Organization(id = fixture.organizationId, name = "Tenant")
+        val subscription = TenantSubscription(organizationId = organization.id, status = TenantSubscriptionStatus.ACTIVE, periodEnd = LocalDate.now().plusDays(5), monthlyFee = BigDecimal("100"))
+        fixture.stubTenantResponse(organization, subscription)
+        val primaryUser = UserProfile(id = fixture.userId, displayName = "Primary", email = "primary@test")
+        val primary = Membership(id = UUID.randomUUID(), organizationId = organization.id, userId = primaryUser.id, role = Role.STAFF_ADMIN, primaryStaffAdmin = true, active = true)
+        val inactive = Membership(id = UUID.randomUUID(), organizationId = organization.id, userId = UUID.randomUUID(), role = Role.STAFF_ADMIN, primaryStaffAdmin = false, active = false)
+        val parent = Membership(id = UUID.randomUUID(), organizationId = organization.id, userId = UUID.randomUUID(), role = Role.PARENT, active = true)
+        `when`(fixture.memberships.findAllByOrganizationId(organization.id)).thenReturn(listOf(inactive, parent, primary))
+        `when`(fixture.users.findById(primary.userId)).thenReturn(Optional.of(primaryUser))
+        `when`(fixture.users.findById(inactive.userId)).thenReturn(Optional.empty())
+        val pending = Invitation(organizationId = organization.id, role = Role.STAFF_ADMIN, email = null, phoneNumber = "+62000")
+        val unrelated = Invitation(organizationId = organization.id, role = Role.PARENT, email = "parent@test")
+        `when`(fixture.invitations.findAllByOrganizationIdAndStatus(organization.id, com.daycare.api.domain.InvitationStatus.PENDING)).thenReturn(listOf(unrelated, pending))
+        val branch = Branch(id = UUID.randomUUID(), organizationId = organization.id, name = "Cabang", primary = true, fullAddress = "Alamat", googleMapsUrl = "https://maps.test")
+        val secondary = Branch(id = UUID.randomUUID(), organizationId = organization.id, name = "Cadangan", primary = false)
+        `when`(fixture.branches.findAllByOrganizationId(organization.id)).thenReturn(listOf(secondary, branch))
+        val payment = TenantPayment(organizationId = organization.id, subscriptionId = subscription.id, amount = BigDecimal("100"), status = TenantPaymentStatus.PAID)
+        `when`(fixture.payments.findAllByOrganizationIdOrderByCreatedAtDesc(organization.id)).thenReturn(listOf(payment))
+
+        val active = fixture.service.tenant(fixture.jwt, organization.id)
+        assertEquals("Primary", active.staffAdmin?.displayName)
+        assertEquals("Cabang", active.branchName)
+        assertEquals(2, active.branches.size)
+        assertEquals(1, active.payments.size)
+
+        primary.active = false
+        val pendingResponse = fixture.service.tenant(fixture.jwt, organization.id)
+        assertEquals("+62000", pendingResponse.staffAdmin?.email)
+        assertEquals("PENDING", pendingResponse.staffAdmin?.status)
+    }
+
+    @Test
+    fun `platform guards empty staff search and subscription payment invitation branches`() {
+        val fixture = PlatformAdministrationServiceFixture(); fixture.allowPlatformAdmin()
+        `when`(fixture.organizations.findAllByNameContainingIgnoreCase("none")).thenReturn(emptyList())
+        `when`(fixture.memberships.findOrganizationIdsByStaffAdminSearch("none")).thenReturn(emptyList())
+        assertTrue(fixture.service.tenants(fixture.jwt, " none ").isEmpty())
+
+        val organization = Organization(id = fixture.organizationId, name = "Tenant")
+        fixture.stubTenantResponse(organization)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.renewSubscription(fixture.jwt, organization.id, RenewTenantSubscriptionRequest(BigDecimal("100"))) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.setSubscriptionStatus(fixture.jwt, organization.id, TenantSubscriptionStatus.ACTIVE) }
+        val payment = TenantPayment(id = UUID.randomUUID(), organizationId = UUID.randomUUID(), subscriptionId = UUID.randomUUID(), amount = BigDecimal("10"), status = TenantPaymentStatus.PENDING)
+        `when`(fixture.payments.findById(payment.id)).thenReturn(Optional.of(payment))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.markPaymentPaid(fixture.jwt, organization.id, payment.id) }
+        val ownPayment = payment.apply { organizationId = organization.id; status = TenantPaymentStatus.PAID }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.voidPayment(fixture.jwt, organization.id, ownPayment.id) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.refreshStaffAdminInvitation(fixture.jwt, organization.id) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.cancelStaffAdminInvitation(fixture.jwt, organization.id) }
+    }
+
+    @Test
+    fun `tenant response maps expiry, staff fallback and branch ordering variants`() {
+        val f = PlatformAdministrationServiceFixture()
+        val organization = Organization(id = f.organizationId, name = "Tenant")
+        val trial = TenantSubscription(organizationId = organization.id, status = TenantSubscriptionStatus.TRIAL, trialEndsAt = LocalDate.now().minusDays(1))
+        val primary = Membership(id = f.membershipId, organizationId = organization.id, userId = f.userId, role = Role.STAFF_ADMIN, primaryStaffAdmin = true, active = true)
+        val secondary = Membership(organizationId = organization.id, userId = UUID.randomUUID(), role = Role.STAFF_ADMIN, primaryStaffAdmin = false, active = false)
+        val primaryUser = UserProfile(id = f.userId, email = "admin@example.test", displayName = "Admin")
+        val pending = Invitation(organizationId = organization.id, role = Role.STAFF_ADMIN, email = null, phoneNumber = "+62000", status = com.daycare.api.domain.InvitationStatus.PENDING)
+        `when`(f.subscriptions.findByOrganizationId(organization.id)).thenReturn(trial)
+        `when`(f.organizationCapabilities.forOrganization(organization.id)).thenReturn(OrganizationCapabilities(emptySet(), emptySet()))
+        `when`(f.memberships.findAllByOrganizationId(organization.id)).thenReturn(listOf(secondary, primary))
+        `when`(f.users.findById(primary.id)).thenReturn(Optional.of(primaryUser))
+        `when`(f.users.findById(secondary.userId)).thenReturn(Optional.empty())
+        `when`(f.invitations.findAllByOrganizationIdAndStatus(organization.id, com.daycare.api.domain.InvitationStatus.PENDING)).thenReturn(listOf(pending))
+        val main = Branch(organizationId = organization.id, name = "Utama", primary = true)
+        val other = Branch(organizationId = organization.id, name = "Cabang", primary = false)
+        `when`(f.branches.findAllByOrganizationId(organization.id)).thenReturn(listOf(other, main))
+        `when`(f.payments.findAllByOrganizationIdOrderByCreatedAtDesc(organization.id)).thenReturn(emptyList())
+        val response = invokePrivate(f.service, "tenantResponse", organization) as TenantResponse
+        assertEquals(TenantSubscriptionStatus.PENDING_PAYMENT, response.subscriptionStatus)
+        assertEquals("Utama", response.branchName)
+        assertEquals("ACTIVE", response.staffAdmins.first { it.id == primary.id }.status)
+        assertEquals("ACTIVE", response.staffAdmin?.status)
+
+        val active = TenantSubscription(organizationId = organization.id, status = TenantSubscriptionStatus.ACTIVE, periodEnd = LocalDate.now().minusDays(1))
+        `when`(f.subscriptions.findByOrganizationId(organization.id)).thenReturn(active)
+        val expired = invokePrivate(f.service, "tenantResponse", organization) as TenantResponse
+        assertEquals(TenantSubscriptionStatus.EXPIRED, expired.subscriptionStatus)
+    }
 }

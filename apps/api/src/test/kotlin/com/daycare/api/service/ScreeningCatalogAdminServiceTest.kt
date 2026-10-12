@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.ScreeningCatalogProvenance
 import com.daycare.api.domain.ScreeningCatalogResourceType
 import com.daycare.api.domain.ScreeningQuestionAnswerType
@@ -341,6 +343,38 @@ class ScreeningCatalogAdminServiceTest {
         `when`(texts.findAllByResourceTypeAndResourceIdIn(ScreeningCatalogResourceType.TEMPLATE, listOf(id))).thenReturn(emptyList())
         service.deleteDraft(jwt, id)
         verify(templates).delete(template)
+    }
+
+    @Test
+    fun `create assigns identifiers for new nested catalog records`() {
+        val templateId = UUID.randomUUID()
+        val ruleId = UUID.randomUUID()
+        val request = request(templateId, UUID.randomUUID(), UUID.randomUUID()).copy(
+            questions = listOf(request(templateId, UUID.randomUUID(), UUID.randomUUID()).questions.single().copy(
+                id = null,
+                choices = listOf(ScreeningChoiceDefinitionRequest(id = null, code = " NEW ", displayOrder = 1, enabled = true)),
+            )),
+            texts = listOf(ScreeningCatalogTextDefinitionRequest(resourceType = ScreeningCatalogResourceType.TEMPLATE, resourceId = templateId, locale = "en", textKey = "title", textValue = "Title")),
+            ruleTriggers = listOf(ScreeningRuleTriggerDefinitionRequest(triggerKind = ScreeningRuleTriggerKind.ANSWER, priority = 0, stableQuestionId = "Q-1", answerCode = "YES", outputStatus = ScreeningResultMainStatus.KEMAMPUAN_DILAPORKAN_TERLIHAT, displayOrder = 1)),
+        )
+        val rule = ScreeningRuleSet(id = ruleId, status = ScreeningRuleSetStatus.DRAFT)
+        val template = ScreeningTemplate(id = templateId, code = "MANUAL", version = 1, ruleSetId = ruleId)
+        `when`(platform.requirePlatformAdmin(jwt)).thenReturn(admin)
+        `when`(templates.findByCodeAndVersion("MANUAL", 1)).thenReturn(null)
+        `when`(rules.save(any(ScreeningRuleSet::class.java))).thenReturn(rule)
+        `when`(templates.save(any(ScreeningTemplate::class.java))).thenReturn(template)
+        `when`(questions.save(any(ScreeningQuestion::class.java))).thenAnswer { it.arguments[0] }
+        `when`(choices.save(any(ScreeningChoice::class.java))).thenAnswer { it.arguments[0] }
+        `when`(texts.save(any(ScreeningCatalogText::class.java))).thenAnswer { it.arguments[0] }
+        `when`(triggers.save(any(com.daycare.api.persistence.ScreeningRuleTrigger::class.java))).thenAnswer { it.arguments[0] }
+        stubChildren(template, rule, UUID.randomUUID(), UUID.randomUUID())
+
+        val response = service.create(jwt, request)
+
+        assertEquals("MANUAL", response.code)
+        verify(questions).save(any(ScreeningQuestion::class.java))
+        verify(choices).save(any(ScreeningChoice::class.java))
+        verify(triggers).save(any(com.daycare.api.persistence.ScreeningRuleTrigger::class.java))
     }
 
     private fun request(templateId: UUID, questionId: UUID, choiceId: UUID) = ScreeningTemplateDefinitionRequest(

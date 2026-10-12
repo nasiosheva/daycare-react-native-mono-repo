@@ -93,6 +93,43 @@ class ScreeningResultExportServiceTest {
         }
     }
 
+    @Test
+    fun `pdf handles an empty snapshot and unknown display values`() {
+        val result = result(subjectName = "é".repeat(80), longText = false).copy(
+            locale = "xx",
+            mainStatus = ScreeningResultMainStatus.PENGAMATAN_BELUM_CUKUP,
+            statusSummarySnapshot = "Ringkas",
+            nextStepSnapshot = "Langkah",
+            disclaimerTextSnapshot = "Disclaimer",
+            domains = listOf(ScreeningResultDomainResponse("ZZ9", ScreeningResultMainStatus.PENGAMATAN_BELUM_CUKUP, 0, 0, 0, 1)),
+            reasons = emptyList(),
+            items = listOf(ScreeningResultItemResponse(UUID.randomUUID(), null, "Q1", "ZZ", "Tidak terlihat", "TIDAK", null, null, 1)),
+        )
+        `when`(completion.result(jwt, result.sessionId)).thenReturn(result)
+
+        val export = service.pdf(jwt, result.sessionId)
+
+        assertTrue(export.fileName.startsWith("screening-"))
+        assertTrue(export.fileName.endsWith(".pdf"))
+        assertTrue(export.bytes.size > 500)
+    }
+
+    @Test
+    fun `private display helpers cover every status rank and unavailable label`() {
+        fun invoke(name: String, vararg args: Any?): Any? {
+            val method = ScreeningResultExportService::class.java.declaredMethods.single { it.name == name }
+            method.isAccessible = true
+            return method.invoke(service, *args)
+        }
+        assertEquals(4, invoke("statusRank", "SEGERA_DISKUSIKAN"))
+        assertEquals(3, invoke("statusRank", "DISKUSIKAN_PERKEMBANGAN"))
+        assertEquals(2, invoke("statusRank", "PENGAMATAN_BELUM_CUKUP"))
+        assertEquals(1, invoke("statusRank", "KEMAMPUAN_DILAPORKAN_TERLIHAT"))
+        assertEquals(0, invoke("statusRank", "UNKNOWN"))
+        assertEquals("Not available", invoke("statusLabel", "UNKNOWN", "en"))
+        assertEquals("Belum tersedia", invoke("statusLabel", "UNKNOWN", "id"))
+    }
+
     private fun result(subjectName: String, longText: Boolean): ScreeningResultResponse {
         val id = UUID.randomUUID()
         val text = if (longText) "x".repeat(160) else "Ringkasan"

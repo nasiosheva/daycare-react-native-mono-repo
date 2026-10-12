@@ -210,6 +210,7 @@ interface ChildIncidentFollowUpRepository : JpaRepository<ChildIncidentFollowUp,
 }
 interface ChildCareLogRepository : JpaRepository<ChildCareLog, UUID> {
     fun findAllByOrganizationIdAndChildIdOrderByOccurredAtDesc(organizationId: UUID, childId: UUID): List<ChildCareLog>
+    fun findByOrganizationIdAndClientMutationId(organizationId: UUID, clientMutationId: UUID): ChildCareLog?
 }
 interface StaffHandoverRepository : JpaRepository<StaffHandover, UUID> {
     fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<StaffHandover>

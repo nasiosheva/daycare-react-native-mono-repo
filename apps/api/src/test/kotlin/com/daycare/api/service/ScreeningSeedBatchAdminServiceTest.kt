@@ -2,6 +2,7 @@ package com.daycare.api.service
 
 import com.daycare.api.persistence.ScreeningSeedManifestRepository
 import com.daycare.api.persistence.UserProfile
+import com.daycare.api.persistence.ScreeningSeedManifest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
@@ -61,5 +62,37 @@ class ScreeningSeedBatchAdminServiceTest {
 
         verify(seed).apply(expected)
         assertEquals("platform-admin:admin@example.com", expected.appliedBy)
+    }
+
+    @Test
+    fun `metadata reports an applied manifest and actor identity falls back to username`() {
+        val usernameAdmin = UserProfile(id = UUID.randomUUID(), username = "operator")
+        `when`(platform.requirePlatformAdmin(jwt)).thenReturn(usernameAdmin)
+        val definition = ScreeningInitialDataset.definition("platform-admin:preview")
+        `when`(manifests.findByBatchId(ScreeningInitialDataset.BATCH_ID)).thenReturn(
+            ScreeningSeedManifest(
+                batchId = definition.batchId,
+                seedVersion = definition.seedVersion,
+                checksum = definition.checksum,
+                appliedBy = "operator",
+                templateCount = definition.templates.size,
+                questionCount = definition.questions.size,
+                choiceCount = definition.choices.size,
+                translationCount = definition.texts.size,
+            ),
+        )
+
+        assertEquals(ScreeningSeedBatchAdminStatus.APPLIED, service.list(jwt).single().status)
+        val expected = ScreeningInitialDataset.definition("platform-admin:operator")
+        `when`(seed.preview(expected)).thenReturn(ScreeningSeedBatchResult(ScreeningSeedBatchApplyStatus.PREVIEW, definition.batchId, 1, 1, 1, 1))
+        service.preview(jwt, definition.batchId)
+        verify(seed).preview(expected)
+    }
+
+    @Test
+    fun `unknown seed batch is rejected before preview or apply`() {
+        `when`(platform.requirePlatformAdmin(jwt)).thenReturn(admin)
+        assertThrows(IllegalArgumentException::class.java) { service.preview(jwt, "unknown") }
+        assertThrows(IllegalArgumentException::class.java) { service.apply(jwt, "unknown", ScreeningSeedBatchApplyRequest("APPLY")) }
     }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState, type PropsWithChildren, type ReactNode, type RefObject } from "react";
-import { Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent, type StyleProp, type ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { backgroundGradient, colors, radius, shadows, spacing, toneColors, toneIcons } from "./theme";
@@ -7,9 +7,35 @@ import { AppText } from "./AppText";
 import { appBrandName } from "./brand";
 import { inlineFeedbackDuration, subscribeInlineFeedback, type InlineFeedback } from "./InlineFeedback";
 
-export type ScreenProps = PropsWithChildren<{ title?: string; header?: ReactNode; headerAction?: ReactNode; footer?: ReactNode; floatingAction?: ReactNode; scrollViewRef?: RefObject<ScrollView | null>; onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void; onContentSizeChange?: (width: number, height: number) => void; showAppBar?: boolean; refreshing?: boolean; onRefresh?: () => void; feedbackDismissLabel?: string }>;
+/**
+ * Props mirrored from the scroll container Screen would otherwise render itself (same names
+ * FlashList/FlatList also accept directly), so a `renderBody` callback can spread them onto a
+ * virtualized list without Screen needing to know which list implementation is used.
+ */
+export type ScreenBodyProps = {
+  style: StyleProp<ViewStyle>;
+  // A flattened object rather than StyleProp<ViewStyle>'s array form: FlashList's
+  // contentContainerStyle type is a plain object, unlike ScrollView's more permissive prop.
+  contentContainerStyle: ViewStyle;
+  refreshing: boolean;
+  onRefresh?: () => void;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onContentSizeChange?: (width: number, height: number) => void;
+  scrollEventThrottle: number;
+};
 
-export function Screen({ children, title, header, headerAction, footer, floatingAction, scrollViewRef, onScroll, onContentSizeChange, showAppBar, refreshing = false, onRefresh, feedbackDismissLabel = "Close" }: ScreenProps) {
+export type ScreenProps = PropsWithChildren<{ title?: string; header?: ReactNode; headerAction?: ReactNode; footer?: ReactNode; floatingAction?: ReactNode; scrollViewRef?: RefObject<ScrollView | null>; onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void; onContentSizeChange?: (width: number, height: number) => void; showAppBar?: boolean; refreshing?: boolean; onRefresh?: () => void; feedbackDismissLabel?: string;
+  /**
+   * Escape hatch for a long, unbounded list: Screen still owns the app bar, floating action,
+   * footer and content-container sizing, but renders this instead of its own ScrollView, so the
+   * caller can render a virtualized list (e.g. FlashList) as the actual scroll container — a
+   * virtualized list nested inside Screen's own ScrollView would never measure a scrollable
+   * viewport of its own and silently render every item anyway.
+   */
+  renderBody?: (bodyProps: ScreenBodyProps) => ReactNode;
+}>;
+
+export function Screen({ children, title, header, headerAction, footer, floatingAction, scrollViewRef, onScroll, onContentSizeChange, showAppBar, refreshing = false, onRefresh, feedbackDismissLabel = "Close", renderBody }: ScreenProps) {
   const shouldShowAppBar = showAppBar ?? Boolean(title || header);
   const [feedback, setFeedback] = useState<InlineFeedback>();
 
@@ -27,7 +53,15 @@ export function Screen({ children, title, header, headerAction, footer, floating
         <AppText variant="heading" numberOfLines={1} style={styles.title}>{title ?? appBrandName}</AppText>
         {headerAction && <View style={styles.headerAction}>{headerAction}</View>}
       </View>}
-      <ScrollView
+      {renderBody ? renderBody({
+        style: styles.scroll,
+        contentContainerStyle: StyleSheet.flatten([styles.content, floatingAction ? styles.contentWithFloatingAction : undefined]),
+        refreshing,
+        onRefresh,
+        onScroll,
+        onContentSizeChange,
+        scrollEventThrottle: 16,
+      }) : <ScrollView
         ref={scrollViewRef}
         style={styles.scroll}
         onScroll={onScroll}
@@ -37,7 +71,7 @@ export function Screen({ children, title, header, headerAction, footer, floating
         refreshControl={onRefresh && Platform.OS !== "web" ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} /> : undefined}
       >
         {children}
-      </ScrollView>
+      </ScrollView>}
       {feedback && <FeedbackToast feedback={feedback} topOffset={shouldShowAppBar ? 64 : spacing.sm} dismissLabel={feedbackDismissLabel} onDismiss={() => setFeedback(undefined)} />}
       {floatingAction && <View pointerEvents="box-none" style={[styles.floatingAction, footer ? styles.floatingActionWithFooter : undefined]}>{floatingAction}</View>}
       {footer && <View style={styles.footer}>{footer}</View>}

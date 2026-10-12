@@ -83,6 +83,39 @@ class TenantPaymentInstructionServiceTest {
         assertFalse(fixture.service.hasActiveInstruction(fixture.organizationId))
     }
 
+    @Test
+    fun `list requires staff access when parent has no approved enrollment or open tutoring invoice`() {
+        val fixture = fixture()
+        val user = UserProfile(displayName = "Parent")
+        `when`(fixture.identity.sync(fixture.jwt)).thenReturn(user)
+        `when`(fixture.enrollments.findAllByUserIdOrderByCreatedAtDesc(user.id)).thenReturn(
+            listOf(
+                ParentEnrollment(userId = user.id, organizationId = UUID.randomUUID(), status = ParentEnrollmentStatus.APPROVED),
+                ParentEnrollment(userId = user.id, organizationId = fixture.organizationId, status = ParentEnrollmentStatus.PENDING_APPROVAL),
+            ),
+        )
+        `when`(fixture.invoices.findAllByOrganizationIdAndPayerUserIdOrderByCreatedAtDesc(fixture.organizationId, user.id)).thenReturn(
+            listOf(
+                Invoice(organizationId = fixture.organizationId, payerUserId = user.id, source = InvoiceSource.PRIVATE_TUTORING, status = InvoiceStatus.PAID),
+                Invoice(organizationId = fixture.organizationId, payerUserId = user.id, source = InvoiceSource.SERVICE, status = InvoiceStatus.PENDING),
+            ),
+        )
+        `when`(fixture.instructions.findAllByOrganizationIdAndActiveTrueOrderByDisplayOrderAscCreatedAtAsc(fixture.organizationId)).thenReturn(emptyList())
+
+        assertTrue(fixture.service.list(fixture.jwt, fixture.organizationId).isEmpty())
+    }
+
+    @Test
+    fun `update and delete reject an instruction owned by another organization`() {
+        val fixture = fixture()
+        val foreign = TenantPaymentInstruction(organizationId = UUID.randomUUID(), name = "Foreign", accountHolder = "Holder", accountNumber = "1")
+        `when`(fixture.instructions.findById(foreign.id)).thenReturn(Optional.of(foreign))
+        val request = UpsertPaymentInstructionRequest("Name", "Holder", "123")
+
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.update(fixture.jwt, fixture.organizationId, foreign.id, request) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.delete(fixture.jwt, fixture.organizationId, foreign.id) }
+    }
+
     private data class Fixture(
         val organizationId: UUID,
         val jwt: Jwt,

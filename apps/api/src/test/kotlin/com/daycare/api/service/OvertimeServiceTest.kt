@@ -432,4 +432,50 @@ class OvertimeServiceTest {
         verifyNoInteractions(notifications)
         verify(attendance, never()).save(wrongDate)
     }
+
+    @Test
+    fun `automatic overtime skips ambiguous or inactive parent payers`() {
+        val organizationId = UUID.randomUUID()
+        val now = ZonedDateTime.now(ZoneId.of("UTC"))
+        val branch = Branch(organizationId = organizationId, timezone = "UTC", autoOvertimeBillingEnabled = true, overtimeGraceMinutes = 0)
+        val child = Child(organizationId = organizationId, branchId = branch.id, firstName = "Alya")
+        val record = AttendanceRecord(organizationId = organizationId, branchId = branch.id, childId = child.id, operationalDate = now.toLocalDate(), checkedInAt = now.toInstant())
+        val firstParent = UUID.randomUUID()
+        val secondParent = UUID.randomUUID()
+        val setup = listOf(
+            BranchOperatingHour(branchId = branch.id, dayOfWeek = now.dayOfWeek, active = true, closesAt = now.toLocalTime().minusMinutes(2)),
+        )
+        val tier = BranchOvertimeRateTier(branchId = branch.id, durationMinutes = 15, amount = BigDecimal("10000"))
+        `when`(attendance.findAllByCheckedOutAtIsNull()).thenReturn(listOf(record))
+        `when`(branches.findAllById(setOf(branch.id))).thenReturn(listOf(branch))
+        `when`(hours.findAllByBranchIdIn(setOf(branch.id))).thenReturn(setup)
+        `when`(tiers.findAllByBranchIdIn(setOf(branch.id))).thenReturn(listOf(tier))
+        `when`(publishedOfferings.hasPublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branch.id)).thenReturn(true)
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(guardians.findAllByChildIdIn(setOf(child.id))).thenReturn(listOf(GuardianLink(childId = child.id, userId = firstParent), GuardianLink(childId = child.id, userId = secondParent)))
+        `when`(memberships.findAllByUserIdAndOrganizationId(firstParent, organizationId)).thenReturn(listOf(com.daycare.api.persistence.Membership(userId = firstParent, organizationId = organizationId, role = Role.STAFF, active = true)))
+        `when`(memberships.findAllByUserIdAndOrganizationId(secondParent, organizationId)).thenReturn(listOf(com.daycare.api.persistence.Membership(userId = secondParent, organizationId = organizationId, role = Role.PARENT, active = false)))
+        `when`(charges.findAllByOrganizationIdAndChildIdAndOperationalDate(organizationId, child.id, now.toLocalDate())).thenReturn(emptyList())
+
+        service().sendOvertimeAlerts()
+
+        verify(invoices, never()).save(any(Invoice::class.java))
+    }
+
+    @Test
+    fun `operating hours allow inactive days and empty tiers when automatic billing is off`() {
+        val organizationId = UUID.randomUUID()
+        val branch = Branch(organizationId = organizationId, name = "Utama")
+        val jwt = mock(org.springframework.security.oauth2.jwt.Jwt::class.java)
+        val scope = AccessScope(UserProfile(), com.daycare.api.persistence.Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(scope)
+        `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
+        val hoursInput = java.time.DayOfWeek.entries.map { OperatingHourInput(it, false) }
+
+        val result = service().updateBranchHours(jwt, organizationId, branch.id, UpdateBranchOperatingHoursRequest(hoursInput, emptyList(), autoOvertimeBillingEnabled = false))
+
+        assertEquals(false, result.autoOvertimeBillingEnabled)
+        verify(tiers).deleteAllByBranchId(branch.id)
+        verify(tiers, never()).saveAll(any<Iterable<BranchOvertimeRateTier>>())
+    }
 }

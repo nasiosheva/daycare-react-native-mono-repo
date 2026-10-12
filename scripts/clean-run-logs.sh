@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# Mories Deo Hutapea,S.E.,S.Kom
 
 set -eu
 
@@ -10,12 +11,12 @@ if [ ! -d "$run_logs_directory" ]; then
   exit 0
 fi
 
-log_count=$(find "$run_logs_directory" -type f -name '*.txt' -print | wc -l | tr -d ' ')
+log_count=$(find "$run_logs_directory" -type f -print | wc -l | tr -d ' ')
 if [ "$log_count" -eq 0 ]; then
-  echo "No .txt run logs found; nothing to remove."
+  echo "No files found under run-logs/; nothing to remove."
   exit 0
 fi
 
-echo "Removing .txt session logs under $run_logs_directory..."
-find "$run_logs_directory" -type f -name '*.txt' -print -delete
-echo "Removed $log_count run log file(s)."
+echo "Removing all files under $run_logs_directory..."
+find "$run_logs_directory" -type f -print -delete
+echo "Removed $log_count file(s)."
