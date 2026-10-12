@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.Role
@@ -10,7 +12,9 @@ import com.daycare.api.persistence.ServiceEntitlement
 import com.daycare.api.persistence.ServiceEntitlementRepository
 import com.daycare.api.persistence.ServiceExpiryReminder
 import com.daycare.api.persistence.ServiceExpiryReminderRepository
+import com.daycare.api.persistence.ServiceExpiryReminderSettings
 import com.daycare.api.persistence.ServiceExpiryReminderSettingsRepository
+import com.daycare.api.realtime.RealtimeFlag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -21,6 +25,8 @@ import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
+import org.mockito.Mockito.anySet
+import org.mockito.Mockito.anyString
 import org.springframework.security.oauth2.jwt.Jwt
 import java.time.LocalDate
 import java.time.ZoneId
@@ -106,5 +112,63 @@ class ServiceExpiryReminderServiceTest {
         service.sendDueReminders()
         verify(reminders, never()).save(any(ServiceExpiryReminder::class.java))
         verifyNoInteractions(notifications)
+    }
+
+    @Test
+    fun `settings update replaces an existing configuration and filters malformed defaults`() {
+        val access = mock(AccessService::class.java)
+        val capabilities = mock(PublishedOfferingCapabilityService::class.java)
+        val entitlements = mock(ServiceEntitlementRepository::class.java)
+        val settings = mock(ServiceExpiryReminderSettingsRepository::class.java)
+        val reminders = mock(ServiceExpiryReminderRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val notifications = mock(NotificationService::class.java)
+        val audits = mock(AuditLogRepository::class.java)
+        val org = UUID.randomUUID(); val jwt = mock(Jwt::class.java)
+        val user = com.daycare.api.persistence.UserProfile()
+        val scope = AccessScope(user, Membership(role = Role.STAFF_ADMIN), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(access.require(jwt, org, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(scope)
+        val existing = ServiceExpiryReminderSettings(organizationId = org, leadDays = "abc,31,2,2,-1")
+        `when`(settings.findById(org)).thenReturn(Optional.of(existing))
+        `when`(settings.save(existing)).thenReturn(existing)
+        val service = ServiceExpiryReminderService(access, capabilities, entitlements, settings, reminders, memberships, notifications, audits)
+
+        assertEquals(listOf(2), service.settings(jwt, org).leadDays)
+        assertEquals(listOf(10, 2), service.updateSettings(jwt, org, UpdateServiceExpiryReminderSettingsRequest(listOf(2, 10, 2))).leadDays)
+        assertEquals("10,2", existing.leadDays)
+        verify(settings).save(existing)
+    }
+
+    @Test
+    fun `scheduled reminders skip inactive non-due and duplicate staff memberships`() {
+        val access = mock(AccessService::class.java)
+        val capabilities = mock(PublishedOfferingCapabilityService::class.java)
+        val entitlements = mock(ServiceEntitlementRepository::class.java)
+        val settings = mock(ServiceExpiryReminderSettingsRepository::class.java)
+        val reminders = mock(ServiceExpiryReminderRepository::class.java)
+        val memberships = mock(MembershipRepository::class.java)
+        val notifications = mock(NotificationService::class.java)
+        val audits = mock(AuditLogRepository::class.java)
+        val org = UUID.randomUUID(); val today = LocalDate.now(ZoneId.of("Asia/Jakarta"))
+        val inactive = ServiceEntitlement(organizationId = org, status = EntitlementStatus.EXPIRED, validUntil = today.plusDays(3))
+        val notDue = ServiceEntitlement(organizationId = org, status = EntitlementStatus.ACTIVE, validUntil = today.plusDays(5))
+        val due = ServiceEntitlement(organizationId = org, ownerUserId = UUID.randomUUID(), planName = "Paket", status = EntitlementStatus.ACTIVE, validUntil = today.plusDays(3))
+        `when`(entitlements.findAll()).thenReturn(listOf(inactive, notDue, due))
+        `when`(capabilities.hasPublishedCapability(org, InstitutionCapability.DAYCARE_OPERATIONS, due.branchId)).thenReturn(true)
+        `when`(settings.findById(org)).thenReturn(Optional.of(ServiceExpiryReminderSettings(organizationId = org, leadDays = "garbage,3")))
+        `when`(reminders.existsByEntitlementIdAndLeadDays(due.id, 3)).thenReturn(false)
+        val staffId = UUID.randomUUID()
+        `when`(memberships.findAllByOrganizationId(org)).thenReturn(listOf(
+            Membership(organizationId = org, userId = staffId, role = Role.STAFF_ADMIN, active = true),
+            Membership(organizationId = org, userId = staffId, role = Role.STAFF_ADMIN, active = false),
+            Membership(organizationId = org, userId = UUID.randomUUID(), role = Role.STAFF, active = true),
+        ))
+        val service = ServiceExpiryReminderService(access, capabilities, entitlements, settings, reminders, memberships, notifications, audits)
+
+        service.sendDueReminders()
+
+        verify(reminders, times(1)).save(any(ServiceExpiryReminder::class.java))
+        verify(notifications).notify(org, due.ownerUserId, "Masa layanan akan berakhir", "Layanan Paket berakhir pada ${due.validUntil}.", "/payment-history", setOf(RealtimeFlag.ENTITLEMENTS))
+        verify(notifications).notify(org, staffId, "Masa layanan Parent akan berakhir", "Layanan Paket berakhir pada ${due.validUntil}.", "/billing-admin", setOf(RealtimeFlag.ENTITLEMENTS))
     }
 }

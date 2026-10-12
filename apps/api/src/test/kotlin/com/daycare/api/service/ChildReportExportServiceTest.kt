@@ -1,11 +1,15 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.Gender
 import com.daycare.api.domain.Role
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.apache.pdfbox.Loader
+import org.apache.pdfbox.text.PDFTextStripper
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
@@ -14,6 +18,8 @@ import org.mockito.Mockito.`when`
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.oauth2.jwt.Jwt
 import java.time.LocalDate
+import java.time.Instant
+import java.util.Locale
 import java.util.UUID
 
 class ChildReportExportServiceTest {
@@ -81,5 +87,61 @@ class ChildReportExportServiceTest {
         }
 
         verifyNoInteractions(attendance)
+    }
+
+    @Test
+    fun `exports localized rows with every attendance and gender state`() {
+        val previous = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.ENGLISH)
+            val checkedOut = ChildResponse(UUID.randomUUID(), organizationId, UUID.randomUUID(), null, "Budi", "Santoso", "", Gender.MALE, LocalDate.of(2020, 1, 2), Instant.now().minusSeconds(120), Instant.now())
+            val checkedIn = ChildResponse(UUID.randomUUID(), organizationId, UUID.randomUUID(), null, "Citra", null, null, Gender.FEMALE, LocalDate.of(2020, 2, 3), Instant.now(), null)
+            val unspecified = ChildResponse(UUID.randomUUID(), organizationId, UUID.randomUUID(), null, "Dewi", null, null, Gender.UNSPECIFIED, LocalDate.of(2020, 3, 4))
+            `when`(attendance.listChildren(jwt, organizationId, ChildListFilter())).thenReturn(listOf(checkedOut, checkedIn, unspecified))
+
+            val export = service.children(jwt, organizationId, ReportExportFormat.PDF)
+
+            Loader.loadPDF(export.bytes).use { document ->
+                val text = PDFTextStripper().getText(document)
+                assertTrue(text.contains("Checked out"))
+                assertTrue(text.contains("Checked in"))
+                assertTrue(text.contains("Not checked in"))
+                assertTrue(text.contains("Male"))
+                assertTrue(text.contains("Female"))
+                assertTrue(text.contains("- |"))
+            }
+        } finally {
+            Locale.setDefault(previous)
+        }
+    }
+
+    @Test
+    fun `exports multi-page reports and localized attendance recap`() {
+        val previous = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale("id"))
+            val rows = (1..40).map { index ->
+                ChildResponse(UUID.randomUUID(), organizationId, UUID.randomUUID(), null, "Anak$index", null, null, Gender.UNSPECIFIED, LocalDate.of(2020, 1, 1))
+            }
+            `when`(attendance.listChildren(jwt, organizationId, ChildListFilter())).thenReturn(rows)
+            val branchId = UUID.randomUUID()
+            val startsOn = LocalDate.of(2026, 1, 1)
+            val endsOn = LocalDate.of(2026, 1, 31)
+            `when`(attendance.childAttendanceReport(jwt, organizationId, branchId, startsOn, endsOn)).thenReturn(
+                ChildAttendanceReport("Cabang", startsOn, endsOn, emptyList()),
+            )
+
+            Loader.loadPDF(service.children(jwt, organizationId, ReportExportFormat.PDF).bytes).use { document ->
+                assertEquals(2, document.numberOfPages)
+            }
+            val attendancePdf = service.childAttendance(jwt, organizationId, ReportExportFormat.PDF, branchId, startsOn, endsOn)
+            Loader.loadPDF(attendancePdf.bytes).use { document ->
+                assertTrue(PDFTextStripper().getText(document).contains("Rekap Kehadiran Anak"))
+            }
+            val attendanceXlsx = service.childAttendance(jwt, organizationId, ReportExportFormat.XLSX, branchId, startsOn, endsOn)
+            assertTrue(attendanceXlsx.bytes.copyOfRange(0, 2).decodeToString() == "PK")
+        } finally {
+            Locale.setDefault(previous)
+        }
     }
 }

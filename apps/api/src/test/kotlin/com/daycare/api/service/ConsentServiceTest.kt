@@ -329,4 +329,37 @@ class ConsentServiceTest {
         assertThrows(org.springframework.security.access.AccessDeniedException::class.java) { service.withdraw(jwt, organizationId, child.id, definition.id) }
     }
 
+    @Test
+    fun `consent pure helpers cover visibility status and ownership boundaries`() {
+        fun invoke(name: String, vararg args: Any?): Any? {
+            val method = ConsentService::class.java.declaredMethods.single { it.name == name }
+            method.isAccessible = true
+            try { return method.invoke(service, *args) }
+            catch (error: java.lang.reflect.InvocationTargetException) { throw error.targetException }
+        }
+        val organizationId = UUID.randomUUID()
+        val branchId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId, branchId = branchId)
+        val tenant = ConsentDefinition(organizationId = organizationId, scope = ConsentDefinitionScope.TENANT)
+        val branch = ConsentDefinition(organizationId = organizationId, scope = ConsentDefinitionScope.BRANCH, branchId = branchId)
+        val offering = ConsentDefinition(organizationId = organizationId, scope = ConsentDefinitionScope.OFFERING, branchId = branchId)
+        assertEquals(true, invoke("visibleToChild", tenant, child))
+        assertEquals(true, invoke("visibleToChild", branch, child))
+        branch.branchId = UUID.randomUUID()
+        assertEquals(false, invoke("visibleToChild", branch, child))
+        assertEquals(true, invoke("visibleToChild", offering, child))
+        assertEquals(ConsentStatus.PENDING, invoke("effectiveStatus", tenant, null))
+        val declined = ConsentRecord(status = ConsentStatus.DECLINED)
+        assertEquals(ConsentStatus.DECLINED, invoke("effectiveStatus", tenant, declined))
+        tenant.effectiveUntil = Instant.now().minusSeconds(1)
+        assertEquals(ConsentStatus.EXPIRED, invoke("effectiveStatus", tenant, ConsentRecord(status = ConsentStatus.GRANTED)))
+
+        assertEquals(null to null, invoke("resolveScope", organizationId, ConsentDefinitionScope.TENANT, null, null))
+        assertThrows(IllegalArgumentException::class.java) { invoke("resolveScope", organizationId, ConsentDefinitionScope.TENANT, branchId, null) }
+        val definition = ConsentDefinition(organizationId = organizationId)
+        `when`(definitions.findById(definition.id)).thenReturn(Optional.of(definition))
+        assertEquals(definition, invoke("requireDefinition", organizationId, definition.id))
+        assertThrows(IllegalArgumentException::class.java) { invoke("requireExpectedRevision", definition, 99) }
+    }
+
 }

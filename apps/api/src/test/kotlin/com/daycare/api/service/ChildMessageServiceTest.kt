@@ -500,6 +500,94 @@ class ChildMessageServiceTest {
         invalid.forEach { input -> assertThrows(IllegalArgumentException::class.java) { fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest(photo = input)) } }
     }
 
+    @Test
+    fun `message listing resolves reply read timestamp and distinct recipients`() {
+        val fixture = ChildMessageServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val parent = UserProfile(displayName = "Parent")
+        val staff = UserProfile(displayName = "Staff")
+        val child = Child(organizationId = organizationId)
+        val original = ChildMessage(organizationId = organizationId, childId = child.id, senderUserId = parent.id, senderRole = Role.PARENT, body = "Pertanyaan")
+        val reply = ChildMessage(organizationId = organizationId, childId = child.id, senderUserId = staff.id, senderRole = Role.STAFF, body = "Jawaban", replyToMessageId = original.id)
+        val scope = fixture.scope(parent, organizationId, Role.PARENT)
+        val assigned = ChildStaffAssignment(organizationId = organizationId, childId = child.id, userId = staff.id)
+        `when`(fixture.access.require(jwt, organizationId, Role.entries.toSet())).thenReturn(scope)
+        `when`(fixture.childScopes.requireParentLinkedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.messages.findAllByOrganizationIdAndChildIdOrderByCreatedAtAsc(organizationId, child.id)).thenReturn(listOf(original, reply))
+        `when`(fixture.users.findAllById(listOf(parent.id, staff.id))).thenReturn(listOf(parent, staff))
+        `when`(fixture.staffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id)).thenReturn(listOf(assigned, assigned))
+        `when`(fixture.memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(Membership(organizationId = organizationId, userId = staff.id, role = Role.STAFF_ADMIN, active = true)))
+        `when`(fixture.guardians.findAllByChildId(child.id)).thenReturn(listOf(GuardianLink(childId = child.id, userId = parent.id)))
+        `when`(fixture.reads.findAllByChildId(child.id)).thenReturn(listOf(
+            ChildMessageRead(childId = child.id, userId = staff.id, lastReadAt = reply.createdAt.plusSeconds(1)),
+            ChildMessageRead(childId = child.id, userId = parent.id, lastReadAt = original.createdAt.minusSeconds(1)),
+        ))
+
+        val response = fixture.service.list(jwt, organizationId, child.id)
+
+        assertEquals("Parent", response.last().replyTo?.senderName)
+        assertEquals(ChildMessageDeliveryStatus.READ, response.first().deliveryStatus)
+        assertEquals(ChildMessageDeliveryStatus.SENT, response.last().deliveryStatus)
+    }
+
+    @Test
+    fun `message helper recipients and photo boundaries cover parent staff and admin scopes`() {
+        val fixture = ChildMessageServiceFixture()
+        val organizationId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId)
+        val parent = UserProfile()
+        val staff = UserProfile()
+        val parentScope = fixture.scope(parent, organizationId, Role.PARENT)
+        `when`(fixture.guardians.findAllByUserId(parent.id)).thenReturn(emptyList())
+        assertEquals(emptySet<UUID>(), invokePrivate(fixture.service, "recipientChildIds", parentScope, organizationId))
+        `when`(fixture.guardians.findAllByUserId(parent.id)).thenReturn(listOf(GuardianLink(childId = child.id, userId = parent.id)))
+        `when`(fixture.children.findAllById(setOf(child.id))).thenReturn(listOf(child, Child(organizationId = UUID.randomUUID())))
+        assertEquals(setOf(child.id), invokePrivate(fixture.service, "recipientChildIds", parentScope, organizationId))
+        val staffScope = fixture.scope(staff, organizationId, Role.STAFF)
+        `when`(fixture.staffAssignments.findAllByOrganizationIdAndUserId(organizationId, staff.id)).thenReturn(listOf(ChildStaffAssignment(organizationId = organizationId, childId = child.id, userId = staff.id)))
+        assertEquals(setOf(child.id), invokePrivate(fixture.service, "recipientChildIds", staffScope, organizationId))
+        val adminScope = fixture.scope(UserProfile(), organizationId, Role.STAFF_ADMIN)
+        `when`(fixture.staffAssignments.findAllByOrganizationIdAndUserId(organizationId, adminScope.user.id)).thenReturn(emptyList())
+        `when`(fixture.staffAssignments.findAllByOrganizationId(organizationId)).thenReturn(emptyList())
+        `when`(fixture.children.findAllByOrganizationId(organizationId)).thenReturn(listOf(child))
+        assertEquals(setOf(child.id), invokePrivate(fixture.service, "recipientChildIds", adminScope, organizationId))
+
+        val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 1)
+        assertEquals("image/jpeg", (invokePrivate(fixture.service, "decodePhoto", ChildMessagePhotoInput("IMAGE/JPEG", Base64.getEncoder().encodeToString(jpeg))) as Pair<*, *>).first)
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "decodePhoto", ChildMessagePhotoInput("image/gif", "AA==")) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "decodePhoto", ChildMessagePhotoInput("image/jpeg", "bad")) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "decodePhoto", ChildMessagePhotoInput("image/jpeg", Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3)))) }
+        val message = ChildMessage(organizationId = organizationId, childId = child.id, senderUserId = parent.id, senderRole = Role.PARENT, body = "Hi", createdAt = Instant.parse("2026-10-12T00:00:00Z"))
+        val readAt = Instant.parse("2026-10-12T00:01:00Z")
+        assertEquals(readAt, invokePrivate(fixture.service, "readAtFor", message, setOf(staff.id), mapOf(staff.id to ChildMessageRead(childId = child.id, userId = staff.id, lastReadAt = readAt))))
+        assertEquals(null, invokePrivate(fixture.service, "readAtFor", message, setOf(staff.id), mapOf(staff.id to ChildMessageRead(childId = child.id, userId = staff.id, lastReadAt = message.createdAt.minusSeconds(1)))))
+    }
+
+    @Test
+    fun `staff message without guardians and missing photo data stays local and reports explicit errors`() {
+        val fixture = ChildMessageServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val staff = UserProfile()
+        val child = Child(organizationId = organizationId)
+        val message = ChildMessage(organizationId = organizationId, childId = child.id, senderUserId = staff.id, senderRole = Role.STAFF, photoContentType = "image/png")
+        val scope = fixture.scope(staff, organizationId, Role.STAFF)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(scope)
+        `when`(fixture.childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.messages.save(any(ChildMessage::class.java))).thenAnswer { it.arguments[0] }
+        `when`(fixture.guardians.findAllByChildId(child.id)).thenReturn(emptyList())
+        fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest(body = "Info"))
+        verifyNoInteractions(fixture.notifications, fixture.realtime)
+
+        `when`(fixture.access.require(jwt, organizationId, Role.entries.toSet())).thenReturn(scope)
+        `when`(fixture.messages.findByIdAndOrganizationIdAndChildId(message.id, organizationId, child.id)).thenReturn(null)
+        assertEquals(ChildMessageError.PHOTO_MISSING, assertThrows(IllegalArgumentException::class.java) { fixture.service.photo(jwt, organizationId, child.id, message.id) }.message)
+        `when`(fixture.messages.findByIdAndOrganizationIdAndChildId(message.id, organizationId, child.id)).thenReturn(message)
+        `when`(fixture.photos.findById(message.id)).thenReturn(Optional.empty())
+        assertEquals(ChildMessageError.PHOTO_MISSING, assertThrows(IllegalArgumentException::class.java) { fixture.service.photo(jwt, organizationId, child.id, message.id) }.message)
+    }
+
     private fun unreadCount(childId: UUID, count: Long) = object : ChildMessageUnreadCount {
         override val childId = childId
         override val unreadCount = count

@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.Membership
@@ -25,6 +27,7 @@ import java.util.Optional
 import java.util.UUID
 import java.time.ZonedDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 
 class StaffReminderServiceTest {
     @Test
@@ -122,6 +125,22 @@ class StaffReminderServiceTest {
     }
 
     @Test
+    fun `schedule sync updates an existing schedule when rule version matches`() {
+        val fixture = fixture()
+        val reminder = StaffReminder(id = UUID.randomUUID(), organizationId = fixture.organizationId, userId = fixture.staff.id, ruleVersion = 3)
+        val device = DeviceToken(organizationId = fixture.organizationId, userId = fixture.staff.id, installationId = "install", token = "token", platform = "android")
+        val existing = StaffReminderDeviceSchedule(reminderId = reminder.id, installationId = "install", ruleVersion = 1)
+        `when`(fixture.devices.findByInstallationId("install")).thenReturn(device)
+        `when`(fixture.reminders.findById(reminder.id)).thenReturn(Optional.of(reminder))
+        `when`(fixture.schedules.findByReminderIdAndInstallationId(reminder.id, "install")).thenReturn(existing)
+
+        fixture.service.syncLocalSchedules(fixture.jwt, fixture.organizationId, SyncStaffReminderSchedulesRequest("install", listOf(StaffReminderScheduleAcknowledgement(reminder.id, 3, scheduled = true))))
+
+        assertEquals(3, existing.ruleVersion)
+        verify(fixture.schedules).save(existing)
+    }
+
+    @Test
     fun `fallback push skips empty, foreign, scheduled and malformed timezone devices`() {
         val fixture = fixture()
         fixture.service.sendFallbackPushes()
@@ -134,6 +153,47 @@ class StaffReminderServiceTest {
         `when`(fixture.schedules.findAllByReminderIdIn(setOf(reminder.id))).thenReturn(listOf(StaffReminderDeviceSchedule(reminderId = reminder.id, installationId = "local", ruleVersion = reminder.ruleVersion)))
         fixture.service.sendFallbackPushes()
         org.mockito.Mockito.verifyNoInteractions(fixture.notifications)
+    }
+
+    @Test
+    fun `fallback push uses UTC when device timezone is malformed`() {
+        val fixture = fixture()
+        val now = ZonedDateTime.now(ZoneOffset.UTC)
+        val reminder = StaffReminder(id = UUID.randomUUID(), organizationId = fixture.organizationId, userId = fixture.staff.id, hour = now.hour, minute = now.minute, weekdays = now.dayOfWeek.value.toString())
+        val device = DeviceToken(organizationId = fixture.organizationId, userId = fixture.staff.id, token = "token", platform = "android", installationId = "install", timeZone = "not-a-zone")
+        `when`(fixture.reminders.findAllByActiveTrue()).thenReturn(listOf(reminder))
+        `when`(fixture.devices.findAllByUserIdIn(setOf(fixture.staff.id))).thenReturn(listOf(device))
+        `when`(fixture.schedules.findAllByReminderIdIn(setOf(reminder.id))).thenReturn(emptyList())
+
+        fixture.service.sendFallbackPushes()
+
+        verify(fixture.notifications).sendPush(device, fixture.organizationId, reminder.title, reminder.description, reminder.actionPath)
+    }
+
+    @Test
+    fun `reminder validation rejects out of range weekdays`() {
+        val fixture = fixture()
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.create(fixture.jwt, fixture.organizationId, UpsertStaffReminderRequest("x", "x", 1, 1, listOf(0), "HOME"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.create(fixture.jwt, fixture.organizationId, UpsertStaffReminderRequest("x", "x", 1, 1, listOf(8), "HOME"))
+        }
+    }
+
+    @Test
+    fun `reminder validator maps every supported target and normalizes weekday input`() {
+        val fixture = fixture()
+        val method = StaffReminderService::class.java.declaredMethods.single { it.name == "validated" }
+        method.isAccessible = true
+        listOf("HOME", "ATTENDANCE", "DEVELOPMENT", "CHILDREN", "BOOKING_APPROVALS").forEach { target ->
+            val capabilities = if (target == "BOOKING_APPROVALS") setOf(InstitutionCapability.DAYCARE_OPERATIONS) else emptySet()
+            val data = method.invoke(fixture.service, UpsertStaffReminderRequest(" t ", " d ", 1, 2, listOf(7, 1, 7), target), capabilities)
+            assertTrue(data != null)
+        }
+        assertThrows(java.lang.reflect.InvocationTargetException::class.java) {
+            method.invoke(fixture.service, UpsertStaffReminderRequest("t", "d", 1, 2, listOf(1), "BOOKING_APPROVALS"), emptySet<InstitutionCapability>())
+        }
     }
 
     private data class Fixture(

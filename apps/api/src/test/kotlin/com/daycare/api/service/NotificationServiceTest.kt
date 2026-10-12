@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.persistence.DeviceToken
 import com.daycare.api.persistence.DeviceTokenRepository
 import com.daycare.api.persistence.Notification
@@ -16,6 +18,7 @@ import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import java.time.Instant
 import java.util.UUID
+import org.junit.jupiter.api.Assertions.assertThrows
 
 class NotificationServiceTest {
     @Test
@@ -128,5 +131,29 @@ class NotificationServiceTest {
         service.notifyChat(organizationId, recipientUserId, "Pesan baru", "Ada pesan baru di chat anak.")
 
         verifyNoInteractions(notifications, devices, realtime)
+    }
+
+    @Test
+    fun `chat Firebase transport is an explicit push alias`() {
+        val notifications = mock(NotificationRepository::class.java)
+        val devices = mock(DeviceTokenRepository::class.java)
+        val realtime = mock(RealtimePublisher::class.java)
+        val organizationId = UUID.randomUUID()
+        val recipientUserId = UUID.randomUUID()
+        val device = DeviceToken(organizationId = organizationId, userId = recipientUserId, token = "ExponentPushToken[firebase-alias]", platform = "android")
+        `when`(devices.findAllByUserIdAndOrganizationId(recipientUserId, organizationId)).thenReturn(listOf(device))
+        val service = spy(NotificationService(notifications, devices, realtime, "http://127.0.0.1:1", "firebase"))
+
+        val messageId = UUID.randomUUID()
+        service.notifyChat(organizationId, recipientUserId, "Pesan", "Isi", "/chat", messageId)
+
+        verify(service).sendPush(device, organizationId, "Pesan", "Isi", "/chat", messageId)
+    }
+
+    @Test
+    fun `unsupported chat transport fails during service construction`() {
+        assertThrows(IllegalStateException::class.java) {
+            NotificationService(mock(NotificationRepository::class.java), mock(DeviceTokenRepository::class.java), mock(RealtimePublisher::class.java), "http://127.0.0.1:1", "SMS")
+        }
     }
 }

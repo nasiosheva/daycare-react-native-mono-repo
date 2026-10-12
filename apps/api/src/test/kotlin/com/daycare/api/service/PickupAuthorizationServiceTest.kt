@@ -16,6 +16,8 @@ import com.daycare.api.persistence.PickupAuthorizationRepository
 import com.daycare.api.persistence.UserProfile
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
@@ -24,6 +26,7 @@ import org.mockito.Mockito.`when`
 import java.time.Instant
 import java.util.Optional
 import java.util.UUID
+import java.lang.reflect.InvocationTargetException
 
 class PickupAuthorizationServiceTest {
     private val access = mock(AccessService::class.java)
@@ -168,5 +171,57 @@ class PickupAuthorizationServiceTest {
 
         `when`(offerings.findAllByOrganizationIdAndBranchIdAndStatus(organizationId, child.branchId, EducationOfferingStatus.PUBLISHED)).thenReturn(listOf(EducationOffering(organizationId = organizationId, branchId = child.branchId, capabilities = "ACADEMIC_CURRICULUM", status = EducationOfferingStatus.PUBLISHED)))
         assertThrows(org.springframework.security.access.AccessDeniedException::class.java) { service.verifyCheckout(scope, child, null, null) }
+    }
+
+    @Test
+    fun `pickup helper visibility and revoke matrices cover every role and status`() {
+        fun invoke(name: String, vararg args: Any?): Any? {
+            val method = PickupAuthorizationService::class.java.declaredMethods.single { it.name == name }
+            method.isAccessible = true
+            return method.invoke(service, *args)
+        }
+        val parent = scope.copy(membership = Membership(organizationId = organizationId, role = Role.PARENT))
+        val admin = scope.copy(membership = Membership(organizationId = organizationId, role = Role.STAFF_ADMIN))
+        val staff = scope.copy(membership = Membership(organizationId = organizationId, role = Role.STAFF))
+        `when`(childScopes.requireParentLinkedChild(parent, child.id, organizationId)).thenReturn(child)
+        `when`(childScopes.requireStaffManagedChild(admin, child.id, organizationId)).thenReturn(child)
+        `when`(childScopes.requireStaffManagedChild(staff, child.id, organizationId)).thenReturn(child)
+        assertEquals(child, invoke("requireVisibleChild", parent, child.id, organizationId))
+        assertEquals(child, invoke("requireVisibleChild", admin, child.id, organizationId))
+        assertEquals(child, invoke("requireVisibleChild", staff, child.id, organizationId))
+        assertThrows(org.springframework.security.access.AccessDeniedException::class.java) {
+            try { invoke("requireVisibleChild", scope.copy(membership = Membership(organizationId = organizationId, role = Role.ADMIN)), child.id, organizationId) }
+            catch (error: InvocationTargetException) { throw error.targetException }
+        }
+
+        val own = PickupAuthorization(organizationId = organizationId, childId = child.id, createdByUserId = parent.user.id, status = PickupAuthorizationStatus.PENDING_VERIFICATION)
+        val other = PickupAuthorization(id = own.id, organizationId = organizationId, childId = child.id, createdByUserId = UUID.randomUUID(), status = PickupAuthorizationStatus.PENDING_VERIFICATION)
+        val revoked = PickupAuthorization(id = own.id, organizationId = organizationId, childId = child.id, createdByUserId = parent.user.id, status = PickupAuthorizationStatus.REVOKED)
+        val expired = PickupAuthorization(id = own.id, organizationId = organizationId, childId = child.id, createdByUserId = parent.user.id, status = PickupAuthorizationStatus.EXPIRED)
+        assertTrue(invoke("canRevoke", admin, own) as Boolean)
+        assertTrue(invoke("canRevoke", parent, own) as Boolean)
+        assertFalse(invoke("canRevoke", parent, other) as Boolean)
+        assertFalse(invoke("canRevoke", parent, revoked) as Boolean)
+        assertFalse(invoke("canRevoke", parent, expired) as Boolean)
+        assertFalse(invoke("canRevoke", staff, own) as Boolean)
+    }
+
+    @Test
+    fun `pickup authorization ownership and expiry windows reject unsafe combinations`() {
+        val authorization = PickupAuthorization(organizationId = organizationId, childId = child.id)
+        `when`(authorizations.findById(authorization.id)).thenReturn(Optional.of(authorization))
+        assertEquals(authorization, run {
+            val method = PickupAuthorizationService::class.java.declaredMethods.single { it.name == "requireAuthorization" }
+            method.isAccessible = true
+            method.invoke(service, organizationId, child.id, authorization.id)
+        })
+        authorization.childId = UUID.randomUUID()
+        assertThrows(org.springframework.security.access.AccessDeniedException::class.java) {
+            try {
+                val method = PickupAuthorizationService::class.java.declaredMethods.single { it.name == "requireAuthorization" }
+                method.isAccessible = true
+                method.invoke(service, organizationId, child.id, authorization.id)
+            } catch (error: InvocationTargetException) { throw error.targetException }
+        }
     }
 }

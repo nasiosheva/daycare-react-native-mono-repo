@@ -109,4 +109,25 @@ class BookingEligibilityServiceTest {
         service.consumeCheckIn(organizationId, childId, date)
         assertEquals(EntitlementStatus.ACTIVE, unlimited.status)
     }
+
+    @Test
+    fun `monthly eligibility requires active entitlement and inclusive date window`() {
+        val monthly = ServiceEntitlement(
+            organizationId = organizationId,
+            childId = childId,
+            status = EntitlementStatus.ACTIVE,
+            planType = ServicePlanType.MONTHLY,
+            periodStart = date,
+            validUntil = date.plusDays(1),
+        )
+        `when`(entitlements.findAllByOrganizationIdAndChildId(organizationId, childId)).thenReturn(listOf(monthly))
+        assertEquals(true, service.checkInEligibility(organizationId, childId, date).allowed)
+        assertEquals(true, service.checkInEligibility(organizationId, childId, date.plusDays(1)).allowed)
+
+        monthly.status = EntitlementStatus.EXPIRED
+        val booking = Booking(organizationId = organizationId, childId = childId, entitlementId = UUID.randomUUID(), bookingDate = date, status = BookingStatus.CONFIRMED)
+        `when`(bookings.findByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date.plusDays(2), BookingStatus.CONFIRMED)).thenReturn(booking)
+        `when`(entitlements.findById(booking.entitlementId)).thenReturn(Optional.of(ServiceEntitlement(status = EntitlementStatus.ACTIVE)))
+        assertEquals(true, service.checkInEligibility(organizationId, childId, date.plusDays(2)).allowed)
+    }
 }

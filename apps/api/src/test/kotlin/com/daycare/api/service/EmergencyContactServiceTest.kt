@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.EmergencyContactStatus
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.AuditLogRepository
@@ -86,5 +88,35 @@ class EmergencyContactServiceTest {
         assertEquals(EmergencyContactStatus.EXPIRED, response.status)
         assertFalse(response.canRevoke)
         assertEquals(EmergencyContactStatus.ACTIVE, contact.status)
+    }
+
+    @Test
+    fun `staff admin can manage contacts and guards expiry ownership and tenant`() {
+        val admin = UserProfile()
+        val adminScope = AccessScope(admin, Membership(userId = admin.id, organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), emptySet())
+        val contact = EmergencyContact(organizationId = organizationId, childId = child.id, name = "Ayah", relationship = "Ayah", phoneNumber = "0800", createdByUserId = parent.id)
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN), readOnly = true)).thenReturn(adminScope)
+        `when`(childScopes.requireStaffManagedChild(adminScope, child.id, organizationId)).thenReturn(child)
+        `when`(contacts.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id)).thenReturn(listOf(contact))
+        assertTrue(service.list(jwt, organizationId, child.id).single().canRemove)
+
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF_ADMIN))).thenReturn(adminScope)
+        `when`(contacts.findById(contact.id)).thenReturn(Optional.of(contact))
+        val revoked = service.revoke(jwt, organizationId, child.id, contact.id, RevokeEmergencyContactRequest("Selesai"))
+        assertEquals(EmergencyContactStatus.REVOKED, revoked.status)
+        assertThrows(IllegalArgumentException::class.java) {
+            service.revoke(jwt, organizationId, child.id, contact.id, RevokeEmergencyContactRequest("Kedua"))
+        }
+        service.remove(jwt, organizationId, child.id, contact.id)
+
+        val foreign = EmergencyContact(id = UUID.randomUUID(), organizationId = UUID.randomUUID(), childId = child.id, name = "Asing", relationship = "Asing", phoneNumber = "0801", createdByUserId = parent.id)
+        `when`(contacts.findById(foreign.id)).thenReturn(Optional.of(foreign))
+        assertThrows(AccessDeniedException::class.java) { service.remove(jwt, organizationId, child.id, foreign.id) }
+
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT))).thenReturn(parentScope)
+        `when`(childScopes.requireParentOperationalChild(parentScope, child.id, organizationId)).thenReturn(child)
+        assertThrows(IllegalArgumentException::class.java) {
+            service.create(jwt, organizationId, child.id, CreateEmergencyContactRequest("Bibi", "Bibi", "0800", Instant.now().minusSeconds(1)))
+        }
     }
 }

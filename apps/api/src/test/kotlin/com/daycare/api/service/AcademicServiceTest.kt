@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.InstitutionCapability
 import com.daycare.api.persistence.AcademicYearRepository
@@ -153,5 +155,69 @@ class AcademicServiceTest {
         assertEquals("Observed", service.createActivityAssessment(jwt, organizationId, activity.id, CreateCurriculumActivityAssessmentRequest("Observed")).name)
         service.removeActivityAssessment(jwt, organizationId, activity.id, assessment.id)
         verify(assessments).delete(assessment)
+    }
+
+    @Test
+    fun `academic lifecycle covers search archived ownership and missing assessment guards`() {
+        val access = mock(AccessService::class.java)
+        val years = mock(AcademicYearRepository::class.java)
+        val programs = mock(CurriculumProgramRepository::class.java)
+        val goals = mock(CurriculumProgramDevelopmentProgramRepository::class.java)
+        val development = mock(DevelopmentProgramRepository::class.java)
+        val activities = mock(CurriculumActivityRepository::class.java)
+        val assessments = mock(CurriculumActivityAssessmentRepository::class.java)
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val admin = AccessScope(UserProfile(), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.ACADEMIC_CURRICULUM, readOnly = true)).thenReturn(admin)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)).thenReturn(admin)
+        val global = CurriculumProgram(name = "Global")
+        val tenant = CurriculumProgram(organizationId = organizationId, name = "Tenant")
+        `when`(programs.searchIncludingArchivedForOrganization(organizationId, "ten")).thenReturn(listOf(global, tenant))
+        `when`(goals.findAllByCurriculumProgramId(global.id)).thenReturn(emptyList())
+        `when`(goals.findAllByCurriculumProgramId(tenant.id)).thenReturn(emptyList())
+        val service = AcademicService(access, years, programs, goals, development, activities, assessments)
+
+        assertEquals(2, service.curriculumPrograms(jwt, organizationId, search = " ten ", includeArchived = true).size)
+        `when`(programs.findById(UUID.randomUUID())).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) {
+            service.updateCurriculumProgram(jwt, organizationId, UUID.randomUUID(), CreateCurriculumProgramRequest(name = "x"))
+        }
+        val foreignActivity = CurriculumActivity(organizationId = UUID.randomUUID(), name = "Foreign")
+        `when`(activities.findById(foreignActivity.id)).thenReturn(Optional.of(foreignActivity))
+        assertThrows(IllegalArgumentException::class.java) {
+            service.activityAssessments(jwt, organizationId, foreignActivity.id)
+        }
+        `when`(activities.findAllByOrganizationIdOrderByCreatedAtDesc(organizationId)).thenReturn(emptyList())
+        assertEquals(0, service.activities(jwt, organizationId).size)
+    }
+
+    @Test
+    fun `curriculum goal validation allows global and retained archived goals`() {
+        val access = mock(AccessService::class.java)
+        val years = mock(AcademicYearRepository::class.java)
+        val programs = mock(CurriculumProgramRepository::class.java)
+        val goals = mock(CurriculumProgramDevelopmentProgramRepository::class.java)
+        val development = mock(DevelopmentProgramRepository::class.java)
+        val activities = mock(CurriculumActivityRepository::class.java)
+        val assessments = mock(CurriculumActivityAssessmentRepository::class.java)
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val admin = AccessScope(UserProfile(), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), emptySet())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)).thenReturn(admin)
+        val globalGoal = DevelopmentProgram(organizationId = null, name = "Global", active = true)
+        val archived = DevelopmentProgram(organizationId = organizationId, name = "Archived", active = false)
+        `when`(development.findById(globalGoal.id)).thenReturn(Optional.of(globalGoal))
+        `when`(development.findById(archived.id)).thenReturn(Optional.of(archived))
+        `when`(goals.existsByCurriculumProgramIdAndDevelopmentProgramId(UUID.randomUUID(), archived.id)).thenReturn(true)
+        val savedProgram = CurriculumProgram(id = UUID.randomUUID(), organizationId = organizationId, name = "Program")
+        `when`(programs.save(org.mockito.ArgumentMatchers.any(CurriculumProgram::class.java))).thenReturn(savedProgram)
+        `when`(goals.findAllByCurriculumProgramId(savedProgram.id)).thenReturn(emptyList())
+        val service = AcademicService(access, years, programs, goals, development, activities, assessments)
+
+        assertEquals("Program", service.createCurriculumProgram(jwt, organizationId, CreateCurriculumProgramRequest(name = "Program", developmentProgramIds = setOf(globalGoal.id))).name)
+        assertThrows(IllegalArgumentException::class.java) {
+            service.createCurriculumProgram(jwt, organizationId, CreateCurriculumProgramRequest(name = "Archived", developmentProgramIds = setOf(archived.id)))
+        }
     }
 }

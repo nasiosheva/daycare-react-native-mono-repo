@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.EducationEnrollmentMode
 import com.daycare.api.domain.EducationOfferingStatus
 import com.daycare.api.domain.InstitutionCapability
@@ -110,6 +112,38 @@ class EducationOfferingServiceTest {
         assertThrows(IllegalArgumentException::class.java) {
             fixture.service.requirePublishedCapability(UUID.randomUUID(), offering.id, InstitutionCapability.ACADEMIC_CURRICULUM)
         }
+    }
+
+    @Test
+    fun `all offering lifecycle transitions and empty contexts are enforced`() {
+        val transitions = listOf(
+            EducationOfferingStatus.DRAFT to EducationOfferingStatus.PUBLISHED,
+            EducationOfferingStatus.PUBLISHED to EducationOfferingStatus.PAUSED,
+            EducationOfferingStatus.PUBLISHED to EducationOfferingStatus.CLOSED,
+            EducationOfferingStatus.PAUSED to EducationOfferingStatus.PUBLISHED,
+            EducationOfferingStatus.PAUSED to EducationOfferingStatus.CLOSED,
+            EducationOfferingStatus.CLOSED to EducationOfferingStatus.ARCHIVED,
+        )
+        transitions.forEach { (from, to) ->
+            val fixture = fixture()
+            val offering = EducationOffering(organizationId = fixture.organizationId, status = from)
+            `when`(fixture.offerings.findById(offering.id)).thenReturn(Optional.of(offering))
+            assertEquals(to, fixture.service.changeStatus(fixture.jwt, fixture.organizationId, offering.id, SetEducationOfferingStatusRequest(to)).status)
+        }
+
+        val archived = fixture()
+        val archivedOffering = EducationOffering(organizationId = archived.organizationId, status = EducationOfferingStatus.ARCHIVED)
+        `when`(archived.offerings.findById(archivedOffering.id)).thenReturn(Optional.of(archivedOffering))
+        assertThrows(IllegalArgumentException::class.java) {
+            archived.service.changeStatus(archived.jwt, archived.organizationId, archivedOffering.id, SetEducationOfferingStatusRequest(EducationOfferingStatus.PUBLISHED))
+        }
+        `when`(archived.offerings.findAllByOrganizationIdOrderByCreatedAtAsc(archived.organizationId)).thenReturn(emptyList())
+        assertEquals(0, archived.service.context(archived.jwt, archived.organizationId).revision)
+        assertEquals(0, archived.service.list(archived.jwt, archived.organizationId).size)
+
+        archivedOffering.status = EducationOfferingStatus.PUBLISHED
+        archivedOffering.capabilities = "UNKNOWN,,${InstitutionCapability.ACADEMIC_CURRICULUM.name}"
+        assertEquals(archivedOffering, archived.service.requirePublishedCapability(archived.organizationId, archivedOffering.id, InstitutionCapability.ACADEMIC_CURRICULUM))
     }
 
     private data class Fixture(

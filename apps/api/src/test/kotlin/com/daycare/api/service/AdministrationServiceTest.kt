@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.Gender
 import com.daycare.api.domain.PushNotificationMuteDuration
 import com.daycare.api.domain.Role
@@ -326,6 +328,59 @@ class AdministrationServiceTest {
         assertThrows(IllegalArgumentException::class.java) { fixture.service.markNotificationRead(fixture.jwt, fixture.organizationId, foreign.id) }
         `when`(fixture.notifications.findById(UUID.randomUUID())).thenReturn(Optional.empty())
         assertThrows(IllegalArgumentException::class.java) { fixture.service.markNotificationRead(fixture.jwt, fixture.organizationId, UUID.randomUUID()) }
+    }
+
+    @Test
+    fun `administration covers explicit branch, optional fields, token fallback, and page metadata`() {
+        val fixture = fixture()
+        val branch = Branch(id = fixture.branchId, organizationId = fixture.organizationId, name = "Branch", active = true)
+        `when`(fixture.branches.findById(branch.id)).thenReturn(Optional.of(branch))
+        `when`(fixture.children.save(any(Child::class.java))).thenAnswer { it.arguments[0] }
+        val created = fixture.service.createChild(fixture.jwt, fixture.organizationId, CreateChildRequest(" Anak ", " ", " ", Gender.MALE, LocalDate.of(2021, 1, 1), branch.id, UUID.randomUUID()))
+        assertEquals(null, created.lastName); assertEquals(null, created.nisn)
+
+        `when`(fixture.invitations.save(any(com.daycare.api.persistence.Invitation::class.java))).thenAnswer { it.arguments[0] }
+        assertNotNull(fixture.service.invite(fixture.jwt, fixture.organizationId, CreateInvitationRequest(null, " 0812 ", Role.PARENT, null, null)))
+
+        val tokenDevice = DeviceToken(organizationId = fixture.organizationId, userId = fixture.staff.id, installationId = "new-install", token = "existing-token", platform = "ios")
+        `when`(fixture.devices.findByInstallationId("new-install")).thenReturn(null)
+        `when`(fixture.devices.findByToken("existing-token")).thenReturn(tokenDevice)
+        `when`(fixture.devices.save(any(DeviceToken::class.java))).thenAnswer { it.arguments[0] }
+        fixture.service.registerDevice(fixture.jwt, fixture.organizationId, RegisterDeviceRequest("existing-token", "ios", "new-install", "UTC"))
+        assertEquals("new-install", tokenDevice.installationId)
+        `when`(fixture.devices.findByInstallationId("new-install")).thenReturn(tokenDevice)
+
+        tokenDevice.pushMutedUntil = java.time.Instant.now().plusSeconds(600)
+        assertNotNull(fixture.service.deviceNotificationPreference(fixture.jwt, fixture.organizationId, "new-install").pushMutedUntil)
+        tokenDevice.pushMutedUntil = java.time.Instant.now().minusSeconds(1)
+        assertEquals(null, fixture.service.deviceNotificationPreference(fixture.jwt, fixture.organizationId, "new-install").pushMutedUntil)
+
+        val notification = Notification(organizationId = fixture.organizationId, recipientUserId = fixture.staff.id, title = "Info", body = "Body", actionPath = "/home")
+        val page = PageImpl(listOf(notification), PageRequest.of(1, 1), 3)
+        `when`(fixture.notifications.searchByRecipientUserIdAndOrganizationId(fixture.staff.id, fixture.organizationId, "body", PageRequest.of(1, 1))).thenReturn(page)
+        `when`(fixture.notifications.countByRecipientUserIdAndOrganizationIdAndReadAtIsNull(fixture.staff.id, fixture.organizationId)).thenReturn(2)
+        val response = fixture.service.notifications(fixture.jwt, fixture.organizationId, " body ", 1, 1)
+        assertTrue(response.hasNext); assertEquals(3, response.totalCount); assertEquals(2, response.unreadCount)
+    }
+
+    @Test
+    fun `administration helper and device ownership branches are fail closed`() {
+        val fixture = fixture()
+        assertEquals(java.time.Duration.ofHours(1), invokePrivate(fixture.service, "muteDuration", PushNotificationMuteDuration.ONE_HOUR))
+        assertEquals(java.time.Duration.ofDays(7), invokePrivate(fixture.service, "muteDuration", PushNotificationMuteDuration.ONE_WEEK))
+        assertEquals(java.time.Duration.ofDays(30), invokePrivate(fixture.service, "muteDuration", PushNotificationMuteDuration.ONE_MONTH))
+
+        val membership = Membership(userId = UUID.randomUUID(), organizationId = fixture.organizationId, role = Role.STAFF, active = false)
+        val response = invokePrivate(fixture.service, "tenantUserResponse", membership, null) as TenantUserResponse
+        assertEquals("INACTIVE", response.status)
+        assertEquals(null, response.displayName)
+
+        val foreign = DeviceToken(organizationId = UUID.randomUUID(), userId = fixture.staff.id, installationId = "foreign", token = "t", platform = "android")
+        `when`(fixture.devices.findByInstallationId("foreign")).thenReturn(foreign)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.deviceNotificationPreference(fixture.jwt, fixture.organizationId, "foreign") }
+        val otherUser = DeviceToken(organizationId = fixture.organizationId, userId = UUID.randomUUID(), installationId = "other", token = "t", platform = "android")
+        `when`(fixture.devices.findByInstallationId("other")).thenReturn(otherUser)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.deviceNotificationPreference(fixture.jwt, fixture.organizationId, "other") }
     }
 
 }

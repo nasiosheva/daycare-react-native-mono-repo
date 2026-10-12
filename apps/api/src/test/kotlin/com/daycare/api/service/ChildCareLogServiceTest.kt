@@ -188,6 +188,29 @@ class ChildCareLogServiceTest {
         assertThrows(IllegalArgumentException::class.java) { fixture.service.list(fixture.jwt, fixture.organizationId, fixture.child.id) }
     }
 
+    @Test
+    fun `care log validator exercises valid payloads and correction ownership branches`() {
+        val fixture = Fixture()
+        fun validate(request: CreateChildCareLogRequest) {
+            val method = ChildCareLogService::class.java.declaredMethods.single { it.name == "validate" }
+            method.isAccessible = true
+            try { method.invoke(fixture.service, request, fixture.organizationId, fixture.child.id) }
+            catch (error: java.lang.reflect.InvocationTargetException) { throw error.targetException }
+        }
+        validate(fixture.mealRequest())
+        val start = Instant.now().minusSeconds(20)
+        validate(CreateChildCareLogRequest(ChildCareLogType.NAP, Instant.now(), napStartedAt = start, napEndedAt = start.plusSeconds(10)))
+        validate(CreateChildCareLogRequest(ChildCareLogType.TOILET, Instant.now(), toiletType = ChildToiletType.TOILET_ATTEMPT))
+        val original = ChildCareLog(organizationId = fixture.organizationId, childId = fixture.child.id)
+        `when`(fixture.logs.findById(original.id)).thenReturn(Optional.of(original))
+        validate(fixture.mealRequest(original.id, " correction "))
+        assertThrows(IllegalArgumentException::class.java) { validate(fixture.mealRequest(original.id, " ")) }
+        val foreign = ChildCareLog(organizationId = UUID.randomUUID(), childId = fixture.child.id)
+        `when`(fixture.logs.findById(foreign.id)).thenReturn(Optional.of(foreign))
+        assertThrows(IllegalArgumentException::class.java) { validate(fixture.mealRequest(foreign.id, "reason")) }
+        assertThrows(IllegalArgumentException::class.java) { validate(fixture.mealRequest(correctionReason = "orphan reason")) }
+    }
+
     private class Fixture {
         val access = mock(AccessService::class.java)
         val childScopes = mock(ChildScopeService::class.java)

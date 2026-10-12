@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.TenantSubscriptionStatus
@@ -20,6 +22,7 @@ import org.mockito.Mockito.`when`
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.oauth2.jwt.Jwt
 import java.util.UUID
+import java.time.LocalDate
 
 class AccessServiceTest {
     private class Fixtures {
@@ -148,5 +151,34 @@ class AccessServiceTest {
         `when`(fixtures.organizationCapabilities.forOrganization(fixtures.organizationId)).thenReturn(OrganizationCapabilities(setOf("PAUD"), setOf(InstitutionCapability.ACADEMIC_CURRICULUM)))
         fixtures.service.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.ACADEMIC_CURRICULUM)
         verify(fixtures.publishedCapabilities).requirePublishedCapability(fixtures.organizationId, InstitutionCapability.ACADEMIC_CURRICULUM)
+    }
+
+    @Test
+    fun `trial expiration transitions to pending payment and required capability fails closed`() {
+        val fixtures = Fixtures()
+        fixtures.withSubscriptionStatus(TenantSubscriptionStatus.TRIAL)
+        val membership = Membership(userId = fixtures.user.id, organizationId = fixtures.organizationId, role = Role.STAFF_ADMIN)
+        `when`(fixtures.memberships.findAllByUserIdAndOrganizationId(fixtures.user.id, fixtures.organizationId)).thenReturn(listOf(membership))
+        val subscription = TenantSubscription(organizationId = fixtures.organizationId, status = TenantSubscriptionStatus.TRIAL, trialEndsAt = LocalDate.now().minusDays(1))
+        `when`(fixtures.subscriptions.findByOrganizationId(fixtures.organizationId)).thenReturn(subscription)
+        assertThrows(AccessDeniedException::class.java) { fixtures.service.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF_ADMIN)) }
+        assertEquals(TenantSubscriptionStatus.PENDING_PAYMENT, subscription.status)
+
+        `when`(fixtures.subscriptions.findByOrganizationId(fixtures.organizationId)).thenReturn(TenantSubscription(organizationId = fixtures.organizationId, status = TenantSubscriptionStatus.ACTIVE))
+        `when`(fixtures.organizationCapabilities.forOrganization(fixtures.organizationId)).thenReturn(OrganizationCapabilities(emptySet(), emptySet()))
+        assertThrows(AccessDeniedException::class.java) {
+            fixtures.service.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
+        }
+    }
+
+    @Test
+    fun `missing membership and unsupported capability are rejected`() {
+        val fixtures = Fixtures()
+        fixtures.withSubscriptionStatus(TenantSubscriptionStatus.ACTIVE)
+        `when`(fixtures.memberships.findAllByUserIdAndOrganizationId(fixtures.user.id, fixtures.organizationId)).thenReturn(emptyList())
+        assertThrows(AccessDeniedException::class.java) { fixtures.service.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF_ADMIN)) }
+        val scope = AccessScope(fixtures.user, Membership(active = true), emptySet(), setOf(InstitutionCapability.ACADEMIC_CURRICULUM))
+        assertThrows(AccessDeniedException::class.java) { fixtures.service.requireAnyCapability(scope, setOf(InstitutionCapability.DAYCARE_OPERATIONS)) }
+        assertThrows(AccessDeniedException::class.java) { fixtures.service.requireAnyCapability(scope, emptySet()) }
     }
 }

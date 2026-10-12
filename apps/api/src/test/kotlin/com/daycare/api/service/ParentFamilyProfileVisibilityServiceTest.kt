@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.ParentIncomeRange
 import com.daycare.api.domain.ParentOccupation
 import com.daycare.api.persistence.InstitutionTypeDefinition
@@ -44,6 +46,25 @@ class ParentFamilyProfileVisibilityServiceTest {
         `when`(organizationTypes.findAllByOrganizationId(organizationId)).thenReturn(listOf(OrganizationTypeAssignment(organizationId = organizationId, type = "PAUD")))
         `when`(institutionTypes.findAllById(listOf("PAUD"))).thenReturn(listOf(InstitutionTypeDefinition(code = "PAUD", name = "PAUD")))
 
+        assertNull(service.forTenant(organizationId, parentId))
+    }
+
+    @Test
+    fun `returns all fields when both visibility flags are enabled and handles missing profile`() {
+        val organizationId = UUID.randomUUID()
+        val parentId = UUID.randomUUID()
+        `when`(organizationTypes.findAllByOrganizationId(organizationId)).thenReturn(listOf(OrganizationTypeAssignment(organizationId = organizationId, type = "TK"), OrganizationTypeAssignment(organizationId = organizationId, type = "SD")))
+        `when`(institutionTypes.findAllById(listOf("TK", "SD"))).thenReturn(listOf(
+            InstitutionTypeDefinition(code = "TK", name = "TK", parentOccupationVisible = true),
+            InstitutionTypeDefinition(code = "SD", name = "SD", parentIncomeRangeVisible = true),
+        ))
+        val profile = ParentFamilyProfile(userId = parentId, husbandOccupation = ParentOccupation.PNS, husbandIncomeRange = ParentIncomeRange.FIVE_TO_TEN_MILLION, wifeOccupation = ParentOccupation.PROFESIONAL, wifeIncomeRange = ParentIncomeRange.TEN_TO_TWENTY_MILLION)
+        `when`(profiles.findByUserId(parentId)).thenReturn(profile)
+        val result = service.forTenant(organizationId, parentId)
+        assertEquals(profile.husbandIncomeRange, result?.husbandIncomeRange)
+        assertEquals(profile.wifeIncomeRange, result?.wifeIncomeRange)
+
+        `when`(profiles.findByUserId(parentId)).thenReturn(null)
         assertNull(service.forTenant(organizationId, parentId))
     }
 }

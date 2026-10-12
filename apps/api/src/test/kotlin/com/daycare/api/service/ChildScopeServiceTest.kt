@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.ChildEnrollmentStatus
 import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.Role
@@ -150,5 +152,53 @@ class ChildScopeServiceTest {
         ))
 
         assertEquals(child, service.requireParentOperationalChild(parentScope, child.id, organizationId))
+    }
+
+    @Test
+    fun `admin and parent visibility respect tenant and active enrollment filters`() {
+        val active = Child(organizationId = organizationId, enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        val inactive = Child(organizationId = organizationId, enrollmentStatus = ChildEnrollmentStatus.ACTIVE, active = false)
+        val pending = Child(organizationId = organizationId, enrollmentStatus = ChildEnrollmentStatus.PENDING)
+        val foreign = Child(organizationId = UUID.randomUUID(), enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        val adminScope = AccessScope(UserProfile(), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), emptySet())
+        `when`(children.findAllByOrganizationId(organizationId)).thenReturn(listOf(active, inactive, pending, foreign))
+        assertEquals(listOf(active), service.visibleChildren(adminScope, organizationId))
+
+        val parentId = UUID.randomUUID()
+        val parentScope = AccessScope(UserProfile(id = parentId), Membership(organizationId = organizationId, role = Role.PARENT), emptySet(), emptySet())
+        `when`(guardians.findAllByUserId(parentId)).thenReturn(listOf(
+            com.daycare.api.persistence.GuardianLink(childId = active.id, userId = parentId),
+            com.daycare.api.persistence.GuardianLink(childId = UUID.randomUUID(), userId = parentId),
+        ))
+        `when`(children.findById(active.id)).thenReturn(Optional.of(active))
+        assertEquals(listOf(active), service.visibleChildren(parentScope, organizationId))
+    }
+
+    @Test
+    fun `scope guards cover unassigned roles foreign children and expired entitlements`() {
+        val child = Child(organizationId = organizationId, enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(assignments.existsByOrganizationIdAndChildIdAndUserId(organizationId, child.id, staffId)).thenReturn(false)
+        `when`(placements.findByChildIdAndEndedOnIsNull(child.id)).thenReturn(null)
+        assertFalse(service.isStaffManagedChild(scope, child.id, organizationId))
+        assertFalse(service.canStaffPlaceChildInClassroom(scope, child.id, UUID.randomUUID(), organizationId))
+
+        val parentId = UUID.randomUUID()
+        val parentScope = AccessScope(UserProfile(id = parentId), Membership(organizationId = organizationId, role = Role.PARENT), emptySet(), emptySet())
+        `when`(guardians.existsByChildIdAndUserId(child.id, parentId)).thenReturn(false)
+        assertThrows(AccessDeniedException::class.java) { service.requireParentLinkedChild(parentScope, child.id, organizationId) }
+
+        val foreign = Child(organizationId = UUID.randomUUID(), enrollmentStatus = ChildEnrollmentStatus.ACTIVE)
+        `when`(children.findById(foreign.id)).thenReturn(Optional.of(foreign))
+        assertThrows(AccessDeniedException::class.java) { service.requireParentLinkedChild(parentScope, foreign.id, organizationId) }
+        val inactive = Child(organizationId = organizationId, active = false)
+        `when`(children.findById(inactive.id)).thenReturn(Optional.of(inactive))
+        assertThrows(IllegalArgumentException::class.java) { service.requireParentLinkedChild(parentScope, inactive.id, organizationId) }
+
+        `when`(guardians.existsByChildIdAndUserId(child.id, parentId)).thenReturn(true)
+        `when`(entitlements.findAllByOrganizationIdAndChildId(organizationId, child.id)).thenReturn(listOf(
+            com.daycare.api.persistence.ServiceEntitlement(organizationId = organizationId, childId = child.id, ownerUserId = parentId, status = EntitlementStatus.ACTIVE, validUntil = java.time.LocalDate.now().minusDays(1)),
+        ))
+        assertThrows(AccessDeniedException::class.java) { service.requireParentOperationalChild(parentScope, child.id, organizationId) }
     }
 }

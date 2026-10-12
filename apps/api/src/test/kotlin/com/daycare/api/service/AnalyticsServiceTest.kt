@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.ChildEnrollmentStatus
 import com.daycare.api.domain.GoalCheckInOutcome
 import com.daycare.api.domain.GoalDomain
@@ -52,6 +54,17 @@ class AnalyticsServiceTest {
     }
 
     @Test
+    fun `occupancy leaves capacity null when branch has no capacity setting`() {
+        val fixture = fixture()
+        val branch = Branch(organizationId = fixture.organizationId, name = "Cabang Tanpa Kapasitas")
+        `when`(fixture.branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(fixture.organizationId)).thenReturn(listOf(branch))
+        `when`(fixture.children.findAllByOrganizationId(fixture.organizationId)).thenReturn(emptyList())
+        `when`(fixture.capacities.findAllByOrganizationId(fixture.organizationId)).thenReturn(emptyList())
+
+        assertEquals(listOf(BranchOccupancyResponse(branch.id, branch.name, 0, null)), fixture.service.occupancy(fixture.jwt, fixture.organizationId))
+    }
+
+    @Test
     fun `parent retention reports active count and deactivations by month`() {
         val fixture = fixture()
         val thisMonth = YearMonth.now().atDay(2).atStartOfDay().toInstant(ZoneOffset.UTC)
@@ -68,6 +81,15 @@ class AnalyticsServiceTest {
         assertEquals(1, result.currentActiveParents)
         assertEquals(listOf(YearMonth.now().minusMonths(1).toString(), YearMonth.now().toString()), result.monthly.map { it.month })
         assertEquals(listOf(1, 1), result.monthly.map { it.deactivatedCount })
+    }
+
+    @Test
+    fun `parent retention clamps requested month window`() {
+        val fixture = fixture()
+        `when`(fixture.memberships.findAllByOrganizationId(fixture.organizationId)).thenReturn(emptyList())
+
+        assertEquals(1, fixture.service.parentRetention(fixture.jwt, fixture.organizationId, monthsBack = 0).monthly.size)
+        assertEquals(24, fixture.service.parentRetention(fixture.jwt, fixture.organizationId, monthsBack = 25).monthly.size)
     }
 
     @Test
@@ -96,6 +118,28 @@ class AnalyticsServiceTest {
 
         `when`(fixture.checkIns.findAllByChildGoalIdIn(listOf(goal.id))).thenReturn(completeYes.dropLast(1))
         assertNull(fixture.service.developmentTrend(fixture.jwt, fixture.organizationId, monthsBack = 1).single().averageYesPercent)
+    }
+
+    @Test
+    fun `development trend ignores inactive indicators and goals without complete daily observations`() {
+        val fixture = fixture()
+        val today = LocalDate.now()
+        val tenantProgram = DevelopmentProgram(organizationId = fixture.organizationId, name = "Tenant", domain = GoalDomain.KOGNITIF)
+        val globalProgram = DevelopmentProgram(organizationId = null, name = "Global", domain = GoalDomain.KOGNITIF)
+        val inactive = DevelopmentProgramItem(developmentProgramId = tenantProgram.id, name = "Inactive", active = false)
+        val active = DevelopmentProgramItem(developmentProgramId = tenantProgram.id, name = "Active", active = true)
+        val noIndicatorGoal = ChildGoal(organizationId = fixture.organizationId, programId = globalProgram.id, startsOn = today)
+        val incompleteGoal = ChildGoal(organizationId = fixture.organizationId, programId = tenantProgram.id, startsOn = today)
+        `when`(fixture.goals.findAllByOrganizationId(fixture.organizationId)).thenReturn(listOf(noIndicatorGoal, incompleteGoal))
+        `when`(fixture.goalPrograms.findAllByOrganizationIdOrderByCreatedAtDesc(fixture.organizationId)).thenReturn(listOf(tenantProgram))
+        `when`(fixture.goalPrograms.findAllByOrganizationIdIsNullOrderByCreatedAtDesc()).thenReturn(listOf(globalProgram))
+        `when`(fixture.goalIndicators.findAllByDevelopmentProgramIdIn(setOf(tenantProgram.id, globalProgram.id))).thenReturn(listOf(inactive, active))
+        `when`(fixture.checkIns.findAllByChildGoalIdIn(listOf(noIndicatorGoal.id, incompleteGoal.id))).thenReturn(emptyList())
+
+        val trend = fixture.service.developmentTrend(fixture.jwt, fixture.organizationId, monthsBack = 1).single()
+
+        assertEquals(2, trend.goalCount)
+        assertNull(trend.averageYesPercent)
     }
 
     private data class Fixture(

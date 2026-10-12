@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.CapacityReservationStatus
 import com.daycare.api.domain.ServicePlanType
 import com.daycare.api.persistence.Branch
@@ -92,5 +94,37 @@ class CapacityReservationServiceTest {
         assertEquals(5, service.setBranchCapacity(organizationId, branchId, 5).dailyCapacity)
         assertThrows(IllegalArgumentException::class.java) { service.setBranchCapacity(organizationId, branchId, 0) }
         assertEquals(emptyList<com.daycare.api.persistence.BranchCapacitySetting>(), service.branchSettings(organizationId))
+    }
+
+    @Test
+    fun `capacity guards missing resources, branch saturation, and existing reservations`() {
+        `when`(branches.findWithLockById(branchId)).thenReturn(null)
+        assertThrows(IllegalArgumentException::class.java) { service.requireAvailability(organizationId, branchId, planId, listOf(date)) }
+
+        val branch = Branch(id = branchId, organizationId = organizationId, active = true)
+        val plan = ServicePlan(id = planId, organizationId = organizationId, type = ServicePlanType.DAILY, price = BigDecimal.TEN, creditCount = 1, dailyCapacity = null)
+        `when`(branches.findWithLockById(branchId)).thenReturn(branch)
+        `when`(plans.findWithLockById(planId)).thenReturn(null)
+        assertThrows(IllegalArgumentException::class.java) { service.requireAvailability(organizationId, branchId, planId, listOf(date)) }
+        `when`(plans.findWithLockById(planId)).thenReturn(plan)
+        `when`(settings.findByOrganizationIdAndBranchId(organizationId, branchId)).thenReturn(com.daycare.api.persistence.BranchCapacitySetting(organizationId = organizationId, branchId = branchId, dailyCapacity = 1))
+        `when`(reservations.countByOrganizationIdAndBranchIdAndCapacityDateAndStatus(organizationId, branchId, date, CapacityReservationStatus.HELD)).thenReturn(1)
+        assertThrows(IllegalArgumentException::class.java) { service.requireAvailability(organizationId, branchId, planId, listOf(date)) }
+
+        `when`(reservations.findByEntitlementIdAndCapacityDate(UUID.randomUUID(), date)).thenReturn(null)
+        val entitlementId = UUID.randomUUID()
+        `when`(reservations.findByEntitlementIdAndCapacityDate(entitlementId, date)).thenReturn(null)
+        service.reserve(organizationId, branchId, planId, entitlementId, listOf(date))
+
+        val inactive = Branch(id = branchId, organizationId = organizationId, active = false)
+        `when`(branches.findWithLockById(branchId)).thenReturn(inactive)
+        assertThrows(IllegalArgumentException::class.java) { service.setBranchCapacity(organizationId, branchId, 5) }
+        `when`(branches.findWithLockById(branchId)).thenReturn(branch)
+        val held = CapacityReservation(organizationId = organizationId, branchId = branchId, capacityDate = date, status = CapacityReservationStatus.HELD)
+        `when`(reservations.findAllByOrganizationIdAndBranchIdAndCapacityDateGreaterThanEqualAndStatus(organizationId, branchId, LocalDate.now(), CapacityReservationStatus.HELD)).thenReturn(listOf(held))
+        assertThrows(IllegalArgumentException::class.java) { service.setBranchCapacity(organizationId, branchId, 0) }
+        val secondHeld = CapacityReservation(organizationId = organizationId, branchId = branchId, capacityDate = date, status = CapacityReservationStatus.HELD)
+        `when`(reservations.findAllByOrganizationIdAndBranchIdAndCapacityDateGreaterThanEqualAndStatus(organizationId, branchId, LocalDate.now(), CapacityReservationStatus.HELD)).thenReturn(listOf(held, secondHeld))
+        assertThrows(IllegalArgumentException::class.java) { service.setBranchCapacity(organizationId, branchId, 1) }
     }
 }
