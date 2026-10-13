@@ -1097,6 +1097,52 @@ class BillingServiceCoverageTest {
         assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "decodePaymentProof", SubmitPaymentProofRequest("proof.jpg", "image/jpeg", Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3))) ) }
     }
 
+    @Test
+    fun `billing edge branches cover empty discounts invoice fallbacks and validation short circuits`() {
+        val f = fixture()
+        val today = LocalDate.now()
+        val daily = ServicePlan(id = f.planId, organizationId = f.organizationId, type = ServicePlanType.DAILY, price = BigDecimal("100"), creditCount = 1)
+
+        // No promo/automatic discount is a valid quote path.
+        `when`(f.plans.findById(f.planId)).thenReturn(Optional.of(daily))
+        `when`(f.discounts.findAllByOrganizationIdAndServicePlanIdAndActiveTrue(f.organizationId, f.planId)).thenReturn(emptyList())
+        assertEquals(BigDecimal("100"), f.service.quoteEnrollment(f.organizationId, f.planId, null).totalAmount)
+        assertEquals(BigDecimal("100"), f.service.quoteEnrollment(f.organizationId, f.planId, " ").totalAmount)
+
+        // Exercise the remaining validation alternatives without going through persistence.
+        invokePrivate(f.service, "validatePlanConfiguration", ServicePlanType.MONTHLY, null, null, UnusedCreditPolicy.EXPIRE, null, null)
+        invokePrivate(f.service, "validatePlanConfiguration", ServicePlanType.WEEKLY, BigDecimal.ONE, 1, UnusedCreditPolicy.EXPIRE, null, 999)
+        invokePrivate(f.service, "validateDiscount", CreateServicePlanDiscountRequest(ServicePlanDiscountKind.PROMO_CODE, "Promo", "X", ServicePlanDiscountType.FIXED_AMOUNT, BigDecimal.ONE, today, null, null), BigDecimal("100"))
+        invokePrivate(f.service, "validateDiscount", CreateServicePlanDiscountRequest(ServicePlanDiscountKind.AUTOMATIC, "Auto", null, ServicePlanDiscountType.PERCENTAGE, BigDecimal("99.99"), null, today, null), BigDecimal("100"))
+        invokePrivate(f.service, "validatePurchase", daily, listOf(today), today, false)
+        invokePrivate(f.service, "applicableDiscount", f.organizationId, daily, " ", today)
+
+        // Reconciliation must also handle an expired invoice with no entitlement rows.
+        val expiredInvoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-EXPIRED", status = InvoiceStatus.PENDING, dueDate = today.minusDays(1))
+        `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), today)).thenReturn(listOf(expiredInvoice))
+        `when`(f.entitlements.findAllByInvoiceIdIn(listOf(expiredInvoice.id))).thenReturn(emptyList())
+        invokePrivate(f.service, "reconcileExpiredInvoices", f.organizationId)
+        assertEquals(InvoiceStatus.OVERDUE, expiredInvoice.status)
+
+        // Invoice responses can use denormalized invoice branch/child values when no entitlement exists.
+        val denormalized = Invoice(id = UUID.randomUUID(), organizationId = f.organizationId, payerUserId = f.parent.id, branchId = f.child.branchId, childId = f.child.id, invoiceNumber = "INV-DENORM")
+        `when`(f.entitlements.findAllByInvoiceId(denormalized.id)).thenReturn(emptyList())
+        `when`(f.users.findById(f.parent.id)).thenReturn(Optional.of(f.parent))
+        `when`(f.paymentProofs.findByInvoiceId(denormalized.id)).thenReturn(null)
+        assertEquals(f.child.id, (invokePrivate(f.service, "invoiceResponse", denormalized) as InvoiceResponse).childId)
+        val missingBranch = Invoice(id = UUID.randomUUID(), organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-MISSING-BRANCH", childId = f.child.id)
+        `when`(f.entitlements.findAllByInvoiceId(missingBranch.id)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "invoiceResponse", missingBranch) }
+        val missingChild = Invoice(id = UUID.randomUUID(), organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-MISSING-CHILD", branchId = f.child.branchId)
+        `when`(f.entitlements.findAllByInvoiceId(missingChild.id)).thenReturn(emptyList())
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "invoiceResponse", missingChild) }
+
+        // Header and size guards cover empty and non-image payloads explicitly.
+        val empty = Base64.getEncoder().encodeToString(byteArrayOf())
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "decodePaymentProof", SubmitPaymentProofRequest("empty.png", "image/png", empty)) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(f.service, "decodePaymentProof", SubmitPaymentProofRequest("bad.png", "image/png", Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8)))) }
+    }
+
     private data class Fixture(
         val organizationId: UUID,
         val planId: UUID,

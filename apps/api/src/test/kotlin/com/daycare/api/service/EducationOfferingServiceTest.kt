@@ -60,6 +60,21 @@ class EducationOfferingServiceTest {
     }
 
     @Test
+    fun `create derives daycare enrollment mode and default program code`() {
+        val fixture = fixture()
+        val branch = Branch(id = UUID.randomUUID(), organizationId = fixture.organizationId, active = true)
+        `when`(fixture.branches.findById(branch.id)).thenReturn(Optional.of(branch))
+        `when`(fixture.organizationTypes.findAllByOrganizationId(fixture.organizationId)).thenReturn(listOf(OrganizationTypeAssignment(organizationId = fixture.organizationId, type = "DAYCARE")))
+        `when`(fixture.offerings.save(any(EducationOffering::class.java))).thenAnswer { it.arguments[0] }
+
+        val result = fixture.service.create(fixture.jwt, fixture.organizationId, UpsertEducationOfferingRequest(branch.id, " daycare ", EducationEnrollmentMode.DAYCARE_SERVICE, "  "))
+
+        assertEquals(EducationEnrollmentMode.DAYCARE_SERVICE, result.enrollmentMode)
+        assertEquals("DEFAULT", result.programCode)
+        assertEquals(setOf(InstitutionCapability.DAYCARE_OPERATIONS), result.capabilities)
+    }
+
+    @Test
     fun `create rejects unavailable branch, type, and mode`() {
         val fixture = fixture()
         val otherOrg = Branch(id = UUID.randomUUID(), organizationId = UUID.randomUUID(), active = true)

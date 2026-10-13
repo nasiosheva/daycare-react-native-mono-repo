@@ -51,4 +51,38 @@ class LocalPlatformAdminSeederTest {
         verify(encoder, never()).encode("secret")
         verify(administrators, never()).insertIfAbsent(existing.id)
     }
+
+    @Test
+    fun `reuses firebase identity, refreshes a stale password, and respects singleton count`() {
+        val existing = UserProfile(firebaseUid = "local:admin", email = "old@test", localPasswordHash = "old-hash")
+        `when`(users.findByFirebaseUid("local:admin")).thenReturn(existing)
+        `when`(encoder.matches("secret", "old-hash")).thenReturn(false)
+        `when`(encoder.encode("secret")).thenReturn("new-hash")
+        `when`(users.save(existing)).thenReturn(existing)
+        `when`(administrators.existsById(existing.id)).thenReturn(false)
+        `when`(administrators.count()).thenReturn(1L)
+        val seeder = LocalPlatformAdminSeeder(users, administrators, encoder, "admin@test", "admin", "Admin", "secret")
+
+        seeder.run(args)
+
+        assertEquals("new-hash", existing.localPasswordHash)
+        verify(administrators, never()).insertIfAbsent(existing.id)
+    }
+
+    @Test
+    fun `falls back to username identity when email is not found`() {
+        val existing = UserProfile(firebaseUid = "old", username = "admin", localPasswordHash = "hash")
+        `when`(users.findByFirebaseUid("local:admin")).thenReturn(null)
+        `when`(users.findByEmailIgnoreCase("admin@test")).thenReturn(null)
+        `when`(users.findByUsernameIgnoreCase("admin")).thenReturn(existing)
+        `when`(encoder.matches("secret", "hash")).thenReturn(true)
+        `when`(users.save(existing)).thenReturn(existing)
+        `when`(administrators.existsById(existing.id)).thenReturn(true)
+        val seeder = LocalPlatformAdminSeeder(users, administrators, encoder, "admin@test", "admin", "Admin", "secret")
+
+        seeder.run(args)
+
+        assertEquals("local:admin", existing.firebaseUid)
+        verify(administrators, never()).insertIfAbsent(existing.id)
+    }
 }

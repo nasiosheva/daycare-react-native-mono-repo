@@ -108,6 +108,22 @@ class ScreeningCatalogAdminServiceTest {
     }
 
     @Test
+    fun `update rejects templates without a rule set and non draft rule sets`() {
+        val templateId = UUID.randomUUID()
+        val request = request(templateId, UUID.randomUUID(), UUID.randomUUID())
+        `when`(platform.requirePlatformAdmin(jwt)).thenReturn(admin)
+        val withoutRules = ScreeningTemplate(id = templateId, status = ScreeningTemplateStatus.DRAFT, revision = 1)
+        `when`(templates.findById(templateId)).thenReturn(Optional.of(withoutRules))
+        assertThrows(IllegalStateException::class.java) { service.update(jwt, templateId, 1, request) }
+
+        val ruleId = UUID.randomUUID()
+        val publishedRuleTemplate = ScreeningTemplate(id = templateId, status = ScreeningTemplateStatus.DRAFT, revision = 1, ruleSetId = ruleId)
+        `when`(templates.findById(templateId)).thenReturn(Optional.of(publishedRuleTemplate))
+        `when`(rules.findById(ruleId)).thenReturn(Optional.of(ScreeningRuleSet(id = ruleId, status = ScreeningRuleSetStatus.PUBLISHED)))
+        assertThrows(IllegalStateException::class.java) { service.update(jwt, templateId, 1, request) }
+    }
+
+    @Test
     fun `validate reports every missing catalog requirement and accepts a complete catalog`() {
         val templateId = UUID.randomUUID()
         val questionId = UUID.randomUUID()
@@ -260,6 +276,43 @@ class ScreeningCatalogAdminServiceTest {
     }
 
     @Test
+    fun `publish stops before promotion when draft validation has errors`() {
+        val templateId = UUID.randomUUID()
+        val template = ScreeningTemplate(id = templateId, status = ScreeningTemplateStatus.DRAFT, ruleSetId = UUID.randomUUID())
+        `when`(platform.requirePlatformAdmin(jwt)).thenReturn(admin)
+        `when`(templates.findById(templateId)).thenReturn(Optional.of(template))
+        `when`(questions.findAllByTemplateIdOrderByDisplayOrderAsc(templateId)).thenReturn(emptyList())
+        `when`(choices.findAllByQuestionIdIn(emptyList())).thenReturn(emptyList())
+        `when`(rules.findById(template.ruleSetId!!)).thenReturn(Optional.of(ScreeningRuleSet(id = template.ruleSetId!!)))
+        `when`(texts.findAllByResourceTypeAndResourceIdIn(ScreeningCatalogResourceType.TEMPLATE, listOf(templateId))).thenReturn(emptyList())
+
+        assertThrows(IllegalStateException::class.java) { service.publish(jwt, templateId) }
+        verify(rules, never()).save(any(ScreeningRuleSet::class.java))
+        verify(templates, never()).save(any(ScreeningTemplate::class.java))
+    }
+
+    @Test
+    fun `validation and lifecycle support empty rule and question snapshots`() {
+        val templateId = UUID.randomUUID()
+        val template = ScreeningTemplate(id = templateId, status = ScreeningTemplateStatus.DRAFT, ruleSetId = null)
+        `when`(platform.requirePlatformAdmin(jwt)).thenReturn(admin)
+        `when`(templates.findById(templateId)).thenReturn(Optional.of(template))
+        `when`(questions.findAllByTemplateIdOrderByDisplayOrderAsc(templateId)).thenReturn(emptyList())
+        `when`(choices.findAllByQuestionIdIn(emptyList())).thenReturn(emptyList())
+        `when`(texts.findAllByResourceTypeAndResourceIdIn(ScreeningCatalogResourceType.TEMPLATE, listOf(templateId))).thenReturn(emptyList())
+
+        val validation = service.validate(jwt, templateId)
+        assertFalse(validation.valid)
+        assertTrue(validation.errors.contains("Rule set must be present"))
+
+        val response = service.review(jwt, templateId, approved = false)
+        assertEquals(ScreeningReviewStatus.NOT_REVIEWED, response.reviewStatus)
+        template.status = ScreeningTemplateStatus.PUBLISHED
+        `when`(templates.save(any(ScreeningTemplate::class.java))).thenAnswer { it.arguments[0] }
+        assertEquals(ScreeningTemplateStatus.RETIRED, service.retire(jwt, templateId).status)
+    }
+
+    @Test
     fun `lifecycle operations guard missing resources and referenced drafts`() {
         val id = UUID.randomUUID()
         `when`(platform.requirePlatformAdmin(jwt)).thenReturn(admin)
@@ -375,6 +428,37 @@ class ScreeningCatalogAdminServiceTest {
         verify(questions).save(any(ScreeningQuestion::class.java))
         verify(choices).save(any(ScreeningChoice::class.java))
         verify(triggers).save(any(com.daycare.api.persistence.ScreeningRuleTrigger::class.java))
+    }
+
+    @Test
+    fun `create and update support an empty nested draft while replacing prior children safely`() {
+        val templateId = UUID.randomUUID()
+        val ruleId = UUID.randomUUID()
+        val emptyRequest = request(templateId, UUID.randomUUID(), UUID.randomUUID()).copy(
+            questions = emptyList(),
+            texts = emptyList(),
+            ruleTriggers = emptyList(),
+        )
+        val rule = ScreeningRuleSet(id = ruleId, status = ScreeningRuleSetStatus.DRAFT)
+        val template = ScreeningTemplate(id = templateId, code = "MANUAL", version = 1, minAgeMonths = 61, maxAgeMonths = 72, ruleSetId = ruleId)
+        `when`(platform.requirePlatformAdmin(jwt)).thenReturn(admin)
+        `when`(templates.findByCodeAndVersion("MANUAL", 1)).thenReturn(null)
+        `when`(rules.save(any(ScreeningRuleSet::class.java))).thenReturn(rule)
+        `when`(templates.save(any(ScreeningTemplate::class.java))).thenReturn(template)
+        `when`(questions.findAllByTemplateIdOrderByDisplayOrderAsc(templateId)).thenReturn(emptyList())
+        `when`(rules.findById(ruleId)).thenReturn(Optional.of(rule))
+        `when`(texts.findAllByResourceTypeAndResourceIdIn(ScreeningCatalogResourceType.TEMPLATE, listOf(templateId))).thenReturn(emptyList())
+        `when`(triggers.findAllByRuleSetIdOrderByDisplayOrderAsc(ruleId)).thenReturn(emptyList())
+
+        assertEquals(0, service.create(jwt, emptyRequest).questions.size)
+
+        template.revision = 2
+        `when`(templates.findById(templateId)).thenReturn(Optional.of(template))
+        `when`(templates.save(any(ScreeningTemplate::class.java))).thenAnswer { it.arguments[0] }
+        `when`(rules.save(any(ScreeningRuleSet::class.java))).thenAnswer { it.arguments[0] }
+        assertEquals(0, service.update(jwt, templateId, 2, emptyRequest).questions.size)
+        verify(questions, org.mockito.Mockito.atLeastOnce()).deleteAll(emptyList())
+        verify(choices, org.mockito.Mockito.atLeastOnce()).deleteAll(emptyList())
     }
 
     private fun request(templateId: UUID, questionId: UUID, choiceId: UUID) = ScreeningTemplateDefinitionRequest(

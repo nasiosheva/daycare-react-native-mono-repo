@@ -210,10 +210,14 @@ class PrivateTutoringServiceTest {
         `when`(f.memberships.findAllByOrganizationId(f.organizationId)).thenReturn(listOf(Membership(organizationId = f.organizationId, userId = staffAdminId, role = Role.STAFF_ADMIN, active = true), Membership(organizationId = f.organizationId, userId = UUID.randomUUID(), role = Role.STAFF_ADMIN, active = false)))
         `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
         listOf(ServicePlanType.DAILY, ServicePlanType.WEEKLY, ServicePlanType.MONTHLY).forEach { type ->
-            val result = f.service.createParentRequest(jwt, f.organizationId, service.id, CreatePrivateTutoringRequest(f.child.id, type, note = "  note  "))
+            val result = f.service.createParentRequest(jwt, f.organizationId, service.id, CreatePrivateTutoringRequest(f.child.id, type, preferredAt = java.time.LocalDateTime.now().plusDays(1), note = "  note  "))
             assertEquals(type, result.pricingType)
             assertEquals("note", result.note)
         }
+        val blankNoteResult = f.service.createParentRequest(jwt, f.organizationId, service.id, CreatePrivateTutoringRequest(f.child.id, ServicePlanType.DAILY, note = "   "))
+        assertEquals(null, blankNoteResult.note)
+        val noNoteResult = f.service.createParentRequest(jwt, f.organizationId, service.id, CreatePrivateTutoringRequest(f.child.id, ServicePlanType.DAILY))
+        assertEquals(null, noNoteResult.note)
         `when`(f.placements.findByChildIdAndEndedOnIsNull(f.child.id)).thenReturn(null)
         assertTrue(f.service.parentServices(jwt, f.organizationId, f.child.id).isEmpty())
         assertThrows(IllegalArgumentException::class.java) { f.service.createParentRequest(jwt, f.organizationId, service.id, CreatePrivateTutoringRequest(f.child.id, ServicePlanType.DAILY)) }
@@ -303,6 +307,12 @@ class PrivateTutoringServiceTest {
         assertEquals(PrivateTutoringRequestStatus.CANCELLED, request.status)
         `when`(f.requests.findByInvoiceId(UUID.randomUUID())).thenReturn(null)
         f.service.invoicePaid(InvoicePaidEvent(UUID.randomUUID()))
+
+        val noTutorInvoiceId = UUID.randomUUID()
+        val noTutorRequest = PrivateTutoringRequest(organizationId = f.organizationId, parentUserId = f.parent.id, childId = f.child.id, privateTutoringServiceId = f.serviceEntity.id, serviceName = "Membaca", status = PrivateTutoringRequestStatus.PENDING_PAYMENT, privateTutorId = null)
+        `when`(f.requests.findByInvoiceId(noTutorInvoiceId)).thenReturn(noTutorRequest)
+        f.service.invoicePaid(InvoicePaidEvent(noTutorInvoiceId))
+        assertEquals(PrivateTutoringRequestStatus.CONFIRMED, noTutorRequest.status)
     }
 
     @Test
@@ -322,6 +332,10 @@ class PrivateTutoringServiceTest {
 
         val parentJwt = mock(Jwt::class.java)
         f.stubParent(parentJwt)
+        val foreignRequest = PrivateTutoringRequest(organizationId = UUID.randomUUID(), parentUserId = f.parent.id, childId = f.child.id, privateTutoringServiceId = f.serviceEntity.id, serviceName = "Membaca", status = PrivateTutoringRequestStatus.PENDING_APPROVAL)
+        `when`(f.requests.findById(foreignRequest.id)).thenReturn(Optional.of(foreignRequest))
+        assertThrows(IllegalArgumentException::class.java) { f.service.cancelParentRequest(parentJwt, f.organizationId, foreignRequest.id) }
+
         val request = PrivateTutoringRequest(organizationId = f.organizationId, parentUserId = f.parent.id, childId = f.child.id, privateTutoringServiceId = f.serviceEntity.id, serviceName = "Membaca", status = PrivateTutoringRequestStatus.REJECTED)
         `when`(f.requests.findById(request.id)).thenReturn(Optional.of(request))
         assertThrows(IllegalArgumentException::class.java) { f.service.cancelParentRequest(parentJwt, f.organizationId, request.id) }

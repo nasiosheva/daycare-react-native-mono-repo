@@ -562,6 +562,41 @@ class ChildMessageServiceTest {
         val readAt = Instant.parse("2026-10-12T00:01:00Z")
         assertEquals(readAt, invokePrivate(fixture.service, "readAtFor", message, setOf(staff.id), mapOf(staff.id to ChildMessageRead(childId = child.id, userId = staff.id, lastReadAt = readAt))))
         assertEquals(null, invokePrivate(fixture.service, "readAtFor", message, setOf(staff.id), mapOf(staff.id to ChildMessageRead(childId = child.id, userId = staff.id, lastReadAt = message.createdAt.minusSeconds(1)))))
+
+        val quoted = ChildMessage(
+            organizationId = organizationId,
+            childId = child.id,
+            senderUserId = parent.id,
+            senderRole = Role.PARENT,
+            body = "Foto",
+            photoContentType = "image/jpeg",
+            createdAt = message.createdAt,
+        )
+        val reply = ChildMessage(
+            organizationId = organizationId,
+            childId = child.id,
+            senderUserId = staff.id,
+            senderRole = Role.STAFF,
+            body = "Balasan",
+            replyToMessageId = quoted.id,
+            createdAt = readAt,
+        )
+        val mapped = invokePrivate(
+            fixture.service,
+            "response",
+            reply,
+            "Unknown",
+            parent.id,
+            readAt,
+            mapOf(quoted.id to quoted),
+            emptyMap<UUID, UserProfile>(),
+            quoted,
+            null,
+        ) as ChildMessageResponse
+        assertEquals(ChildMessageDeliveryStatus.READ, mapped.deliveryStatus)
+        assertEquals("Unknown", mapped.replyTo?.senderName)
+        assertEquals(true, mapped.replyTo?.hasPhoto)
+        assertEquals(false, mapped.mine)
     }
 
     @Test

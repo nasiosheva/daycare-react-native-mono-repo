@@ -290,6 +290,48 @@ class AdministrationServiceTest {
     }
 
     @Test
+    fun `account creation password change and permission updates reject a user record that has vanished`() {
+        val fixture = fixture()
+        `when`(fixture.branches.findById(fixture.branchId)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.createTenantUser(fixture.jwt, fixture.organizationId, CreateTenantUserRequest("Staff", "staff@example.test", "secret", Role.STAFF, branchId = fixture.branchId))
+        }
+
+        val branch = Branch(id = fixture.branchId, organizationId = fixture.organizationId, name = "Branch", active = true)
+        `when`(fixture.branches.findById(fixture.branchId)).thenReturn(Optional.of(branch))
+        `when`(fixture.children.save(any(Child::class.java))).thenAnswer { it.arguments[0] }
+        val nullOptionalFields = fixture.service.createChild(fixture.jwt, fixture.organizationId, CreateChildRequest("Anak", null, null, Gender.MALE, LocalDate.of(2021, 1, 1), fixture.branchId, null))
+        assertEquals(null, nullOptionalFields.lastName); assertEquals(null, nullOptionalFields.nisn)
+
+        val target = UserProfile(displayName = "Staff", email = "staff@example.test")
+        val staffMembership = Membership(userId = target.id, organizationId = fixture.organizationId, role = Role.STAFF, active = true)
+        `when`(fixture.memberships.findAllByUserIdAndOrganizationId(target.id, fixture.organizationId)).thenReturn(listOf(staffMembership))
+        `when`(fixture.users.findById(target.id)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.changeTenantUserPassword(fixture.jwt, fixture.organizationId, target.id, ChangeTenantUserPasswordRequest("longer"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.updateTenantUserChildProgramPermission(fixture.jwt, fixture.organizationId, target.id, UpdateTenantUserChildProgramPermissionRequest(true))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.updateTenantUserDevelopmentCategoryPermission(fixture.jwt, fixture.organizationId, target.id, UpdateTenantUserDevelopmentCategoryPermissionRequest(true))
+        }
+
+        // A membership that exists but is inactive must short-circuit the `it.active && ...` guard
+        // the same way an empty list does, rather than only being exercised via "no rows at all".
+        val inactiveId = UUID.randomUUID()
+        val inactiveStaff = Membership(userId = inactiveId, organizationId = fixture.organizationId, role = Role.STAFF, active = false)
+        `when`(fixture.memberships.findAllByUserIdAndOrganizationId(inactiveId, fixture.organizationId)).thenReturn(listOf(inactiveStaff))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.changeTenantUserPassword(fixture.jwt, fixture.organizationId, inactiveId, ChangeTenantUserPasswordRequest("longer")) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.deactivateTenantUser(fixture.jwt, fixture.organizationId, inactiveId) }
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.updateTenantUser(fixture.jwt, fixture.organizationId, inactiveId, UpdateTenantUserRequest("Staff", "staff@example.test", branchId = fixture.branchId))
+        }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.updateTenantUserChildProgramPermission(fixture.jwt, fixture.organizationId, inactiveId, UpdateTenantUserChildProgramPermissionRequest(true)) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.updateTenantUserDevelopmentCategoryPermission(fixture.jwt, fixture.organizationId, inactiveId, UpdateTenantUserDevelopmentCategoryPermissionRequest(true)) }
+    }
+
+    @Test
     fun `device registration handles replacement and preference duration variants`() {
         val fixture = fixture()
         `when`(fixture.devices.findByInstallationId("install")).thenReturn(null)

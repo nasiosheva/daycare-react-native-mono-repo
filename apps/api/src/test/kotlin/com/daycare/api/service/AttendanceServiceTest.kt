@@ -382,6 +382,69 @@ class AttendanceServiceTest {
     }
 
     @Test
+    fun `report returns an empty row set when no child is visible for the branch`() {
+        val fixtures = Fixtures()
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(fixtures.scope)
+        `when`(fixtures.branches.findById(fixtures.branch.id)).thenReturn(Optional.of(fixtures.branch))
+        `when`(fixtures.childScopes.visibleChildren(fixtures.scope, fixtures.organizationId)).thenReturn(emptyList())
+
+        val report = fixtures.service.childAttendanceReport(fixtures.jwt, fixtures.organizationId, fixtures.branch.id, LocalDate.now(), LocalDate.now())
+
+        assertEquals(emptyList<Any>(), report.rows)
+    }
+
+    @Test
+    fun `classroom filter rejects a classroom outside the selected learning level`() {
+        val fixtures = Fixtures()
+        val otherLevel = LearningLevel(organizationId = fixtures.organizationId)
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, Role.entries.toSet(), allowSubscriptionRestrictedForRoles = setOf(Role.PARENT))).thenReturn(fixtures.scope)
+        `when`(fixtures.levels.findById(otherLevel.id)).thenReturn(Optional.of(otherLevel))
+        `when`(fixtures.classrooms.findById(fixtures.classroom.id)).thenReturn(Optional.of(fixtures.classroom))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            fixtures.service.listChildren(fixtures.jwt, fixtures.organizationId, ChildListFilter(learningLevelId = otherLevel.id, classroomId = fixtures.classroom.id))
+        }
+    }
+
+    @Test
+    fun `classroom level matching rejects a classroom belonging to a different learning level`() {
+        val fixtures = Fixtures()
+        val mismatchedClassroom = Classroom(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, learningLevelId = UUID.randomUUID())
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, classroomId = mismatchedClassroom.id, firstName = "Dewi")
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, Role.entries.toSet(), allowSubscriptionRestrictedForRoles = setOf(Role.PARENT))).thenReturn(fixtures.scope)
+        `when`(fixtures.levels.findById(fixtures.level.id)).thenReturn(Optional.of(fixtures.level))
+        `when`(fixtures.childScopes.visibleChildren(fixtures.scope, fixtures.organizationId)).thenReturn(listOf(child))
+        `when`(fixtures.classrooms.findById(mismatchedClassroom.id)).thenReturn(Optional.of(mismatchedClassroom))
+        `when`(fixtures.branches.findAllById(listOf(child.branchId))).thenReturn(listOf(fixtures.branch))
+        `when`(fixtures.attendance.findAllByChildIdInAndOperationalDateIn(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.anyList())).thenReturn(emptyList())
+
+        assertEquals(emptyList<String>(), fixtures.service.listChildren(fixtures.jwt, fixtures.organizationId, ChildListFilter(learningLevelId = fixtures.level.id)).map { it.fullName })
+    }
+
+    @Test
+    fun `check-in and check-out notify every linked guardian`() {
+        val fixtures = Fixtures()
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Eka")
+        val operationalDate = LocalDate.now(ZoneId.of(fixtures.branch.timezone))
+        val guardian = GuardianLink(childId = child.id, userId = UUID.randomUUID())
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF))).thenReturn(fixtures.scope)
+        `when`(fixtures.childScopes.requireStaffManagedChild(fixtures.scope, child.id, fixtures.organizationId)).thenReturn(child)
+        `when`(fixtures.branches.findById(child.branchId)).thenReturn(Optional.of(fixtures.branch))
+        `when`(fixtures.guardians.findAllByChildId(child.id)).thenReturn(listOf(guardian))
+        `when`(fixtures.attendance.save(any(AttendanceRecord::class.java))).thenAnswer { it.arguments[0] }
+
+        `when`(fixtures.attendance.findByChildIdAndOperationalDate(child.id, operationalDate)).thenReturn(null)
+        fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_IN, AttendanceMethod.MANUAL, idempotencyKey = "in"))
+        verify(fixtures.notifications).notify(fixtures.organizationId, guardian.userId, "Kehadiran Eka", "Eka berhasil check-in.", realtimeFlags = setOf(com.daycare.api.realtime.RealtimeFlag.ATTENDANCE))
+
+        val checkedIn = AttendanceRecord(organizationId = fixtures.organizationId, branchId = child.branchId, childId = child.id, operationalDate = operationalDate, checkedInAt = Instant.now().minusSeconds(60))
+        `when`(fixtures.attendance.findByChildIdAndOperationalDate(child.id, operationalDate)).thenReturn(checkedIn)
+        `when`(fixtures.publishedOfferings.hasPublishedCapability(fixtures.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)).thenReturn(false)
+        fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_OUT, AttendanceMethod.MANUAL, idempotencyKey = "out"))
+        verify(fixtures.notifications).notify(fixtures.organizationId, guardian.userId, "Kehadiran Eka", "Eka berhasil check-out.", realtimeFlags = setOf(com.daycare.api.realtime.RealtimeFlag.ATTENDANCE))
+    }
+
+    @Test
     fun `attendance record covers daycare consumption and non-daycare checkout`() {
         val daycare = Fixtures()
         val child = Child(organizationId = daycare.organizationId, branchId = daycare.branch.id, firstName = "Alya")

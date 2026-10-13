@@ -310,6 +310,25 @@ class ScreeningSessionServiceTest {
     }
 
     @Test
+    fun `start accepts a valid corrected age and rejects a template outside that effective age`() {
+        val profile = profile()
+        val published = template(ScreeningTemplateStatus.PUBLISHED)
+        `when`(identity.sync(jwt)).thenReturn(parent)
+        `when`(profiles.findByIdAndOwnerUserId(profile.id, parent.id)).thenReturn(profile)
+        `when`(templates.findById(published.id)).thenReturn(Optional.of(published))
+        `when`(sessions.save(org.mockito.ArgumentMatchers.any(ScreeningSession::class.java))).thenAnswer { it.arguments[0] }
+
+        val corrected = service.start(jwt, StartScreeningSessionRequest(profile.id, published.id, "id", "v1", correctedAgeMonths = 24))
+        assertEquals(24, corrected.correctedAgeMonths)
+
+        published.minAgeMonths = 36
+        published.maxAgeMonths = 48
+        assertThrows(IllegalArgumentException::class.java) {
+            service.start(jwt, StartScreeningSessionRequest(profile.id, published.id, "id", "v1", correctedAgeMonths = 24))
+        }
+    }
+
+    @Test
     fun `start supports linked child only with both access services`() {
         val profile = profile()
         val published = template(ScreeningTemplateStatus.PUBLISHED)
@@ -441,6 +460,35 @@ class ScreeningSessionServiceTest {
         assertEquals("Pilihan", questionnaire.questions.single().choices.single().label)
         `when`(answers.findAllBySessionIdOrderByAnsweredAtAscIdAsc(session.id)).thenReturn(listOf(answer))
         assertEquals(1, service.answers(jwt, session.id).size)
+    }
+
+    @Test
+    fun `screening session rejects missing resources duplicate batches and expired status explicitly`() {
+        val profile = profile()
+        val published = template(ScreeningTemplateStatus.PUBLISHED)
+        `when`(identity.sync(jwt)).thenReturn(parent)
+        `when`(profiles.findByIdAndOwnerUserId(profile.id, parent.id)).thenReturn(null)
+        assertThrows(IllegalArgumentException::class.java) { service.start(jwt, StartScreeningSessionRequest(profile.id, published.id, "id", "v1")) }
+        `when`(profiles.findByIdAndOwnerUserId(profile.id, parent.id)).thenReturn(profile)
+        `when`(templates.findById(published.id)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) { service.start(jwt, StartScreeningSessionRequest(profile.id, published.id, "id", "v1")) }
+        `when`(templates.findById(published.id)).thenReturn(Optional.of(published))
+        val ruleSets = mock(com.daycare.api.persistence.ScreeningRuleSetRepository::class.java)
+        `when`(ruleSets.findById(published.ruleSetId!!)).thenReturn(Optional.empty())
+        assertThrows(IllegalStateException::class.java) { ScreeningSessionService(identity, profiles, templates, sessions, questions, choices, answers, catalogTexts, ruleSets = ruleSets).start(jwt, StartScreeningSessionRequest(profile.id, published.id, "id", "v1")) }
+        assertThrows(IllegalArgumentException::class.java) { service.start(jwt, StartScreeningSessionRequest(profile.id, published.id, "id", "x".repeat(81))) }
+
+        val session = session()
+        val question = ScreeningQuestion(id = UUID.randomUUID(), templateId = session.templateId, stableQuestionId = "Q1")
+        `when`(sessions.findByIdAndOwnerUserId(session.id, parent.id)).thenReturn(session)
+        `when`(questions.findById(question.id)).thenReturn(Optional.of(question))
+        `when`(choices.findByQuestionIdAndCode(question.id, "YA_SUDAH")).thenReturn(ScreeningChoice(questionId = question.id, code = "YA_SUDAH", enabled = true))
+        assertThrows(IllegalArgumentException::class.java) { service.saveAnswers(jwt, session.id, SaveScreeningAnswersRequest(listOf(SaveScreeningAnswerRequest(question.id, "YA_SUDAH"), SaveScreeningAnswerRequest(question.id, "YA_SUDAH")))) }
+        session.status = ScreeningSessionStatus.EXPIRED
+        session.expiresAt = Instant.now().plusSeconds(600)
+        `when`(sessions.save(session)).thenReturn(session)
+        assertThrows(IllegalStateException::class.java) { service.saveAnswer(jwt, session.id, SaveScreeningAnswerRequest(question.id, "YA_SUDAH")) }
+        assertThrows(IllegalArgumentException::class.java) { service.answers(jwt, UUID.randomUUID()) }
     }
 
     private fun profile(premature: Boolean? = false) = ScreeningChildProfile(
