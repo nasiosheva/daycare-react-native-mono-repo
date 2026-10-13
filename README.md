@@ -172,10 +172,10 @@ Latest coverage snapshot dari `pnpm coverage` (2026-10-13):
 
 | Workspace | Statements | Branches | Functions | Lines |
 | --- | ---: | ---: | ---: | ---: |
-| `apps/mobile` | 22.63% | 69.85% | 45.83% | 22.63% |
-| `packages/api-client` | 88.19% | 73.81% | 21.62% | 88.19% |
-| `packages/core` | 100.00% | 66.67% | 100.00% | 100.00% |
-| `packages/ui` | 2.87% | 67.44% | 54.84% | 2.87% |
+| `apps/mobile` | 27.28% | 76.47% | 53.50% | 27.28% |
+| `packages/api-client` | 100.00% | 94.72% | 90.39% | 100.00% |
+| `packages/core` | 100.00% | 100.00% | 100.00% | 100.00% |
+| `packages/ui` | 58.34% | 92.68% | 80.43% | 58.34% |
 
 `test:ui` adalah Jest smoke test terpisah dari tabel V8. Backend membutuhkan JDK 21.
 
