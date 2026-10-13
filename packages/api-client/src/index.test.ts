@@ -1,7 +1,45 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { describe, expect, it, vi } from "vitest";
-import { API_REQUEST_TIMEOUT_MS, ApiClient, ApiNetworkError, ApiTimeoutError, realtimeUrl } from "./index";
+import { API_REQUEST_TIMEOUT_MS, ApiClient, ApiError, ApiNetworkError, ApiTimeoutError, fetchWithTimeout, isApiNetworkError, isApiTimeoutError, realtimeUrl } from "./index";
 
 describe("ApiClient", () => {
+  it("distinguishes API transport and timeout errors with type guards", () => {
+    const networkError = new ApiNetworkError();
+    const timeoutError = new ApiTimeoutError();
+
+    expect(isApiNetworkError(networkError)).toBe(true);
+    expect(isApiNetworkError(timeoutError)).toBe(false);
+    expect(isApiTimeoutError(timeoutError)).toBe(true);
+    expect(isApiTimeoutError(networkError)).toBe(false);
+  });
+
+  it("preserves a caller-aborted signal when it was already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.signal?.aborted) return Promise.reject(init.signal.reason);
+      return Promise.resolve({ ok: true, status: 200 } as Response);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchWithTimeout("https://api.example.test/v1/me", { signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/me", expect.objectContaining({ signal: expect.objectContaining({ aborted: true }) }));
+  });
+
+  it("aborts an in-flight request when its caller signal is cancelled", async () => {
+    const caller = new AbortController();
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const request = fetchWithTimeout("https://api.example.test/v1/me", { signal: caller.signal });
+
+    caller.abort();
+
+    await expect(request).rejects.toBeInstanceOf(DOMException);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("normalizes a transport failure into ApiNetworkError", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Network request failed")));
     const client = new ApiClient({
@@ -54,6 +92,104 @@ describe("ApiClient", () => {
     expect(onRequestLog).toHaveBeenNthCalledWith(1, { phase: "REQUEST", method: "GET", url: "http://localhost:8080/api/v1/me" });
     expect(onRequestLog).toHaveBeenNthCalledWith(2, expect.objectContaining({ phase: "RESPONSE", method: "GET", url: "http://localhost:8080/api/v1/me", status: 200, durationMs: expect.any(Number) }));
     expect(JSON.stringify(onRequestLog.mock.calls)).not.toContain("secret-token");
+  });
+
+  it("calls network health callbacks and logs a transport failure", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const onNetworkFailure = vi.fn();
+    const onNetworkResponse = vi.fn();
+    const onRequestLog = vi.fn();
+    const client = new ApiClient({
+      baseUrl: "https://api.example.test/v1",
+      getToken: async () => null,
+      getOrganizationId: () => null,
+      getLanguage: () => "en",
+      onNetworkFailure,
+      onNetworkResponse,
+      onRequestLog,
+    });
+
+    await expect(client.me()).rejects.toBeInstanceOf(ApiNetworkError);
+
+    expect(onNetworkFailure).toHaveBeenCalledOnce();
+    expect(onNetworkResponse).not.toHaveBeenCalled();
+    expect(onRequestLog).toHaveBeenLastCalledWith(expect.objectContaining({ phase: "FAILURE", failure: "NETWORK" }));
+  });
+
+  it("sends standard headers and omits credentials when no token or tenant is available", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => null, getOrganizationId: () => null, getLanguage: () => "zh" });
+
+    await client.me();
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.example.test/v1/me", expect.objectContaining({
+      headers: expect.objectContaining({ Accept: "application/json", "Accept-Language": "zh", "Content-Type": "application/json" }),
+    }));
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.headers).not.toHaveProperty("Authorization");
+    expect(init.headers).not.toHaveProperty("X-Organization-Id");
+  });
+
+  it("uses a per-request tenant override without changing the client's active tenant", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => "active-tenant", getLanguage: () => "id" });
+
+    await client.paymentInstructions("requested-tenant");
+    await client.me();
+
+    const calls = fetchMock.mock.calls as Array<[string, RequestInit]>;
+    expect(calls[0]![1].headers).toHaveProperty("X-Organization-Id", "requested-tenant");
+    expect(calls[1]![1].headers).toHaveProperty("X-Organization-Id", "active-tenant");
+  });
+
+  it("does not let a failing diagnostic logger affect a successful request", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: "user-id" }) }));
+    const client = new ApiClient({
+      baseUrl: "https://api.example.test/v1",
+      getToken: async () => null,
+      getOrganizationId: () => null,
+      getLanguage: () => "id",
+      onRequestLog: () => { throw new Error("logger unavailable"); },
+    });
+
+    await expect(client.me()).resolves.toEqual({ id: "user-id" });
+  });
+
+  it("returns undefined for an empty successful response body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => { throw new SyntaxError("Unexpected end of JSON input"); } }));
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
+
+    await expect(client.me()).resolves.toBeUndefined();
+  });
+
+  it("surfaces unexpected successful-response decoding failures", async () => {
+    const decodingError = new TypeError("response stream failed");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => { throw decodingError; } }));
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
+
+    await expect(client.me()).rejects.toBe(decodingError);
+  });
+
+  it("maps structured API error responses to ApiError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ code: "VALIDATION_ERROR", detail: "Input tidak valid." }) }));
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
+
+    const error = await client.me().catch((requestError: unknown) => requestError);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 400, code: "VALIDATION_ERROR", message: "Input tidak valid." });
+  });
+
+  it("uses safe defaults when an API error body is empty or malformed", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 502, json: async () => ({}) })
+      .mockResolvedValueOnce({ ok: false, status: 503, json: async () => { throw new SyntaxError("invalid JSON"); } });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test/v1", getToken: async () => "token", getOrganizationId: () => null, getLanguage: () => "id" });
+
+    await expect(client.me()).rejects.toMatchObject({ status: 502, code: "UNKNOWN", message: "Request failed" });
+    await expect(client.me()).rejects.toMatchObject({ status: 503, code: "UNKNOWN", message: "Request failed" });
   });
 
   it("revokes a supplied active token through the authenticated logout endpoint", async () => {

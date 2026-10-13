@@ -679,7 +679,9 @@ export class ApiClient {
   async childCareLogs(childId: string, organizationId?: string): Promise<ChildCareLog[]> { return this.request(`/children/${childId}/care-logs`, this.orgOverride(organizationId)); }
   async createChildCareLog(childId: string, input: CreateChildCareLogInput, organizationId?: string): Promise<ChildCareLog> {
     const { clientMutationId, ...body } = input;
-    return this.request(`/children/${childId}/care-logs`, { method: "POST", body: JSON.stringify(body), headers: clientMutationId ? { "Idempotency-Key": clientMutationId } : undefined, ...this.orgOverride(organizationId) });
+    const organizationHeaders = this.orgOverride(organizationId).headers as Record<string, string> | undefined;
+    const headers = clientMutationId ? { ...organizationHeaders, "Idempotency-Key": clientMutationId } : organizationHeaders;
+    return this.request(`/children/${childId}/care-logs`, { method: "POST", body: JSON.stringify(body), headers });
   }
   async childHandovers(childId: string, organizationId?: string): Promise<StaffHandover[]> { return this.request(`/children/${childId}/handovers`, this.orgOverride(organizationId)); }
   async childHandoverRecipients(childId: string, organizationId?: string): Promise<StaffHandoverRecipient[]> { return this.request(`/children/${childId}/handovers/recipients`, this.orgOverride(organizationId)); }

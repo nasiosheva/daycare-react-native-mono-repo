@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { describe, expect, it } from "vitest";
 import { can, attendanceCommandSchema, capabilitiesForInstitutionTypes, childSchema, developmentEntrySchema, hasInstitutionCapability, parentFamilyProfileSchema, purchaseServiceSchema } from "./index";
 
@@ -36,6 +37,16 @@ describe("permissions", () => {
     expect(capabilitiesForInstitutionTypes(["DAYCARE"])).toEqual(["DAYCARE_OPERATIONS"]);
     expect(capabilitiesForInstitutionTypes(["PAUD", "TK"])).toEqual(["ACADEMIC_CURRICULUM"]);
     expect(hasInstitutionCapability(capabilitiesForInstitutionTypes(["DAYCARE", "TK"]), "ACADEMIC_CURRICULUM")).toBe(true);
+  });
+
+  it("ignores institution types without configured capabilities", () => {
+    expect(capabilitiesForInstitutionTypes(["UNKNOWN"])).toEqual([]);
+    expect(capabilitiesForInstitutionTypes(["DAYCARE", "UNKNOWN"])).toEqual(["DAYCARE_OPERATIONS"]);
+  });
+
+  it("returns false when institution capabilities are absent", () => {
+    expect(hasInstitutionCapability(undefined, "DAYCARE_OPERATIONS")).toBe(false);
+    expect(hasInstitutionCapability([], "DAYCARE_OPERATIONS")).toBe(false);
   });
 
   it("permits an optional Parent family profile with supported dropdown values", () => {
