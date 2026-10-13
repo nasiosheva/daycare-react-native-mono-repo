@@ -2572,7 +2572,11 @@ bukan pengganti test domain yang lebih rinci.
   dilakukan Parent di rumah. Langkah tersebut tidak boleh menyatakan diagnosis,
   tingkat keparahan, terapi, atau menggantikan penilaian tenaga kesehatan.
   Bagian ini ditampilkan di UI hasil dan ikut masuk ke PDF agar laporan tetap
-  berguna sebelum atau sambil menunggu konsultasi medis.
+  berguna sebelum atau sambil menunggu konsultasi medis. Langkah pengamatan
+  ditampilkan **per area perkembangan yang punya perhatian** (`BK`, `MK`,
+  `MH`, `KG`, `SE`, `AD`), bukan hanya satu kalimat generik per status utama,
+  supaya tetap actionable tanpa menjadi label diagnosis seperti "speech
+  delay". `CTX` bukan area kemampuan sehingga tidak diberi langkah ini.
 - Ringkasan domain di UI/PDF wajib memakai nama area yang mudah dipahami
   (`Bahasa dan komunikasi`, `Motorik kasar`, dan seterusnya) serta status
   naratif terjemahan. Kode domain dan enum internal tidak boleh tampil kepada

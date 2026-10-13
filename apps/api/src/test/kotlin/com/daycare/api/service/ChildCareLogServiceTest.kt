@@ -114,13 +114,45 @@ class ChildCareLogServiceTest {
         val napStarted = Instant.now().minusSeconds(100)
         val invalidRequests = listOf(
             CreateChildCareLogRequest(ChildCareLogType.MEAL, Instant.now(), mealType = ChildMealType.LUNCH, mealAmount = ChildMealAmount.ALL, toiletType = ChildToiletType.WET),
+            CreateChildCareLogRequest(ChildCareLogType.MEAL, Instant.now(), mealAmount = ChildMealAmount.ALL),
+            CreateChildCareLogRequest(ChildCareLogType.MEAL, Instant.now(), mealType = ChildMealType.LUNCH, mealAmount = ChildMealAmount.ALL, napStartedAt = napStarted),
+            CreateChildCareLogRequest(ChildCareLogType.MEAL, Instant.now(), mealType = ChildMealType.LUNCH, mealAmount = ChildMealAmount.ALL, napEndedAt = napStarted.plusSeconds(10)),
             CreateChildCareLogRequest(ChildCareLogType.NAP, Instant.now(), napStartedAt = napStarted),
+            CreateChildCareLogRequest(ChildCareLogType.NAP, Instant.now(), napEndedAt = napStarted.plusSeconds(10)),
             CreateChildCareLogRequest(ChildCareLogType.NAP, Instant.now(), napStartedAt = napStarted, napEndedAt = napStarted.plusSeconds(10), mealType = ChildMealType.LUNCH, mealAmount = ChildMealAmount.ALL),
+            CreateChildCareLogRequest(ChildCareLogType.NAP, Instant.now(), napStartedAt = napStarted, napEndedAt = napStarted.plusSeconds(10), toiletType = ChildToiletType.WET),
+            CreateChildCareLogRequest(ChildCareLogType.NAP, Instant.now(), napStartedAt = napStarted, napEndedAt = napStarted.plusSeconds(10), mealAmount = ChildMealAmount.ALL),
             CreateChildCareLogRequest(ChildCareLogType.TOILET, Instant.now()),
             CreateChildCareLogRequest(ChildCareLogType.TOILET, Instant.now(), toiletType = ChildToiletType.WET, napStartedAt = napStarted, napEndedAt = napStarted.plusSeconds(10)),
+            CreateChildCareLogRequest(ChildCareLogType.TOILET, Instant.now(), toiletType = ChildToiletType.WET, mealType = ChildMealType.LUNCH),
+            CreateChildCareLogRequest(ChildCareLogType.TOILET, Instant.now(), toiletType = ChildToiletType.WET, mealAmount = ChildMealAmount.ALL),
+            CreateChildCareLogRequest(ChildCareLogType.TOILET, Instant.now(), toiletType = ChildToiletType.WET, napEndedAt = napStarted.plusSeconds(10)),
             fixture.mealRequest(correctionReason = "tidak boleh tanpa koreksi"),
         )
         invalidRequests.forEach { request -> assertThrows(IllegalArgumentException::class.java) { fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, request) } }
+    }
+
+    @Test
+    fun `note is trimmed before storage and a blank note is stored as null`() {
+        val fixture = Fixture()
+        `when`(fixture.logs.save(any(ChildCareLog::class.java))).thenAnswer { it.arguments[0] }
+
+        val withNote = fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.mealRequest().copy(note = "  Minum ASI  "))
+        assertEquals("Minum ASI", withNote.note)
+
+        val withBlankNote = fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.mealRequest().copy(note = "   "))
+        assertEquals(null, withBlankNote.note)
+    }
+
+    @Test
+    fun `a blank correction reason is allowed without a corrected log and stored as null`() {
+        val fixture = Fixture()
+        `when`(fixture.logs.save(any(ChildCareLog::class.java))).thenAnswer { it.arguments[0] }
+
+        val stored = fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.mealRequest(correctionReason = "   "))
+
+        assertEquals(null, stored.correctionReason)
+        assertEquals(null, stored.correctsLogId)
     }
 
     @Test
