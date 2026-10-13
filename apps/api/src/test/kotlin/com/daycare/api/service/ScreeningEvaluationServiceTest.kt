@@ -208,6 +208,18 @@ class ScreeningEvaluationServiceTest {
     }
 
     @Test
+    fun `evaluator covers alternate fallback codes and triggers without output status`() {
+        val uncertain = answer("TIDAK_YAKIN")
+        val notYet = answer("BELUM")
+        assertEquals(ScreeningResultMainStatus.PENGAMATAN_BELUM_CUKUP, service.evaluate(emptyRules, listOf(uncertain)).mainStatus)
+        assertEquals(ScreeningResultMainStatus.DISKUSIKAN_PERKEMBANGAN, service.evaluate(emptyRules, listOf(notYet)).mainStatus)
+        val reasonOnly = ScreeningEvaluationTrigger(UUID.randomUUID(), ScreeningRuleTriggerKind.ANSWER, 0, stableQuestionId = null, answerCode = "YA_SUDAH", reasonCode = ScreeningResultReasonCode.DISKUSIKAN_BUTIR_PERKEMBANGAN)
+        val result = service.evaluate(emptyRules.copy(triggers = listOf(reasonOnly)), listOf(answer("YA_SUDAH")))
+        assertEquals(ScreeningResultMainStatus.KEMAMPUAN_DILAPORKAN_TERLIHAT, result.mainStatus)
+        assertEquals(1, result.reasons.size)
+    }
+
+    @Test
     fun `typed trigger matching and status ranks cover every supported status`() {
         val id = UUID.randomUUID()
         val answer = ScreeningEvaluationAnswer(id, id, "Q1", "BK", "YA_SUDAH", true, contextCode = "CTX")
@@ -221,6 +233,25 @@ class ScreeningEvaluationServiceTest {
         assertEquals(2, screeningResultStatusRank(ScreeningResultMainStatus.PENGAMATAN_BELUM_CUKUP))
         assertEquals(1, screeningResultStatusRank(ScreeningResultMainStatus.KEMAMPUAN_DILAPORKAN_TERLIHAT))
         assertEquals(0, screeningResultStatusRank(null))
+    }
+
+    @Test
+    fun `evaluator orders every status rank and priority tie deterministically`() {
+        val source = answer("YA_SUDAH")
+        val lowerId = UUID(0, 1)
+        val higherId = UUID(0, 2)
+        val triggers = listOf(
+            ScreeningEvaluationTrigger(higherId, ScreeningRuleTriggerKind.ANSWER, 1, stableQuestionId = "Q1", answerCode = "YA_SUDAH", outputStatus = ScreeningResultMainStatus.KEMAMPUAN_DILAPORKAN_TERLIHAT),
+            ScreeningEvaluationTrigger(lowerId, ScreeningRuleTriggerKind.ANSWER, 1, stableQuestionId = "Q1", answerCode = "YA_SUDAH", outputStatus = ScreeningResultMainStatus.DISKUSIKAN_PERKEMBANGAN, reasonCode = ScreeningResultReasonCode.DISKUSIKAN_BUTIR_PERKEMBANGAN),
+            ScreeningEvaluationTrigger(UUID(0, 3), ScreeningRuleTriggerKind.ANSWER, 1, stableQuestionId = "Q1", answerCode = "YA_SUDAH", outputStatus = ScreeningResultMainStatus.PENGAMATAN_BELUM_CUKUP),
+            ScreeningEvaluationTrigger(UUID(0, 4), ScreeningRuleTriggerKind.ANSWER, 1, stableQuestionId = "Q1", answerCode = "YA_SUDAH", outputStatus = ScreeningResultMainStatus.SEGERA_DISKUSIKAN, reasonCode = ScreeningResultReasonCode.SEGERA_DISKUSIKAN_KEHILANGAN_KEMAMPUAN),
+            ScreeningEvaluationTrigger(UUID(0, 5), ScreeningRuleTriggerKind.ANSWER, 1, stableQuestionId = "Q1", answerCode = "YA_SUDAH", outputStatus = ScreeningResultMainStatus.SEGERA_DISKUSIKAN),
+        )
+
+        val result = service.evaluate(ScreeningEvaluationRuleSet("ranked", 1, triggers), listOf(source))
+
+        assertEquals(ScreeningResultMainStatus.SEGERA_DISKUSIKAN, result.mainStatus)
+        assertEquals(2, result.reasons.size)
     }
 
     private fun answer(code: String) = ScreeningEvaluationAnswer(

@@ -287,6 +287,21 @@ class DevelopmentServiceTest {
         assertThrows(IllegalArgumentException::class.java) { fixture.service.mediaContent(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.entryId, fixture.mediaId) }
     }
 
+    @Test
+    fun `development media helpers cover jpeg png audio and category lookup boundaries`() {
+        val fixture = fixture()
+        val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 1)
+        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        assertEquals(jpeg.toList(), (invokePrivate(fixture.service, "decodePhoto", DevelopmentPhotoInput("image/jpeg", Base64.getEncoder().encodeToString(jpeg))) as ByteArray).toList())
+        assertEquals(png.toList(), (invokePrivate(fixture.service, "decodePhoto", DevelopmentPhotoInput("image/png", Base64.getEncoder().encodeToString(png))) as ByteArray).toList())
+        assertEquals(listOf(1.toByte()), (invokePrivate(fixture.service, "decodeAudio", DevelopmentMediaInput(DevelopmentMediaKind.AUDIO, "audio/m4a", Base64.getEncoder().encodeToString(byteArrayOf(1)))) as ByteArray).toList())
+        assertEquals(listOf(2.toByte()), (invokePrivate(fixture.service, "decodeAudio", DevelopmentMediaInput(DevelopmentMediaKind.AUDIO, "audio/x-m4a", Base64.getEncoder().encodeToString(byteArrayOf(2)))) as ByteArray).toList())
+        `when`(fixture.categories.findById(fixture.categoryId)).thenReturn(Optional.of(DevelopmentCategoryConfig(id = fixture.categoryId, organizationId = null, name = "Global", active = false)))
+        assertEquals("Global", invokePrivate(fixture.service, "categoryName", fixture.organizationId, fixture.categoryId.toString(), false))
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "categoryName", fixture.organizationId, "not-a-uuid", false) }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "categoryName", fixture.organizationId, fixture.categoryId.toString(), true) }
+    }
+
     private data class Fixture(
         val organizationId: UUID,
         val categoryId: UUID,
@@ -321,5 +336,11 @@ class DevelopmentServiceTest {
         `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
         `when`(guardians.findAllByChildId(child.id)).thenReturn(emptyList())
         return Fixture(organizationId, categoryId, entryId, mediaId, child, staff, jwt, categories, entries, media, users, DevelopmentService(access, platformAccess, childScopes, entries, media, categories, guardians, users, audits, notifications, realtime), access, platformAccess, childScopes, guardians, notifications, scope)
+    }
+
+    private fun invokePrivate(service: DevelopmentService, name: String, vararg args: Any?): Any? {
+        val method = DevelopmentService::class.java.declaredMethods.first { it.name == name && it.parameterCount == args.size }
+        method.isAccessible = true
+        return try { method.invoke(service, *args) } catch (error: java.lang.reflect.InvocationTargetException) { throw (error.targetException ?: error) }
     }
 }

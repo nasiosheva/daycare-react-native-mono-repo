@@ -1209,6 +1209,43 @@ class GoalServiceTest {
         assertNull(invokePrivate(fixture.service, "validateGlobalLearningLevel", global.id))
         assertThrows(IllegalArgumentException::class.java) { invokePrivate(fixture.service, "validateGlobalLearningLevel", level.id) }
     }
+
+    @Test
+    fun `goal program mutation and assignment guards cover duplicate and unavailable paths`() {
+        val fixture = GoalServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val globalLevel = LearningLevel(organizationId = null)
+        val global = DevelopmentProgram(organizationId = null, learningLevelId = globalLevel.id, domain = GoalDomain.KOGNITIF, isTemplate = true)
+        val other = DevelopmentProgram(organizationId = null, learningLevelId = globalLevel.id, domain = GoalDomain.BAHASA_KOMUNIKASI, isTemplate = true)
+        `when`(fixture.platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
+        `when`(fixture.levels.findById(globalLevel.id)).thenReturn(Optional.of(globalLevel))
+        `when`(fixture.programs.findById(global.id)).thenReturn(Optional.of(global))
+        `when`(fixture.programs.findByOrganizationIdIsNullAndLearningLevelIdAndDomainAndActiveTrue(globalLevel.id, GoalDomain.BAHASA_KOMUNIKASI)).thenReturn(other)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.updateGlobalProgram(jwt, global.id, UpsertDevelopmentProgramRequest(globalLevel.id, "X", durationDays = 1, minimumYesPercent = 0, minimumYesStreak = 0, domain = GoalDomain.BAHASA_KOMUNIKASI)) }
+        global.active = false
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.reviseGlobalProgram(jwt, global.id, UpsertDevelopmentProgramRequest(globalLevel.id, "X", durationDays = 1, minimumYesPercent = 0, minimumYesStreak = 0, domain = GoalDomain.KOGNITIF)) }
+
+        val tenantScope = fixture.scope(organizationId)
+        val tenantLevel = LearningLevel(organizationId = organizationId)
+        val tenant = DevelopmentProgram(organizationId = organizationId, learningLevelId = tenantLevel.id, domain = GoalDomain.KOGNITIF, isTemplate = false)
+        val duplicateTenant = DevelopmentProgram(organizationId = organizationId, learningLevelId = tenantLevel.id, domain = GoalDomain.BAHASA_KOMUNIKASI)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), readOnly = false)).thenReturn(tenantScope)
+        `when`(fixture.levels.findById(tenantLevel.id)).thenReturn(Optional.of(tenantLevel))
+        `when`(fixture.programs.findByOrganizationIdAndLearningLevelIdAndDomain(organizationId, tenantLevel.id, GoalDomain.KOGNITIF)).thenReturn(tenant)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.createProgram(jwt, organizationId, UpsertDevelopmentProgramRequest(tenantLevel.id, "X", durationDays = 1, minimumYesPercent = 0, minimumYesStreak = 0, domain = GoalDomain.KOGNITIF)) }
+        `when`(fixture.programs.findById(tenant.id)).thenReturn(Optional.of(tenant))
+        `when`(fixture.programs.findByOrganizationIdAndLearningLevelIdAndDomain(organizationId, tenantLevel.id, GoalDomain.BAHASA_KOMUNIKASI)).thenReturn(duplicateTenant)
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.updateProgram(jwt, organizationId, tenant.id, UpsertDevelopmentProgramRequest(tenantLevel.id, "X", durationDays = 1, minimumYesPercent = 0, minimumYesStreak = 0, domain = GoalDomain.BAHASA_KOMUNIKASI)) }
+
+        val child = Child(organizationId = organizationId)
+        val curriculum = CurriculumProgram(organizationId = organizationId, active = false)
+        val program = DevelopmentProgram(organizationId = organizationId, learningLevelId = tenantLevel.id, active = true)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(tenantScope)
+        `when`(fixture.childScopes.requireStaffManagedChild(tenantScope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.curriculumPrograms.findById(curriculum.id)).thenReturn(Optional.of(curriculum))
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.assign(jwt, organizationId, child.id, AssignChildGoalRequest(curriculum.id, program.id)) }
+    }
 }
 
 private class GoalServiceFixture {

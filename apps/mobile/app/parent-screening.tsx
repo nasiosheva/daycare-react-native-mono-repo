@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 // Mories Deo Hutapea,S.E.,S.Kom
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { AppText, BackButton, Button, Card, Chip, EmptyState, MultiStepFormWizard, TextField, colors, radius, spacing, type MultiStepFormWizardStep } from "@daycare/ui";
@@ -13,7 +14,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { notify } from "@/notify/notify";
 import { previewDownloadedReport, saveDownloadedReport, shareDocumentExport } from "@/document-export";
-import { resultGuidanceKey } from "@/screening/resultGuidance";
+import { buildCopySummary, domainGuidanceKey, domainLabelKey, domainsWithAttention, resultGuidanceKey } from "@/screening/resultGuidance";
 
 export default function ParentScreeningScreen() {
   const router = useRouter();
@@ -41,6 +42,7 @@ export default function ParentScreeningScreen() {
   const selectedTemplate = templates.data?.find((item) => item.id === templateId);
   const requiredMissing = useMemo(() => questionnaire.data?.questions.filter((question) => question.required && !answers[question.id]) ?? [], [answers, questionnaire.data?.questions]);
   const observedItems = useMemo(() => result.data?.items.filter((item) => item.answerCode?.split(",").includes("YA_SUDAH") && item.answerLabelSnapshot) ?? [], [result.data?.items]);
+  const attentionDomains = useMemo(() => domainsWithAttention(result.data?.domains ?? []), [result.data?.domains]);
   const wizardSteps: MultiStepFormWizardStep[] = [{ id: "profile", label: t("screening.addProfile") }, { id: "questions", label: t("screening.title") }, { id: "result", label: t("screening.result") }];
   const currentStep = resultSessionId ? 2 : sessionId ? 1 : 0;
 
@@ -61,6 +63,19 @@ export default function ParentScreeningScreen() {
   const reset = () => { setSessionId(null); setResultSessionId(null); setAnswers({}); setTemplateId(null); };
   const previewPdf = async () => { if (!resultSessionId) return; try { const opened = await previewDownloadedReport(await api.downloadScreeningResult(resultSessionId)); if (!opened) notify(t("screening.previewPdfFailed"), undefined, "danger"); } catch { notify(t("screening.previewPdfFailed"), undefined, "danger"); } };
   const sharePdf = async () => { if (!resultSessionId) return; try { const file = await saveDownloadedReport(await api.downloadScreeningResult(resultSessionId)); await shareDocumentExport(file); } catch { notify(t("screening.saveFailed"), undefined, "danger"); } };
+  const copySummary = async () => {
+    if (!result.data) return;
+    try {
+      const summary = buildCopySummary({
+        statusTitle: result.data.statusTitleSnapshot,
+        statusSummary: result.data.statusSummarySnapshot,
+        domainTips: attentionDomains.map((code) => ({ label: t(domainLabelKey(code)!), guidance: t(domainGuidanceKey(code)!) })),
+        disclaimer: result.data.disclaimerTextSnapshot,
+      });
+      await Clipboard.setStringAsync(summary);
+      notify(t("screening.copySummaryDone"), undefined, "success");
+    } catch { notify(t("screening.copySummaryFailed"), undefined, "danger"); }
+  };
 
   return <AppScreen showBottomNavigation={false} title={t("screening.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     <ScrollView contentContainerStyle={styles.content}><MultiStepFormWizard steps={wizardSteps} currentStep={currentStep} progressLabel={`${currentStep + 1} / ${wizardSteps.length}`} accessibilityLabel={t("screening.title")}>
@@ -73,7 +88,7 @@ export default function ParentScreeningScreen() {
         {selectedProfile && <Card><AppText variant="heading">{t("screening.chooseTemplate")}</AppText>{templates.data?.map((item) => <Chip key={item.id} label={`${item.minAgeMonths}–${item.maxAgeMonths} bulan`} selected={item.id === templateId} onPress={() => setTemplateId(item.id)} />)}{!templates.data?.length && <AppText tone="muted">{t("screening.unavailable")}</AppText>}<Chip label={t("screening.consent")} selected={consented} onPress={() => setConsented((value) => !value)} /><Button disabled={!selectedTemplate || !consented || start.isPending} loading={start.isPending} onPress={() => void start.mutateAsync()}>{t("screening.start")}</Button></Card>}
       </>}
       {sessionId && questionnaire.data && !resultSessionId && <Card><AppText variant="heading">{selectedProfile?.subjectName}</AppText>{questionnaire.data.questions.map((question) => <View key={question.id} style={styles.question}><AppText variant="label">{question.questionText || question.stableQuestionId}{question.required ? " *" : ""}</AppText>{question.answerType === "MULTI_CHOICE" && <AppText tone="muted">{t("screening.multiChoiceHint")}</AppText>}{question.choices.filter((choice) => choice.enabled).map((choice) => { const selectedCodes = new Set((answers[question.id] ?? "").split(",").filter(Boolean)); return <Chip key={choice.id} label={choice.label} selected={selectedCodes.has(choice.code)} onPress={() => setAnswers((current) => { if (question.answerType !== "MULTI_CHOICE") return { ...current, [question.id]: choice.code }; const next = new Set((current[question.id] ?? "").split(",").filter(Boolean)); if (next.has(choice.code)) next.delete(choice.code); else next.add(choice.code); return { ...current, [question.id]: Array.from(next).join(",") }; })} />; })}</View>)}<AppText tone="muted">{t("screening.disclaimer")}</AppText><Button disabled={requiredMissing.length > 0 || complete.isPending} loading={complete.isPending} onPress={() => void complete.mutateAsync()}>{t("screening.complete")}</Button></Card>}
-      {resultSessionId && result.data && <Card><AppText variant="heading">{t("screening.result")}</AppText><View style={styles.summary}><AppText variant="label">{t("screening.usiaEmasSummary")}</AppText><AppText>{t("screening.usiaEmasSummaryText")}</AppText></View><AppText variant="title">{result.data.statusTitleSnapshot}</AppText><AppText>{result.data.statusSummarySnapshot}</AppText>{observedItems.length > 0 && <View style={styles.reasons}><AppText variant="label">{t("screening.observedItems")}</AppText>{observedItems.map((item) => <View key={item.questionId} style={styles.reason}><AppText>{item.questionTextSnapshot}</AppText><AppText tone="muted">{t("screening.answerPrefix", { answer: item.answerLabelSnapshot ?? "" })}</AppText></View>)}</View>}{result.data.reasons.length > 0 && <View style={styles.reasons}><AppText variant="label">{t("screening.attentionItems")}</AppText>{result.data.reasons.map((reason) => <View key={`${reason.reasonCode}-${reason.displayOrder}`} style={styles.reason}><AppText>{reason.questionTextSnapshot ?? t("screening.reasonGeneral")}</AppText>{reason.answerLabelSnapshot && <AppText tone="muted">{t("screening.answerPrefix", { answer: reason.answerLabelSnapshot })}</AppText>}</View>)}</View>}<View style={styles.guidance}><AppText variant="label">{t("screening.guidanceTitle")}</AppText><AppText>{t(resultGuidanceKey(result.data.mainStatus))}</AppText><AppText tone="muted">{result.data.nextStepSnapshot}</AppText></View><AppText tone="muted">{result.data.disclaimerTextSnapshot}</AppText><View style={styles.pdfActions}><Button variant="secondary" onPress={() => void previewPdf()}>{t("screening.previewPdf")}</Button><Button onPress={() => void sharePdf()}>{t("screening.download")}</Button></View><Button variant="secondary" onPress={reset}>{t("screening.start")}</Button></Card>}
+      {resultSessionId && result.data && <Card><AppText variant="heading">{t("screening.result")}</AppText><View style={styles.summary}><AppText variant="label">{t("screening.usiaEmasSummary")}</AppText><AppText>{t("screening.usiaEmasSummaryText")}</AppText></View><AppText variant="title">{result.data.statusTitleSnapshot}</AppText><AppText>{result.data.statusSummarySnapshot}</AppText>{observedItems.length > 0 && <View style={styles.reasons}><AppText variant="label">{t("screening.observedItems")}</AppText>{observedItems.map((item) => <View key={item.questionId} style={styles.reason}><AppText>{item.questionTextSnapshot}</AppText><AppText tone="muted">{t("screening.answerPrefix", { answer: item.answerLabelSnapshot ?? "" })}</AppText></View>)}</View>}{result.data.reasons.length > 0 && <View style={styles.reasons}><AppText variant="label">{t("screening.attentionItems")}</AppText>{result.data.reasons.map((reason) => <View key={`${reason.reasonCode}-${reason.displayOrder}`} style={styles.reason}><AppText>{reason.questionTextSnapshot ?? t("screening.reasonGeneral")}</AppText>{reason.answerLabelSnapshot && <AppText tone="muted">{t("screening.answerPrefix", { answer: reason.answerLabelSnapshot })}</AppText>}</View>)}</View>}<View style={styles.guidance}><AppText variant="label">{t("screening.guidanceTitle")}</AppText><AppText>{t(resultGuidanceKey(result.data.mainStatus))}</AppText><AppText tone="muted">{result.data.nextStepSnapshot}</AppText></View>{attentionDomains.length > 0 && <View style={styles.reasons}>{attentionDomains.map((code) => <View key={code} style={styles.reason}><AppText variant="label">{t(domainLabelKey(code)!)}</AppText><AppText tone="muted">{t(domainGuidanceKey(code)!)}</AppText></View>)}</View>}<AppText tone="muted">{result.data.disclaimerTextSnapshot}</AppText><View style={styles.pdfActions}><Button variant="secondary" onPress={() => void copySummary()}>{t("screening.copySummary")}</Button><Button variant="secondary" onPress={() => void previewPdf()}>{t("screening.previewPdf")}</Button><Button onPress={() => void sharePdf()}>{t("screening.download")}</Button></View><Button variant="secondary" onPress={reset}>{t("screening.start")}</Button></Card>}
     </MultiStepFormWizard></ScrollView>
   </AppScreen>;
 }

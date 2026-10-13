@@ -222,6 +222,10 @@ class OvertimeServiceTest {
         assertThrows(IllegalArgumentException::class.java) { service().updateBranchHours(jwt, organizationId, branch.id, UpdateBranchOperatingHoursRequest(allHours, emptyList())) }
         val validHours = java.time.DayOfWeek.entries.map { OperatingHourInput(it, false) }
         assertThrows(IllegalArgumentException::class.java) { service().updateBranchHours(jwt, organizationId, branch.id, UpdateBranchOperatingHoursRequest(validHours, emptyList(), autoOvertimeBillingEnabled = true)) }
+        val missingOpen = java.time.DayOfWeek.entries.map { OperatingHourInput(it, true, opensAt = null, closesAt = java.time.LocalTime.of(16, 0)) }
+        assertThrows(IllegalArgumentException::class.java) { service().updateBranchHours(jwt, organizationId, branch.id, UpdateBranchOperatingHoursRequest(missingOpen, emptyList())) }
+        val missingClose = java.time.DayOfWeek.entries.map { OperatingHourInput(it, true, opensAt = java.time.LocalTime.of(7, 0), closesAt = null) }
+        assertThrows(IllegalArgumentException::class.java) { service().updateBranchHours(jwt, organizationId, branch.id, UpdateBranchOperatingHoursRequest(missingClose, emptyList())) }
     }
 
     @Test
@@ -249,6 +253,8 @@ class OvertimeServiceTest {
         val request = CreateOvertimeChargeRequest(child.id, date, java.time.LocalTime.of(16, 30), date.plusDays(2))
         val charge = service.createCharge(jwt, organizationId, request)
         assertEquals(parentId, charge.invoiceId.let { invoices.findById(it).orElseThrow().payerUserId })
+        `when`(charges.findAllByOrganizationIdAndChildIdAndOperationalDate(organizationId, child.id, date)).thenReturn(listOf(com.daycare.api.persistence.OvertimeCharge(organizationId = organizationId, childId = child.id, branchId = branch.id, invoiceId = savedInvoice.id, operationalDate = date)))
+        assertThrows(IllegalArgumentException::class.java) { service.createCharge(jwt, organizationId, request) }
         val existing = com.daycare.api.persistence.OvertimeCharge(organizationId = organizationId, branchId = branch.id, childId = child.id, payerUserId = parentId, invoiceId = charge.invoiceId, operationalDate = date)
         `when`(charges.findById(existing.id)).thenReturn(Optional.of(existing))
         `when`(invoices.findById(existing.invoiceId)).thenReturn(Optional.of(Invoice(id = existing.invoiceId, organizationId = organizationId, payerUserId = parentId, invoiceNumber = "INV", status = InvoiceStatus.PENDING)))

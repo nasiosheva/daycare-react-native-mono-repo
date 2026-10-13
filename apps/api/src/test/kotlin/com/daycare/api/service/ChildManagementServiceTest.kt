@@ -1200,4 +1200,27 @@ class ChildManagementServiceTest {
         val guardian = GuardianLink(childId = child.id, userId = staffUser.id); `when`(guardianLinks.findAllByChildId(child.id)).thenReturn(listOf(guardian)); `when`(users.findById(staffUser.id)).thenReturn(Optional.of(staffUser)); assertEquals(1, (invokePrivate(service, "guardianResponses", child.id) as List<*>).size)
         `when`(users.findById(staffUser.id)).thenReturn(Optional.empty()); assertTrue((invokePrivate(service, "guardianResponses", child.id) as List<*>).isEmpty())
     }
+
+    @Test
+    fun `template listing is reachable and unassign staff rejects a missing or foreign assignment`() {
+        val access = mock(AccessService::class.java); val children = mock(ChildRepository::class.java); val programs = mock(ChildProgramRepository::class.java)
+        val assignments = mock(ChildStaffAssignmentRepository::class.java); val memberships = mock(MembershipRepository::class.java); val users = mock(UserProfileRepository::class.java); val guardianLinks = mock(GuardianLinkRepository::class.java); val childScopes = mock(ChildScopeService::class.java)
+        val templates = mock(ChildProgramTemplateRepository::class.java); val templateSteps = mock(ChildProgramTemplateStepRepository::class.java)
+        val service = childManagementService(access, children, programs, assignments, memberships, users, guardianLinks, childScopes, templates = templates, templateSteps = templateSteps)
+        val jwt = mock(Jwt::class.java)
+        val org = UUID.randomUUID(); val otherOrg = UUID.randomUUID(); val child = Child(organizationId = org, active = true)
+        `when`(access.require(jwt, org, setOf(Role.STAFF_ADMIN, Role.STAFF), readOnly = true)).thenReturn(AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet()))
+        `when`(access.require(jwt, org, setOf(Role.STAFF_ADMIN))).thenReturn(AccessScope(UserProfile(), Membership(role = Role.STAFF_ADMIN), emptySet(), emptySet()))
+        val template = ChildProgramTemplate(organizationId = org, name = "Template")
+        `when`(templates.findAllByOrganizationIdOrderByNameAsc(org)).thenReturn(listOf(template))
+        `when`(templateSteps.findAllByOrganizationIdAndChildProgramTemplateIdOrderByDisplayOrderAscCreatedAtAsc(org, template.id)).thenReturn(emptyList())
+        assertEquals(1, service.listTemplates(jwt, org).size)
+
+        `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+        `when`(assignments.findById(UUID.randomUUID())).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) { service.unassignStaff(jwt, org, child.id, UUID.randomUUID()) }
+        val foreignAssignment = ChildStaffAssignment(organizationId = otherOrg, childId = child.id, userId = UUID.randomUUID(), assignmentRole = ChildCareRole.STAFF.name)
+        `when`(assignments.findById(foreignAssignment.id)).thenReturn(Optional.of(foreignAssignment))
+        assertThrows(IllegalArgumentException::class.java) { service.unassignStaff(jwt, org, child.id, foreignAssignment.id) }
+    }
 }

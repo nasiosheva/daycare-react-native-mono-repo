@@ -15,6 +15,18 @@ import org.springframework.security.oauth2.jwt.Jwt
 import java.util.UUID
 
 class BranchManagementServiceTest {
+    // Mories Deo Hutapea,S.E.,S.Kom
+    @Test
+    fun `google maps URL helper accepts supported host variants and blank optional values`() {
+        val service = BranchManagementService(mock(AccessService::class.java), mock(BranchRepository::class.java))
+        assertEquals(null, invokePrivate(service, "mapsUrl", null))
+        assertEquals(null, invokePrivate(service, "mapsUrl", "  "))
+        listOf("https://goo.gl/maps/x", "https://foo.goo.gl/x", "https://maps.google.com/?q=x", "https://www.google.com/maps?q=x", "https://google.co.id/maps?q=x").forEach { url ->
+            assertEquals(url, invokePrivate(service, "mapsUrl", url))
+        }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(service, "mapsUrl", "http://maps.google.com/x") }
+        assertThrows(IllegalArgumentException::class.java) { invokePrivate(service, "mapsUrl", "https://maps.example/x") }
+    }
     @Test
     fun `Staff Admin saves a required address and an optional Google Maps link`() {
         val branches = mock(BranchRepository::class.java)
@@ -83,5 +95,27 @@ class BranchManagementServiceTest {
         branch.active = false
         assertThrows(IllegalArgumentException::class.java) { service.setPrimary(jwt, organizationId, branch.id) }
         verify(branches, never()).save(org.mockito.ArgumentMatchers.any())
+    }
+
+    @Test
+    fun `branch update and primary operations reject missing or foreign branches`() {
+        val branches = mock(BranchRepository::class.java)
+        val organizationId = UUID.randomUUID()
+        val foreign = Branch(organizationId = UUID.randomUUID(), name = "Asing")
+        val local = Branch(organizationId = organizationId, name = "Lokal")
+        `when`(branches.findById(foreign.id)).thenReturn(java.util.Optional.of(foreign))
+        `when`(branches.findById(local.id)).thenReturn(java.util.Optional.of(local))
+        `when`(branches.findByOrganizationIdAndPrimaryTrue(organizationId)).thenReturn(null)
+        val service = BranchManagementService(mock(AccessService::class.java), branches)
+        val jwt = mock(Jwt::class.java)
+        assertThrows(IllegalArgumentException::class.java) { service.update(jwt, organizationId, foreign.id, UpdateTenantBranchRequest("x", "Asia/Jakarta", "address")) }
+        assertThrows(IllegalArgumentException::class.java) { service.setPrimary(jwt, organizationId, UUID.randomUUID()) }
+        assertEquals(true, service.setPrimary(jwt, organizationId, local.id).primary)
+    }
+
+    private fun invokePrivate(service: BranchManagementService, name: String, vararg args: Any?): Any? {
+        val method = BranchManagementService::class.java.declaredMethods.first { it.name == name && it.parameterCount == args.size }
+        method.isAccessible = true
+        return try { method.invoke(service, *args) } catch (error: java.lang.reflect.InvocationTargetException) { throw (error.targetException ?: error) }
     }
 }

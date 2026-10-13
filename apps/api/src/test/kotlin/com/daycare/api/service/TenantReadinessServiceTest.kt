@@ -266,6 +266,24 @@ class TenantReadinessServiceTest {
         assertFalse(TenantReadinessIssue.OPERATING_HOURS_REQUIRED in service().organizationReadiness(jwt, organizationId).issues)
     }
 
+    @Test
+    fun `readiness capability helpers ignore drafts and unrelated institution types`() {
+        val daycareBranch = UUID.randomUUID()
+        val academicBranch = UUID.randomUUID()
+        val offerings = listOf(
+            EducationOffering(branchId = daycareBranch, institutionType = "DAYCARE", status = EducationOfferingStatus.PUBLISHED),
+            EducationOffering(branchId = UUID.randomUUID(), institutionType = "DAYCARE", status = EducationOfferingStatus.DRAFT),
+            EducationOffering(branchId = academicBranch, institutionType = "TK", status = EducationOfferingStatus.PUBLISHED),
+            EducationOffering(branchId = UUID.randomUUID(), institutionType = "TK", status = EducationOfferingStatus.DRAFT),
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val daycareBranches = invokePrivate(service(), "publishedDaycareBranchIds", offerings) as Set<UUID>
+        assertEquals(setOf(daycareBranch), daycareBranches)
+        assertTrue(invokePrivate(service(), "hasPublishedAcademicOffering", offerings) as Boolean)
+        assertFalse(invokePrivate(service(), "hasPublishedAcademicOffering", offerings.filter { it.institutionType == "DAYCARE" }) as Boolean)
+    }
+
     private fun stubStaffAdminAccess(organizationId: UUID) {
         val scope = AccessScope(mock(UserProfile::class.java), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN, active = true), emptySet(), emptySet())
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), null, true)).thenReturn(scope)

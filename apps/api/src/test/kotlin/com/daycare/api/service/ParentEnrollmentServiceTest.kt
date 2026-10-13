@@ -27,6 +27,7 @@ import com.daycare.api.persistence.OrganizationRepository
 import com.daycare.api.persistence.ParentEnrollment
 import com.daycare.api.persistence.ParentEnrollmentRepository
 import com.daycare.api.persistence.ServiceEntitlementRepository
+import com.daycare.api.persistence.ServiceEntitlement
 import com.daycare.api.persistence.ServicePlanRepository
 import com.daycare.api.persistence.TenantSubscription
 import com.daycare.api.persistence.TenantSubscriptionRepository
@@ -40,8 +41,10 @@ import org.junit.jupiter.api.Test
 import org.mockito.ArgumentCaptor
 import org.mockito.Mockito.any
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
 import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import org.springframework.security.oauth2.jwt.Jwt
 import java.time.LocalDate
@@ -49,6 +52,36 @@ import java.util.Optional
 import java.util.UUID
 
 class ParentEnrollmentServiceTest {
+
+    @Test
+    fun `catalog supports blank and searched queries while hiding inactive or unavailable tenants`() {
+        val f = enrollmentFixture()
+        val unavailableId = UUID.randomUUID()
+        val emptyBranchId = UUID.randomUUID()
+        val available = com.daycare.api.persistence.Organization(id = f.organizationId, name = "Aktif")
+        val unavailable = com.daycare.api.persistence.Organization(id = unavailableId, name = "Tidak Aktif")
+        val noBranch = com.daycare.api.persistence.Organization(id = UUID.randomUUID(), name = "Tanpa Cabang")
+        val availablePlan = com.daycare.api.persistence.ServicePlan(organizationId = f.organizationId, name = "Paket", type = ServicePlanType.MONTHLY, price = java.math.BigDecimal.TEN)
+        `when`(f.organizations.findAll()).thenReturn(listOf(available, unavailable, noBranch))
+        `when`(f.organizations.findAllByNameContainingIgnoreCase("aktif")).thenReturn(listOf(available))
+        `when`(f.subscriptions.findByOrganizationId(f.organizationId)).thenReturn(TenantSubscription(organizationId = f.organizationId, status = TenantSubscriptionStatus.TRIAL))
+        `when`(f.subscriptions.findByOrganizationId(unavailableId)).thenReturn(TenantSubscription(organizationId = unavailableId, status = TenantSubscriptionStatus.SUSPENDED))
+        `when`(f.subscriptions.findByOrganizationId(noBranch.id)).thenReturn(TenantSubscription(organizationId = noBranch.id, status = TenantSubscriptionStatus.ACTIVE))
+        `when`(f.branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(f.organizationId)).thenReturn(listOf(f.branch))
+        val unavailableBranch = Branch(organizationId = unavailableId)
+        `when`(f.branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(unavailableId)).thenReturn(listOf(unavailableBranch))
+        `when`(f.branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(noBranch.id)).thenReturn(emptyList())
+        `when`(f.published.hasPublishedCapability(f.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, f.branch.id)).thenReturn(true)
+        `when`(f.published.hasPublishedCapability(unavailableId, InstitutionCapability.DAYCARE_OPERATIONS, unavailableBranch.id)).thenReturn(true)
+        `when`(f.billing.branchCapacityForCatalog(f.organizationId, f.branch.id)).thenReturn(12)
+        `when`(f.plans.findAllByOrganizationIdAndActiveTrue(f.organizationId)).thenReturn(listOf(availablePlan))
+
+        val all = f.service.catalog(f.jwt)
+        assertEquals(1, all.size)
+        assertEquals(12, all.single().branches.single().dailyCapacity)
+        assertEquals(1, f.service.catalog(f.jwt, " aktif ").size)
+        verify(f.organizations).findAllByNameContainingIgnoreCase("aktif")
+    }
 
     @Test
     fun `parent enrollment access state and catalog guards cover every billing outcome`() {
@@ -483,6 +516,61 @@ class ParentEnrollmentServiceTest {
         `when`(fixture.familyProfiles.forTenant(fixture.organizationId, enrollment.userId)).thenReturn(null)
         assertEquals(listOf(enrollment.id), fixture.service.pendingApprovals(fixture.jwt, fixture.organizationId, BranchListFilter(branchId = fixture.branch.id), " Alya ").map { it.id })
         assertEquals(emptyList<ParentEnrollmentResponse>(), fixture.service.pendingApprovals(fixture.jwt, fixture.organizationId, search = "TidakAda"))
+        assertEquals(listOf(enrollment.id), fixture.service.pendingApprovals(fixture.jwt, fixture.organizationId).map { it.id })
+        assertEquals(listOf(enrollment.id), fixture.service.pendingApprovals(fixture.jwt, fixture.organizationId, search = "Paket").map { it.id })
+    }
+
+    @Test
+    fun `approval reuses an existing parent membership and guardian without creating duplicates`() {
+        val fixture = enrollmentFixture()
+        val enrollment = ParentEnrollment(
+            userId = fixture.parent.id,
+            organizationId = fixture.organizationId,
+            branchId = fixture.branch.id,
+            childId = fixture.child.id,
+            selectedPlanName = "Paket",
+            selectedTotalAmount = java.math.BigDecimal.TEN,
+        )
+        val membership = Membership(userId = fixture.parent.id, organizationId = fixture.organizationId, role = Role.PARENT, active = false, deactivatedAt = java.time.Instant.now())
+        val scope = AccessScope(fixture.staff, Membership(organizationId = fixture.organizationId, role = Role.STAFF_ADMIN), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        val invoice = Invoice(organizationId = fixture.organizationId, payerUserId = fixture.parent.id, invoiceNumber = "INV-REUSE", totalAmount = java.math.BigDecimal.TEN)
+        val entitlement = ServiceEntitlement(organizationId = fixture.organizationId, ownerUserId = fixture.parent.id, status = EntitlementStatus.PENDING_PAYMENT)
+        val purchase = PurchaseServiceResponse(
+            EntitlementResponse(entitlement.id, fixture.child.branchId, fixture.child.id, fixture.child.firstName, fixture.parent.displayName, fixture.parent.email, enrollment.selectedPlanName, com.daycare.api.domain.ServicePlanType.MONTHLY, EntitlementStatus.PENDING_PAYMENT, null, null, LocalDate.now()),
+            InvoiceResponse(invoice.id, invoice.invoiceNumber, invoice.source, invoice.description, fixture.child.branchId, fixture.child.id, fixture.child.firstName, fixture.parent.displayName, fixture.parent.email, invoice.subtotalAmount, invoice.discountAmount, invoice.discountName, invoice.discountCode, invoice.totalAmount, invoice.status, invoice.dueDate, invoice.createdAt, null),
+            emptyList(),
+        )
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(scope)
+        `when`(fixture.enrollments.findById(enrollment.id)).thenReturn(Optional.of(enrollment))
+        `when`(fixture.children.findById(fixture.child.id)).thenReturn(Optional.of(fixture.child))
+        `when`(fixture.paymentInstructions.hasActiveInstruction(fixture.organizationId)).thenReturn(true)
+        `when`(fixture.users.findById(fixture.parent.id)).thenReturn(Optional.of(fixture.parent))
+        val expectedSnapshot = EnrollmentPlanSnapshot(
+            enrollment.selectedPlanId,
+            enrollment.selectedPlanName,
+            enrollment.selectedPlanType,
+            enrollment.selectedSubtotalAmount,
+            enrollment.selectedDiscountAmount,
+            enrollment.selectedDiscountName,
+            enrollment.selectedDiscountCode,
+            enrollment.selectedTotalAmount,
+            enrollment.selectedCreditCount,
+            enrollment.selectedUnusedCreditPolicy,
+            enrollment.selectedCarryForwardDays,
+            enrollment.selectedBookingRequiresApproval,
+        )
+        `when`(fixture.billing.purchaseApprovedEnrollment(fixture.parent, fixture.organizationId, fixture.child, expectedSnapshot)).thenReturn(purchase)
+        `when`(fixture.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        `when`(fixture.memberships.findAllByUserIdAndOrganizationId(fixture.parent.id, fixture.organizationId)).thenReturn(listOf(membership))
+        `when`(fixture.guardians.existsByChildIdAndUserId(fixture.child.id, fixture.parent.id)).thenReturn(true)
+
+        val result = fixture.service.decide(fixture.jwt, fixture.organizationId, enrollment.id, ParentEnrollmentApprovalRequest(true))
+
+        assertEquals(ParentEnrollmentStatus.APPROVED, result.status)
+        assertTrue(membership.active)
+        assertEquals(null, membership.deactivatedAt)
+        verify(fixture.memberships, never()).save(any())
+        verify(fixture.guardians, never()).save(any())
     }
 
     @Test
@@ -666,6 +754,20 @@ class ParentEnrollmentServiceTest {
         `when`(f.memberships.findAllByOrganizationId(f.organizationId)).thenReturn(listOf(admin, Membership(organizationId = f.organizationId, role = Role.STAFF_ADMIN, active = false)))
         invokePrivate(f.service, "notifyStaffAdmins", f.organizationId, "Title", "Body", "/path")
         verify(f.notifications).notify(f.organizationId, f.staff.id, "Title", "Body", "/path", setOf(RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.INVOICES, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.BOOKINGS))
+    }
+
+    @Test
+    fun `invoice lifecycle ignores paid enrollment and preserves access with an active entitlement`() {
+        val f = enrollmentFixture()
+        val pendingInvoice = f.invoice.id
+        `when`(f.enrollments.findByInvoiceId(pendingInvoice)).thenReturn(null)
+        f.service.invoicePaid(InvoicePaidEvent(pendingInvoice))
+
+        val approved = ParentEnrollment(userId = f.parent.id, organizationId = f.organizationId, branchId = f.branch.id, childId = f.child.id, status = ParentEnrollmentStatus.APPROVED)
+        `when`(f.enrollments.findByInvoiceId(pendingInvoice)).thenReturn(approved)
+        `when`(f.entitlements.findAllByOrganizationIdAndOwnerUserId(f.organizationId, f.parent.id)).thenReturn(listOf(ServiceEntitlement(organizationId = f.organizationId, ownerUserId = f.parent.id, status = EntitlementStatus.ACTIVE)))
+        f.service.invoiceExpired(InvoiceExpiredEvent(pendingInvoice))
+        verifyNoInteractions(f.notifications)
     }
 
     private fun otherOrgEntity(id: UUID) = com.daycare.api.persistence.Organization(id = id, name = "Lain")

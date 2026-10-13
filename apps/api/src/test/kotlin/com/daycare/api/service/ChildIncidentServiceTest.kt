@@ -345,6 +345,172 @@ class ChildIncidentServiceTest {
         invoke("requireAssignedStaff", owner.id, fixture.child, fixture.organizationId)
     }
 
+    @Test
+    fun `create and lifecycle updates normalize blank optional text fields to null`() {
+        val fixture = fixture()
+        `when`(fixture.reports.save(any(ChildIncidentReport::class.java))).thenAnswer { it.arguments[0] }
+        val created = fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, CreateChildIncidentRequest(IncidentSeverity.MINOR, IncidentCategory.OTHER, "x", "   ", Instant.now()))
+        assertEquals(null, created.actionTaken)
+
+        val report = ChildIncidentReport(id = UUID.randomUUID(), organizationId = fixture.organizationId, childId = fixture.child.id, description = "x")
+        `when`(fixture.reports.findById(report.id)).thenReturn(Optional.of(report))
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(fixture.staffScope)
+        `when`(fixture.childScopes.requireStaffManagedChild(fixture.staffScope, fixture.child.id, fixture.organizationId)).thenReturn(fixture.child)
+        `when`(fixture.followUps.existsByIncidentIdAndStatus(report.id, IncidentFollowUpStatus.OPEN)).thenReturn(false)
+        `when`(fixture.acknowledgements.existsByIncidentIdAndUserId(report.id, fixture.staff.id)).thenReturn(false)
+
+        val result = fixture.service.updateLifecycle(fixture.jwt, fixture.organizationId, fixture.child.id, report.id, UpdateChildIncidentLifecycleRequest(IncidentStatus.IN_PROGRESS, GuardianContactStatus.ATTEMPTED, "   "))
+
+        assertEquals(null, result.guardianContactOutcome)
+    }
+
+    @Test
+    fun `closing a serious incident fails before checking guardian outcome when contact is not confirmed`() {
+        val fixture = fixture()
+        val report = ChildIncidentReport(id = UUID.randomUUID(), organizationId = fixture.organizationId, childId = fixture.child.id, severity = IncidentSeverity.SERIOUS, description = "x")
+        `when`(fixture.reports.findById(report.id)).thenReturn(Optional.of(report))
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(fixture.staffScope)
+        `when`(fixture.childScopes.requireStaffManagedChild(fixture.staffScope, fixture.child.id, fixture.organizationId)).thenReturn(fixture.child)
+        `when`(fixture.followUps.existsByIncidentIdAndStatus(report.id, IncidentFollowUpStatus.OPEN)).thenReturn(false)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.updateLifecycle(fixture.jwt, fixture.organizationId, fixture.child.id, report.id, UpdateChildIncidentLifecycleRequest(IncidentStatus.CLOSED, GuardianContactStatus.ATTEMPTED, "ok"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.updateLifecycle(fixture.jwt, fixture.organizationId, fixture.child.id, report.id, UpdateChildIncidentLifecycleRequest(IncidentStatus.CLOSED, GuardianContactStatus.CONFIRMED, "   "))
+        }
+    }
+
+    @Test
+    fun `completeFollowUp rejects a followUp that belongs to a different incident`() {
+        val fixture = fixture()
+        val report = ChildIncidentReport(id = UUID.randomUUID(), organizationId = fixture.organizationId, childId = fixture.child.id, description = "x")
+        val followUp = ChildIncidentFollowUp(organizationId = fixture.organizationId, incidentId = UUID.randomUUID(), title = "Other")
+        `when`(fixture.reports.findById(report.id)).thenReturn(Optional.of(report))
+        `when`(fixture.followUps.findById(followUp.id)).thenReturn(Optional.of(followUp))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.completeFollowUp(fixture.jwt, fixture.organizationId, fixture.child.id, report.id, followUp.id)
+        }
+    }
+
+    @Test
+    fun `completeFollowUp rejects a followUp that belongs to a different organization`() {
+        val fixture = fixture()
+        val report = ChildIncidentReport(id = UUID.randomUUID(), organizationId = fixture.organizationId, childId = fixture.child.id, description = "x")
+        val followUp = ChildIncidentFollowUp(organizationId = UUID.randomUUID(), incidentId = report.id, title = "Foreign")
+        `when`(fixture.reports.findById(report.id)).thenReturn(Optional.of(report))
+        `when`(fixture.followUps.findById(followUp.id)).thenReturn(Optional.of(followUp))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.completeFollowUp(fixture.jwt, fixture.organizationId, fixture.child.id, report.id, followUp.id)
+        }
+    }
+
+    @Test
+    fun `acknowledge rejects a report that belongs to a different child in the same tenant`() {
+        val fixture = fixture()
+        val report = ChildIncidentReport(id = UUID.randomUUID(), organizationId = fixture.organizationId, childId = UUID.randomUUID(), description = "x")
+        `when`(fixture.reports.findById(report.id)).thenReturn(Optional.of(report))
+        `when`(fixture.childScopes.requireParentLinkedChild(fixture.parentScope, fixture.child.id, fixture.organizationId)).thenReturn(fixture.child)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.acknowledge(fixture.jwt, fixture.organizationId, fixture.child.id, report.id)
+        }
+    }
+
+    @Test
+    fun `addFollowUp allows a note to be omitted entirely`() {
+        val fixture = fixture()
+        val report = ChildIncidentReport(id = UUID.randomUUID(), organizationId = fixture.organizationId, childId = fixture.child.id, description = "x")
+        `when`(fixture.reports.findById(report.id)).thenReturn(Optional.of(report))
+        `when`(fixture.followUps.save(any(ChildIncidentFollowUp::class.java))).thenAnswer { it.arguments[0] }
+
+        val result = fixture.service.addFollowUp(fixture.jwt, fixture.organizationId, fixture.child.id, report.id, CreateChildIncidentFollowUpRequest("Follow"))
+
+        assertEquals(null, result.note)
+    }
+
+    @Test
+    fun `decodePhoto rejects byte sequences that fail jpeg and png signature checks`() {
+        val fixture = fixture()
+        fun invoke(name: String, vararg args: Any?): Any? {
+            val method = ChildIncidentService::class.java.declaredMethods.single { it.name == name }
+            method.isAccessible = true
+            try { return method.invoke(fixture.service, *args) }
+            catch (error: java.lang.reflect.InvocationTargetException) { throw error.targetException }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            invoke("decodePhoto", IncidentPhotoInput("image/jpeg", Base64.getEncoder().encodeToString(byteArrayOf(1, 2))))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            invoke("decodePhoto", IncidentPhotoInput("image/jpeg", Base64.getEncoder().encodeToString(byteArrayOf(0xFF.toByte(), 0x00, 0xFF.toByte()))))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            invoke("decodePhoto", IncidentPhotoInput("image/jpeg", Base64.getEncoder().encodeToString(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0x00))))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            invoke("decodePhoto", IncidentPhotoInput("image/png", Base64.getEncoder().encodeToString(ByteArray(8))))
+        }
+    }
+
+    @Test
+    fun `assigned staff lookup skips inactive memberships and wrong roles before matching`() {
+        val fixture = fixture()
+        val report = ChildIncidentReport(id = UUID.randomUUID(), organizationId = fixture.organizationId, childId = fixture.child.id, description = "x")
+        val ownerId = UUID.randomUUID()
+        val owner = UserProfile(id = ownerId, displayName = "Owner")
+        val inactiveAdmin = Membership(organizationId = fixture.organizationId, userId = ownerId, role = Role.STAFF_ADMIN, active = false)
+        val wrongRoleParent = Membership(organizationId = fixture.organizationId, userId = ownerId, role = Role.PARENT, active = true)
+        `when`(fixture.reports.findById(report.id)).thenReturn(Optional.of(report))
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(fixture.staffScope)
+        `when`(fixture.childScopes.requireStaffManagedChild(fixture.staffScope, fixture.child.id, fixture.organizationId)).thenReturn(fixture.child)
+        `when`(fixture.users.findById(ownerId)).thenReturn(Optional.of(owner))
+        `when`(fixture.memberships.findAllByUserIdAndOrganizationId(ownerId, fixture.organizationId)).thenReturn(listOf(inactiveAdmin, wrongRoleParent))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.updateLifecycle(fixture.jwt, fixture.organizationId, fixture.child.id, report.id, UpdateChildIncidentLifecycleRequest(IncidentStatus.IN_PROGRESS, GuardianContactStatus.ATTEMPTED, followUpOwnerUserId = ownerId))
+        }
+    }
+
+    @Test
+    fun `assigned staff is rejected when active membership does not manage the child`() {
+        val fixture = fixture()
+        val report = ChildIncidentReport(id = UUID.randomUUID(), organizationId = fixture.organizationId, childId = fixture.child.id, description = "x")
+        val ownerId = UUID.randomUUID()
+        val owner = UserProfile(id = ownerId, displayName = "Owner")
+        val membership = Membership(organizationId = fixture.organizationId, userId = ownerId, role = Role.STAFF, active = true)
+        `when`(fixture.reports.findById(report.id)).thenReturn(Optional.of(report))
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(fixture.staffScope)
+        `when`(fixture.childScopes.requireStaffManagedChild(fixture.staffScope, fixture.child.id, fixture.organizationId)).thenReturn(fixture.child)
+        `when`(fixture.users.findById(ownerId)).thenReturn(Optional.of(owner))
+        `when`(fixture.memberships.findAllByUserIdAndOrganizationId(ownerId, fixture.organizationId)).thenReturn(listOf(membership))
+        `when`(fixture.childScopes.isStaffManagedChild(AccessScope(owner, membership, emptySet(), emptySet()), fixture.child.id, fixture.organizationId)).thenReturn(false)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.updateLifecycle(fixture.jwt, fixture.organizationId, fixture.child.id, report.id, UpdateChildIncidentLifecycleRequest(IncidentStatus.IN_PROGRESS, GuardianContactStatus.ATTEMPTED, followUpOwnerUserId = ownerId))
+        }
+    }
+
+    @Test
+    fun `serious incident notification skips an active staff member who is not a staff admin`() {
+        val fixture = fixture()
+        val guardianId = UUID.randomUUID()
+        val adminId = UUID.randomUUID()
+        val staffId = UUID.randomUUID()
+        `when`(fixture.reports.save(any(ChildIncidentReport::class.java))).thenAnswer { it.arguments[0] }
+        `when`(fixture.guardians.findAllByChildId(fixture.child.id)).thenReturn(listOf(com.daycare.api.persistence.GuardianLink(childId = fixture.child.id, userId = guardianId)))
+        `when`(fixture.memberships.findAllByOrganizationId(fixture.organizationId)).thenReturn(listOf(
+            Membership(organizationId = fixture.organizationId, userId = adminId, role = Role.STAFF_ADMIN, active = true),
+            Membership(organizationId = fixture.organizationId, userId = staffId, role = Role.STAFF, active = true),
+        ))
+
+        fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, CreateChildIncidentRequest(IncidentSeverity.SERIOUS, IncidentCategory.INJURY, "Jatuh", occurredAt = Instant.now()))
+
+        verify(fixture.notifications).notify(fixture.organizationId, adminId, "Insiden serius: Ayu", "Jatuh", "/incident-reports?childId=${fixture.child.id}", setOf(RealtimeFlag.INCIDENT_REPORTS))
+        verify(fixture.notifications, org.mockito.Mockito.never()).notify(fixture.organizationId, staffId, "Insiden serius: Ayu", "Jatuh", "/incident-reports?childId=${fixture.child.id}", setOf(RealtimeFlag.INCIDENT_REPORTS))
+    }
+
     private data class Fixture(
         val organizationId: UUID,
         val jwt: Jwt,

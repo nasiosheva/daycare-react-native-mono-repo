@@ -125,6 +125,23 @@ class ScreeningSeedBatchServiceTest {
     }
 
     @Test
+    fun `preview rejects the same batch with a different checksum`() {
+        val definition = definition()
+        `when`(manifests.findByBatchId(definition.batchId)).thenReturn(
+            ScreeningSeedManifest(
+                batchId = definition.batchId,
+                checksum = "sha256:previous",
+                templateCount = 1,
+                questionCount = 1,
+                choiceCount = 1,
+                translationCount = 1,
+            ),
+        )
+
+        assertThrows(IllegalStateException::class.java) { service.preview(definition) }
+    }
+
+    @Test
     fun `apply rejects an existing template code and version`() {
         val definition = definition()
         `when`(manifests.findByBatchIdForUpdate(definition.batchId)).thenReturn(null)
@@ -237,6 +254,95 @@ class ScreeningSeedBatchServiceTest {
         invalidTexts.forEach { invalid ->
             assertThrows(IllegalArgumentException::class.java) { service.preview(base.copy(texts = listOf(invalid))) }
         }
+    }
+
+    @Test
+    fun `preview rejects duplicate template code+version and duplicate stable question id even with distinct primary ids`() {
+        val base = definition()
+        val template = base.templates.single()
+        val question = base.questions.single()
+        val sameCodeVersionTemplate = template.copy(id = UUID.randomUUID())
+        val sameStableQuestion = question.copy(id = UUID.randomUUID())
+
+        listOf(
+            base.copy(templates = listOf(template, sameCodeVersionTemplate)),
+            base.copy(questions = listOf(question, sameStableQuestion)),
+        ).forEach { invalid ->
+            assertThrows(IllegalArgumentException::class.java) { service.preview(invalid) }
+        }
+    }
+
+    @Test
+    fun `preview accepts a rule set with a fully valid rule trigger`() {
+        val base = definition()
+        val ruleSetId = UUID.randomUUID()
+        val definition = base.copy(
+            ruleSets = listOf(ScreeningRuleSetSeedDefinition(ruleSetId, "DEV-rules", 1, "sha256:rules")),
+            ruleTriggers = listOf(
+                ScreeningRuleTriggerSeedDefinition(
+                    id = UUID.randomUUID(),
+                    ruleSetId = ruleSetId,
+                    triggerKind = com.daycare.api.domain.ScreeningRuleTriggerKind.ANSWER,
+                    priority = 1,
+                    stableQuestionId = "B24-BK1",
+                    answerCode = "YA_SUDAH",
+                    outputStatus = com.daycare.api.domain.ScreeningResultMainStatus.DISKUSIKAN_PERKEMBANGAN,
+                    displayOrder = 1,
+                ),
+            ),
+        )
+        `when`(manifests.findByBatchId(definition.batchId)).thenReturn(null)
+        `when`(templates.findByCodeAndVersion("DEV_24_35", 1)).thenReturn(null)
+
+        val result = service.preview(definition)
+
+        assertEquals(ScreeningSeedBatchApplyStatus.PREVIEW, result.status)
+    }
+
+    @Test
+    fun `preview accepts a question with a one-sided or satisfied age range`() {
+        val base = definition()
+        val question = base.questions.single()
+
+        listOf(
+            question.copy(minAgeMonths = 12, maxAgeMonths = null),
+            question.copy(minAgeMonths = 12, maxAgeMonths = 24),
+        ).forEach { valid ->
+            val candidate = base.copy(questions = listOf(valid))
+            `when`(manifests.findByBatchId(candidate.batchId)).thenReturn(null)
+            `when`(templates.findByCodeAndVersion("DEV_24_35", 1)).thenReturn(null)
+
+            assertDoesNotThrow { service.preview(candidate) }
+        }
+    }
+
+    @Test
+    fun `preview rejects an existing manifest whose catalog counts are inconsistent`() {
+        val definition = definition()
+        val manifest = ScreeningSeedManifest(
+            id = UUID.randomUUID(),
+            batchId = definition.batchId,
+            checksum = definition.checksum,
+            templateCount = 1,
+            questionCount = 1,
+            choiceCount = 1,
+            translationCount = 1,
+        )
+        `when`(manifests.findByBatchId(definition.batchId)).thenReturn(manifest)
+
+        `when`(templates.findAllBySeedManifestId(manifest.id)).thenReturn(emptyList())
+        `when`(questions.findAllBySeedManifestId(manifest.id)).thenReturn(listOf(com.daycare.api.persistence.ScreeningQuestion()))
+        `when`(choices.findAllBySeedManifestId(manifest.id)).thenReturn(listOf(com.daycare.api.persistence.ScreeningChoice()))
+        `when`(texts.findAllBySeedManifestId(manifest.id)).thenReturn(listOf(com.daycare.api.persistence.ScreeningCatalogText()))
+        assertThrows(IllegalStateException::class.java) { service.preview(definition) }
+
+        `when`(templates.findAllBySeedManifestId(manifest.id)).thenReturn(listOf(ScreeningTemplate()))
+        `when`(questions.findAllBySeedManifestId(manifest.id)).thenReturn(emptyList())
+        assertThrows(IllegalStateException::class.java) { service.preview(definition) }
+
+        `when`(questions.findAllBySeedManifestId(manifest.id)).thenReturn(listOf(com.daycare.api.persistence.ScreeningQuestion()))
+        `when`(choices.findAllBySeedManifestId(manifest.id)).thenReturn(emptyList())
+        assertThrows(IllegalStateException::class.java) { service.preview(definition) }
     }
 
     @Test

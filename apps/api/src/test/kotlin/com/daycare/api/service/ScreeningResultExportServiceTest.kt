@@ -128,6 +128,66 @@ class ScreeningResultExportServiceTest {
         assertEquals(0, invoke("statusRank", "UNKNOWN"))
         assertEquals("Not available", invoke("statusLabel", "UNKNOWN", "en"))
         assertEquals("Belum tersedia", invoke("statusLabel", "UNKNOWN", "id"))
+        ScreeningResultMainStatus.entries.forEach { status ->
+            assertTrue((invoke("statusLabel", status.name, "en") as String).isNotBlank())
+            assertTrue((invoke("statusLabel", status.name, "id") as String).isNotBlank())
+            assertTrue((invoke("productGuidance", result("Anak", false).copy(locale = "en", mainStatus = status)) as String).isNotBlank())
+            assertTrue((invoke("productGuidance", result("Anak", false).copy(locale = "id", mainStatus = status)) as String).isNotBlank())
+        }
+    }
+
+    @Test
+    fun `domainsWithAttention sums by normalized code excludes CTX and zero-attention domains and keeps fixed order`() {
+        fun invoke(name: String, vararg args: Any?): Any? {
+            val method = ScreeningResultExportService::class.java.declaredMethods.single { it.name == name }
+            method.isAccessible = true
+            return method.invoke(service, *args)
+        }
+        val result = result(subjectName = "Anak", longText = false).copy(
+            domains = listOf(
+                ScreeningResultDomainResponse("AD1", ScreeningResultMainStatus.DISKUSIKAN_PERKEMBANGAN, 0, 0, 1, 1),
+                ScreeningResultDomainResponse("BK1", ScreeningResultMainStatus.DISKUSIKAN_PERKEMBANGAN, 0, 0, 0, 2),
+                ScreeningResultDomainResponse("BK2", ScreeningResultMainStatus.DISKUSIKAN_PERKEMBANGAN, 0, 0, 2, 3),
+                ScreeningResultDomainResponse("CTX", ScreeningResultMainStatus.DISKUSIKAN_PERKEMBANGAN, 0, 0, 5, 4),
+                ScreeningResultDomainResponse("ZZ9", ScreeningResultMainStatus.DISKUSIKAN_PERKEMBANGAN, 0, 0, 5, 5),
+                ScreeningResultDomainResponse("MK1", ScreeningResultMainStatus.DISKUSIKAN_PERKEMBANGAN, 0, 0, 0, 6),
+            ),
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val domains = invoke("domainsWithAttention", result) as List<String>
+
+        assertEquals(listOf("BK", "AD"), domains)
+    }
+
+    @Test
+    fun `domainGuidance covers every capability domain in both locales and falls back to blank for unknown codes`() {
+        fun invoke(name: String, vararg args: Any?): Any? {
+            val method = ScreeningResultExportService::class.java.declaredMethods.single { it.name == name }
+            method.isAccessible = true
+            return method.invoke(service, *args)
+        }
+        listOf("id", "en").forEach { locale ->
+            listOf("BK", "MK", "MH", "KG", "SE", "AD").forEach { code ->
+                val guidance = invoke("domainGuidance", code, locale) as String
+                assertTrue(guidance.isNotBlank(), "expected non-blank guidance for $code/$locale")
+            }
+        }
+        assertEquals("", invoke("domainGuidance", "ZZ", "id"))
+        assertEquals("", invoke("domainGuidance", "ZZ", "en"))
+    }
+
+    @Test
+    fun `domain labels cover every supported and unknown code in both locales`() {
+        fun invoke(name: String, vararg args: Any?): Any? {
+            val method = ScreeningResultExportService::class.java.declaredMethods.single { it.name == name }
+            method.isAccessible = true
+            return method.invoke(service, *args)
+        }
+        listOf("CTX", "BK", "MK", "MH", "KG", "SE", "AD", "UNKNOWN").forEach { code ->
+            assertTrue((invoke("domainLabel", code, "id") as String).isNotBlank())
+            assertTrue((invoke("domainLabel", "${code}12", "en") as String).isNotBlank())
+        }
     }
 
     private fun result(subjectName: String, longText: Boolean): ScreeningResultResponse {

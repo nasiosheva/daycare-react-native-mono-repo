@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.`when`
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.oauth2.jwt.Jwt
 import java.time.Instant
 import java.util.Optional
@@ -110,6 +111,23 @@ class ConsentServiceTest {
     }
 
     @Test
+    fun `creating a definition accepts a future effectiveUntil and rejects one already in the past`() {
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val scope = AccessScope(UserProfile(), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(scope)
+        `when`(definitions.save(any(ConsentDefinition::class.java))).thenAnswer { it.arguments[0] }
+
+        val future = Instant.now().plusSeconds(3600)
+        val response = service.createDefinition(jwt, organizationId, CreateConsentDefinitionRequest(ConsentPurpose.OUTING, "Kegiatan", "Izin", effectiveUntil = future))
+        assertEquals(future, response.effectiveUntil)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            service.createDefinition(jwt, organizationId, CreateConsentDefinitionRequest(ConsentPurpose.OUTING, "Kegiatan", "Izin", effectiveUntil = Instant.now().minusSeconds(60)))
+        }
+    }
+
+    @Test
     fun `revising a definition supersedes granted records from the previous revision`() {
         val jwt = mock(Jwt::class.java)
         val organizationId = UUID.randomUUID()
@@ -142,6 +160,119 @@ class ConsentServiceTest {
         val response = service.parentConsents(jwt, organizationId, child.id).single()
 
         assertEquals(ConsentStatus.EXPIRED, response.status)
+    }
+
+    @Test
+    fun `a granted record stays granted when there is no effectiveUntil or it has not passed yet`() {
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val parentId = UUID.randomUUID()
+        val child = Child(organizationId = organizationId)
+        val noExpiry = ConsentDefinition(organizationId = organizationId, purpose = ConsentPurpose.OUTING, title = "Tanpa batas", content = "Izinkan", revision = 1, effectiveUntil = null)
+        val futureExpiry = ConsentDefinition(organizationId = organizationId, purpose = ConsentPurpose.MEDICATION, title = "Masih berlaku", content = "Izinkan", revision = 1, effectiveUntil = Instant.now().plusSeconds(3600))
+        val recordA = ConsentRecord(organizationId = organizationId, childId = child.id, definitionId = noExpiry.id, definitionRevision = 1, guardianUserId = parentId, status = ConsentStatus.GRANTED)
+        val recordB = ConsentRecord(organizationId = organizationId, childId = child.id, definitionId = futureExpiry.id, definitionRevision = 1, guardianUserId = parentId, status = ConsentStatus.GRANTED)
+        val scope = AccessScope(UserProfile(id = parentId), Membership(organizationId = organizationId, role = Role.PARENT), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)).thenReturn(scope)
+        `when`(childScopes.requireParentLinkedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(definitions.findAllByOrganizationIdAndActiveTrueOrderByCreatedAtDesc(organizationId)).thenReturn(listOf(noExpiry, futureExpiry))
+        `when`(records.findAllByOrganizationIdAndChildIdAndGuardianUserId(organizationId, child.id, parentId)).thenReturn(listOf(recordA, recordB))
+
+        val response = service.parentConsents(jwt, organizationId, child.id)
+
+        assertTrue(response.all { it.status == ConsentStatus.GRANTED })
+    }
+
+    @Test
+    fun `setDefinitionActive and decide reject missing fields an inactive definition and a foreign definition`() {
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val definition = ConsentDefinition(organizationId = organizationId, purpose = ConsentPurpose.OUTING, title = "Kegiatan", content = "Izin", revision = 1, active = false)
+        val adminScope = AccessScope(UserProfile(), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        val parentScope = AccessScope(UserProfile(), Membership(organizationId = organizationId, role = Role.PARENT), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(adminScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(parentScope)
+        `when`(definitions.findById(definition.id)).thenReturn(Optional.of(definition))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            service.setDefinitionActive(jwt, organizationId, definition.id, SetConsentDefinitionActiveRequest(true, null))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            service.setDefinitionActive(jwt, organizationId, definition.id, SetConsentDefinitionActiveRequest(null, definition.revision))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            service.decide(jwt, organizationId, UUID.randomUUID(), ConsentDecisionRequest(definition.id, true))
+        }
+
+        val foreignDefinition = ConsentDefinition(organizationId = UUID.randomUUID(), purpose = ConsentPurpose.OUTING, title = "Milik lain", content = "Izin")
+        `when`(definitions.findById(foreignDefinition.id)).thenReturn(Optional.of(foreignDefinition))
+        assertThrows(AccessDeniedException::class.java) {
+            service.decide(jwt, organizationId, UUID.randomUUID(), ConsentDecisionRequest(foreignDefinition.id, true))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            service.withdraw(jwt, organizationId, UUID.randomUUID(), definition.id)
+        }
+    }
+
+    @Test
+    fun `decide rejects a definition that has already passed its effective until and replays an existing record`() {
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val childId = UUID.randomUUID()
+        val expired = ConsentDefinition(organizationId = organizationId, purpose = ConsentPurpose.OUTING, title = "Kedaluwarsa", content = "Izin", revision = 1, effectiveUntil = Instant.now().minusSeconds(60))
+        val parentId = UUID.randomUUID()
+        val scope = AccessScope(UserProfile(id = parentId), Membership(organizationId = organizationId, role = Role.PARENT), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(scope)
+        `when`(definitions.findById(expired.id)).thenReturn(Optional.of(expired))
+        assertThrows(IllegalArgumentException::class.java) {
+            service.decide(jwt, organizationId, childId, ConsentDecisionRequest(expired.id, true))
+        }
+
+        val active = ConsentDefinition(organizationId = organizationId, purpose = ConsentPurpose.MEDICATION, title = "Aktif", content = "Izin", revision = 1, effectiveUntil = Instant.now().plusSeconds(3600))
+        val existingRecord = ConsentRecord(organizationId = organizationId, childId = childId, definitionId = active.id, definitionRevision = 1, guardianUserId = parentId, status = ConsentStatus.DECLINED)
+        `when`(definitions.findById(active.id)).thenReturn(Optional.of(active))
+        `when`(records.findByOrganizationIdAndChildIdAndDefinitionIdAndGuardianUserIdAndDefinitionRevision(organizationId, childId, active.id, parentId, 1)).thenReturn(existingRecord)
+        `when`(records.save(any(ConsentRecord::class.java))).thenAnswer { it.arguments[0] }
+
+        val response = service.decide(jwt, organizationId, childId, ConsentDecisionRequest(active.id, true))
+
+        assertEquals(ConsentStatus.GRANTED, response.status)
+    }
+
+    @Test
+    fun `revising a definition supersedes a stale declined record, not only granted ones`() {
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val definition = ConsentDefinition(organizationId = organizationId, purpose = ConsentPurpose.OUTING, title = "Kegiatan", content = "Izin", revision = 1)
+        val staleDeclined = ConsentRecord(organizationId = organizationId, childId = UUID.randomUUID(), definitionId = definition.id, definitionRevision = 1, guardianUserId = UUID.randomUUID(), status = ConsentStatus.DECLINED)
+        val scope = AccessScope(UserProfile(), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(scope)
+        `when`(definitions.findById(definition.id)).thenReturn(Optional.of(definition))
+        `when`(records.findAllByOrganizationIdAndDefinitionId(organizationId, definition.id)).thenReturn(listOf(staleDeclined))
+
+        service.reviseDefinition(jwt, organizationId, definition.id, ReviseConsentDefinitionRequest("Judul baru", "Teks baru", 1))
+
+        assertEquals(ConsentStatus.SUPERSEDED, staleDeclined.status)
+    }
+
+    @Test
+    fun `resolveScope rejects a tenant scope carrying a branch or offering and a branch scope carrying an offering`() {
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val branch = Branch(organizationId = organizationId)
+        val scope = AccessScope(UserProfile(), Membership(organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(scope)
+        `when`(branches.findById(branch.id)).thenReturn(Optional.of(branch))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            service.createDefinition(jwt, organizationId, CreateConsentDefinitionRequest(ConsentPurpose.OUTING, "Kegiatan", "Izin", ConsentDefinitionScope.TENANT, branch.id))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            service.createDefinition(jwt, organizationId, CreateConsentDefinitionRequest(ConsentPurpose.OUTING, "Kegiatan", "Izin", ConsentDefinitionScope.TENANT, null, UUID.randomUUID()))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            service.createDefinition(jwt, organizationId, CreateConsentDefinitionRequest(ConsentPurpose.OUTING, "Kegiatan", "Izin", ConsentDefinitionScope.BRANCH, branch.id, UUID.randomUUID()))
+        }
     }
 
     @Test

@@ -517,4 +517,102 @@ class PlatformAdministrationServiceTest {
         val expired = invokePrivate(f.service, "tenantResponse", organization) as TenantResponse
         assertEquals(TenantSubscriptionStatus.EXPIRED, expired.subscriptionStatus)
     }
+
+    @Test
+    fun `account and tenant lookups reject a missing record at every not-found branch`() {
+        val f = PlatformAdministrationServiceFixture()
+        f.allowPlatformAdmin()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.resetParentPassword(f.jwt, UUID.randomUUID(), ChangeTenantUserPasswordRequest("new-password"))
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.removeTenantStaffAdmin(f.jwt, f.organizationId, UUID.randomUUID())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.updateTenantStaffAdmin(f.jwt, f.organizationId, UUID.randomUUID(), UpdateTenantStaffAdminRequest("New"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.resetTenantStaffAdminPassword(f.jwt, f.organizationId, UUID.randomUUID(), ChangeTenantUserPasswordRequest("new-password"))
+        }
+
+        val membershipWithoutUser = Membership(id = f.membershipId, userId = f.userId, organizationId = f.organizationId, role = Role.STAFF_ADMIN, active = true, primaryStaffAdmin = false)
+        `when`(f.memberships.findById(f.membershipId)).thenReturn(Optional.of(membershipWithoutUser))
+        `when`(f.users.findById(f.userId)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.updateTenantStaffAdmin(f.jwt, f.organizationId, f.membershipId, UpdateTenantStaffAdminRequest("New"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.resetTenantStaffAdminPassword(f.jwt, f.organizationId, f.membershipId, ChangeTenantUserPasswordRequest("new-password"))
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.markPaymentPaid(f.jwt, f.organizationId, UUID.randomUUID())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.voidPayment(f.jwt, f.organizationId, UUID.randomUUID())
+        }
+
+        val pendingPayment = TenantPayment(id = UUID.randomUUID(), organizationId = f.organizationId, subscriptionId = UUID.randomUUID(), amount = BigDecimal("100"), status = TenantPaymentStatus.PENDING)
+        `when`(f.payments.findById(pendingPayment.id)).thenReturn(Optional.of(pendingPayment))
+        `when`(f.subscriptions.findById(pendingPayment.subscriptionId)).thenReturn(Optional.empty())
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.markPaymentPaid(f.jwt, f.organizationId, pendingPayment.id)
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.tenant(f.jwt, UUID.randomUUID())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.setSubscriptionStatus(f.jwt, f.organizationId, TenantSubscriptionStatus.ACTIVE)
+        }
+
+        // Payment and subscription found, but the tenant itself is gone by the final lookup.
+        val ghostOrganizationId = UUID.randomUUID()
+        val ghostPayment = TenantPayment(id = UUID.randomUUID(), organizationId = ghostOrganizationId, subscriptionId = UUID.randomUUID(), amount = BigDecimal("50"), status = TenantPaymentStatus.PENDING)
+        `when`(f.payments.findById(ghostPayment.id)).thenReturn(Optional.of(ghostPayment))
+        `when`(f.subscriptions.findById(ghostPayment.subscriptionId)).thenReturn(Optional.of(TenantSubscription(organizationId = ghostOrganizationId, status = TenantSubscriptionStatus.PENDING_PAYMENT)))
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.markPaymentPaid(f.jwt, ghostOrganizationId, ghostPayment.id)
+        }
+    }
+
+    @Test
+    fun `remove and update Staff Admin reject a membership from another tenant or the wrong role`() {
+        val f = PlatformAdministrationServiceFixture()
+        f.allowPlatformAdmin()
+
+        val foreignOrgMembership = Membership(id = f.membershipId, userId = f.userId, organizationId = UUID.randomUUID(), role = Role.STAFF_ADMIN, active = true)
+        `when`(f.memberships.findById(f.membershipId)).thenReturn(Optional.of(foreignOrgMembership))
+        assertThrows(IllegalArgumentException::class.java) { f.service.removeTenantStaffAdmin(f.jwt, f.organizationId, f.membershipId) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.updateTenantStaffAdmin(f.jwt, f.organizationId, f.membershipId, UpdateTenantStaffAdminRequest("New")) }
+
+        val staffRoleMembership = Membership(id = f.membershipId, userId = f.userId, organizationId = f.organizationId, role = Role.STAFF, active = true)
+        `when`(f.memberships.findById(f.membershipId)).thenReturn(Optional.of(staffRoleMembership))
+        assertThrows(IllegalArgumentException::class.java) { f.service.removeTenantStaffAdmin(f.jwt, f.organizationId, f.membershipId) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.updateTenantStaffAdmin(f.jwt, f.organizationId, f.membershipId, UpdateTenantStaffAdminRequest("New")) }
+    }
+
+    @Test
+    fun `tenant creation covers an empty institution type set and the non-trial-without-fee rejection`() {
+        val f = PlatformAdministrationServiceFixture()
+        f.allowPlatformAdmin()
+        val organization = Organization(name = "Empty Types")
+        `when`(f.organizations.save(org.mockito.ArgumentMatchers.any(Organization::class.java))).thenReturn(organization)
+        `when`(f.tenantUserAccounts.create("Admin", "admin@example.test", "secret", null)).thenReturn(UserProfile(email = "admin@example.test", displayName = "Admin"))
+        `when`(f.branches.save(org.mockito.ArgumentMatchers.any(Branch::class.java))).thenAnswer { it.arguments[0] }
+        `when`(f.subscriptions.save(org.mockito.ArgumentMatchers.any(TenantSubscription::class.java))).thenAnswer { it.arguments[0] }
+        f.stubTenantResponse(organization)
+
+        // An empty (but non-null) institutionTypes set falls back to the default DAYCARE type,
+        // same as null - but takes the distinct `takeIf { isNotEmpty() }` false branch to get there.
+        val created = f.service.createTenant(f.jwt, CreateTenantRequest("Empty Types", "Main", emptySet(), TenantSubscriptionPlan.STARTER, null, 1, "Admin", "admin@example.test", "secret"))
+        assertEquals("Empty Types", created.name)
+
+        // Not a trial and no monthly fee is rejected before the trial-must-not-have-a-fee check.
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.createTenant(f.jwt, CreateTenantRequest("No Fee", "Main", null, TenantSubscriptionPlan.STARTER, null, null, "Admin", "admin@example.test", "secret"))
+        }
+    }
 }

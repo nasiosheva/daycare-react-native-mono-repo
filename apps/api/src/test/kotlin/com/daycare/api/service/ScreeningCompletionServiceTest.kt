@@ -18,7 +18,9 @@ import com.daycare.api.persistence.ScreeningQuestionRepository
 import com.daycare.api.persistence.ScreeningResult
 import com.daycare.api.persistence.ScreeningResultDomain
 import com.daycare.api.persistence.ScreeningResultDomainRepository
+import com.daycare.api.persistence.ScreeningResultItem
 import com.daycare.api.persistence.ScreeningResultItemRepository
+import com.daycare.api.persistence.ScreeningResultReason
 import com.daycare.api.persistence.ScreeningResultReasonRepository
 import com.daycare.api.persistence.ScreeningResultRepository
 import com.daycare.api.persistence.ScreeningRuleSet
@@ -115,6 +117,46 @@ class ScreeningCompletionServiceTest {
         val expired = session().apply { expiresAt = Instant.now().minusSeconds(1) }
         `when`(sessions.save(expired)).thenReturn(expired)
         assertThrows(IllegalStateException::class.java) { invokePrivate("ensureWritable", expired) }
+    }
+
+    @Test
+    fun `completion response maps reason items by answer then question and handles expired status`() {
+        val session = session().apply { status = ScreeningSessionStatus.EXPIRED }
+        `when`(sessions.save(session)).thenReturn(session)
+        assertThrows(IllegalStateException::class.java) { invokePrivate("ensureWritable", session) }
+
+        val result = ScreeningResult(sessionId = session.id)
+        val questionId = UUID.randomUUID()
+        val answerId = UUID.randomUUID()
+        val reasonByAnswer = ScreeningResultReason(resultId = result.id, questionId = questionId, answerId = answerId, textSnapshot = "answer")
+        val reasonByQuestion = ScreeningResultReason(resultId = result.id, questionId = questionId, answerId = UUID.randomUUID(), textSnapshot = "question")
+        val item = ScreeningResultItem(resultId = result.id, questionId = questionId, answerId = answerId, questionTextSnapshot = "Pertanyaan", answerLabelSnapshot = "Ya")
+        val fallbackItem = ScreeningResultItem(resultId = result.id, questionId = questionId, answerId = null, questionTextSnapshot = "Pertanyaan 2", answerLabelSnapshot = "Tidak")
+        val response = invokePrivate("toResponse", result, emptyList<ScreeningResultDomain>(), listOf(reasonByAnswer, reasonByQuestion), listOf(item, fallbackItem)) as ScreeningResultResponse
+        assertEquals("Pertanyaan", response.reasons.first().questionTextSnapshot)
+        assertEquals("Pertanyaan", response.reasons.last().questionTextSnapshot)
+    }
+
+    @Test
+    fun `completion response keeps reason metadata when no result item matches`() {
+        val result = ScreeningResult(sessionId = UUID.randomUUID())
+        val reason = ScreeningResultReason(
+            resultId = result.id,
+            questionId = UUID.randomUUID(),
+            answerId = UUID.randomUUID(),
+            textSnapshot = "Catatan",
+        )
+
+        val response = invokePrivate(
+            "toResponse",
+            result,
+            emptyList<ScreeningResultDomain>(),
+            listOf(reason),
+            emptyList<ScreeningResultItem>(),
+        ) as ScreeningResultResponse
+
+        assertEquals(null, response.reasons.single().questionTextSnapshot)
+        assertEquals(null, response.reasons.single().answerLabelSnapshot)
     }
 
     @Test
@@ -243,6 +285,21 @@ class ScreeningCompletionServiceTest {
     }
 
     @Test
+    fun `existing sessions can be prepared from retired template and rule snapshots`() {
+        val session = session()
+        val template = template(session).apply { status = ScreeningTemplateStatus.RETIRED }
+        val ruleSet = ruleSet(template).apply { status = ScreeningRuleSetStatus.RETIRED }
+        val question = question(template)
+        val choice = ScreeningChoice(id = UUID.randomUUID(), questionId = question.id, code = "YA_SUDAH", enabled = true)
+        val answer = ScreeningAnswer(sessionId = session.id, questionId = question.id, stableQuestionId = question.stableQuestionId, answerCode = choice.code)
+        stubCommon(session, template, ruleSet, question, choice, answer)
+
+        val prepared = invokePrivate("prepare", session)
+
+        assertTrue(prepared != null)
+    }
+
+    @Test
     fun `complete validates question answers and enabled choices`() {
         val session = session()
         val template = template(session)
@@ -344,12 +401,18 @@ class ScreeningCompletionServiceTest {
         val second = question(template).apply { id = UUID.randomUUID(); domain = "MK"; stableQuestionId = "Q2"; required = false }
         val third = question(template).apply { id = UUID.randomUUID(); domain = "SE"; stableQuestionId = "Q3"; required = false }
         val empty = question(template).apply { id = UUID.randomUUID(); domain = "EMPTY"; stableQuestionId = "Q4"; required = false }
-        val questionsForTemplate = listOf(first, second, third, empty)
-        val choicesForQuestions = questionsForTemplate.mapIndexed { index, q -> ScreeningChoice(id = UUID.randomUUID(), questionId = q.id, code = listOf("YA_SUDAH", "TIDAK_DIAMATI", "BELUM", "YA_SUDAH")[index], enabled = true) }
+        val allSeen = question(template).apply { id = UUID.randomUUID(); domain = "ALL"; stableQuestionId = "Q5"; required = false }
+        val unknown = question(template).apply { id = UUID.randomUUID(); domain = "UNKNOWN"; stableQuestionId = "Q6"; required = false }
+        val uncertain = question(template).apply { id = UUID.randomUUID(); domain = "UNCERTAIN"; stableQuestionId = "Q7"; required = false }
+        val questionsForTemplate = listOf(first, second, third, empty, allSeen, unknown, uncertain)
+        val choicesForQuestions = questionsForTemplate.mapIndexed { index, q -> ScreeningChoice(id = UUID.randomUUID(), questionId = q.id, code = listOf("YA_SUDAH", "TIDAK_DIAMATI", "BELUM", "YA_SUDAH", "YA_SUDAH", "OTHER", "TIDAK_YAKIN")[index], enabled = true) }
         val answersForSession = listOf(
             ScreeningAnswer(sessionId = session.id, questionId = first.id, stableQuestionId = first.stableQuestionId, answerCode = "YA_SUDAH"),
             ScreeningAnswer(sessionId = session.id, questionId = second.id, stableQuestionId = second.stableQuestionId, answerCode = "TIDAK_DIAMATI"),
             ScreeningAnswer(sessionId = session.id, questionId = third.id, stableQuestionId = third.stableQuestionId, answerCode = "BELUM"),
+            ScreeningAnswer(sessionId = session.id, questionId = allSeen.id, stableQuestionId = allSeen.stableQuestionId, answerCode = "YA_SUDAH"),
+            ScreeningAnswer(sessionId = session.id, questionId = unknown.id, stableQuestionId = unknown.stableQuestionId, answerCode = "OTHER"),
+            ScreeningAnswer(sessionId = session.id, questionId = uncertain.id, stableQuestionId = uncertain.stableQuestionId, answerCode = "TIDAK_YAKIN"),
         )
         stubCommon(session, template, ruleSet, first, choicesForQuestions.first(), answersForSession.first())
         `when`(questions.findAllByTemplateIdOrderByDisplayOrderAsc(template.id)).thenReturn(questionsForTemplate)
@@ -370,9 +433,13 @@ class ScreeningCompletionServiceTest {
         val completed = service.complete(jwt, session.id) as ScreeningCompletionOutcome.Completed
 
         assertEquals(ScreeningResultMainStatus.SEGERA_DISKUSIKAN, completed.result.mainStatus)
-        assertEquals(3, completed.result.domains.size)
+        assertEquals(6, completed.result.domains.size)
+        assertTrue(completed.result.domains.none { it.domainCode == "EMPTY" })
         assertEquals(ScreeningResultMainStatus.PENGAMATAN_BELUM_CUKUP, completed.result.domains.first { it.domainCode == "MK" }.statusCode)
         assertEquals(ScreeningResultMainStatus.DISKUSIKAN_PERKEMBANGAN, completed.result.domains.first { it.domainCode == "SE" }.statusCode)
+        assertEquals(ScreeningResultMainStatus.KEMAMPUAN_DILAPORKAN_TERLIHAT, completed.result.domains.first { it.domainCode == "ALL" }.statusCode)
+        assertEquals(ScreeningResultMainStatus.PENGAMATAN_BELUM_CUKUP, completed.result.domains.first { it.domainCode == "UNKNOWN" }.statusCode)
+        assertEquals(ScreeningResultMainStatus.PENGAMATAN_BELUM_CUKUP, completed.result.domains.first { it.domainCode == "UNCERTAIN" }.statusCode)
         assertEquals(1, completed.result.domains.first { it.domainCode == "MK" }.incompleteCount)
     }
 

@@ -22,6 +22,7 @@ import org.mockito.Mockito.`when`
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.oauth2.jwt.Jwt
 import java.util.UUID
+import java.util.Optional
 import java.time.LocalDate
 
 class AccessServiceTest {
@@ -33,16 +34,19 @@ class AccessServiceTest {
         val subscriptions: TenantSubscriptionRepository = mock(TenantSubscriptionRepository::class.java)
         val organizationCapabilities: OrganizationCapabilitiesService = mock(OrganizationCapabilitiesService::class.java)
         val publishedCapabilities: PublishedOfferingCapabilityService = mock(PublishedOfferingCapabilityService::class.java)
+        val organizations: OrganizationRepository = mock(OrganizationRepository::class.java)
+        val platformAccess: PlatformAccessService = mock(PlatformAccessService::class.java)
+        val parentFamilyProfiles: ParentFamilyProfileRepository = mock(ParentFamilyProfileRepository::class.java)
         val user = UserProfile()
         val service = AccessService(
             identityService,
             memberships,
-            mock(OrganizationRepository::class.java),
-            mock(PlatformAccessService::class.java),
+            organizations,
+            platformAccess,
             subscriptions,
             organizationCapabilities,
             publishedCapabilities,
-            mock(ParentFamilyProfileRepository::class.java),
+            parentFamilyProfiles,
         )
 
         fun withSubscriptionStatus(status: TenantSubscriptionStatus) {
@@ -50,6 +54,29 @@ class AccessServiceTest {
             `when`(subscriptions.findByOrganizationId(organizationId)).thenReturn(TenantSubscription(organizationId = organizationId, status = status))
             `when`(organizationCapabilities.forOrganization(organizationId)).thenReturn(OrganizationCapabilities(emptySet(), emptySet()))
         }
+    }
+
+    @Test
+    fun `current user maps memberships subscriptions unknown organizations and parent family`() {
+        val fixtures = Fixtures()
+        val secondOrganization = UUID.randomUUID()
+        val active = Membership(userId = fixtures.user.id, organizationId = fixtures.organizationId, role = Role.PARENT, active = true)
+        val inactive = Membership(userId = fixtures.user.id, organizationId = secondOrganization, role = Role.STAFF, active = false)
+        `when`(fixtures.identityService.sync(fixtures.jwt)).thenReturn(fixtures.user)
+        `when`(fixtures.subscriptions.findAll()).thenReturn(listOf(TenantSubscription(organizationId = fixtures.organizationId, status = TenantSubscriptionStatus.ACTIVE)))
+        `when`(fixtures.memberships.findAllByUserId(fixtures.user.id)).thenReturn(listOf(inactive, active))
+        `when`(fixtures.organizations.findById(fixtures.organizationId)).thenReturn(Optional.of(com.daycare.api.persistence.Organization(id = fixtures.organizationId, name = "Utama")))
+        `when`(fixtures.organizations.findById(secondOrganization)).thenReturn(Optional.empty())
+        `when`(fixtures.organizationCapabilities.forOrganization(fixtures.organizationId)).thenReturn(OrganizationCapabilities(setOf("PAUD"), setOf(InstitutionCapability.DAYCARE_OPERATIONS)))
+        `when`(fixtures.organizationCapabilities.forOrganization(secondOrganization)).thenReturn(OrganizationCapabilities(emptySet(), emptySet()))
+        `when`(fixtures.platformAccess.isPlatformAdmin(fixtures.user)).thenReturn(false)
+        `when`(fixtures.parentFamilyProfiles.findByUserId(fixtures.user.id)).thenReturn(null)
+
+        val response = fixtures.service.currentUser(fixtures.jwt)
+
+        assertEquals(2, response.memberships.size)
+        assertEquals("Unknown organization", response.memberships.last().organizationName)
+        assertEquals(TenantSubscriptionStatus.ACTIVE, response.memberships.first().subscriptionStatus)
     }
 
     @Test

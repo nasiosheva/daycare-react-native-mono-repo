@@ -97,6 +97,23 @@ class CapacityReservationServiceTest {
     }
 
     @Test
+    fun `capacity settings return persisted rows and release ignores already released slots`() {
+        val setting = com.daycare.api.persistence.BranchCapacitySetting(
+            organizationId = organizationId,
+            branchId = branchId,
+            dailyCapacity = 8,
+        )
+        `when`(settings.findAllByOrganizationId(organizationId)).thenReturn(listOf(setting))
+        assertEquals(listOf(setting), service.branchSettings(organizationId))
+
+        val bookingId = UUID.randomUUID()
+        val released = CapacityReservation(bookingId = bookingId, status = CapacityReservationStatus.RELEASED)
+        `when`(reservations.findAllByBookingId(bookingId)).thenReturn(listOf(released))
+        service.releaseForBooking(bookingId)
+        assertEquals(CapacityReservationStatus.RELEASED, released.status)
+    }
+
+    @Test
     fun `capacity guards missing resources, branch saturation, and existing reservations`() {
         `when`(branches.findWithLockById(branchId)).thenReturn(null)
         assertThrows(IllegalArgumentException::class.java) { service.requireAvailability(organizationId, branchId, planId, listOf(date)) }
