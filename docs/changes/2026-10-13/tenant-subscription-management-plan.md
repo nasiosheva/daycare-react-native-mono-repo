@@ -53,3 +53,10 @@ Menyusun rencana bertahap untuk pengelolaan subscription SaaS tenant oleh Platfo
 
 - Memeriksa model subscription/payment, service Platform Admin, status/paket yang tersedia, serta aturan akses dan wizard tenant pada business rules.
 - Menjalankan pemeriksaan whitespace pada dokumen yang diperbarui.
+
+## Implementasi kode dilanjutkan pada 14 Oktober 2026
+
+- Pekerjaan kode berlanjut di branch implementasi subscription yang sama; catatan perencanaan di atas adalah snapshot historis, bukan pernyataan bahwa rencana sudah selesai.
+- Implementasi saat ini mencakup renewal/self-service, bukti dan review, koreksi/adjustment non-refund, serta reminder H-7/H-3/H-1 dengan ledger idempoten, inbox Staff Admin, API daftar reminder khusus Platform Admin, dan ringkasan UI Platform Admin.
+- Lihat [status implementasi harian](../2026-10-14/tenant-subscription-operational-controls.md) dan [plan utama](../../plans/tenant-subscription-management.md) untuk cakupan, tes, dan release gate yang masih terbuka.
+- Command billing Parent (pembelian paket dan upload bukti) dilanjutkan pada 15 Oktober dengan idempotency key persisten, payload conflict, replay, dan locking; rincian ada di [catatan implementasi](../2026-10-15/parent-billing-idempotency.md).

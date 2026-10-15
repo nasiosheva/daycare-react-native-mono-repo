@@ -65,6 +65,32 @@ Aturan yang ditandai sebagai **target** menyatakan arah produk yang telah disetu
 
 Parent dapat membatalkan aplikasi yang masih `PENDING_APPROVAL`. Ketika invoice enrollment yang telah disetujui melewati jatuh tempo dan Parent tidak memiliki entitlement aktif lain pada tenant itu, akses operasional Parent tenant dinonaktifkan dan Parent perlu mengajukan aplikasi baru.
 
+### Idempotency untuk billing Parent
+
+- Pembelian paket layanan Parent (`POST /service-purchases`) dan pengiriman
+  bukti pembayaran (`POST /invoices/{invoiceId}/payment-proof`) wajib menerima
+  UUID `Idempotency-Key` yang stabil untuk satu aksi logis. Client menyimpan
+  key sampai command sukses; retry setelah timeout memakai key yang sama.
+- Server mengikat record ke tenant, akun Parent, jenis operasi, key, hash
+  payload yang dinormalisasi, dan resource hasil. Key/payload sama mengembalikan
+  invoice beserta entitlement/booking yang sudah dibuat atau status invoice
+  terbaru tanpa membuat ulang side effect. Key sama dengan payload berbeda
+  menghasilkan conflict; key pada operasi atau tenant lain tidak me-replay
+  resource tersebut.
+- Purchase dan upload bukti memakai namespace operasi berbeda. Replay purchase
+  memeriksa kepemilikan invoice oleh Parent sebelum membentuk response; replay
+  upload bukti hanya boleh mengembalikan invoice yang sama. Data bukti tidak
+  dimasukkan ke log/hash dalam bentuk plaintext; server menyimpan hash SHA-256
+  dari payload file dan metadata yang diperlukan untuk membedakan request.
+- Key dan resource disimpan atomik sekurangnya 90 hari. Request paralel dengan
+  akun/key yang sama diserialisasi di server; row invoice dan bukti juga
+  dikunci ketika bukti dikirim atau keputusan pembayaran diproses. Ledger
+  Parent tetap terpisah dari ledger langganan SaaS tenant.
+- Key idempotency melindungi retry dari satu aksi, bukan menggantikan aturan
+  kapasitas, larangan booking tumpang-tindih, verifikasi pembayaran Staff
+  Admin, ataupun constraint domain yang sudah ada. Resubmit bukti setelah
+  status ditolak adalah aksi baru dan harus menggunakan key baru.
+
 Parent yang memiliki anak **aktif** di satu tenant dapat mengajukan pindah anak itu ke tenant lain dari Profil Anak (`POST /parent-enrollment/transfer`). Alur ini memakai wizard pengajuan yang sama seperti pendaftaran baru (pilih lembaga/cabang tujuan lalu paket), hanya melewati langkah data anak karena nama, gender, dan tanggal lahir disalin langsung dari anak asal; anak tidak boleh sudah aktif di tenant tujuan, dan tidak boleh ada pengajuan pindah lain yang masih `PENDING_APPROVAL` untuk anak yang sama. Pengajuan pindah menghasilkan `Child` baru yang terpisah di tenant tujuan dengan status `PENDING`, disetujui atau ditolak oleh Staff Admin tenant tujuan sama seperti pendaftaran biasa. **Riwayat anak (kehadiran, catatan perkembangan, kesehatan, insiden, Program Pendampingan) tidak pernah ikut pindah** — riwayat itu tetap tersimpan di tenant asal sesuai aturan retensi §9, dan tidak ada relasi query lintas tenant antara kedua record `Child` tersebut selain penanda `transferredFromChildId` pada pengajuan itu sendiri. Anak di tenant asal baru dinonaktifkan (`active=false`, status `TRANSFERRED`) **saat** pengajuan pindah disetujui, bukan saat diajukan; bila pengajuan ditolak atau masih tertunda, anak tetap aktif seperti biasa di tenant asal. Tenant asal tidak perlu menyetujui kepergian anak secara terpisah.
 
 Selain jalur aplikasi di atas, Staff Admin dapat menautkan langsung akun Parent yang **sudah ada** ke seorang anak dari layar detail anak (atau sekaligus saat membuat anak baru), dengan mencari username atau email persis (salah satu wajib diisi; akun yang tidak ditemukan ditolak). Akun target **wajib** memiliki `UserProfile.registrationRole=PARENT`; membership tenant berperan `PARENT`, akun Staff/Admin, atau akun lama tanpa registration role tidak dapat ditautkan sebagai wali baru. Penautan ini tidak membuat akun Parent baru, undangan, aplikasi, invoice, maupun entitlement layanan apa pun — hanya membuat (atau mengaktifkan kembali) membership `PARENT` pada tenant tersebut dan relasi wali-anak bila belum ada. Staff Admin juga dapat memutus relasi ini; tindakan tersebut hanya menghapus relasi wali-anak dan tidak menonaktifkan membership secara otomatis. Anak yang belum memiliki Parent tetap dapat dikelola dalam operasi tenant.
@@ -2634,3 +2660,154 @@ bukan pengganti test domain yang lebih rinci.
   evaluator, consent, retention, audit, dan PDF yang terpisah. Menambah kode
   ADHD ke empat status atau enam alasan Cek perkembangan dianggap perubahan
   kontrak yang tidak sah dan harus ditolak pada validasi publish.
+
+## 13.13 Langganan SaaS tenant
+
+- Langganan tenant adalah biaya SaaS organisasi kepada platform. Domain ini
+  terpisah dari invoice Parent, enrollment, entitlement anak, booking,
+  overtime, dan kas sekolah. Satu tenant memiliki satu subscription aktif
+  secara domain; cabang tidak ditagih terpisah.
+- Status canonical: `TRIAL`, `PENDING_PAYMENT`, `ACTIVE`, `GRACE`,
+  `SUSPENDED`, dan `EXPIRED`. `GRACE` hanya berlaku sesudah periode berbayar
+  dari subscription yang sebelumnya `ACTIVE`; trial dan aktivasi awal tidak
+  mendapat grace. Tidak ada status `RENEWAL_PENDING`: pembayaran/permintaan
+  renewal adalah resource terpisah dan tidak mengubah status akses sebelum
+  efektif.
+- Seluruh tanggal bisnis menggunakan WIB (`Asia/Jakarta`). `periodEnd` dan
+  due date inklusif hingga 23:59:59 WIB; implementasi dapat membandingkan
+  dengan batas eksklusif pukul 00:00 WIB hari berikutnya. Timestamp audit dan
+  pembayaran disimpan sebagai instant UTC. Masa grace dimulai 00:00 WIB
+  sehari setelah `periodEnd`; `GRACE` berakhir pada 00:00 WIB setelah hari
+  grace terakhir. Nilai 0 berarti tidak ada grace. Durasi per tenant 0–30
+  hari, default 7; hanya Platform Admin berizin dapat mengubahnya. Perubahan
+  berlaku bagi periode berikutnya dan tidak mengubah grace yang sedang
+  berjalan. Tenant lama harus di-backfill 7 hari dan ditinjau sebelum
+  lifecycle `GRACE` diaktifkan.
+- Matriks transisi: (a) trial belum habis tetap `TRIAL`; trial habis menjadi
+  `PENDING_PAYMENT`, tanpa grace; (b) pembayaran awal terverifikasi menjadi
+  `ACTIVE`; (c) `ACTIVE` tanpa pembayaran saat period end menjadi `GRACE`
+  jika konfigurasi grace > 0, selain itu `EXPIRED`; (d) grace habis menjadi
+  `EXPIRED`; (e) pembayaran renewal yang dikonfirmasi selama periode aktif
+  atau grace menyambung coverage pada hari setelah periode lama; bila
+  dikonfirmasi setelah grace habis, periode baru dimulai pada tanggal
+  konfirmasi WIB tanpa backdate; (f) `SUSPENDED` adalah penangguhan manual
+  yang membatasi operasi segera dan mengalahkan grace; reaktivasi manual
+  hanya dari `SUSPENDED`, wajib alasan dan audit, dan tidak menghapus tunggakan
+  atau mengubah periode; (g) `EXPIRED` hanya kembali aktif setelah pembayaran
+  renewal/aktivasi yang sah. Status tidak boleh diubah sebagai efek samping
+  GET; lifecycle dievaluasi pada otorisasi dan/atau worker idempoten.
+- Renewal boleh dibuat sebelum periode berakhir. Permintaan renewal dan bukti
+  tidak memperpanjang akses. Satu payment/invoice renewal aktif maksimum untuk
+  satu subscription dan periode target. Perubahan plan/harga berlaku untuk
+  pembelian baru; invoice dan periode yang telah diterbitkan mempertahankan
+  snapshot plan/harga. Harga baru diterapkan pada renewal berikutnya.
+  Bila renewal baru dikonfirmasi setelah masa grace habis, tanggal periode
+  yang ditagihkan tetap menjadi snapshot invoice; tanggal coverage aktual
+  dimulai pada tanggal konfirmasi WIB dan disimpan terpisah serta diaudit.
+  UI harus membedakan periode invoice dari periode coverage aktual agar
+  keterlambatan konfirmasi tidak tampak seperti layanan dimulai lebih awal.
+  Setiap command renewal wajib menyertakan `Idempotency-Key` UUID yang sama
+  saat retry; payload sama harus replay resource payment yang sama dan payload
+  berbeda dengan key yang sama menghasilkan HTTP 409. Unique constraint
+  subscription-periode tetap menjadi proteksi duplikasi lintas key.
+- Invoice awal non-trial jatuh tempo tujuh hari kalender setelah diterbitkan;
+  invoice konversi trial dan renewal jatuh tempo pada akhir periode terkait.
+  Mata uang MVP IDR dengan nominal rupiah bulat yang dihitung server. Nomor
+  invoice dibuat server, unik, immutable, tidak dipakai ulang, dan memakai
+  seri SaaS terpisah dari invoice Parent (`UE-SUB-YYYYMM-000001`, nomor urut
+  per bulan dialokasikan atomik di server). Payment gateway, auto-charge,
+  automatic refund, dan offset kredit tidak termasuk MVP.
+- Role: Platform Admin dapat melihat seluruh tenant, mengubah konfigurasi
+  grace/harga, memverifikasi/menolak bukti, menyetujui/menolak koreksi,
+  suspend/reactivate dengan alasan, dan melihat audit. Staff Admin hanya dapat
+  melihat subscription tenant sendiri, membuat permintaan renewal, mengunggah
+  bukti, serta mengajukan koreksi; tidak dapat menentukan harga/status,
+  memverifikasi pembayaran, atau menyetujui permintaannya. Staff, Parent, dan
+  role lain tidak mendapat akses ke kontrak/harga SaaS. Semua endpoint
+  memeriksa role dan scope tenant di server.
+- Bukti pembayaran menerima PDF/JPG/PNG maksimal 2 MB per file, tersimpan
+  privat dan tidak menjadi URL publik. Unduhan diautentikasi dan diaudit;
+  penggantian bukti membuat versi baru. Upload tidak sama dengan penerimaan
+  pembayaran dan tidak mengubah status subscription. Bukti tidak boleh dirilis
+  sebelum klasifikasi retensi, jadwal penghapusan/legal hold, dan kontrol
+  keamanan storage disahkan pemilik kebijakan keuangan/privasi.
+- Koreksi pembayaran memiliki request terpisah untuk nominal tidak cocok,
+  referensi salah, bukti/invoice keliru, atau pembayaran ganda/lebih bayar.
+  Payment asli immutable. Platform Admin memutuskan dengan alasan dan
+  adjustment/reversal yang merujuk payment asal. Kekurangan bayar menjaga
+  saldo; kelebihan/duplikasi dicatat sebagai kredit yang tidak otomatis
+  memperpanjang atau mengurangi invoice lain. Refund manual mensyaratkan
+  pengaju, penyetuju, dan pelaksana transfer tercatat; pengaju tidak boleh
+  menyetujui sendiri dan penyetuju terpisah dari pelaksana. Pengecualian
+  memerlukan approval kedua dan alasan audit. Detail operasional refund belum
+  dapat dirilis sebelum prosedur fungsi keuangan disahkan.
+- Semua command finansial/lifecycle wajib idempoten: key acak stabil per aksi,
+  terikat pada actor, operasi, tenant, dan hash payload ternormalisasi. Replay
+  key+payload sama mengembalikan hasil pertama; payload berbeda menghasilkan
+  conflict. Penyimpanan idempotency minimum 90 hari dan unique business key
+  tetap mencegah duplikasi sesudahnya. Operasi paralel memakai transaksi,
+  lock/version check dan constraint unik. Audit append-only memuat actor,
+  tenant/resource, aksi, alasan, timestamp UTC, nilai sebelum/sesudah,
+  referensi terkait, dan correlation/idempotency key yang aman; tidak memuat
+  token/password atau konten bukti.
+- Reminder in-app untuk Platform Admin dan Staff Admin pada H-7/H-3/H-1
+  terhadap akhir trial/periode/jatuh tempo; event deduplicated dan tenant
+  scoped. Reminder yang lewat saat tagihan dibuat dilewati. Hasil verifikasi
+  atau koreksi dikirim kepada Staff Admin pengaju. Push Parent tidak dipakai
+  untuk tagihan SaaS. Job berjalan setiap hari pukul 00:10 WIB; event trial,
+  periode aktif/grace, dan payment `PENDING` dibedakan. Event ledger memiliki
+  unique key deterministik tenant + tipe + tanggal target + lead time + payment
+  atau subscription, sehingga dua instance tidak membuat notifikasi inbox
+  ganda. Staff Admin menerima item di inbox tenantnya sendiri; Platform Admin
+  melihat daftar paginated lintas tenant pada halaman review subscription yang
+  hanya dapat diakses Platform Admin. Pengiriman reminder tidak mengubah
+  payment, periode, status, atau akses.
+- Akses: `ACTIVE`/`TRIAL` mengikuti capability tenant. Selama `GRACE`, operasi
+  inti Staff untuk anak yang sudah terdaftar dan komunikasi perawatan Parent
+  dengan anak aktif tetap tersedia, tetapi enrollment/pembelian layanan baru
+  Parent ditutup. `PENDING_PAYMENT`, `SUSPENDED`, dan `EXPIRED` membatasi
+  operasi baru sesuai matriks endpoint; Staff Admin tetap dapat membuka
+  self-service subscription/payment. Parent pada `EXPIRED` hanya mendapat
+  invoice miliknya dan data historis tenant yang secara eksplisit diizinkan
+  secara read-only, untuk anak miliknya. Profil dan hasil screening yang
+  dimiliki akun Parent adalah account-scoped dan tetap dapat diakses tanpa
+  tenant aktif atau subscription operasional. Perubahan status tidak
+  menghapus data. Deny-by-default tetap berlaku di backend; UI hanya
+  mencerminkan allowlist server.
+- UI Platform Admin menyediakan daftar server-side searchable/filterable/
+  paginated dengan ringkasan dan tindakan perlu perhatian. List menggunakan
+  `GET /api/v1/platform/tenants/page` dengan filter `search`, `status`,
+  `institutionType`, `page` (0-based), dan `size` (maksimum 50); response
+  mengembalikan `items`, `totalElements`, `totalPages`, `totalMatching`, dan
+  `statusCounts`. Ringkasan status mengikuti filter pencarian dan tipe lembaga,
+  tetapi tidak dipersempit oleh filter status yang sedang dipilih. Perubahan
+  filter mengembalikan halaman UI ke awal. Halaman detail
+  status/periode/payment/audit, perubahan grace dengan preview tanggal dan
+  konfirmasi/alasan, antrean bukti/koreksi, serta simulasi rollout grace
+  read-only sebelum aktivasi. Staff Admin memiliki halaman subscription
+  tenant sendiri dengan status, invoice/payment, tindakan renewal, upload,
+  koreksi, dan hasil review. UI tidak menyimpulkan lifecycle dari jam lokal,
+  tidak mengoptimistic-update transaksi, menggunakan konfirmasi untuk aksi
+  finansial, dan mendukung locale aplikasi.
+- Sebelum production billing aktif, fungsi keuangan wajib menyetujui batas
+  nominal operasional yang diterapkan sebagai konfigurasi server, klasifikasi
+  layanan/status PKP/perlakuan pajak dan dokumen pajak, klasifikasi serta
+  retensi bukti, dan prosedur refund. Tanpa sign-off pajak, invoice produksi
+  tidak boleh menyatakan atau menghitung pajak. Tanpa batas nominal terpasang,
+  server menolak pembuatan/perubahan tagihan. Grace production tidak diaktifkan
+  sebelum simulasi read-only ditinjau dan rollout dikonfirmasi. Runtime flag
+  `TENANT_SUBSCRIPTION_GRACE_ENABLED` default-nya `false`; saat false, status
+  efektif tidak memberikan masa `GRACE` meskipun tenant memiliki konfigurasi
+  grace. Platform Admin dapat membaca preview read-only melalui endpoint
+  `GET /api/v1/platform/tenant-subscription/grace-rollout-preview?page=&size=`.
+  Preview membandingkan status efektif saat ini dengan status usulan grace,
+  menyertakan ringkasan semua tenant, daftar tenant terdampak terpaginasikan,
+  waktu pembuatan dan token snapshot. Endpoint hanya membaca data: tidak
+  mengubah subscription, akses, payment, audit, atau mengirim notifikasi.
+  Sebelum rollout, hasil harus ditinjau ulang; preview baru wajib dibuat bila
+  token snapshot berubah. Flag hanya boleh diaktifkan setelah peninjauan dan
+  konfirmasi rollout yang tercatat.
+- Tahap rekonsiliasi/laporan tetap opsional. Acceptance, rancangan data/API,
+  state matrix, serta kontrol operasional mengikuti
+  `docs/plans/tenant-subscription-management.md` selama tidak bertentangan
+  dengan aturan normatif pada bagian ini.

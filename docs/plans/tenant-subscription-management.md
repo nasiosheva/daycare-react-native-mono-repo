@@ -2,7 +2,13 @@
 
 # Rencana Pengelolaan Langganan Tenant
 
-Dokumen ini adalah rencana produk dan implementasi bertahap untuk langganan tenant (lembaga) pada platform Usia Emas. Dokumen ini belum mengubah aturan bisnis normatif maupun kode. **Implementasi rencana ini wajib menyelaraskan `docs/business-rules.md`**: keputusan produk yang disetujui pada §12 harus lebih dahulu dicatat dan ditinjau di sana sebelum kode billing, lifecycle, UI, atau akses diubah. Implementasi hanya boleh dianggap selesai bila aturan normatif, kode, test, dan flow UI/API konsisten. Jika kebutuhan implementasi menemukan keputusan baru atau konflik dengan aturan normatif, hentikan bagian yang terdampak, perbarui dan tinjau `docs/business-rules.md`, lalu lanjutkan berdasarkan aturan terbaru.
+Dokumen ini adalah rencana produk dan implementasi bertahap untuk langganan tenant (lembaga) pada platform Usia Emas. Keputusan normatif yang sudah disepakati dicatat pada §13.13 `docs/business-rules.md`. **Implementasi hanya boleh dianggap selesai bila aturan normatif, kode, test, dan flow UI/API konsisten.** Jika kebutuhan implementasi menemukan keputusan baru atau konflik dengan aturan normatif, hentikan bagian yang terdampak, perbarui dan tinjau `docs/business-rules.md`, lalu lanjutkan berdasarkan aturan terbaru.
+
+**Status implementasi (14 Oktober 2026):** Kode Tahap 0–5 telah tersedia sebagian: lifecycle/grace dengan rollout default-off, allowlist akses, audit, snapshot pembayaran/invoice sequence, renewal idempoten, self-service Staff Admin, instruksi pembayaran dari konfigurasi server, bukti privat ber-versi dan antrean review, pengajuan/approval koreksi, serta reminder H-7/H-3/H-1 dengan deduplikasi database dan halaman Platform Admin. Upload bukti dan koreksi tetap default-off. Ini belum production-ready: migrasi V28–V31 belum dijalankan/diuji pada DB nyata, storage bukti belum memiliki sign-off retensi/keamanan termasuk malware scanning dan enkripsi operasional, belum ada mekanisme refund, dan acceptance/access/E2E matrix serta pemantauan pengiriman reminder masih perlu ditutup. Baca status dan validasi terbaru di catatan implementasi harian.
+
+**Kontrol rollout grace:** Grace runtime harus tetap nonaktif secara default (`TENANT_SUBSCRIPTION_GRACE_ENABLED=false`). Preview read-only harus tersedia dan ditinjau sebelum flag diaktifkan; preview ulang bila token snapshot berubah. Flag ini bukan pengganti acceptance matrix atau persetujuan finance.
+
+**Status lanjutan (15 Oktober 2026):** Command billing Parent untuk pembelian paket dan upload bukti kini memakai ledger idempotency persisten yang berbeda dari SaaS tenant, replay resource terikat tenant/aktor/operasi, konflik payload, penyimpanan key stabil di mobile, serta row lock saat transisi invoice/bukti. Migration V33 belum dijalankan. Verifikasi tercatat di [catatan harian](../changes/2026-10-15/parent-billing-idempotency.md); ini belum menutup constraint bisnis lintas-key maupun gate rilis SaaS.
 
 ## 1. Tujuan dan batas cakupan
 
@@ -201,6 +207,8 @@ Konfigurasi grace bersifat per tenant dan dikelola Platform Admin, dengan rentan
 
 ## 7. Tahapan implementasi
 
+Status checklist implementasi tidak menggantikan acceptance criteria di §10 dan §14; tiap tahap baru selesai setelah semua gap dan release gate tahap tersebut diverifikasi.
+
 Urutan ini mengurangi risiko: setiap tahap memiliki hasil yang dapat diuji dan menerapkan keputusan produk yang telah disetujui, dengan prasyarat teknis/keuangan yang harus diselesaikan sebelum area terkait dirilis.
 
 ### Tahap 0 — Kunci kebijakan dan kontrak
@@ -280,8 +288,8 @@ Urutan ini mengurangi risiko: setiap tahap memiliki hasil yang dapat diuji dan m
 **Pekerjaan:**
 
 - Buat reminder in-app untuk Platform Admin dan Staff Admin tenant dengan lead time 7, 3, dan 1 hari sebelum akhir trial/jatuh tempo/periode sesuai konteks; notifikasi hasil verifikasi/koreksi dikirim in-app kepada Staff Admin pengaju.
-- Pengiriman harus deduplicated/idempotent dan tercatat; notifikasi ke Staff Admin hanya berisi informasi tenantnya sendiri.
-- Dukung bahasa, kanal yang benar-benar tersedia, retry terkontrol, dan status gagal kirim yang dapat ditindaklanjuti.
+- Implementasi saat ini menjalankan job harian pukul 00:10 WIB untuk H-7/H-3/H-1; ledger event memiliki kunci deterministik dan unique constraint lintas instance. Notifikasi Staff Admin disimpan dalam inbox tenant sendiri pada transaksi yang sama; Platform Admin mendapat daftar reminder lintas tenant yang dilindungi Platform Admin dan sinyal realtime untuk refresh.
+- Pengiriman inbox lokal bersifat transaksional; retry/outbox untuk kanal eksternal, status gagal kirim, dan observability operasional belum tersedia. Notifikasi Staff Admin dari job masih berbahasa Indonesia; lokalisasi isi notifikasi per preferensi pengguna belum tersedia.
 - Reminder tidak mengubah status, akses, atau pembayaran.
 
 ### Tahap 5 — Self-service renewal dan bukti pembayaran tenant
@@ -320,9 +328,10 @@ Rancangan akhir mengikuti pola repository setelah tahap 0. Kebutuhan domain mini
 - **Snapshot ketentuan periode**: plan dan harga/currency yang benar-benar dibeli untuk suatu periode, agar perubahan plan/price mendatang tidak mengubah periode aktif atau riwayat. Renewal menggunakan ketentuan baru yang berlaku ketika renewal dibuat; payment menyimpan snapshot yang sama.
 - **Konfigurasi grace**: `gracePeriodDays` per tenant dengan nilai tervalidasi; bila batas aktif-grace perlu dibekukan, simpan `graceStartedAt`/`graceEndsAt` atau event lifecycle agar perubahan konfigurasi tidak mengubah grace yang sedang berjalan.
 - **Payment/invoice SaaS**: subscription/tenant ID, periode yang ditagih (termasuk tanggal mulai setelah akhir periode yang berjalan untuk renewal awal), amount/currency, status, due date, paid timestamp, payment reference, created-by/verified-by bila manual. Jangan memakai entitas Parent billing bila semantiknya berbeda.
+- **Coverage aktual**: catat tanggal coverage yang benar-benar diberikan terpisah dari snapshot periode invoice. Biasanya keduanya sama; jika payment renewal baru dikonfirmasi setelah `GRACE` berakhir, coverage dimulai pada tanggal konfirmasi WIB tanpa mengubah periode/ketentuan invoice yang telah diterbitkan. Audit harus menghubungkan keputusan konfirmasi dan rentang coverage aktual.
 - **Idempotency command**: key unik per scope/aktor/operasi, hash payload ternormalisasi, resource/response hasil, status pemrosesan, serta waktu pembuatan/retensi. Key yang sama dengan payload identik mengembalikan hasil tersimpan; key sama dengan payload berbeda menghasilkan conflict. Pemrosesan paralel harus aman.
 - **Subscription audit event**: append-only, actor, event type, timestamp, reason, safe before/after snapshot, referensi payment, serta request correlation ID.
-- **Lifecycle reminder/outbox** (jika fase 4 dikerjakan): target user/tenant, event/period key unik, kanal, status pengiriman, retry metadata, dan payload minimum.
+- **Lifecycle reminder:** `tenant_subscription_reminders` mencatat tenant, subscription, payment opsional, jenis event, tanggal target, lead days, event key unik, dan waktu pencatatan. Inbox Staff Admin dibuat atomik dengan ledger; API Platform Admin membaca event lintas tenant melalui otorisasi Platform Admin. Retry metadata belum dipakai karena pengiriman inbox berada dalam transaksi database; outbox/retry eksternal tetap diperlukan bila kanal di luar inbox ditambahkan.
 - **Bukti pembayaran**: relasi ke payment SaaS tertentu, metadata file aman, uploader/waktu upload, status review, reviewer/waktu keputusan, alasan penolakan, serta versioning agar upload ulang tidak menghilangkan jejak. Simpan file di storage privat; database menyimpan metadata dan referensi aman.
 - **Permintaan koreksi**: payment asli, tenant, pengaju, tipe/alasan, usulan nilai/data, bukti pendukung privat, status review, reviewer, keputusan/alasan/waktu, serta adjustment/reversal event yang terbentuk. Permintaan dan keputusan disimpan terpisah dari record payment asli.
 

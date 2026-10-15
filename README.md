@@ -1,3 +1,5 @@
+<!-- Mories Deo Hutapea,S.E.,S.Kom -->
+
 # Usia Emas
 
 Usia Emas adalah platform multi-tenant untuk Daycare, PAUD, TK, dan layanan
@@ -37,10 +39,22 @@ Aturan role, institution type, tenant scope, consent, billing, kelas, screening,
 chat, dan keamanan hanya didefinisikan di [docs/business-rules.md](docs/business-rules.md).
 Flow khusus tersedia di [docs/](docs/).
 
+Pengelolaan langganan SaaS tenant dipisahkan dari billing Parent. Aturan, status,
+akses, dan tahap implementasi ada di [business rules](docs/business-rules.md#1313-langganan-saas-tenant)
+dan [plan langganan tenant](docs/plans/tenant-subscription-management.md). Untuk pembayaran yang baru dikonfirmasi setelah masa tenggang, invoice tetap menyimpan periode tagihannya dan UI/API juga mencatat periode layanan aktual secara terpisah.
+Daftar Platform Admin mendukung pencarian, filter status/jenis lembaga, ringkasan jumlah per status, dan pagination melalui `GET /api/v1/platform/tenants/page`.
+Staff Admin memiliki self-service subscription melalui `/tenant-subscription`, termasuk renewal idempoten, bukti pembayaran privat maksimal 2 MB, dan pengajuan koreksi. Platform Admin meninjau bukti/koreksi dan melihat reminder H-7/H-3/H-1; upload dan koreksi tetap nonaktif sampai gate kebijakan/keuangan disetujui. Lihat [plan](docs/plans/tenant-subscription-management.md) untuk gap dan syarat rilis.
+
+Billing Parent mengirim `Idempotency-Key` stabil untuk pembelian paket dan upload bukti; retry aman mengembalikan invoice yang sama, sedangkan key dengan payload berbeda ditolak. Semantik invoice Parent tetap terpisah dari langganan SaaS tenant.
+
+Setiap branch yang membuka PR/MR wajib menyertakan checklist branch tersendiri dari [template checklist MR](docs/checklists/branch-mr-checklist-template.md), lengkap dengan bukti test/CI dan blocker. Perubahan kode mengikuti test-first: test ditulis dan dibuktikan gagal sebelum implementasi, lalu dijalankan kembali sampai lulus.
+
 ## Environment files
 
 Semua file environment bersifat lokal dan di-ignore Git. Mulai dari file contoh;
 jangan menyimpan secret di repository.
+`TENANT_SUBSCRIPTION_GRACE_ENABLED` tetap `false` sampai preview rollout
+read-only ditinjau dan rollout dikonfirmasi.
 
 | File | Kegunaan |
 | --- | --- |
@@ -65,6 +79,10 @@ jangan menyimpan secret di repository.
 | `PLATFORM_ADMIN_EMAILS` | Email bootstrap Platform Admin |
 | `EXPO_PUSH_URL` | Endpoint Expo Push opsional |
 | `CHAT_NOTIFICATION_TRANSPORT` | `WEBSOCKET` (default), `EXPO`, atau alias `FIREBASE` |
+| `TENANT_SUBSCRIPTION_MAX_PAYMENT_AMOUNT` | Batas maksimum transaksi SaaS tenant dalam IDR bulat; wajib disetel sebelum membuat tagihan |
+| `TENANT_SUBSCRIPTION_PAYMENT_PROOF_ENABLED` | `false` (default) sampai kebijakan penyimpanan/retensi bukti pembayaran disahkan |
+| `TENANT_SUBSCRIPTION_CORRECTION_ENABLED` | `false` (default) sampai prosedur persetujuan koreksi pembayaran disahkan |
+| `TENANT_SUBSCRIPTION_PAYMENT_INSTRUCTIONS` | Instruksi pembayaran SaaS tenant yang ditampilkan ke Staff Admin, dikonfigurasi server-side |
 
 `EXPO_PUBLIC_*` hanya untuk konfigurasi client publik. Jangan gunakan prefix itu
 untuk password, private key, signing secret, atau credential server.
