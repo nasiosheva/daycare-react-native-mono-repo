@@ -1,8 +1,10 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PurchaseServiceInput, TenantSubscriptionStatus } from "@daycare/core";
 import type { BranchListFilter, Invoice, ServicePlan } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
 import { useAcrossTenants } from "@/tenants/acrossTenants";
+import { getOrCreateIdempotencyKey, removeIdempotencyKey } from "@/idempotency/persistedIdempotencyKey";
 
 export function useServicePlans(organizationId?: string, enabled = true) { const { api, organizationId: activeOrganizationId } = useAuth(); const resolvedOrganizationId = organizationId ?? activeOrganizationId; return useQuery({ queryKey: ["service-plans", resolvedOrganizationId], queryFn: () => api.servicePlans(resolvedOrganizationId ?? undefined), enabled: Boolean(resolvedOrganizationId) && enabled }); }
 export function useEntitlements(filterOrEnabled: BranchListFilter | boolean = {}, enabled = true, organizationId?: string) { const { api, organizationId: activeOrganizationId } = useAuth(); const filter = typeof filterOrEnabled === "boolean" ? {} : filterOrEnabled; const queryEnabled = typeof filterOrEnabled === "boolean" ? filterOrEnabled : enabled; const resolvedOrganizationId = organizationId ?? activeOrganizationId; return useQuery({ queryKey: ["entitlements", resolvedOrganizationId, filter], queryFn: () => api.entitlements(filter, resolvedOrganizationId ?? undefined), enabled: Boolean(resolvedOrganizationId) && queryEnabled }); }
@@ -45,19 +47,28 @@ export function useParentEntitlementsAcrossTenants(memberships: readonly ParentT
 // A mutation targeting a non-active tenant (organizationId passed explicitly by the caller,
 // resolved via resolveOrganizationId) still invalidates the active tenant's own cached lists —
 // nothing else on screen assumes a switch happened, so both must refresh independently.
-function useBookingMutation<TVariables>(mutationFn: (variables: TVariables) => Promise<unknown>, resolveOrganizationId?: (variables: TVariables) => string | undefined) {
+function useBookingMutation<TVariables>(mutationFn: (variables: TVariables) => Promise<unknown>, resolveOrganizationId?: (variables: TVariables) => string | undefined, afterSuccess?: (variables: TVariables) => Promise<void>) {
   const { organizationId: activeOrganizationId } = useAuth(); const client = useQueryClient();
   return useMutation({
     mutationFn,
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       const targetOrganizationId = resolveOrganizationId?.(variables) ?? activeOrganizationId;
       for (const resource of ["bookings", "entitlements", "invoices"]) void client.invalidateQueries({ queryKey: [resource, targetOrganizationId] });
       if (targetOrganizationId !== activeOrganizationId) for (const resource of ["bookings", "entitlements", "invoices"]) void client.invalidateQueries({ queryKey: [resource, activeOrganizationId] });
+      await afterSuccess?.(variables);
     },
   });
 }
 
-export function usePurchaseService() { const { api } = useAuth(); return useBookingMutation<PurchaseServiceInput & { organizationId?: string }>(({ organizationId, ...input }) => api.purchaseService(input, organizationId), (variables) => variables.organizationId); }
+export function usePurchaseService() {
+  const { api } = useAuth();
+  const storageKeyFor = (variables: PurchaseServiceInput & { organizationId?: string }) => `parent-service-purchase:${variables.organizationId ?? "active"}:${variables.childId}:${variables.planId}:${[...variables.bookingDates].sort().join(",")}:${variables.promoCode?.trim().toUpperCase() ?? ""}`;
+  return useBookingMutation<PurchaseServiceInput & { organizationId?: string }>(
+    async ({ organizationId, ...input }) => api.purchaseService(input, await getOrCreateIdempotencyKey(storageKeyFor({ ...input, organizationId })), organizationId),
+    (variables) => variables.organizationId,
+    (variables) => removeIdempotencyKey(storageKeyFor(variables)),
+  );
+}
 export function useBookEntitlement() { const { api } = useAuth(); return useBookingMutation<{ entitlementId: string; bookingDates: string[]; organizationId?: string }>(({ entitlementId, bookingDates, organizationId }) => api.bookEntitlement(entitlementId, bookingDates, organizationId), (variables) => variables.organizationId); }
 export function useBookingApproval() { const { api } = useAuth(); return useBookingMutation<{ bookingId: string; approved: boolean }>(({ bookingId, approved }) => api.approveBooking(bookingId, approved)); }
 export function useMarkInvoicePaid() { const { api } = useAuth(); return useBookingMutation<string>((invoiceId) => api.markInvoicePaid(invoiceId)); }

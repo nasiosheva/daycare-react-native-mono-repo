@@ -1,5 +1,7 @@
 package com.daycare.api.web
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.service.AccessService
 import com.daycare.api.service.IdentityService
 import com.daycare.api.service.AdministrationService
@@ -70,12 +72,15 @@ import com.daycare.api.service.PlatformAdministrationService
 import com.daycare.api.service.ParentFamilyProfileService
 import com.daycare.api.service.UpdateParentFamilyProfileRequest
 import com.daycare.api.service.TenantReadinessService
+import com.daycare.api.service.TenantSubscriptionReminderService
 import com.daycare.api.service.PlatformCurriculumService
 import com.daycare.api.service.InstitutionTypeCatalogService
 import com.daycare.api.service.CreateInstitutionTypeDefinitionRequest
 import com.daycare.api.service.CreateGlobalCurriculumProgramRequest
 import com.daycare.api.service.UpdateTenantRequest
 import com.daycare.api.service.RenewTenantSubscriptionRequest
+import com.daycare.api.service.UpdateTenantGracePeriodRequest
+import com.daycare.api.service.SetTenantSubscriptionStatusRequest
 import com.daycare.api.service.ChildManagementService
 import com.daycare.api.service.UpdateChildRequest
 import com.daycare.api.service.CreateChildProgramRequest
@@ -97,6 +102,13 @@ import com.daycare.api.service.ParentChildTransferRequest
 import com.daycare.api.service.ParentEnrollmentApprovalRequest
 import com.daycare.api.service.ParentEnrollmentRetryRequest
 import com.daycare.api.service.TenantPaymentInstructionService
+import com.daycare.api.service.StaffTenantSubscriptionService
+import com.daycare.api.service.TenantSubscriptionPaymentProofService
+import com.daycare.api.service.SubmitTenantPaymentProofRequest
+import com.daycare.api.service.ReviewTenantPaymentProofRequest
+import com.daycare.api.service.TenantSubscriptionCorrectionService
+import com.daycare.api.service.CreateTenantPaymentCorrectionRequest
+import com.daycare.api.service.ReviewTenantPaymentCorrectionRequest
 import com.daycare.api.service.UpsertPaymentInstructionRequest
 import com.daycare.api.service.CreateTenantBranchRequest
 import com.daycare.api.service.UpdateTenantBranchRequest
@@ -335,6 +347,57 @@ class PrivateTutoringController(private val privateTutoring: PrivateTutoringServ
 }
 
 @RestController
+@RequestMapping("/v1/tenant-subscription")
+@SecurityRequirement(name = "bearerAuth")
+class StaffTenantSubscriptionController(private val subscriptions: StaffTenantSubscriptionService, private val paymentProofs: TenantSubscriptionPaymentProofService, private val corrections: TenantSubscriptionCorrectionService) {
+    @GetMapping("/self")
+    fun current(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = subscriptions.current(jwt, organizationId)
+
+    @PostMapping("/self/renew")
+    fun renew(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestHeader("Idempotency-Key") idempotencyKey: UUID) = subscriptions.renew(jwt, organizationId, idempotencyKey)
+
+    @PostMapping("/self/payments/{paymentId}/proofs")
+    @ResponseStatus(HttpStatus.CREATED)
+    fun submitProof(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable paymentId: UUID, @RequestHeader("Idempotency-Key") idempotencyKey: UUID, @Valid @RequestBody request: SubmitTenantPaymentProofRequest) = paymentProofs.submit(jwt, organizationId, paymentId, idempotencyKey, request)
+
+    @GetMapping("/self/payments/{paymentId}/proofs")
+    fun ownProofs(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable paymentId: UUID) = paymentProofs.ownProofs(jwt, organizationId, paymentId)
+
+    @GetMapping("/proofs/{proofId}/content")
+    fun proofContent(@AuthenticationPrincipal jwt: Jwt, @PathVariable proofId: UUID) = paymentProofs.content(jwt, proofId)
+
+    @PostMapping("/self/payments/{paymentId}/corrections")
+    @ResponseStatus(HttpStatus.CREATED)
+    fun createCorrection(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable paymentId: UUID, @RequestHeader("Idempotency-Key") idempotencyKey: UUID, @Valid @RequestBody request: CreateTenantPaymentCorrectionRequest) = corrections.create(jwt, organizationId, paymentId, idempotencyKey, request)
+
+    @GetMapping("/self/payments/{paymentId}/corrections")
+    fun ownCorrections(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable paymentId: UUID) = corrections.ownRequests(jwt, organizationId, paymentId)
+}
+
+@RestController
+@RequestMapping("/v1/platform/tenant-subscription")
+@SecurityRequirement(name = "bearerAuth")
+class PlatformTenantSubscriptionController(private val subscriptions: TenantSubscriptionPaymentProofService, private val corrections: TenantSubscriptionCorrectionService, private val reminders: TenantSubscriptionReminderService) {
+    @GetMapping("/features")
+    fun subscriptionFeatures(@AuthenticationPrincipal jwt: Jwt) = subscriptions.featureStatus(jwt)
+
+    @GetMapping("/reminders")
+    fun subscriptionReminders(@AuthenticationPrincipal jwt: Jwt, @RequestParam(defaultValue = "0") page: Int, @RequestParam(defaultValue = "20") size: Int) = reminders.platformReminderPage(jwt, page, size)
+
+    @GetMapping("/proofs")
+    fun proofReviewQueue(@AuthenticationPrincipal jwt: Jwt, @RequestParam(defaultValue = "0") page: Int, @RequestParam(defaultValue = "20") size: Int) = subscriptions.reviewQueue(jwt, page, size)
+
+    @PostMapping("/proofs/{proofId}/review")
+    fun reviewProof(@AuthenticationPrincipal jwt: Jwt, @PathVariable proofId: UUID, @RequestHeader("Idempotency-Key") idempotencyKey: UUID, @Valid @RequestBody request: ReviewTenantPaymentProofRequest) = subscriptions.review(jwt, proofId, idempotencyKey, request)
+
+    @GetMapping("/corrections")
+    fun correctionReviewQueue(@AuthenticationPrincipal jwt: Jwt, @RequestParam(defaultValue = "0") page: Int, @RequestParam(defaultValue = "20") size: Int) = corrections.reviewQueue(jwt, page, size)
+
+    @PostMapping("/corrections/{correctionId}/review")
+    fun reviewCorrection(@AuthenticationPrincipal jwt: Jwt, @PathVariable correctionId: UUID, @RequestHeader("Idempotency-Key") idempotencyKey: UUID, @Valid @RequestBody request: ReviewTenantPaymentCorrectionRequest) = corrections.review(jwt, correctionId, idempotencyKey, request)
+}
+
+@RestController
 @RequestMapping("/v1/platform")
 @SecurityRequirement(name = "bearerAuth")
 class PlatformController(
@@ -402,6 +465,23 @@ class PlatformController(
     @GetMapping("/tenants")
     fun tenants(@AuthenticationPrincipal jwt: Jwt, @RequestParam(required = false) search: String?) = platformAdministration.tenants(jwt, search)
 
+    @GetMapping("/tenants/page")
+    fun tenantPage(
+        @AuthenticationPrincipal jwt: Jwt,
+        @RequestParam(required = false) search: String?,
+        @RequestParam(required = false) status: com.daycare.api.domain.TenantSubscriptionStatus?,
+        @RequestParam(required = false) institutionType: String?,
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "20") size: Int,
+    ) = platformAdministration.tenantPage(jwt, search, status, institutionType, page, size)
+
+    @GetMapping("/tenant-subscription/grace-rollout-preview")
+    fun previewGraceRollout(
+        @AuthenticationPrincipal jwt: Jwt,
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "20") size: Int,
+    ) = platformAdministration.previewGraceRollout(jwt, page, size)
+
     @GetMapping("/parents")
     fun parents(@AuthenticationPrincipal jwt: Jwt, @RequestParam(required = false) search: String?) = platformAdministration.parents(jwt, search)
 
@@ -433,10 +513,16 @@ class PlatformController(
     fun resetTenantStaffAdminPassword(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable membershipId: UUID, @Valid @RequestBody request: ChangeTenantUserPasswordRequest) = platformAdministration.resetTenantStaffAdminPassword(jwt, organizationId, membershipId, request)
 
     @PostMapping("/tenants/{organizationId}/subscription/renew")
-    fun renewSubscription(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @Valid @RequestBody request: RenewTenantSubscriptionRequest) = platformAdministration.renewSubscription(jwt, organizationId, request)
+    fun renewSubscription(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @RequestHeader("Idempotency-Key") idempotencyKey: UUID, @Valid @RequestBody request: RenewTenantSubscriptionRequest) = platformAdministration.renewSubscription(jwt, organizationId, idempotencyKey, request)
+
+    @PatchMapping("/tenants/{organizationId}/subscription/grace-period")
+    fun updateGracePeriod(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @Valid @RequestBody request: UpdateTenantGracePeriodRequest) = platformAdministration.updateGracePeriod(jwt, organizationId, request)
+
+    @GetMapping("/tenants/{organizationId}/subscription/audit")
+    fun subscriptionAudit(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @RequestParam(defaultValue = "0") page: Int, @RequestParam(defaultValue = "20") size: Int) = platformAdministration.subscriptionAudit(jwt, organizationId, page, size)
 
     @PostMapping("/tenants/{organizationId}/subscription/{status}")
-    fun setSubscriptionStatus(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable status: com.daycare.api.domain.TenantSubscriptionStatus) = platformAdministration.setSubscriptionStatus(jwt, organizationId, status)
+    fun setSubscriptionStatus(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable status: com.daycare.api.domain.TenantSubscriptionStatus, @Valid @RequestBody request: SetTenantSubscriptionStatusRequest) = platformAdministration.setSubscriptionStatus(jwt, organizationId, status, request.reason)
 
     @PostMapping("/admins") @ResponseStatus(HttpStatus.CREATED)
     fun createPlatformAdmin(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: CreatePlatformAdminRequest) = mapOf("id" to platformAdministration.createPlatformAdmin(jwt, request))
@@ -460,10 +546,10 @@ class PlatformController(
     fun seedGlobalCurriculum(@AuthenticationPrincipal jwt: Jwt) = platformCurriculum.seedGlobalCurriculum(jwt)
 
     @PostMapping("/tenants/{organizationId}/payments/{paymentId}/mark-paid")
-    fun markPaymentPaid(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable paymentId: UUID) = platformAdministration.markPaymentPaid(jwt, organizationId, paymentId)
+    fun markPaymentPaid(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable paymentId: UUID, @RequestHeader("Idempotency-Key") idempotencyKey: UUID) = platformAdministration.markPaymentPaid(jwt, organizationId, paymentId, idempotencyKey)
 
     @PostMapping("/tenants/{organizationId}/payments/{paymentId}/void")
-    fun voidPayment(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable paymentId: UUID) = platformAdministration.voidPayment(jwt, organizationId, paymentId)
+    fun voidPayment(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID, @PathVariable paymentId: UUID, @RequestHeader("Idempotency-Key") idempotencyKey: UUID) = platformAdministration.voidPayment(jwt, organizationId, paymentId, idempotencyKey)
 
     @PostMapping("/tenants/{organizationId}/staff-admin-invitation/refresh")
     fun refreshStaffAdminInvitation(@AuthenticationPrincipal jwt: Jwt, @PathVariable organizationId: UUID) = platformAdministration.refreshStaffAdminInvitation(jwt, organizationId)
@@ -1088,7 +1174,7 @@ class BillingController(private val billing: BillingService, private val overtim
     fun deletePlanTemplate(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable templateId: UUID) = billing.deletePlanTemplate(jwt, organizationId, templateId)
 
     @PostMapping("/service-purchases") @ResponseStatus(HttpStatus.CREATED)
-    fun purchaseService(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: com.daycare.api.service.PurchaseServiceRequest) = billing.purchase(jwt, organizationId, request)
+    fun purchaseService(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestHeader("Idempotency-Key") idempotencyKey: UUID, @Valid @RequestBody request: com.daycare.api.service.PurchaseServiceRequest) = billing.purchase(jwt, organizationId, idempotencyKey, request)
 
     @GetMapping("/service-entitlements")
     fun entitlements(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?) = billing.entitlements(jwt, organizationId, BranchListFilter(branchId))
@@ -1112,7 +1198,7 @@ class BillingController(private val billing: BillingService, private val overtim
     fun invoice(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID) = billing.invoice(jwt, organizationId, invoiceId)
 
     @PostMapping("/invoices/{invoiceId}/payment-proof")
-    fun submitPaymentProof(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID, @Valid @RequestBody request: com.daycare.api.service.SubmitPaymentProofRequest) = billing.submitPaymentProof(jwt, organizationId, invoiceId, request)
+    fun submitPaymentProof(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID, @RequestHeader("Idempotency-Key") idempotencyKey: UUID, @Valid @RequestBody request: com.daycare.api.service.SubmitPaymentProofRequest) = billing.submitPaymentProof(jwt, organizationId, invoiceId, idempotencyKey, request)
 
     @GetMapping("/invoices/{invoiceId}/payment-proof")
     fun paymentProof(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable invoiceId: UUID) = billing.paymentProof(jwt, organizationId, invoiceId)

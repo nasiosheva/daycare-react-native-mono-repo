@@ -108,6 +108,7 @@ class ParentEnrollmentService(
     private val paymentInstructions: TenantPaymentInstructionService,
     private val familyProfileVisibility: ParentFamilyProfileVisibilityService,
     private val publishedOfferingCapabilities: PublishedOfferingCapabilityService,
+    private val subscriptionLifecycle: TenantSubscriptionLifecyclePolicy = TenantSubscriptionLifecyclePolicy(graceEnabled = true),
 ) {
     @Transactional
     fun catalog(jwt: Jwt, search: String? = null): List<ParentTenantCatalogResponse> {
@@ -116,7 +117,7 @@ class ParentEnrollmentService(
         val candidates = if (query.isNullOrEmpty()) organizations.findAll() else organizations.findAllByNameContainingIgnoreCase(query)
         return candidates.mapNotNull { organization ->
             val subscription = subscriptions.findByOrganizationId(organization.id)
-            val operational = subscription?.status in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL)
+            val operational = subscription?.let { subscriptionLifecycle.effectiveStatus(it, LocalDate.now(BILLING_TIME_ZONE)) } in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL)
             val daycareBranches = branches.findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organization.id)
                 .filter { publishedOfferingCapabilities.hasPublishedCapability(organization.id, InstitutionCapability.DAYCARE_OPERATIONS, it.id) }
             if (!operational || daycareBranches.isEmpty()) null else ParentTenantCatalogResponse(
@@ -261,7 +262,7 @@ class ParentEnrollmentService(
 
     private fun requireCatalogTenant(organizationId: UUID, branchId: UUID) {
         val subscription = subscriptions.findByOrganizationId(organizationId)
-        require(subscription?.status in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL)) { "Tenant is not available" }
+        require(subscription?.let { subscriptionLifecycle.effectiveStatus(it, LocalDate.now(BILLING_TIME_ZONE)) } in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL)) { "Tenant is not available" }
         require(publishedOfferingCapabilities.hasPublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, branchId)) { "Daycare is not available for this branch" }
     }
 

@@ -42,6 +42,7 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.any
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.context.ApplicationEventPublisher
@@ -92,6 +93,28 @@ class BillingServiceCoverageTest {
         assertEquals(5, result.entitlement.totalCredits)
         assertEquals(today.plusDays(20), result.entitlement.validUntil)
         assertTrue(result.bookings.isEmpty())
+    }
+
+    @Test
+    fun `parent purchase replay returns the first invoice without creating billing side effects again`() {
+        val f = fixture()
+        val today = LocalDate.now()
+        val key = UUID.randomUUID()
+        val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-REPLAY", totalAmount = BigDecimal("100"), branchId = f.child.branchId, childId = f.child.id)
+        val entitlement = ServiceEntitlement(organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, ownerUserId = f.parent.id, planId = f.planId, invoiceId = invoice.id, planName = "Harian", planType = ServicePlanType.DAILY, totalCredits = 1, validUntil = today)
+        val booking = Booking(organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, entitlementId = entitlement.id, invoiceId = invoice.id, bookingDate = today, planName = "Harian")
+        stubInvoiceGraph(f, invoice, entitlement, null, booking)
+        `when`(f.billingIdempotency.payloadHash(f.child.id.toString(), f.planId.toString(), today.toString(), "")).thenReturn("payload-hash")
+        `when`(f.billingIdempotency.replayResourceId(f.organizationId, f.parent.id, "PARENT_SERVICE_PURCHASE", key, "payload-hash")).thenReturn(invoice.id)
+
+        val response = f.service.purchase(f.jwt, f.organizationId, key, PurchaseServiceRequest(f.planId, f.child.id, listOf(today)))
+
+        assertEquals(invoice.id, response.invoice.id)
+        assertEquals(entitlement.id, response.entitlement.id)
+        assertEquals(booking.id, response.bookings.single().id)
+        verify(f.invoices, never()).save(any(Invoice::class.java))
+        verify(f.bookings, never()).save(any(Booking::class.java))
+        verify(f.capacity, never()).reserve(f.organizationId, f.child.branchId, f.planId, entitlement.id, listOf(today), mapOf(today to booking.id))
     }
 
     @Test
@@ -372,6 +395,7 @@ class BillingServiceCoverageTest {
         `when`(fixture.identity.sync(fixture.jwt)).thenReturn(parent)
         val invoice = Invoice(id = fixture.invoiceId, organizationId = fixture.organizationId, payerUserId = parent.id, invoiceNumber = "INV-1", subtotalAmount = BigDecimal("100"), totalAmount = BigDecimal("100"), branchId = fixture.child.branchId, childId = fixture.child.id, status = InvoiceStatus.PENDING)
         `when`(fixture.invoices.findById(fixture.invoiceId)).thenReturn(Optional.of(invoice))
+        `when`(fixture.invoices.findWithLockById(fixture.invoiceId)).thenReturn(invoice)
         `when`(fixture.children.findById(fixture.child.id)).thenReturn(Optional.of(fixture.child))
         `when`(fixture.entitlements.findAllByInvoiceId(fixture.invoiceId)).thenReturn(emptyList())
         `when`(fixture.users.findById(parent.id)).thenReturn(Optional.of(parent))
@@ -396,6 +420,8 @@ class BillingServiceCoverageTest {
         `when`(f.entitlements.save(any(ServiceEntitlement::class.java))).thenReturn(entitlement)
         `when`(f.bookings.save(any(Booking::class.java))).thenReturn(booking)
         `when`(f.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        `when`(f.invoices.findWithLockById(invoice.id)).thenReturn(invoice)
+        `when`(f.paymentProofs.findWithLockByInvoiceId(invoice.id)).thenReturn(null)
         `when`(f.entitlements.findAllByInvoiceId(invoice.id)).thenReturn(listOf(entitlement))
         `when`(f.bookings.findAllByInvoiceId(invoice.id)).thenReturn(listOf(booking))
         `when`(f.users.findById(f.parent.id)).thenReturn(Optional.of(f.parent))
@@ -588,6 +614,7 @@ class BillingServiceCoverageTest {
         val invoice = Invoice(id = noEntitlement.invoiceId, organizationId = noEntitlement.organizationId, payerUserId = noEntitlement.parent.id, invoiceNumber = "INV-NONE", status = InvoiceStatus.PENDING, branchId = noEntitlement.child.branchId, childId = noEntitlement.child.id)
         `when`(noEntitlement.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(noEntitlement.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())).thenReturn(emptyList())
         `when`(noEntitlement.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        `when`(noEntitlement.invoices.findWithLockById(invoice.id)).thenReturn(invoice)
         `when`(noEntitlement.entitlements.findAllByInvoiceId(invoice.id)).thenReturn(emptyList())
         `when`(noEntitlement.users.findById(noEntitlement.parent.id)).thenReturn(Optional.of(noEntitlement.parent))
         `when`(noEntitlement.children.findById(noEntitlement.child.id)).thenReturn(Optional.of(noEntitlement.child))
@@ -600,6 +627,7 @@ class BillingServiceCoverageTest {
         val pendingBooking = Booking(organizationId = expired.organizationId, branchId = expired.child.branchId, childId = expired.child.id, entitlementId = expiredEntitlement.id, invoiceId = expiredInvoice.id, planName = "Lama", status = BookingStatus.PENDING_PAYMENT)
         `when`(expired.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(expired.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())).thenReturn(emptyList())
         `when`(expired.invoices.findById(expiredInvoice.id)).thenReturn(Optional.of(expiredInvoice))
+        `when`(expired.invoices.findWithLockById(expiredInvoice.id)).thenReturn(expiredInvoice)
         `when`(expired.entitlements.findAllByInvoiceId(expiredInvoice.id)).thenReturn(listOf(expiredEntitlement))
         `when`(expired.bookings.findAllByInvoiceId(expiredInvoice.id)).thenReturn(listOf(pendingBooking))
         `when`(expired.users.findById(expired.parent.id)).thenReturn(Optional.of(expired.parent))
@@ -615,6 +643,7 @@ class BillingServiceCoverageTest {
         val approvalBooking = Booking(organizationId = approval.organizationId, branchId = approval.child.branchId, childId = approval.child.id, entitlementId = approvalEntitlement.id, invoiceId = approvalInvoice.id, planName = "Harian", status = BookingStatus.PENDING_PAYMENT)
         `when`(approval.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(approval.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())).thenReturn(emptyList())
         `when`(approval.invoices.findById(approvalInvoice.id)).thenReturn(Optional.of(approvalInvoice))
+        `when`(approval.invoices.findWithLockById(approvalInvoice.id)).thenReturn(approvalInvoice)
         `when`(approval.entitlements.findAllByInvoiceId(approvalInvoice.id)).thenReturn(listOf(approvalEntitlement))
         `when`(approval.bookings.findAllByInvoiceId(approvalInvoice.id)).thenReturn(listOf(approvalBooking))
         `when`(approval.users.findById(approval.parent.id)).thenReturn(Optional.of(approval.parent))
@@ -629,6 +658,7 @@ class BillingServiceCoverageTest {
         val f = fixture()
         val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-GUARD", status = InvoiceStatus.PENDING, branchId = f.child.branchId, childId = f.child.id)
         `when`(f.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        `when`(f.invoices.findWithLockById(invoice.id)).thenReturn(invoice)
         assertThrows(IllegalArgumentException::class.java) { f.service.reviewPaymentProof(f.jwt, f.organizationId, invoice.id, ReviewPaymentProofRequest(approved = true)) }
         assertThrows(IllegalArgumentException::class.java) { f.service.cancelPendingEnrollmentPurchase(invoice.id, UUID.randomUUID()) }
         invoice.status = InvoiceStatus.PAID
@@ -636,9 +666,11 @@ class BillingServiceCoverageTest {
 
         invoice.status = InvoiceStatus.PAYMENT_SUBMITTED
         `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(null)
+        `when`(f.paymentProofs.findWithLockByInvoiceId(invoice.id)).thenReturn(null)
         assertThrows(IllegalArgumentException::class.java) { f.service.reviewPaymentProof(f.jwt, f.organizationId, invoice.id, ReviewPaymentProofRequest(approved = true)) }
         val proof = PaymentProof(invoiceId = invoice.id, imageData = byteArrayOf(1))
         `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(proof)
+        `when`(f.paymentProofs.findWithLockByInvoiceId(invoice.id)).thenReturn(proof)
         assertThrows(IllegalArgumentException::class.java) { f.service.reviewPaymentProof(f.jwt, f.organizationId, invoice.id, ReviewPaymentProofRequest(approved = false, rejectionReason = "  ")) }
     }
 
@@ -717,7 +749,9 @@ class BillingServiceCoverageTest {
         val existingProof = PaymentProof(invoiceId = invoice.id, fileName = "old.png", contentType = "image/png", imageData = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A), note = "old")
         `when`(f.identity.sync(f.jwt)).thenReturn(f.parent)
         `when`(f.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        `when`(f.invoices.findWithLockById(invoice.id)).thenReturn(invoice)
         `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(existingProof)
+        `when`(f.paymentProofs.findWithLockByInvoiceId(invoice.id)).thenReturn(existingProof)
         `when`(f.entitlements.findAllByInvoiceId(invoice.id)).thenReturn(emptyList())
         `when`(f.users.findById(f.parent.id)).thenReturn(Optional.empty())
         `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
@@ -887,7 +921,9 @@ class BillingServiceCoverageTest {
         `when`(f.access.require(f.jwt, f.organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(f.adminScope)
         `when`(f.access.require(f.jwt, f.organizationId, setOf(Role.STAFF_ADMIN), readOnly = true)).thenReturn(f.adminScope)
         `when`(f.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        `when`(f.invoices.findWithLockById(invoice.id)).thenReturn(invoice)
         `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(proof)
+        `when`(f.paymentProofs.findWithLockByInvoiceId(invoice.id)).thenReturn(proof)
         `when`(f.entitlements.findAllByInvoiceId(invoice.id)).thenReturn(emptyList())
         `when`(f.users.findById(f.parent.id)).thenReturn(Optional.of(f.parent))
         `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
@@ -926,6 +962,7 @@ class BillingServiceCoverageTest {
         val paidEntitlement = ServiceEntitlement(id = UUID.randomUUID(), organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, ownerUserId = f.parent.id, planId = f.planId, invoiceId = pendingInvoice.id, planName = plan.name, planType = ServicePlanType.DAILY, status = EntitlementStatus.PENDING_PAYMENT, totalCredits = 1, bookingRequiresApproval = false, validUntil = LocalDate.now().plusDays(1))
         val booking = Booking(organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, entitlementId = paidEntitlement.id, invoiceId = pendingInvoice.id, bookingDate = LocalDate.now(), planName = plan.name, status = BookingStatus.PENDING_PAYMENT)
         `when`(f.invoices.findById(pendingInvoice.id)).thenReturn(Optional.of(pendingInvoice))
+        `when`(f.invoices.findWithLockById(pendingInvoice.id)).thenReturn(pendingInvoice)
         `when`(f.entitlements.findAllByInvoiceId(pendingInvoice.id)).thenReturn(listOf(paidEntitlement))
         `when`(f.bookings.findAllByInvoiceId(pendingInvoice.id)).thenReturn(listOf(booking))
         `when`(f.users.findById(f.parent.id)).thenReturn(Optional.of(f.parent))
@@ -1172,6 +1209,7 @@ class BillingServiceCoverageTest {
         val parentEnrollments: ParentEnrollmentRepository,
         val memberships: MembershipRepository,
         val branchFilters: BranchListFilterService,
+        val billingIdempotency: BillingCommandIdempotencyService,
         val adminScope: AccessScope,
         val parentScope: AccessScope,
         val service: BillingService,
@@ -1179,10 +1217,12 @@ class BillingServiceCoverageTest {
 
     private fun stubInvoiceGraph(f: Fixture, invoice: Invoice, entitlement: ServiceEntitlement?, proof: PaymentProof?, booking: Booking?) {
         `when`(f.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+        `when`(f.invoices.findWithLockById(invoice.id)).thenReturn(invoice)
         `when`(f.entitlements.findAllByInvoiceId(invoice.id)).thenReturn(if (entitlement == null) emptyList() else listOf(entitlement))
         `when`(f.users.findById(invoice.payerUserId)).thenReturn(Optional.of(f.parent))
         `when`(f.children.findById(f.child.id)).thenReturn(Optional.of(f.child))
         `when`(f.paymentProofs.findByInvoiceId(invoice.id)).thenReturn(proof)
+        `when`(f.paymentProofs.findWithLockByInvoiceId(invoice.id)).thenReturn(proof)
         `when`(f.bookings.findAllByInvoiceId(invoice.id)).thenReturn(if (booking == null) emptyList() else listOf(booking))
         `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())).thenReturn(emptyList())
     }
@@ -1204,7 +1244,7 @@ class BillingServiceCoverageTest {
         val access = mock(AccessService::class.java); val childScopes = mock(ChildScopeService::class.java); val children = mock(ChildRepository::class.java); val branches = mock(BranchRepository::class.java)
         val plans = mock(ServicePlanRepository::class.java); val invoices = mock(InvoiceRepository::class.java); val paymentProofs = mock(PaymentProofRepository::class.java); val entitlements = mock(ServiceEntitlementRepository::class.java); val bookings = mock(BookingRepository::class.java)
         val users = mock(UserProfileRepository::class.java); val discounts = mock(ServicePlanDiscountRepository::class.java); val discountRedemptions = mock(ServicePlanDiscountRedemptionRepository::class.java); val templates = mock(ServicePlanTemplateRepository::class.java); val capacity = mock(CapacityReservationService::class.java)
-        val notifications = mock(NotificationService::class.java); val events = mock(ApplicationEventPublisher::class.java); val parentEnrollments = mock(ParentEnrollmentRepository::class.java); val memberships = mock(MembershipRepository::class.java); val identity = mock(IdentityService::class.java); val branchFilters = mock(BranchListFilterService::class.java)
+        val notifications = mock(NotificationService::class.java); val events = mock(ApplicationEventPublisher::class.java); val parentEnrollments = mock(ParentEnrollmentRepository::class.java); val memberships = mock(MembershipRepository::class.java); val identity = mock(IdentityService::class.java); val branchFilters = mock(BranchListFilterService::class.java); val billingIdempotency = mock(BillingCommandIdempotencyService::class.java)
         val adminScope = AccessScope(staff, Membership(organizationId = organizationId, role = Role.STAFF_ADMIN, active = true), setOf("DAYCARE"), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
         val parentScope = AccessScope(parent, Membership(organizationId = organizationId, role = Role.PARENT, active = true), setOf("DAYCARE"), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(adminScope)
@@ -1216,6 +1256,6 @@ class BillingServiceCoverageTest {
         `when`(access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(parentScope)
         `when`(childScopes.requireParentLinkedChild(parentScope, child.id, organizationId)).thenReturn(child)
         `when`(children.findById(child.id)).thenReturn(Optional.of(child))
-        return Fixture(organizationId, planId, discountId, invoiceId, child, parent, staff, jwt, access, childScopes, identity, plans, invoices, bookings, paymentProofs, entitlements, discounts, discountRedemptions, templates, capacity, branches, children, users, events, notifications, parentEnrollments, memberships, branchFilters, adminScope, parentScope, BillingService(access, childScopes, children, branches, plans, invoices, paymentProofs, entitlements, bookings, users, discounts, discountRedemptions, templates, capacity, notifications, events, parentEnrollments, memberships, identity, branchFilters))
+        return Fixture(organizationId, planId, discountId, invoiceId, child, parent, staff, jwt, access, childScopes, identity, plans, invoices, bookings, paymentProofs, entitlements, discounts, discountRedemptions, templates, capacity, branches, children, users, events, notifications, parentEnrollments, memberships, branchFilters, billingIdempotency, adminScope, parentScope, BillingService(access, childScopes, children, branches, plans, invoices, paymentProofs, entitlements, bookings, users, discounts, discountRedemptions, templates, capacity, notifications, events, parentEnrollments, memberships, identity, branchFilters, billingIdempotency))
     }
 }

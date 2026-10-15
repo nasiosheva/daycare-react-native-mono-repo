@@ -109,6 +109,7 @@ class AccessService(
     private val organizationCapabilities: OrganizationCapabilitiesService,
     private val publishedOfferingCapabilities: PublishedOfferingCapabilityService,
     private val parentFamilyProfiles: ParentFamilyProfileRepository,
+    private val subscriptionLifecycle: TenantSubscriptionLifecyclePolicy = TenantSubscriptionLifecyclePolicy(graceEnabled = true),
 ) {
     @Transactional
     fun currentUser(jwt: Jwt): CurrentUserResponse {
@@ -117,12 +118,12 @@ class AccessService(
         return CurrentUserResponse(user.id, user.displayName, user.username, user.gender, user.dateOfBirth, user.registrationRole, platformAccess.isPlatformAdmin(user), memberships.findAllByUserId(user.id).sortedByDescending { it.active }.map { membership ->
             val name = organizations.findById(membership.organizationId).map { it.name }.orElse("Unknown organization")
             val capabilities = organizationCapabilities.forOrganization(membership.organizationId)
-            MembershipResponse(membership.organizationId, name, membership.role, membership.active, membership.branchId, membership.classroomId, membership.canManageChildPrograms, membership.canManageDevelopmentCategories, capabilities.types, capabilities.capabilities, subscriptionsByOrganization[membership.organizationId]?.status)
+            MembershipResponse(membership.organizationId, name, membership.role, membership.active, membership.branchId, membership.classroomId, membership.canManageChildPrograms, membership.canManageDevelopmentCategories, capabilities.types, capabilities.capabilities, subscriptionsByOrganization[membership.organizationId]?.let { subscriptionLifecycle.effectiveStatus(it, LocalDate.now(BILLING_TIME_ZONE)) })
         }, parentFamilyProfiles.findByUserId(user.id)?.toResponse())
     }
 
     @Transactional
-    fun require(jwt: Jwt, organizationId: UUID, allowedRoles: Set<Role>, requiredCapability: InstitutionCapability? = null, readOnly: Boolean = false, allowSubscriptionRestrictedForRoles: Set<Role> = emptySet(), allowInactiveRoles: Set<Role> = emptySet()): AccessScope {
+    fun require(jwt: Jwt, organizationId: UUID, allowedRoles: Set<Role>, requiredCapability: InstitutionCapability? = null, readOnly: Boolean = false, allowSubscriptionRestrictedForRoles: Set<Role> = emptySet(), allowInactiveRoles: Set<Role> = emptySet(), allowGraceForRoles: Set<Role> = emptySet()): AccessScope {
         val user = identityService.sync(jwt)
         val membership = memberships.findAllByUserIdAndOrganizationId(user.id, organizationId).sortedByDescending { it.active }.firstOrNull {
             (it.active || (readOnly && (it.role != Role.PARENT || it.role in allowInactiveRoles))) && it.role in allowedRoles
@@ -130,11 +131,13 @@ class AccessService(
             ?: throw AccessDeniedException("You do not have permission for this organization")
         val subscription = subscriptions.findByOrganizationId(organizationId)
         if (subscription != null) {
-            if (subscription.status == TenantSubscriptionStatus.TRIAL && subscription.trialEndsAt?.isBefore(java.time.LocalDate.now()) == true) subscription.status = TenantSubscriptionStatus.PENDING_PAYMENT
+            val effectiveStatus = subscriptionLifecycle.effectiveStatus(subscription, LocalDate.now(BILLING_TIME_ZONE))
             // See docs/business-rules.md §13.12 TENANT_SUBSCRIPTION_RESTRICTED: narrow,
             // explicitly allowlisted exceptions (Parent's own child list and billing) stay
             // readable when the tenant's own subscription lapses; every other route still blocks.
-            if (subscription.status !in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL) && membership.role !in allowSubscriptionRestrictedForRoles) {
+            val operational = effectiveStatus in setOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.TRIAL)
+            val graceAllowed = effectiveStatus == TenantSubscriptionStatus.GRACE && membership.role in allowGraceForRoles
+            if (!operational && !graceAllowed && membership.role !in allowSubscriptionRestrictedForRoles) {
                 throw AccessDeniedException("Tenant subscription is not active")
             }
         }

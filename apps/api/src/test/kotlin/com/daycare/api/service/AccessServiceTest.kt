@@ -181,7 +181,7 @@ class AccessServiceTest {
     }
 
     @Test
-    fun `trial expiration transitions to pending payment and required capability fails closed`() {
+    fun `trial expiration is derived without mutating storage and required capability fails closed`() {
         val fixtures = Fixtures()
         fixtures.withSubscriptionStatus(TenantSubscriptionStatus.TRIAL)
         val membership = Membership(userId = fixtures.user.id, organizationId = fixtures.organizationId, role = Role.STAFF_ADMIN)
@@ -189,13 +189,26 @@ class AccessServiceTest {
         val subscription = TenantSubscription(organizationId = fixtures.organizationId, status = TenantSubscriptionStatus.TRIAL, trialEndsAt = LocalDate.now().minusDays(1))
         `when`(fixtures.subscriptions.findByOrganizationId(fixtures.organizationId)).thenReturn(subscription)
         assertThrows(AccessDeniedException::class.java) { fixtures.service.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF_ADMIN)) }
-        assertEquals(TenantSubscriptionStatus.PENDING_PAYMENT, subscription.status)
+        assertEquals(TenantSubscriptionStatus.TRIAL, subscription.status)
 
         `when`(fixtures.subscriptions.findByOrganizationId(fixtures.organizationId)).thenReturn(TenantSubscription(organizationId = fixtures.organizationId, status = TenantSubscriptionStatus.ACTIVE))
         `when`(fixtures.organizationCapabilities.forOrganization(fixtures.organizationId)).thenReturn(OrganizationCapabilities(emptySet(), emptySet()))
         assertThrows(AccessDeniedException::class.java) {
             fixtures.service.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF_ADMIN), InstitutionCapability.DAYCARE_OPERATIONS)
         }
+    }
+
+    @Test
+    fun `grace access is deny by default and only granted to explicitly allowlisted roles`() {
+        val fixtures = Fixtures()
+        val today = LocalDate.now(BILLING_TIME_ZONE)
+        fixtures.withSubscriptionStatus(TenantSubscriptionStatus.ACTIVE)
+        val membership = Membership(userId = fixtures.user.id, organizationId = fixtures.organizationId, role = Role.STAFF)
+        `when`(fixtures.memberships.findAllByUserIdAndOrganizationId(fixtures.user.id, fixtures.organizationId)).thenReturn(listOf(membership))
+        `when`(fixtures.subscriptions.findByOrganizationId(fixtures.organizationId)).thenReturn(TenantSubscription(organizationId = fixtures.organizationId, status = TenantSubscriptionStatus.ACTIVE, periodEnd = today.minusDays(1), gracePeriodDays = 7))
+
+        assertThrows(AccessDeniedException::class.java) { fixtures.service.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF)) }
+        assertEquals(Role.STAFF, fixtures.service.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF), allowGraceForRoles = setOf(Role.STAFF)).membership.role)
     }
 
     @Test

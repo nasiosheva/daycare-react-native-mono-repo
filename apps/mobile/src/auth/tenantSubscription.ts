@@ -5,5 +5,5 @@ import type { TenantSubscriptionStatus } from "@daycare/core";
  * profile responses. New responses always include the tenant status.
  */
 export function hasOperationalTenantSubscription(status: TenantSubscriptionStatus | null | undefined): boolean {
-  return status == null || status === "ACTIVE" || status === "TRIAL";
+  return status == null || status === "ACTIVE" || status === "TRIAL" || status === "GRACE";
 }

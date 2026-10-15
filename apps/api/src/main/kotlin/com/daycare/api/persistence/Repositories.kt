@@ -21,6 +21,7 @@ interface UserProfileRepository : JpaRepository<UserProfile, UUID> {
     fun findByEmailIgnoreCase(email: String): UserProfile?
     fun findByPhoneNumber(phoneNumber: String): UserProfile?
     fun findByUsernameIgnoreCase(username: String): UserProfile?
+    @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select user from UserProfile user where user.id = :id") fun findWithLockById(@Param("id") id: UUID): UserProfile?
 
     @Query("""
         select user
@@ -54,7 +55,7 @@ interface MembershipRepository : JpaRepository<Membership, UUID> {
     fun findOrganizationIdsByStaffAdminSearch(@Param("query") query: String): List<UUID>
 }
 interface OrganizationRepository : JpaRepository<Organization, UUID> { fun findAllByNameContainingIgnoreCase(name: String): List<Organization> }
-interface OrganizationTypeAssignmentRepository : JpaRepository<OrganizationTypeAssignment, UUID> { fun findAllByOrganizationId(organizationId: UUID): List<OrganizationTypeAssignment>; fun existsByType(type: String): Boolean }
+interface OrganizationTypeAssignmentRepository : JpaRepository<OrganizationTypeAssignment, UUID> { fun findAllByOrganizationId(organizationId: UUID): List<OrganizationTypeAssignment>; fun findAllByOrganizationIdIn(organizationIds: Collection<UUID>): List<OrganizationTypeAssignment>; fun existsByType(type: String): Boolean }
 interface EducationOfferingRepository : JpaRepository<EducationOffering, UUID> { fun findAllByOrganizationIdOrderByCreatedAtAsc(organizationId: UUID): List<EducationOffering>; fun findAllByOrganizationIdAndBranchIdAndStatus(organizationId: UUID, branchId: UUID, status: com.daycare.api.domain.EducationOfferingStatus): List<EducationOffering> }
 interface InstitutionTypeDefinitionRepository : JpaRepository<InstitutionTypeDefinition, String> { fun findAllByActiveTrueOrderByNameAsc(): List<InstitutionTypeDefinition>; fun existsByNameIgnoreCase(name: String): Boolean; fun findByNameIgnoreCase(name: String): InstitutionTypeDefinition? }
 interface AcademicYearRepository : JpaRepository<AcademicYear, UUID> { fun findAllByOrganizationIdOrderByStartsOnDesc(organizationId: UUID): List<AcademicYear> }
@@ -102,8 +103,68 @@ interface PlatformAdministratorRepository : JpaRepository<PlatformAdministrator,
     @Query(value = "insert into platform_administrators (user_id, created_at) values (:userId, CURRENT_TIMESTAMP) on conflict do nothing", nativeQuery = true)
     fun insertIfAbsent(@Param("userId") userId: UUID): Int
 }
-interface TenantSubscriptionRepository : JpaRepository<TenantSubscription, UUID> { fun findByOrganizationId(organizationId: UUID): TenantSubscription? }
-interface TenantPaymentRepository : JpaRepository<TenantPayment, UUID> { fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<TenantPayment> }
+interface TenantSubscriptionRepository : JpaRepository<TenantSubscription, UUID> {
+    fun findByOrganizationId(organizationId: UUID): TenantSubscription?
+    fun findAllByOrganizationIdIn(organizationIds: Collection<UUID>): List<TenantSubscription>
+    fun findAllByStatusAndTrialEndsAtIn(status: com.daycare.api.domain.TenantSubscriptionStatus, trialEndDates: Collection<LocalDate>): List<TenantSubscription>
+    @Query("select s from TenantSubscription s where s.status in :statuses and coalesce(s.nextPeriodEnd, s.periodEnd) in :periodEndDates")
+    fun findAllByStatusInAndCoveredPeriodEndIn(
+        @Param("statuses") statuses: Collection<com.daycare.api.domain.TenantSubscriptionStatus>,
+        @Param("periodEndDates") periodEndDates: Collection<LocalDate>,
+    ): List<TenantSubscription>
+    @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select s from TenantSubscription s where s.organizationId = :organizationId") fun findByOrganizationIdForUpdate(@Param("organizationId") organizationId: UUID): TenantSubscription?
+}
+interface TenantSubscriptionAuditEventRepository : JpaRepository<TenantSubscriptionAuditEvent, UUID> { fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID, pageable: Pageable): Page<TenantSubscriptionAuditEvent> }
+interface TenantSubscriptionReminderRepository : JpaRepository<TenantSubscriptionReminder, UUID> {
+    fun findAllByOrderByCreatedAtDesc(pageable: Pageable): Page<TenantSubscriptionReminder>
+
+    @Modifying
+    @Query(value = """
+        insert into tenant_subscription_reminders (id, event_key, organization_id, subscription_id, payment_id, event_type, event_date, lead_days, created_at)
+        values (:id, :eventKey, :organizationId, :subscriptionId, :paymentId, :eventType, :eventDate, :leadDays, :createdAt)
+        on conflict (event_key) do nothing
+    """, nativeQuery = true)
+    fun insertIfAbsent(
+        @Param("id") id: UUID,
+        @Param("eventKey") eventKey: String,
+        @Param("organizationId") organizationId: UUID,
+        @Param("subscriptionId") subscriptionId: UUID,
+        @Param("paymentId") paymentId: UUID?,
+        @Param("eventType") eventType: String,
+        @Param("eventDate") eventDate: LocalDate,
+        @Param("leadDays") leadDays: Int,
+        @Param("createdAt") createdAt: Instant,
+    ): Int
+}
+interface TenantPaymentRepository : JpaRepository<TenantPayment, UUID> {
+    fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<TenantPayment>
+    fun findAllByStatusAndDueDateIn(status: com.daycare.api.domain.TenantPaymentStatus, dueDates: Collection<LocalDate>): List<TenantPayment>
+    fun findByOrganizationIdAndIdempotencyKey(organizationId: UUID, idempotencyKey: UUID): TenantPayment?
+    fun findByDecisionByUserIdAndDecisionIdempotencyKey(decisionByUserId: UUID, decisionIdempotencyKey: UUID): TenantPayment?
+    @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select p from TenantPayment p where p.id = :id") fun findWithLockById(@Param("id") id: UUID): TenantPayment?
+}
+interface TenantPaymentProofRepository : JpaRepository<TenantPaymentProof, UUID> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select proof from TenantPaymentProof proof where proof.id = :id") fun findWithLockById(@Param("id") id: UUID): TenantPaymentProof?
+    fun findAllByPaymentIdOrderByVersionNumberDesc(paymentId: UUID): List<TenantPaymentProof>
+    fun findFirstByPaymentIdOrderByVersionNumberDesc(paymentId: UUID): TenantPaymentProof?
+    fun findAllByStatusOrderBySubmittedAtAsc(status: String, pageable: Pageable): Page<TenantPaymentProof>
+    fun findAllByPaymentIdInOrderByPaymentIdAscVersionNumberDesc(paymentIds: Collection<UUID>): List<TenantPaymentProof>
+    fun findByOrganizationIdAndUploadedByUserIdAndUploadIdempotencyKey(organizationId: UUID, uploadedByUserId: UUID, uploadIdempotencyKey: UUID): TenantPaymentProof?
+    fun findByReviewedByUserIdAndReviewIdempotencyKey(reviewedByUserId: UUID, reviewIdempotencyKey: UUID): TenantPaymentProof?
+}
+interface TenantPaymentCorrectionRequestRepository : JpaRepository<TenantPaymentCorrectionRequest, UUID> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select request from TenantPaymentCorrectionRequest request where request.id = :id") fun findWithLockById(@Param("id") id: UUID): TenantPaymentCorrectionRequest?
+    fun findAllByOrganizationIdAndPaymentIdOrderByCreatedAtDesc(organizationId: UUID, paymentId: UUID): List<TenantPaymentCorrectionRequest>
+    fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID, pageable: Pageable): Page<TenantPaymentCorrectionRequest>
+    fun findAllByStatusOrderByCreatedAtAsc(status: String, pageable: Pageable): Page<TenantPaymentCorrectionRequest>
+    fun findFirstByOrganizationIdAndPaymentIdAndStatus(organizationId: UUID, paymentId: UUID, status: String): TenantPaymentCorrectionRequest?
+    fun findByReviewedByUserIdAndReviewIdempotencyKey(reviewedByUserId: UUID, reviewIdempotencyKey: UUID): TenantPaymentCorrectionRequest?
+    fun findByOrganizationIdAndRequestedByUserIdAndRequestIdempotencyKey(organizationId: UUID, requestedByUserId: UUID, requestIdempotencyKey: UUID): TenantPaymentCorrectionRequest?
+}
+interface TenantPaymentAdjustmentRepository : JpaRepository<TenantPaymentAdjustment, UUID> {
+    fun findByCorrectionRequestId(correctionRequestId: UUID): TenantPaymentAdjustment?
+    fun findAllByOrganizationIdAndPaymentIdOrderByCreatedAtDesc(organizationId: UUID, paymentId: UUID): List<TenantPaymentAdjustment>
+}
 interface BranchRepository : JpaRepository<Branch, UUID> { fun findFirstByOrganizationId(organizationId: UUID): Branch?; fun findByOrganizationIdAndPrimaryTrue(organizationId: UUID): Branch?; fun findAllByOrganizationId(organizationId: UUID): List<Branch>; fun findAllByOrganizationIdAndActiveTrueOrderByNameAsc(organizationId: UUID): List<Branch>; fun findAllByOrganizationIdAndNameContainingIgnoreCase(organizationId: UUID, name: String): List<Branch>; @Lock(LockModeType.PESSIMISTIC_WRITE) fun findWithLockById(id: UUID): Branch? }
 interface BranchOperatingHourRepository : JpaRepository<BranchOperatingHour, UUID> { fun findAllByBranchIdOrderByDayOfWeekAsc(branchId: UUID): List<BranchOperatingHour>; fun findAllByBranchIdIn(branchIds: Collection<UUID>): List<BranchOperatingHour>; fun deleteAllByBranchId(branchId: UUID) }
 interface BranchOvertimeRateTierRepository : JpaRepository<BranchOvertimeRateTier, UUID> { fun findAllByBranchIdOrderByDisplayOrderAsc(branchId: UUID): List<BranchOvertimeRateTier>; fun findAllByBranchIdIn(branchIds: Collection<UUID>): List<BranchOvertimeRateTier>; fun deleteAllByBranchId(branchId: UUID) }

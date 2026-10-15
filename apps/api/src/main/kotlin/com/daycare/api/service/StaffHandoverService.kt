@@ -38,7 +38,7 @@ class StaffHandoverService(
 ) {
     @Transactional(readOnly = true)
     fun list(jwt: Jwt, organizationId: UUID, childId: UUID): List<StaffHandoverResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true, allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.STAFF))
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         publishedCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)
         return handovers.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId).map(::response)
@@ -46,7 +46,7 @@ class StaffHandoverService(
 
     @Transactional(readOnly = true)
     fun recipients(jwt: Jwt, organizationId: UUID, childId: UUID): List<StaffHandoverRecipientResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true, allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.STAFF))
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         publishedCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)
         return memberships.findAllByOrganizationId(organizationId)
@@ -65,7 +65,7 @@ class StaffHandoverService(
 
     @Transactional
     fun create(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreateStaffHandoverRequest): StaffHandoverResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS, allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.STAFF))
         access.requireWritable(scope)
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         publishedCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)
@@ -81,7 +81,7 @@ class StaffHandoverService(
 
     @Transactional
     fun acknowledge(jwt: Jwt, organizationId: UUID, childId: UUID, handoverId: UUID): StaffHandoverResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS, allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.STAFF))
         access.requireWritable(scope)
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         publishedCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)

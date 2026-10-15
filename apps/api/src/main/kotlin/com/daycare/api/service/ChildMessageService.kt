@@ -86,7 +86,7 @@ class ChildMessageService(
 ) {
     @Transactional(readOnly = true)
     fun list(jwt: Jwt, organizationId: UUID, childId: UUID): List<ChildMessageResponse> {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet())
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), allowGraceForRoles = Role.entries.toSet())
         val child = requireChildAccess(scope, childId, organizationId)
         val forChild = messages.findAllByOrganizationIdAndChildIdOrderByCreatedAtAsc(organizationId, childId)
         val namesByUserId = users.findAllById(forChild.map { it.senderUserId }.distinct()).associateBy { it.id }
@@ -108,7 +108,7 @@ class ChildMessageService(
      */
     @Transactional(readOnly = true)
     fun unreadSummary(jwt: Jwt, organizationId: UUID): ChildMessageUnreadSummaryResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))
+        val scope = access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN), allowGraceForRoles = setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))
         val childIds = recipientChildIds(scope, organizationId)
         if (childIds.isEmpty()) return ChildMessageUnreadSummaryResponse(0, emptyList())
         val counts = messages.countUnreadByChild(organizationId, childIds, scope.user.id)
@@ -134,7 +134,7 @@ class ChildMessageService(
 
     @Transactional(readOnly = true)
     fun summary(jwt: Jwt, organizationId: UUID, childId: UUID): ChildMessageSummaryResponse {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet())
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), allowGraceForRoles = Role.entries.toSet())
         requireChildAccess(scope, childId, organizationId)
         val lastReadAt = reads.findByChildIdAndUserId(childId, scope.user.id)?.lastReadAt
         val unreadCount = if (lastReadAt == null) {
@@ -147,7 +147,7 @@ class ChildMessageService(
 
     @Transactional
     fun send(jwt: Jwt, organizationId: UUID, childId: UUID, request: SendChildMessageRequest): ChildMessageResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))
+        val scope = access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN), allowGraceForRoles = setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))
         access.requireWritable(scope)
         val child = requireChildAccess(scope, childId, organizationId)
         val replyTo = request.replyToMessageId?.let { replyId ->
@@ -168,7 +168,7 @@ class ChildMessageService(
     /** Photo bytes are authorized exactly like the thread itself: same tenant and child scope. */
     @Transactional(readOnly = true)
     fun photo(jwt: Jwt, organizationId: UUID, childId: UUID, messageId: UUID): ChildMessagePhotoResponse {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet())
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), allowGraceForRoles = Role.entries.toSet())
         val child = requireChildAccess(scope, childId, organizationId)
         val message = messages.findByIdAndOrganizationIdAndChildId(messageId, organizationId, child.id)
             ?: throw IllegalArgumentException(ChildMessageError.PHOTO_MISSING)
@@ -179,7 +179,7 @@ class ChildMessageService(
 
     @Transactional
     fun markRead(jwt: Jwt, organizationId: UUID, childId: UUID) {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet())
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), allowGraceForRoles = Role.entries.toSet())
         val child = requireChildAccess(scope, childId, organizationId)
         touchRead(childId, scope.user.id)
         val latestIncoming = messages.findAllByOrganizationIdAndChildIdOrderByCreatedAtAsc(organizationId, childId)

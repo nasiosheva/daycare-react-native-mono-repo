@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { useState } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,6 +15,7 @@ import { PaymentSteps, paymentStepForInvoice } from "@/payment-proof/PaymentStep
 import { invoiceStatusKey } from "@/i18n/translations";
 import { notify } from "@/notify/notify";
 import { statusTone } from "@/ui/statusTone";
+import { getOrCreateIdempotencyKey, removeIdempotencyKey } from "@/idempotency/persistedIdempotencyKey";
 
 const acceptedTypes = new Set(["image/jpeg", "image/png"]);
 
@@ -35,7 +37,12 @@ export default function PaymentProofScreen() {
     mutationFn: async () => {
       if (!image) throw new Error(t("paymentProof.imageRequired"));
       const contentType = acceptedTypes.has(image.mimeType ?? "") ? image.mimeType as "image/jpeg" | "image/png" : "image/jpeg";
-      return api.submitPaymentProof(invoiceId, { fileName: image.fileName ?? "payment-proof.jpg", contentType, imageBase64: await encodePaymentProofImage(image), note: note.trim() || undefined }, paymentOrganizationId ?? undefined);
+      const proofInput = { fileName: image.fileName ?? "payment-proof.jpg", contentType, imageBase64: await encodePaymentProofImage(image), note: note.trim() || undefined };
+      const storageKey = `parent-payment-proof:${paymentOrganizationId}:${invoiceId}:${image.uri}:${proofInput.fileName}:${proofInput.note ?? ""}`;
+      const idempotencyKey = await getOrCreateIdempotencyKey(storageKey);
+      const result = await api.submitPaymentProof(invoiceId, proofInput, idempotencyKey, paymentOrganizationId ?? undefined);
+      await removeIdempotencyKey(storageKey);
+      return result;
     },
     onSuccess: () => {
       if (paymentOrganizationId) void client.invalidateQueries({ queryKey: ["invoices", paymentOrganizationId] });

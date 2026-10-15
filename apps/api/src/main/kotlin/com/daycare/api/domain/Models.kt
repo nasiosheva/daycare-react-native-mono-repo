@@ -57,7 +57,7 @@ enum class PaymentProofStatus { SUBMITTED, VERIFIED, REJECTED }
 enum class InvitationStatus { PENDING, ACCEPTED, EXPIRED }
 enum class PushNotificationMuteDuration { ONE_HOUR, ONE_WEEK, ONE_MONTH }
 enum class TenantSubscriptionPlan { STARTER, STANDARD, PREMIUM }
-enum class TenantSubscriptionStatus { TRIAL, PENDING_PAYMENT, ACTIVE, SUSPENDED, EXPIRED }
+enum class TenantSubscriptionStatus { TRIAL, PENDING_PAYMENT, ACTIVE, GRACE, SUSPENDED, EXPIRED }
 enum class TenantPaymentStatus { PENDING, PAID, VOID }
 enum class InstitutionCapability { DAYCARE_OPERATIONS, ACADEMIC_CURRICULUM }
 enum class EducationOfferingStatus { DRAFT, PUBLISHED, PAUSED, CLOSED, ARCHIVED }
@@ -105,4 +105,10 @@ object InstitutionTypeCodes {
 fun institutionCapabilities(types: Set<String>): Set<InstitutionCapability> = buildSet {
     if (InstitutionTypeCodes.DAYCARE in types) add(InstitutionCapability.DAYCARE_OPERATIONS)
     if (InstitutionTypeCodes.PAUD in types || InstitutionTypeCodes.TK in types) add(InstitutionCapability.ACADEMIC_CURRICULUM)
+}
+
+fun tenantSubscriptionInvoiceNumber(yearMonth: String, sequence: Long): String {
+    require(yearMonth.matches(Regex("\\d{6}")))
+    require(sequence in 1..999999)
+    return "UE-SUB-$yearMonth-${sequence.toString().padStart(6, '0')}"
 }

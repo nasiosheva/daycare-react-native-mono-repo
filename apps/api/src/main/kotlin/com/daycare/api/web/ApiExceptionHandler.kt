@@ -22,12 +22,14 @@ import com.daycare.api.service.DaycareOperationError
 import org.springframework.context.MessageSource
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
+import org.springframework.dao.ConcurrencyFailureException
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.context.i18n.LocaleContextHolder
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import com.daycare.api.service.TenantSubscriptionIdempotencyConflict
 
 @RestControllerAdvice
 class ApiExceptionHandler(private val messages: MessageSource) {
@@ -41,6 +43,10 @@ class ApiExceptionHandler(private val messages: MessageSource) {
     fun invalidState(error: IllegalStateException): ProblemDetail = problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", error.message)
     @ExceptionHandler(AttendanceConflict::class)
     fun conflict(error: AttendanceConflict): ProblemDetail = problem(HttpStatus.CONFLICT, "ATTENDANCE_CONFLICT", error.message)
+    @ExceptionHandler(TenantSubscriptionIdempotencyConflict::class)
+    fun idempotencyConflict(error: TenantSubscriptionIdempotencyConflict): ProblemDetail = problem(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT", error.message)
+    @ExceptionHandler(ConcurrencyFailureException::class)
+    fun concurrentUpdate(error: ConcurrencyFailureException): ProblemDetail = problem(HttpStatus.CONFLICT, "CONCURRENT_UPDATE", error.message)
     @ExceptionHandler(AccessDeniedException::class)
     fun forbidden(error: AccessDeniedException): ProblemDetail = problem(HttpStatus.FORBIDDEN, "FORBIDDEN", error.message)
     @ExceptionHandler(MethodArgumentNotValidException::class)
@@ -177,6 +183,19 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             "Program needs at least one active indicator" to "error.goalIndicatorRequired", "Program indicator was not found" to "error.goalIndicatorNotFound", "Program indicator belongs to a different program" to "error.goalIndicatorScope", "Program indicator is archived" to "error.goalIndicatorArchived",
             "Development category was not found" to "error.developmentCategoryNotFound", "Development category is not available" to "error.developmentCategoryScope", "This category is used by existing development entries" to "error.developmentCategoryInUse",
             "Category name is required" to "error.developmentCategoryNameRequired", "This is already a built-in category" to "error.developmentCategoryBuiltIn", "A category with this name already exists" to "error.developmentCategoryDuplicate", "Staff Admin permission is required to add development categories" to "error.developmentCategoryPermission",
+            "Page must be zero or greater" to "error.pageNumberInvalid", "Page size must be between 1 and 50" to "error.pageSizeInvalid", "Page size must be between 1 and 100" to "error.pageSizeInvalidUpTo100",
+            "Tenant subscription billing is disabled until the maximum payment amount is configured" to "error.tenantSubscriptionMaxAmountNotConfigured", "Tenant subscription amount exceeds the configured maximum" to "error.tenantSubscriptionAmountExceedsMaximum",
+            "Tenant subscription invoice sequence was not allocated" to "error.tenantSubscriptionInvoiceSequenceNotAllocated", "This tenant subscription cannot be renewed in its current state" to "error.tenantSubscriptionCannotRenew",
+            "A tenant payment is already awaiting review or payment" to "error.tenantPaymentAlreadyPending", "Tenant payment belongs to a different tenant" to "error.tenantPaymentOrganizationMismatch", "Tenant payment is not awaiting payment" to "error.tenantPaymentNotPending",
+            "Only pending tenant payments accept proof" to "error.tenantPaymentProofRequiresPending", "A tenant payment proof is already awaiting review or has been verified" to "error.tenantPaymentProofAlreadySubmitted",
+            "Invalid tenant payment proof page" to "error.tenantPaymentProofInvalidPage", "Tenant payment proof was not found" to "error.tenantPaymentProofNotFound", "Tenant payment proof is not available" to "error.tenantPaymentProofUnavailable",
+            "A review reason of 3 to 1000 characters is required" to "error.tenantSubscriptionReviewReasonLength", "Tenant payment proof is no longer awaiting review" to "error.tenantPaymentProofNotPending", "Tenant payment is no longer awaiting payment" to "error.tenantPaymentProofPaymentNotPending",
+            "Tenant payment proof must be PDF, JPEG, or PNG" to "error.tenantPaymentProofFileType", "Tenant payment proof must be at most 2 MB" to "error.tenantPaymentProofTooLarge", "Tenant payment proof is invalid" to "error.tenantPaymentProofInvalid",
+            "Tenant payment proof content does not match its file type" to "error.tenantPaymentProofContentMismatch", "A tenant payment proof references a missing organization" to "error.tenantPaymentProofMissingOrganization", "Tenant subscription payment proof is not enabled" to "error.tenantPaymentProofFeatureDisabled",
+            "A correction explanation of 3 to 1000 characters is required" to "error.tenantPaymentCorrectionDescriptionLength", "Correction reference must not exceed 200 characters" to "error.tenantPaymentCorrectionReferenceLength",
+            "A proposed amount is required for this correction type" to "error.tenantPaymentCorrectionAmountRequired", "A proposed amount is not applicable to this correction type" to "error.tenantPaymentCorrectionAmountNotApplicable", "A corrected payment reference is required" to "error.tenantPaymentCorrectionReferenceRequired",
+            "Invalid tenant payment correction page" to "error.tenantPaymentCorrectionInvalidPage", "Tenant payment correction was not found" to "error.tenantPaymentCorrectionNotFound", "Tenant payment correction is no longer awaiting review" to "error.tenantPaymentCorrectionNotPending",
+            "A tenant payment correction references a missing payment" to "error.tenantPaymentCorrectionMissingPayment", "A tenant payment correction references a missing organization" to "error.tenantPaymentCorrectionMissingOrganization", "Tenant subscription payment correction is not enabled" to "error.tenantPaymentCorrectionFeatureDisabled",
         )
     }
 }

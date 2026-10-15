@@ -50,6 +50,23 @@ class PaymentProof(
     @Column(name = "reviewed_by_user_id") var reviewedByUserId: UUID? = null, @Column(name = "rejection_reason", length = 500) var rejectionReason: String? = null,
 )
 
+@Entity
+@Table(
+    name = "billing_idempotency_records",
+    uniqueConstraints = [UniqueConstraint(name = "billing_idempotency_scope_key_unique", columnNames = ["organization_id", "actor_user_id", "operation", "idempotency_key"])],
+)
+class BillingIdempotencyRecord(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "actor_user_id", nullable = false) var actorUserId: UUID = UUID.randomUUID(),
+    @Column(nullable = false, length = 64) var operation: String = "",
+    @Column(name = "idempotency_key", nullable = false) var idempotencyKey: UUID = UUID.randomUUID(),
+    @Column(name = "payload_hash", nullable = false, length = 64) var payloadHash: String = "",
+    @Column(name = "resource_type", nullable = false, length = 32) var resourceType: String = "",
+    @Column(name = "resource_id", nullable = false) var resourceId: UUID = UUID.randomUUID(),
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
 @Entity @Table(name = "service_entitlements")
 class ServiceEntitlement(
     @Id var id: UUID = UUID.randomUUID(), @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(), @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(),

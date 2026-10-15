@@ -5,12 +5,25 @@ import com.daycare.api.domain.CapacityReservationStatus
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import java.time.LocalDate
 import java.util.UUID
 
 interface ServicePlanRepository : JpaRepository<ServicePlan, UUID> { fun findAllByOrganizationIdAndActiveTrue(organizationId: UUID): List<ServicePlan>; @Lock(LockModeType.PESSIMISTIC_WRITE) fun findWithLockById(id: UUID): ServicePlan? }
-interface InvoiceRepository : JpaRepository<Invoice, UUID> { fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<Invoice>; fun findAllByOrganizationIdAndPayerUserIdOrderByCreatedAtDesc(organizationId: UUID, payerUserId: UUID): List<Invoice>; fun findAllByOrganizationIdAndStatusInAndDueDateBefore(organizationId: UUID, statuses: Collection<com.daycare.api.domain.InvoiceStatus>, dueDate: LocalDate): List<Invoice> }
-interface PaymentProofRepository : JpaRepository<PaymentProof, UUID> { fun findByInvoiceId(invoiceId: UUID): PaymentProof? }
+interface InvoiceRepository : JpaRepository<Invoice, UUID> {
+    fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<Invoice>
+    fun findAllByOrganizationIdAndPayerUserIdOrderByCreatedAtDesc(organizationId: UUID, payerUserId: UUID): List<Invoice>
+    fun findAllByOrganizationIdAndStatusInAndDueDateBefore(organizationId: UUID, statuses: Collection<com.daycare.api.domain.InvoiceStatus>, dueDate: LocalDate): List<Invoice>
+    @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select invoice from Invoice invoice where invoice.id = :id") fun findWithLockById(@Param("id") id: UUID): Invoice?
+}
+interface PaymentProofRepository : JpaRepository<PaymentProof, UUID> {
+    fun findByInvoiceId(invoiceId: UUID): PaymentProof?
+    @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select proof from PaymentProof proof where proof.invoiceId = :invoiceId") fun findWithLockByInvoiceId(@Param("invoiceId") invoiceId: UUID): PaymentProof?
+}
+interface BillingIdempotencyRecordRepository : JpaRepository<BillingIdempotencyRecord, UUID> {
+    fun findByOrganizationIdAndActorUserIdAndOperationAndIdempotencyKey(organizationId: UUID, actorUserId: UUID, operation: String, idempotencyKey: UUID): BillingIdempotencyRecord?
+}
 interface ServiceEntitlementRepository : JpaRepository<ServiceEntitlement, UUID> { fun findAllByInvoiceId(invoiceId: UUID): List<ServiceEntitlement>; fun findAllByInvoiceIdIn(invoiceIds: Collection<UUID>): List<ServiceEntitlement>; fun findAllByOrganizationId(organizationId: UUID): List<ServiceEntitlement>; fun findAllByOrganizationIdAndOwnerUserId(organizationId: UUID, ownerUserId: UUID): List<ServiceEntitlement>; fun findAllByOrganizationIdAndChildId(organizationId: UUID, childId: UUID): List<ServiceEntitlement> }
 interface BookingRepository : JpaRepository<Booking, UUID> { fun findAllByInvoiceId(invoiceId: UUID): List<Booking>; fun findAllByOrganizationIdOrderByBookingDateDesc(organizationId: UUID): List<Booking>; fun findAllByOrganizationIdAndStatusOrderByBookingDateAsc(organizationId: UUID, status: BookingStatus): List<Booking>; fun findByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId: UUID, childId: UUID, bookingDate: LocalDate, status: BookingStatus): Booking?; fun existsByOrganizationIdAndChildIdAndBookingDateAndStatusIn(organizationId: UUID, childId: UUID, bookingDate: LocalDate, statuses: Collection<BookingStatus>): Boolean }
 interface BranchCapacitySettingRepository : JpaRepository<BranchCapacitySetting, UUID> { fun findAllByOrganizationId(organizationId: UUID): List<BranchCapacitySetting>; fun findByOrganizationIdAndBranchId(organizationId: UUID, branchId: UUID): BranchCapacitySetting? }

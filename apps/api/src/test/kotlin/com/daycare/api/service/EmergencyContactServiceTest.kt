@@ -37,7 +37,7 @@ class EmergencyContactServiceTest {
 
     @Test
     fun `create stores an active contact with the requested expiry`() {
-        `when`(access.require(jwt, organizationId, setOf(Role.PARENT))).thenReturn(parentScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT), allowGraceForRoles = setOf(Role.PARENT))).thenReturn(parentScope)
         `when`(childScopes.requireParentLinkedChild(parentScope, child.id, organizationId)).thenReturn(child)
         `when`(contacts.save(any(EmergencyContact::class.java))).thenAnswer { it.arguments[0] }
 
@@ -52,7 +52,7 @@ class EmergencyContactServiceTest {
     @Test
     fun `parent can revoke a contact they created`() {
         val contact = EmergencyContact(organizationId = organizationId, childId = child.id, name = "Bibi Ani", createdByUserId = parent.id)
-        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF_ADMIN))).thenReturn(parentScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF_ADMIN), allowGraceForRoles = setOf(Role.PARENT, Role.STAFF_ADMIN))).thenReturn(parentScope)
         `when`(childScopes.requireParentLinkedChild(parentScope, child.id, organizationId)).thenReturn(child)
         `when`(contacts.findById(contact.id)).thenReturn(Optional.of(contact))
 
@@ -67,7 +67,7 @@ class EmergencyContactServiceTest {
     fun `parent cannot revoke another guardian's contact`() {
         val otherGuardianId = UUID.randomUUID()
         val contact = EmergencyContact(organizationId = organizationId, childId = child.id, name = "Bibi Ani", createdByUserId = otherGuardianId)
-        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF_ADMIN))).thenReturn(parentScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF_ADMIN), allowGraceForRoles = setOf(Role.PARENT, Role.STAFF_ADMIN))).thenReturn(parentScope)
         `when`(childScopes.requireParentLinkedChild(parentScope, child.id, organizationId)).thenReturn(child)
         `when`(contacts.findById(contact.id)).thenReturn(Optional.of(contact))
 
@@ -79,7 +79,7 @@ class EmergencyContactServiceTest {
     @Test
     fun `a contact past its expiry is reported as expired without a stored status change`() {
         val contact = EmergencyContact(organizationId = organizationId, childId = child.id, name = "Bibi Ani", createdByUserId = parent.id, effectiveUntil = Instant.now().minusSeconds(60))
-        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN), readOnly = true)).thenReturn(parentScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN), readOnly = true, allowGraceForRoles = setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(parentScope)
         `when`(childScopes.requireParentLinkedChild(parentScope, child.id, organizationId)).thenReturn(child)
         `when`(contacts.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id)).thenReturn(listOf(contact))
 
@@ -95,12 +95,12 @@ class EmergencyContactServiceTest {
         val admin = UserProfile()
         val adminScope = AccessScope(admin, Membership(userId = admin.id, organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), emptySet())
         val contact = EmergencyContact(organizationId = organizationId, childId = child.id, name = "Ayah", relationship = "Ayah", phoneNumber = "0800", createdByUserId = parent.id)
-        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN), readOnly = true)).thenReturn(adminScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN), readOnly = true, allowGraceForRoles = setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(adminScope)
         `when`(childScopes.requireStaffManagedChild(adminScope, child.id, organizationId)).thenReturn(child)
         `when`(contacts.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id)).thenReturn(listOf(contact))
         assertTrue(service.list(jwt, organizationId, child.id).single().canRemove)
 
-        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF_ADMIN))).thenReturn(adminScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF_ADMIN), allowGraceForRoles = setOf(Role.PARENT, Role.STAFF_ADMIN))).thenReturn(adminScope)
         `when`(contacts.findById(contact.id)).thenReturn(Optional.of(contact))
         val revoked = service.revoke(jwt, organizationId, child.id, contact.id, RevokeEmergencyContactRequest("Selesai"))
         assertEquals(EmergencyContactStatus.REVOKED, revoked.status)
@@ -113,7 +113,7 @@ class EmergencyContactServiceTest {
         `when`(contacts.findById(foreign.id)).thenReturn(Optional.of(foreign))
         assertThrows(AccessDeniedException::class.java) { service.remove(jwt, organizationId, child.id, foreign.id) }
 
-        `when`(access.require(jwt, organizationId, setOf(Role.PARENT))).thenReturn(parentScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT), allowGraceForRoles = setOf(Role.PARENT))).thenReturn(parentScope)
         `when`(childScopes.requireParentOperationalChild(parentScope, child.id, organizationId)).thenReturn(child)
         assertThrows(IllegalArgumentException::class.java) {
             service.create(jwt, organizationId, child.id, CreateEmergencyContactRequest("Bibi", "Bibi", "0800", Instant.now().minusSeconds(1)))

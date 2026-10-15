@@ -95,7 +95,7 @@ class BillingServiceApprovalTest {
         val entitlement = ServiceEntitlement(organizationId = organizationId, branchId = child.branchId, childId = child.id, ownerUserId = parent.id, invoiceId = invoice.id, planName = "Paket Harian", planType = ServicePlanType.DAILY, status = EntitlementStatus.ACTIVE, totalCredits = 5, reservedCredits = 1)
         val scope = AccessScope(staffAdmin, Membership(userId = staffAdmin.id, organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
         return ApprovalFixture(
-            BillingService(access, childScopes, children, branches, plans, invoices, paymentProofs, entitlements, bookings, users, discounts, discountRedemptions, templates, capacity, notifications, events, parentEnrollments, memberships, identity, branchFilters),
+            BillingService(access, childScopes, children, branches, plans, invoices, paymentProofs, entitlements, bookings, users, discounts, discountRedemptions, templates, capacity, notifications, events, parentEnrollments, memberships, identity, branchFilters, mock(BillingCommandIdempotencyService::class.java)),
             access, childScopes, children, invoices, entitlements, bookings, capacity, notifications, parentEnrollments, organizationId, parent, child, invoice, entitlement, scope, mock(Jwt::class.java),
         )
     }

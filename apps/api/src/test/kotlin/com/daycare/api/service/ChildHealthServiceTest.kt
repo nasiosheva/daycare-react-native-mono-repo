@@ -45,7 +45,7 @@ class ChildHealthServiceTest {
         val parentScope = AccessScope(parent, Membership(role = Role.PARENT), emptySet(), emptySet())
         val staffScope = AccessScope(staff, Membership(role = Role.STAFF), emptySet(), emptySet())
         val record = ChildHealthRecord(organizationId = organizationId, childId = child.id, bloodType = "O")
-        `when`(access.require(jwt, organizationId, Role.entries.toSet())).thenReturn(parentScope, staffScope)
+        `when`(access.require(jwt, organizationId, Role.entries.toSet(), allowGraceForRoles = Role.entries.toSet())).thenReturn(parentScope, staffScope)
         `when`(childScopes.requireParentLinkedChild(parentScope, child.id, organizationId)).thenReturn(child)
         `when`(childScopes.requireStaffManagedChild(staffScope, child.id, organizationId)).thenReturn(child)
         `when`(records.findByOrganizationIdAndChildId(organizationId, child.id)).thenReturn(record, null)
@@ -71,7 +71,7 @@ class ChildHealthServiceTest {
         val parentScope = AccessScope(UserProfile(), Membership(role = Role.PARENT), emptySet(), emptySet())
         val staffScope = AccessScope(UserProfile(), Membership(role = Role.STAFF), emptySet(), emptySet())
         val note = ChildHealthNote(organizationId = organizationId, childId = child.id, authorUserId = UUID.randomUUID(), note = "Catatan")
-        `when`(access.require(jwt, organizationId, Role.entries.toSet())).thenReturn(parentScope, staffScope)
+        `when`(access.require(jwt, organizationId, Role.entries.toSet(), allowGraceForRoles = Role.entries.toSet())).thenReturn(parentScope, staffScope)
         `when`(childScopes.requireParentLinkedChild(parentScope, child.id, organizationId)).thenReturn(child)
         `when`(childScopes.requireStaffManagedChild(staffScope, child.id, organizationId)).thenReturn(child)
         `when`(notes.findAllByOrganizationIdAndChildIdOrderByRecordedAtDesc(organizationId, child.id)).thenReturn(listOf(note))
@@ -98,7 +98,7 @@ class ChildHealthServiceTest {
         val staff = UserProfile(displayName = "Staff")
         val scope = AccessScope(staff, Membership(role = Role.STAFF), emptySet(), emptySet())
         val existing = ChildHealthRecord(organizationId = organizationId, childId = child.id, bloodType = "A", allergies = "Old")
-        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
         `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
         `when`(records.findByOrganizationIdAndChildId(organizationId, child.id)).thenReturn(existing)
         `when`(records.save(any(ChildHealthRecord::class.java))).thenAnswer { it.arguments[0] }
@@ -129,7 +129,7 @@ class ChildHealthServiceTest {
         val child = Child(organizationId = organizationId, firstName = "Alya", lastName = "Putri")
         val parentUserId = UUID.randomUUID()
         val scope = AccessScope(UserProfile(), Membership(), emptySet(), emptySet())
-        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
         `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
         `when`(records.findByOrganizationIdAndChildId(organizationId, child.id)).thenReturn(null)
         `when`(records.save(any(ChildHealthRecord::class.java))).thenAnswer { it.arguments[0] }
@@ -165,7 +165,7 @@ class ChildHealthServiceTest {
         val parentUserId = UUID.randomUUID()
         val author = UserProfile(displayName = "Bu Sinta")
         val scope = AccessScope(author, Membership(), emptySet(), emptySet())
-        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
         `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
         `when`(notes.save(any(ChildHealthNote::class.java))).thenAnswer { it.arguments[0] }
         `when`(users.findById(author.id)).thenReturn(Optional.of(author))
@@ -200,7 +200,7 @@ class ChildHealthServiceTest {
         val author = UserProfile(displayName = "Bu Sinta")
         val scope = AccessScope(author, Membership(), emptySet(), emptySet())
         val noteId = UUID.randomUUID()
-        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
         `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
         `when`(notes.save(any(ChildHealthNote::class.java))).thenAnswer {
             (it.arguments[0] as ChildHealthNote).apply { id = noteId }

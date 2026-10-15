@@ -98,4 +98,13 @@ describe("invalidateRealtimeFlags", () => {
     expect(client.getQueryState(["invoice", "parent-a", "invoice-a"])?.isInvalidated).toBe(true);
     expect(client.getQueryState(["invoice", "parent-b", "invoice-b"])?.isInvalidated).toBe(false);
   });
+
+  it("refreshes Platform Admin subscription reminders on tenant events", () => {
+    const client = new QueryClient();
+    client.setQueryData(["platform-tenant-subscription-reminders", 0], { items: [] });
+
+    invalidateRealtimeFlags(client, ["TENANTS"]);
+
+    expect(client.getQueryState(["platform-tenant-subscription-reminders", 0])?.isInvalidated).toBe(true);
+  });
 });

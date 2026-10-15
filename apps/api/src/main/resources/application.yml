@@ -35,6 +35,12 @@ daycare:
   qr-signing-secret: ${QR_SIGNING_SECRET:replace-this-development-secret-with-at-least-32-characters}
   expo-push-url: ${EXPO_PUSH_URL:https://exp.host/--/api/v2/push/send}
   chat-notification-transport: ${CHAT_NOTIFICATION_TRANSPORT:WEBSOCKET}
+  tenant-subscription:
+    max-payment-amount: ${TENANT_SUBSCRIPTION_MAX_PAYMENT_AMOUNT:}
+    grace-enabled: ${TENANT_SUBSCRIPTION_GRACE_ENABLED:false}
+    payment-proof-enabled: ${TENANT_SUBSCRIPTION_PAYMENT_PROOF_ENABLED:false}
+    correction-enabled: ${TENANT_SUBSCRIPTION_CORRECTION_ENABLED:false}
+    payment-instructions: ${TENANT_SUBSCRIPTION_PAYMENT_INSTRUCTIONS:}
 springdoc:
   api-docs:
     path: /v3/api-docs

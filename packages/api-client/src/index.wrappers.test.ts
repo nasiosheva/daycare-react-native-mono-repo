@@ -30,6 +30,78 @@ function requests(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>) {
 }
 
 describe("ApiClient API wrappers", () => {
+  it("maps tenant subscription payment evidence and correction review APIs", async () => {
+    const { client, fetchMock } = createHarness();
+    await client.platformTenantSubscriptionFeatures();
+    await client.platformTenantSubscriptionReminders(1, 10);
+    await client.platformTenantPaymentProofQueue(1, 10);
+    await client.reviewTenantPaymentProof("proof-1", false, "Bukti tidak sesuai", "proof-review-key");
+    await client.tenantPaymentProofContent("proof-1");
+    await client.platformTenantPaymentCorrectionQueue(2, 10);
+    await client.reviewTenantPaymentCorrection("correction-1", true, "Disetujui", "correction-review-key");
+    await client.submitOwnTenantPaymentProof("payment-1", { fileName: "receipt.pdf", contentType: "application/pdf", fileBase64: "JVBERi0=" }, "proof-upload-key");
+    await client.ownTenantPaymentProofs("payment-1");
+    await client.createOwnTenantPaymentCorrection("payment-1", { category: "WRONG_REFERENCE", description: "Referensi transfer salah", proposedReference: "REF-2" }, "correction-request-key");
+    await client.ownTenantPaymentCorrections("payment-1");
+
+    const calls = requests(fetchMock);
+    expect(calls.map(({ url, method }) => [url.replace("https://api.example.test/api/v1", ""), method])).toEqual([
+      ["/platform/tenant-subscription/features", "GET"],
+      ["/platform/tenant-subscription/reminders?page=1&size=10", "GET"],
+      ["/platform/tenant-subscription/proofs?page=1&size=10", "GET"],
+      ["/platform/tenant-subscription/proofs/proof-1/review", "POST"],
+      ["/tenant-subscription/proofs/proof-1/content", "GET"],
+      ["/platform/tenant-subscription/corrections?page=2&size=10", "GET"],
+      ["/platform/tenant-subscription/corrections/correction-1/review", "POST"],
+      ["/tenant-subscription/self/payments/payment-1/proofs", "POST"],
+      ["/tenant-subscription/self/payments/payment-1/proofs", "GET"],
+      ["/tenant-subscription/self/payments/payment-1/corrections", "POST"],
+      ["/tenant-subscription/self/payments/payment-1/corrections", "GET"],
+    ]);
+    expect(calls[3]?.headers.get("Idempotency-Key")).toBe("proof-review-key");
+    expect(calls[6]?.headers.get("Idempotency-Key")).toBe("correction-review-key");
+    expect(calls[7]?.headers.get("Idempotency-Key")).toBe("proof-upload-key");
+    expect(calls[9]?.headers.get("Idempotency-Key")).toBe("correction-request-key");
+    expect(calls[7]?.headers.get("X-Organization-Id")).toBe("active-tenant");
+  });
+
+  it("sends stable idempotency keys for Parent purchases and payment proofs", async () => {
+    const { client, fetchMock } = createHarness();
+    const purchase = { planId: "plan-1", childId: "child-1", bookingDates: ["2026-10-20"] };
+    const proof = { fileName: "receipt.jpg", contentType: "image/jpeg" as const, imageBase64: "AA==" };
+    await client.purchaseService(purchase, "purchase-key", "tenant-1");
+    await client.submitPaymentProof("invoice-1", proof, "proof-key", "tenant-1");
+
+    const calls = requests(fetchMock);
+    expect(calls.map(({ url, method }) => [url.replace("https://api.example.test/api/v1", ""), method])).toEqual([
+      ["/service-purchases", "POST"],
+      ["/invoices/invoice-1/payment-proof", "POST"],
+    ]);
+    expect(calls[0]?.headers.get("Idempotency-Key")).toBe("purchase-key");
+    expect(calls[1]?.headers.get("Idempotency-Key")).toBe("proof-key");
+    expect(calls[0]?.headers.get("X-Organization-Id")).toBe("tenant-1");
+    expect(calls[1]?.headers.get("X-Organization-Id")).toBe("tenant-1");
+  });
+
+  it("scopes Staff Admin subscription self-service to the active tenant", async () => {
+    const { client, fetchMock } = createHarness();
+    await client.staffTenantSubscription();
+    await client.renewOwnTenantSubscription("stable-key");
+    expect(requests(fetchMock).map(({ url, method, headers }) => [url, method, headers.get("X-Organization-Id"), headers.get("Idempotency-Key")])).toEqual([
+      ["https://api.example.test/api/v1/tenant-subscription/self", "GET", "active-tenant", null],
+      ["https://api.example.test/api/v1/tenant-subscription/self/renew", "POST", "active-tenant", "stable-key"],
+    ]);
+  });
+
+  it("maps the filtered Platform Admin tenant page query", async () => {
+    const { client, fetchMock } = createHarness();
+    await client.tenantPage({ search: " daycare ", status: "GRACE", institutionType: "DAYCARE", page: 2, size: 10 });
+    expect(requests(fetchMock).map(({ url, method }) => [url, method])).toEqual([[
+      "https://api.example.test/api/v1/platform/tenants/page?page=2&size=10&search=daycare&status=GRACE&institutionType=DAYCARE",
+      "GET",
+    ]]);
+  });
+
   it("maps Parent screening and Platform screening-catalog workflows to their endpoints", async () => {
     const { client, fetchMock } = createHarness();
     const profile = { subjectName: "Anak", dateOfBirth: "2024-01-01", prematureBirth: false };
@@ -118,10 +190,10 @@ describe("ApiClient API wrappers", () => {
     await client.updateTenantStaffAdmin("tenant-1", "membership-1", { displayName: "Admin Baru" });
     await client.removeTenantStaffAdmin("tenant-1", "membership-1");
     await client.resetTenantStaffAdminPassword("tenant-1", "membership-1", "new-password");
-    await client.renewTenantSubscription("tenant-1", 200000);
-    await client.setTenantSubscriptionStatus("tenant-1", "SUSPENDED");
-    await client.markTenantPaymentPaid("tenant-1", "payment-1");
-    await client.voidTenantPayment("tenant-1", "payment-1");
+    await client.renewTenantSubscription("tenant-1", 200000, "6d709c30-720e-42f1-a629-5f5c40fac180");
+    await client.setTenantSubscriptionStatus("tenant-1", "SUSPENDED", "Temporary operational hold");
+    await client.markTenantPaymentPaid("tenant-1", "payment-1", "6d709c30-720e-42f1-a629-5f5c40fac180");
+    await client.voidTenantPayment("tenant-1", "payment-1", "6d709c30-720e-42f1-a629-5f5c40fac180");
     await client.refreshTenantStaffAdminInvitation("tenant-1");
     await client.cancelTenantStaffAdminInvitation("tenant-1");
     const branch = { name: "Cabang Utama", timezone: "Asia/Jakarta", fullAddress: "Jalan Merdeka", googleMapsUrl: "https://maps.example.test" };
@@ -142,6 +214,7 @@ describe("ApiClient API wrappers", () => {
     await client.createOvertimeCharge(overtime);
     await client.updateOvertimeCharge("charge-1", overtime);
     await client.voidOvertimeCharge("charge-1");
+    await client.tenantGraceRolloutPreview(2, 10);
 
     const calls = requests(fetchMock);
     expect(calls.map(({ url, method }) => [url, method])).toEqual([
@@ -178,10 +251,12 @@ describe("ApiClient API wrappers", () => {
       ["https://api.example.test/api/v1/overtime-charges", "POST"],
       ["https://api.example.test/api/v1/overtime-charges/charge-1", "PATCH"],
       ["https://api.example.test/api/v1/overtime-charges/charge-1/void", "POST"],
+      ["https://api.example.test/api/v1/platform/tenant-subscription/grace-rollout-preview?page=2&size=10", "GET"],
     ]);
     expect(calls[6]!.body).toBe(JSON.stringify(createTenant));
     expect(calls[7]!.body).toBe(JSON.stringify(updateTenant));
     expect(calls[12]!.body).toBe(JSON.stringify({ monthlyFee: 200000 }));
+    expect(calls[12]!.headers.get("Idempotency-Key")).toBe("6d709c30-720e-42f1-a629-5f5c40fac180");
     expect(calls[20]!.body).toBe(JSON.stringify(branch));
     expect(calls[24]!.body).toBe(JSON.stringify(operatingHours));
     expect(calls[26]!.body).toBe(JSON.stringify({ leadDays: [7, 3, 1] }));

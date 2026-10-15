@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 package com.daycare.api.service
 
 import com.daycare.api.domain.BookingStatus
@@ -108,6 +109,7 @@ class BillingService(
     private val memberships: MembershipRepository,
     private val identity: IdentityService,
     private val branchFilters: BranchListFilterService,
+    private val billingIdempotency: BillingCommandIdempotencyService,
 ) {
     @Transactional
     fun plans(jwt: Jwt, organizationId: UUID): List<ServicePlanResponse> {
@@ -196,10 +198,24 @@ class BillingService(
     }
 
     @Transactional
-    fun purchase(jwt: Jwt, organizationId: UUID, request: PurchaseServiceRequest): PurchaseServiceResponse {
+    fun purchase(jwt: Jwt, organizationId: UUID, request: PurchaseServiceRequest): PurchaseServiceResponse =
+        purchase(jwt, organizationId, UUID.randomUUID(), request)
+
+    @Transactional
+    fun purchase(jwt: Jwt, organizationId: UUID, idempotencyKey: UUID, request: PurchaseServiceRequest): PurchaseServiceResponse {
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)
         val child = childScopes.requireParentLinkedChild(scope, request.childId, organizationId)
-        return purchaseForChild(scope.user, organizationId, child, request)
+        val dates = request.bookingDates.distinct().sorted()
+        val payloadHash = billingIdempotency.payloadHash(
+            request.childId.toString(), request.planId.toString(), dates.joinToString(","),
+            request.promoCode?.trim()?.uppercase().orEmpty(),
+        )
+        val replayInvoiceId = billingIdempotency.replayResourceId(organizationId, scope.user.id, PARENT_SERVICE_PURCHASE, idempotencyKey, payloadHash)
+        if (replayInvoiceId != null) return purchaseResponseForInvoice(replayInvoiceId, organizationId, scope.user.id)
+
+        val result = purchaseForChild(scope.user, organizationId, child, request)
+        billingIdempotency.record(organizationId, scope.user.id, PARENT_SERVICE_PURCHASE, idempotencyKey, payloadHash, INVOICE_RESOURCE, result.invoice.id)
+        return result
     }
 
     @Transactional
@@ -262,22 +278,35 @@ class BillingService(
     fun markInvoicePaid(jwt: Jwt, organizationId: UUID, invoiceId: UUID): InvoiceResponse {
         access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         reconcileExpiredInvoices(organizationId)
-        val invoice = requireInvoice(invoiceId, organizationId)
+        val invoice = requireInvoiceForUpdate(invoiceId, organizationId)
         require(invoice.status == InvoiceStatus.PENDING) { "Invoice is not awaiting payment" }
         completeInvoicePayment(invoice)
         return invoiceResponse(invoice)
     }
 
     @Transactional
-    fun submitPaymentProof(jwt: Jwt, organizationId: UUID, invoiceId: UUID, request: SubmitPaymentProofRequest): InvoiceResponse {
+    fun submitPaymentProof(jwt: Jwt, organizationId: UUID, invoiceId: UUID, request: SubmitPaymentProofRequest): InvoiceResponse =
+        submitPaymentProof(jwt, organizationId, invoiceId, UUID.randomUUID(), request)
+
+    @Transactional
+    fun submitPaymentProof(jwt: Jwt, organizationId: UUID, invoiceId: UUID, idempotencyKey: UUID, request: SubmitPaymentProofRequest): InvoiceResponse {
         val parent = requireRegisteredParent(identity.sync(jwt))
-        val invoice = invoices.findById(invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }
+        val invoice = invoices.findWithLockById(invoiceId) ?: throw IllegalArgumentException("Invoice was not found")
         require(invoice.organizationId == organizationId) { "Invoice belongs to a different organization" }
         require(invoice.payerUserId == parent.id) { "Invoice is not available" }
+        val bytes = decodePaymentProof(request)
+        val payloadHash = billingIdempotency.payloadHash(
+            invoiceId.toString(), request.fileName.trim(), request.contentType.trim().lowercase(),
+            request.note?.trim().orEmpty(), billingIdempotency.payloadHash(bytes),
+        )
+        val replayInvoiceId = billingIdempotency.replayResourceId(organizationId, parent.id, PARENT_PAYMENT_PROOF_SUBMISSION, idempotencyKey, payloadHash)
+        if (replayInvoiceId != null) {
+            require(replayInvoiceId == invoice.id) { "Payment proof is not available" }
+            return invoiceResponse(invoice)
+        }
         reconcileExpiredInvoices(invoice.organizationId)
         require(invoice.status == InvoiceStatus.PENDING) { "Invoice is not awaiting payment" }
-        val bytes = decodePaymentProof(request)
-        val proof = paymentProofs.findByInvoiceId(invoice.id) ?: PaymentProof(invoiceId = invoice.id)
+        val proof = paymentProofs.findWithLockByInvoiceId(invoice.id) ?: PaymentProof(invoiceId = invoice.id)
         proof.status = PaymentProofStatus.SUBMITTED
         proof.fileName = request.fileName.trim()
         proof.contentType = request.contentType.lowercase()
@@ -290,6 +319,7 @@ class BillingService(
         paymentProofs.save(proof)
         invoice.status = InvoiceStatus.PAYMENT_SUBMITTED
         notifyStaffAdmins(invoice.organizationId, "Bukti pembayaran baru", "Tagihan ${invoice.invoiceNumber} menunggu verifikasi.")
+        billingIdempotency.record(organizationId, parent.id, PARENT_PAYMENT_PROOF_SUBMISSION, idempotencyKey, payloadHash, INVOICE_RESOURCE, invoice.id)
         return invoiceResponse(invoice)
     }
 
@@ -297,9 +327,9 @@ class BillingService(
     fun reviewPaymentProof(jwt: Jwt, organizationId: UUID, invoiceId: UUID, request: ReviewPaymentProofRequest): InvoiceResponse {
         val reviewer = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         reconcileExpiredInvoices(organizationId)
-        val invoice = requireInvoice(invoiceId, organizationId)
+        val invoice = requireInvoiceForUpdate(invoiceId, organizationId)
         require(invoice.status == InvoiceStatus.PAYMENT_SUBMITTED) { "Invoice payment proof is not awaiting review" }
-        val proof = paymentProofs.findByInvoiceId(invoice.id) ?: throw IllegalArgumentException("Payment proof was not found")
+        val proof = paymentProofs.findWithLockByInvoiceId(invoice.id) ?: throw IllegalArgumentException("Payment proof was not found")
         proof.reviewedAt = Instant.now()
         proof.reviewedByUserId = reviewer.user.id
         if (request.approved) {
@@ -518,6 +548,17 @@ class BillingService(
     private fun templateResponse(template: ServicePlanTemplate) = ServicePlanTemplateResponse(template.id.toString(), "TENANT", template.name, template.type, template.suggestedPrice, template.creditCount, template.unusedCreditPolicy, template.carryForwardDays, template.bookingRequiresApproval, template.dailyCapacity)
     private fun templateFromRequest(organizationId: UUID, request: UpsertServicePlanTemplateRequest) = ServicePlanTemplate(organizationId = organizationId, name = request.name.trim(), type = request.type, suggestedPrice = request.suggestedPrice, creditCount = request.creditCount, unusedCreditPolicy = request.unusedCreditPolicy, carryForwardDays = request.carryForwardDays, bookingRequiresApproval = request.bookingRequiresApproval, dailyCapacity = request.dailyCapacity)
     private fun entitlementResponse(entitlement: ServiceEntitlement): EntitlementResponse { val parent = users.findById(entitlement.ownerUserId).orElse(null); return EntitlementResponse(entitlement.id, entitlement.branchId, entitlement.childId, childName(entitlement.childId), parent?.displayName, parent?.email, entitlement.planName, entitlement.planType, entitlement.status, entitlement.totalCredits, entitlement.totalCredits?.let { remainingCredits(entitlement) }, entitlement.validUntil) }
+    private fun purchaseResponseForInvoice(invoiceId: UUID, organizationId: UUID, parentUserId: UUID): PurchaseServiceResponse {
+        val invoice = invoices.findById(invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }
+        require(invoice.organizationId == organizationId && invoice.payerUserId == parentUserId) { "Invoice is not available" }
+        val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull() ?: throw IllegalArgumentException("Service entitlement was not found")
+        val childName = childName(entitlement.childId)
+        return PurchaseServiceResponse(
+            entitlement = entitlementResponse(entitlement),
+            invoice = invoiceResponse(invoice),
+            bookings = bookings.findAllByInvoiceId(invoice.id).map { bookingResponse(it, childName, invoice) },
+        )
+    }
     private fun bookingResponse(booking: Booking, childName: String, invoice: Invoice = invoices.findById(booking.invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }) = BookingResponse(booking.id, booking.branchId, booking.childId, childName, booking.bookingDate, booking.status, booking.planName, booking.invoiceId, invoice.invoiceNumber, invoice.totalAmount)
     private fun invoiceResponse(invoice: Invoice): InvoiceResponse {
         val entitlement = entitlements.findAllByInvoiceId(invoice.id).singleOrNull()
@@ -538,11 +579,15 @@ class BillingService(
     }
     private fun notifyStaffAdmins(organizationId: UUID, title: String, body: String) { memberships.findAllByOrganizationId(organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.forEach { notifications.notify(organizationId, it.userId, title, body, "/parent-payments", setOf(RealtimeFlag.INVOICES, RealtimeFlag.PARENT_ENROLLMENTS, RealtimeFlag.ENTITLEMENTS, RealtimeFlag.BOOKINGS)) } }
     private fun requireInvoice(invoiceId: UUID, organizationId: UUID) = invoices.findById(invoiceId).orElseThrow { IllegalArgumentException("Invoice was not found") }.also { require(it.organizationId == organizationId) { "Invoice belongs to a different organization" } }
+    private fun requireInvoiceForUpdate(invoiceId: UUID, organizationId: UUID) = (invoices.findWithLockById(invoiceId) ?: throw IllegalArgumentException("Invoice was not found")).also { require(it.organizationId == organizationId) { "Invoice belongs to a different organization" } }
     private fun childName(childId: UUID) = children.findById(childId).orElseThrow { IllegalArgumentException("Child was not found") }.fullName()
     private fun com.daycare.api.persistence.Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")
     private data class AppliedDiscount(val discount: ServicePlanDiscount, val amount: BigDecimal)
 
     private companion object {
+        const val PARENT_SERVICE_PURCHASE = "PARENT_SERVICE_PURCHASE"
+        const val PARENT_PAYMENT_PROOF_SUBMISSION = "PARENT_PAYMENT_PROOF_SUBMISSION"
+        const val INVOICE_RESOURCE = "INVOICE"
         val systemTemplates = listOf(
             ServicePlanTemplateResponse("SYSTEM_DAILY", "SYSTEM", "Paket Harian", ServicePlanType.DAILY, null, 1, null, null, true, null),
             ServicePlanTemplateResponse("SYSTEM_WEEKLY", "SYSTEM", "Paket Mingguan 5 Hari", ServicePlanType.WEEKLY, null, 5, UnusedCreditPolicy.EXPIRE, null, true, null),

@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useQuery } from "@tanstack/react-query";
@@ -135,6 +136,7 @@ export default function StaffAdminScreen() {
       {hasAcademicOffering && <AdminMenuItem icon="school-outline" title={t("privateTutoring.menu")} description={t("privateTutoring.adminDescription")} onPress={() => router.push("/private-tutoring-admin")} />}
     </MenuSection>
     <MenuSection title={t("menu.groupFinance")}>
+      <AdminMenuItem icon="card-outline" title={t("tenantSelf.title")} description={t("tenantSelf.subtitle")} onPress={() => router.push("/tenant-subscription" as never)} />
       <AdminMenuItem icon="wallet-outline" title={t("staffAdmin.payments")} description={t("staffAdmin.paymentsDescription")} onPress={() => router.push("/parent-payments")} />
       <AdminMenuItem icon="card-outline" title={t("paymentInstruction.title")} description={t("paymentInstruction.managementDescription")} attentionIssues={issuesFor(menuReadinessIssues.paymentInstructions)} onPress={() => router.push("/payment-instructions")} />
       {hasDaycareOperations && <AdminMenuItem icon="repeat-outline" title={t("staffAdmin.subscriptions")} description={t("staffAdmin.subscriptionsDescription")} onPress={() => router.push("/parent-subscriptions")} />}
