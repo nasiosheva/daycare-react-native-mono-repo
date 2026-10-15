@@ -13,6 +13,7 @@ import com.daycare.api.persistence.TenantPaymentRepository
 import com.daycare.api.persistence.TenantSubscriptionAuditEvent
 import com.daycare.api.persistence.TenantSubscriptionAuditEventRepository
 import com.daycare.api.persistence.TenantSubscriptionRepository
+import com.daycare.api.persistence.UserProfileRepository
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.domain.PageRequest
 import org.springframework.security.oauth2.jwt.Jwt
@@ -67,6 +68,7 @@ class TenantSubscriptionCorrectionService(
     private val notifications: NotificationService,
     private val billingPolicy: TenantSubscriptionBillingPolicy,
     @Value("\${daycare.tenant-subscription.correction-enabled:false}") private val enabled: Boolean,
+    private val users: UserProfileRepository,
 ) {
     @Transactional
     fun create(jwt: Jwt, organizationId: UUID, paymentId: UUID, idempotencyKey: UUID, request: CreateTenantPaymentCorrectionRequest): TenantPaymentCorrectionResponse {
@@ -84,6 +86,7 @@ class TenantSubscriptionCorrectionService(
             require(amount == null) { "A proposed amount is not applicable to this correction type" }
         }
         if (request.category == TenantPaymentCorrectionCategory.WRONG_REFERENCE) require(proposedReference != null) { "A corrected payment reference is required" }
+        lockActor(scope.user.id)
         val payment = payments.findWithLockById(paymentId) ?: throw IllegalArgumentException("Tenant payment was not found")
         require(payment.organizationId == organizationId) { "Tenant payment was not found" }
         val payloadHash = sha256("$paymentId|${request.category}|$description|${amount?.stripTrailingZeros()?.toPlainString()}|$proposedReference")
@@ -101,9 +104,9 @@ class TenantSubscriptionCorrectionService(
     @Transactional(readOnly = true)
     fun ownRequests(jwt: Jwt, organizationId: UUID, paymentId: UUID): List<TenantPaymentCorrectionResponse> {
         requireEnabled()
-        access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), allowSubscriptionRestrictedForRoles = setOf(Role.STAFF_ADMIN))
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), allowSubscriptionRestrictedForRoles = setOf(Role.STAFF_ADMIN))
         val payment = requirePayment(organizationId, paymentId)
-        return corrections.findAllByOrganizationIdAndPaymentIdOrderByCreatedAtDesc(organizationId, paymentId).map { response(it, payment) }
+        return corrections.findAllByOrganizationIdAndPaymentIdAndRequestedByUserIdOrderByCreatedAtDesc(organizationId, paymentId, scope.user.id).map { response(it, payment) }
     }
 
     @Transactional(readOnly = true)
@@ -119,6 +122,7 @@ class TenantSubscriptionCorrectionService(
     fun review(jwt: Jwt, correctionId: UUID, idempotencyKey: UUID, request: ReviewTenantPaymentCorrectionRequest): TenantPaymentCorrectionResponse {
         requireEnabled()
         val actor = platformAccess.requirePlatformAdmin(jwt)
+        lockActor(actor.id)
         val reason = request.reason.trim()
         require(reason.length in 3..1000) { "A review reason of 3 to 1000 characters is required" }
         val payloadHash = sha256("$correctionId|${request.approved}|$reason")
@@ -170,6 +174,11 @@ class TenantSubscriptionCorrectionService(
     }
 
     private fun requireEnabled() { check(enabled) { "Tenant subscription payment correction is not enabled" } }
+    private fun lockActor(actorUserId: UUID) {
+        // Authentication already resolved the actor; this row lock serializes
+        // concurrent retries that use the same key for different payments.
+        users.findWithLockById(actorUserId) ?: throw IllegalArgumentException("Payment correction actor was not found")
+    }
     private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 
     companion object {

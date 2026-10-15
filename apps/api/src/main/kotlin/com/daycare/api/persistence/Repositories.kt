@@ -155,6 +155,7 @@ interface TenantPaymentProofRepository : JpaRepository<TenantPaymentProof, UUID>
 interface TenantPaymentCorrectionRequestRepository : JpaRepository<TenantPaymentCorrectionRequest, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select request from TenantPaymentCorrectionRequest request where request.id = :id") fun findWithLockById(@Param("id") id: UUID): TenantPaymentCorrectionRequest?
     fun findAllByOrganizationIdAndPaymentIdOrderByCreatedAtDesc(organizationId: UUID, paymentId: UUID): List<TenantPaymentCorrectionRequest>
+    fun findAllByOrganizationIdAndPaymentIdAndRequestedByUserIdOrderByCreatedAtDesc(organizationId: UUID, paymentId: UUID, requestedByUserId: UUID): List<TenantPaymentCorrectionRequest>
     fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID, pageable: Pageable): Page<TenantPaymentCorrectionRequest>
     fun findAllByStatusOrderByCreatedAtAsc(status: String, pageable: Pageable): Page<TenantPaymentCorrectionRequest>
     fun findFirstByOrganizationIdAndPaymentIdAndStatus(organizationId: UUID, paymentId: UUID, status: String): TenantPaymentCorrectionRequest?

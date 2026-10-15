@@ -69,7 +69,7 @@ class TenantSubscriptionReminderService(
 ) {
     @Scheduled(cron = "0 10 0 * * *", zone = "Asia/Jakarta")
     @Transactional
-    fun sendDueReminders() = dispatchForDate(LocalDate.now(SUBSCRIPTION_REMINDER_ZONE))
+    fun sendDueReminders() = dispatchForDate(LocalDate.now(clock.withZone(SUBSCRIPTION_REMINDER_ZONE)))
 
     @Transactional(readOnly = true)
     fun platformReminderPage(jwt: Jwt, page: Int = 0, size: Int = 20): PlatformTenantSubscriptionReminderPage {

@@ -11,6 +11,7 @@ import com.daycare.api.persistence.TenantPaymentRepository
 import com.daycare.api.persistence.TenantSubscriptionAuditEvent
 import com.daycare.api.persistence.TenantSubscriptionAuditEventRepository
 import com.daycare.api.persistence.TenantSubscriptionRepository
+import com.daycare.api.persistence.UserProfileRepository
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.domain.PageRequest
 import org.springframework.security.oauth2.jwt.Jwt
@@ -67,6 +68,7 @@ class TenantSubscriptionPaymentProofService(
     private val audits: TenantSubscriptionAuditEventRepository,
     private val platformAdministration: PlatformAdministrationService,
     private val notifications: NotificationService,
+    private val users: UserProfileRepository,
     @Value("\${daycare.tenant-subscription.payment-proof-enabled:false}") private val enabled: Boolean,
     @Value("\${daycare.tenant-subscription.correction-enabled:false}") private val correctionEnabled: Boolean = false,
 ) {
@@ -74,6 +76,7 @@ class TenantSubscriptionPaymentProofService(
     fun submit(jwt: Jwt, organizationId: UUID, paymentId: UUID, idempotencyKey: UUID, request: SubmitTenantPaymentProofRequest): TenantPaymentProofResponse {
         requireEnabled()
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), allowSubscriptionRestrictedForRoles = setOf(Role.STAFF_ADMIN))
+        lockActor(scope.user.id)
         val payment = payments.findWithLockById(paymentId) ?: throw IllegalArgumentException("Tenant payment was not found")
         require(payment.organizationId == organizationId) { "Tenant payment was not found" }
         require(payment.status == TenantPaymentStatus.PENDING) { "Only pending tenant payments accept proof" }
@@ -148,6 +151,7 @@ class TenantSubscriptionPaymentProofService(
     fun review(jwt: Jwt, proofId: UUID, idempotencyKey: UUID, request: ReviewTenantPaymentProofRequest): TenantPaymentProofResponse {
         requireEnabled()
         val actor = platformAccess.requirePlatformAdmin(jwt)
+        lockActor(actor.id)
         val reason = request.reason.trim()
         require(reason.length in 3..1000) { "A review reason of 3 to 1000 characters is required" }
         val reviewPayloadHash = sha256("$proofId|${request.approved}|$reason")
@@ -210,6 +214,11 @@ class TenantSubscriptionPaymentProofService(
         return name
     }
     private fun requireEnabled() { check(enabled) { "Tenant subscription payment proof is not enabled" } }
+    private fun lockActor(actorUserId: UUID) {
+        // Authentication already resolved the actor; the pessimistic lookup serializes
+        // retries that reuse a key across different payment/proof rows.
+        users.findWithLockById(actorUserId) ?: throw IllegalArgumentException("Payment proof actor was not found")
+    }
     private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
     private fun sha256(value: String): String = sha256(value.toByteArray(Charsets.UTF_8))
 

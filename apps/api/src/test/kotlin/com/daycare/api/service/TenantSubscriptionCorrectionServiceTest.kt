@@ -17,6 +17,7 @@ import com.daycare.api.persistence.TenantSubscription
 import com.daycare.api.persistence.TenantSubscriptionAuditEventRepository
 import com.daycare.api.persistence.TenantSubscriptionRepository
 import com.daycare.api.persistence.UserProfile
+import com.daycare.api.persistence.UserProfileRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -44,6 +45,7 @@ class TenantSubscriptionCorrectionServiceTest {
     private val audits = mock(TenantSubscriptionAuditEventRepository::class.java)
     private val memberships = mock(MembershipRepository::class.java)
     private val notifications = mock(NotificationService::class.java)
+    private val users = mock(UserProfileRepository::class.java)
     private val jwt = mock(Jwt::class.java)
     private val organizationId = UUID.randomUUID()
     private val paymentId = UUID.randomUUID()
@@ -53,13 +55,14 @@ class TenantSubscriptionCorrectionServiceTest {
 
     private fun service(enabled: Boolean = true, maxAmount: String = "10000000") = TenantSubscriptionCorrectionService(
         access, platformAccess, organizations, payments, corrections, adjustments, subscriptions, audits, memberships, notifications,
-        TenantSubscriptionBillingPolicy(maxAmount), enabled,
+        TenantSubscriptionBillingPolicy(maxAmount), enabled, users,
     )
 
     private fun allowStaffAdmin() {
         val user = UserProfile(id = staffUserId)
         `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), null, false, setOf(Role.STAFF_ADMIN), emptySet(), emptySet()))
             .thenReturn(AccessScope(user, Membership(userId = staffUserId, organizationId = organizationId, active = true), emptySet(), emptySet()))
+        `when`(users.findWithLockById(staffUserId)).thenReturn(user)
     }
 
     private fun allowPaymentAndOrganization() {
@@ -80,6 +83,18 @@ class TenantSubscriptionCorrectionServiceTest {
     }
 
     @Test
+    fun `create fails closed when the authenticated actor row cannot be locked`() {
+        val user = UserProfile(id = staffUserId)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), null, false, setOf(Role.STAFF_ADMIN), emptySet(), emptySet()))
+            .thenReturn(AccessScope(user, Membership(userId = staffUserId, organizationId = organizationId, active = true), emptySet(), emptySet()))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            service().create(jwt, organizationId, paymentId, UUID.randomUUID(), CreateTenantPaymentCorrectionRequest(TenantPaymentCorrectionCategory.WRONG_REFERENCE, "Reference typo", proposedReference = "REF-2"))
+        }
+        verify(payments, never()).findWithLockById(paymentId)
+    }
+
+    @Test
     fun `create persists a correction request and an audit event for a valid amount mismatch`() {
         allowStaffAdmin()
         allowPaymentAndOrganization()
@@ -92,6 +107,7 @@ class TenantSubscriptionCorrectionServiceTest {
         assertEquals(BigDecimal("450000"), response.proposedAmount)
         assertEquals("PENDING", response.status)
         verify(audits).save(any(com.daycare.api.persistence.TenantSubscriptionAuditEvent::class.java))
+        verify(users).findWithLockById(staffUserId)
     }
 
     @Test
@@ -146,6 +162,26 @@ class TenantSubscriptionCorrectionServiceTest {
         assertThrows(IllegalArgumentException::class.java) {
             service().create(jwt, organizationId, paymentId, UUID.randomUUID(), CreateTenantPaymentCorrectionRequest(TenantPaymentCorrectionCategory.WRONG_REFERENCE, "Reference typo", proposedReference = "REF-2"))
         }
+    }
+
+    @Test
+    fun `ownRequests only returns correction requests submitted by the current staff admin`() {
+        allowStaffAdmin()
+        allowPaymentAndOrganization()
+        val ownRequest = TenantPaymentCorrectionRequest(
+            organizationId = organizationId,
+            paymentId = paymentId,
+            requestedByUserId = staffUserId,
+            category = TenantPaymentCorrectionCategory.WRONG_REFERENCE.name,
+            description = "My correction",
+        )
+        `when`(corrections.findAllByOrganizationIdAndPaymentIdAndRequestedByUserIdOrderByCreatedAtDesc(organizationId, paymentId, staffUserId))
+            .thenReturn(listOf(ownRequest))
+
+        val response = service().ownRequests(jwt, organizationId, paymentId)
+
+        assertEquals(listOf(ownRequest.id), response.map { it.id })
+        verify(corrections).findAllByOrganizationIdAndPaymentIdAndRequestedByUserIdOrderByCreatedAtDesc(organizationId, paymentId, staffUserId)
     }
 
     @Test
@@ -204,7 +240,9 @@ class TenantSubscriptionCorrectionServiceTest {
 
     @Test
     fun `approving an underpaid correction records an UNDERPAYMENT adjustment and notifies the requester`() {
-        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile(id = UUID.randomUUID()))
+        val actorId = UUID.randomUUID()
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile(id = actorId))
+        `when`(users.findWithLockById(actorId)).thenReturn(UserProfile(id = actorId))
         val correction = TenantPaymentCorrectionRequest(organizationId = organizationId, paymentId = paymentId, requestedByUserId = staffUserId, category = TenantPaymentCorrectionCategory.AMOUNT_MISMATCH.name, proposedAmount = BigDecimal("700000"))
         `when`(corrections.findById(correction.id)).thenReturn(Optional.of(correction))
         `when`(corrections.findWithLockById(correction.id)).thenReturn(correction)
@@ -218,6 +256,7 @@ class TenantSubscriptionCorrectionServiceTest {
         val response = service().review(jwt, correction.id, UUID.randomUUID(), ReviewTenantPaymentCorrectionRequest(approved = true, reason = "Verified against bank statement"))
 
         assertEquals("APPROVED", response.status)
+        verify(users).findWithLockById(actorId)
         val adjustmentCaptor = org.mockito.ArgumentCaptor.forClass(TenantPaymentAdjustment::class.java)
         verify(adjustments).save(adjustmentCaptor.capture())
         assertEquals("UNDERPAYMENT", adjustmentCaptor.value.kind)
@@ -227,7 +266,9 @@ class TenantSubscriptionCorrectionServiceTest {
 
     @Test
     fun `rejecting a correction leaves the payment untouched and records no adjustment`() {
-        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile(id = UUID.randomUUID()))
+        val actorId = UUID.randomUUID()
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile(id = actorId))
+        `when`(users.findWithLockById(actorId)).thenReturn(UserProfile(id = actorId))
         val correction = TenantPaymentCorrectionRequest(organizationId = organizationId, paymentId = paymentId, requestedByUserId = staffUserId, category = TenantPaymentCorrectionCategory.WRONG_REFERENCE.name, proposedReference = "REF-2")
         `when`(corrections.findById(correction.id)).thenReturn(Optional.of(correction))
         `when`(corrections.findWithLockById(correction.id)).thenReturn(correction)
@@ -262,6 +303,7 @@ class TenantSubscriptionCorrectionServiceTest {
     fun `review replays the same decision for a retried idempotency key and rejects a changed payload`() {
         val actorId = UUID.randomUUID()
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile(id = actorId))
+        `when`(users.findWithLockById(actorId)).thenReturn(UserProfile(id = actorId))
         val key = UUID.randomUUID()
         val reviewed = TenantPaymentCorrectionRequest(organizationId = organizationId, paymentId = paymentId, status = "APPROVED", reviewIdempotencyKey = key, reviewPayloadHash = "stored-hash")
         `when`(corrections.findByReviewedByUserIdAndReviewIdempotencyKey(actorId, key)).thenReturn(reviewed)
@@ -273,5 +315,6 @@ class TenantSubscriptionCorrectionServiceTest {
             service().review(jwt, reviewed.id, key, ReviewTenantPaymentCorrectionRequest(approved = true, reason = "Different reason this time"))
         }
         verify(corrections, never()).findWithLockById(reviewed.id)
+        verify(users).findWithLockById(actorId)
     }
 }

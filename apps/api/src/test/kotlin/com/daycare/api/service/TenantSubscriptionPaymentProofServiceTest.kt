@@ -10,6 +10,7 @@ import com.daycare.api.persistence.TenantPaymentRepository
 import com.daycare.api.persistence.TenantSubscriptionAuditEvent
 import com.daycare.api.persistence.TenantSubscriptionAuditEventRepository
 import com.daycare.api.persistence.TenantSubscriptionRepository
+import com.daycare.api.persistence.UserProfileRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
@@ -37,6 +38,7 @@ class TenantSubscriptionPaymentProofServiceTest {
     private val audits = mock(TenantSubscriptionAuditEventRepository::class.java)
     private val platformAdministration = mock(PlatformAdministrationService::class.java)
     private val notifications = mock(NotificationService::class.java)
+    private val users = mock(UserProfileRepository::class.java)
     private val jwt = mock(Jwt::class.java)
     private val organizationId = UUID.randomUUID()
     private val paymentId = UUID.randomUUID()
@@ -48,6 +50,18 @@ class TenantSubscriptionPaymentProofServiceTest {
         assertThrows(IllegalStateException::class.java) {
             service.submit(jwt, organizationId, paymentId, UUID.randomUUID(), pdfRequest())
         }
+    }
+
+    @Test
+    fun `submit fails closed when the authenticated actor row cannot be locked`() {
+        val user = com.daycare.api.persistence.UserProfile(id = UUID.randomUUID())
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), null, false, setOf(Role.STAFF_ADMIN), emptySet(), emptySet()))
+            .thenReturn(AccessScope(user, com.daycare.api.persistence.Membership(userId = user.id, organizationId = organizationId, active = true), emptySet(), emptySet()))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            createService(enabled = true).submit(jwt, organizationId, paymentId, UUID.randomUUID(), pdfRequest())
+        }
+        verify(payments, never()).findWithLockById(paymentId)
     }
 
     @Test
@@ -81,8 +95,69 @@ class TenantSubscriptionPaymentProofServiceTest {
     }
 
     @Test
-    fun `submit persists a payment proof and an audit event for a valid pdf`() {
+    fun `submit accepts png content with the png signature`() {
         allowPendingPayment()
+        `when`(organizations.findById(organizationId)).thenReturn(Optional.of(com.daycare.api.persistence.Organization(id = organizationId, name = "Tenant")))
+        `when`(subscriptions.findByOrganizationId(organizationId)).thenReturn(com.daycare.api.persistence.TenantSubscription(organizationId = organizationId))
+        `when`(proofs.findFirstByPaymentIdOrderByVersionNumberDesc(paymentId)).thenReturn(null)
+        `when`(proofs.save(org.mockito.ArgumentMatchers.any(com.daycare.api.persistence.TenantPaymentProof::class.java))).thenAnswer { it.arguments[0] }
+        val pngSignature = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        val request = SubmitTenantPaymentProofRequest("receipt.png", "image/png", Base64.getEncoder().encodeToString(pngSignature))
+
+        val response = createService(enabled = true).submit(jwt, organizationId, paymentId, UUID.randomUUID(), request)
+
+        assertEquals("image/png", response.contentType)
+        assertEquals("SUBMITTED", response.status)
+    }
+
+    @Test
+    fun `submit accepts jpeg content with the jpeg signature`() {
+        allowPendingPayment()
+        `when`(organizations.findById(organizationId)).thenReturn(Optional.of(com.daycare.api.persistence.Organization(id = organizationId, name = "Tenant")))
+        `when`(subscriptions.findByOrganizationId(organizationId)).thenReturn(com.daycare.api.persistence.TenantSubscription(organizationId = organizationId))
+        `when`(proofs.findFirstByPaymentIdOrderByVersionNumberDesc(paymentId)).thenReturn(null)
+        `when`(proofs.save(org.mockito.ArgumentMatchers.any(com.daycare.api.persistence.TenantPaymentProof::class.java))).thenAnswer { it.arguments[0] }
+        val jpegSignature = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte())
+        val request = SubmitTenantPaymentProofRequest("receipt.jpg", "image/jpeg", Base64.getEncoder().encodeToString(jpegSignature))
+
+        val response = createService(enabled = true).submit(jwt, organizationId, paymentId, UUID.randomUUID(), request)
+
+        assertEquals("image/jpeg", response.contentType)
+        assertEquals("SUBMITTED", response.status)
+    }
+
+    @Test
+    fun `submit rejects png content without the png signature`() {
+        allowPendingPayment()
+        val request = SubmitTenantPaymentProofRequest("receipt.png", "image/png", Base64.getEncoder().encodeToString("not a png".toByteArray()))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            createService(enabled = true).submit(jwt, organizationId, paymentId, UUID.randomUUID(), request)
+        }
+    }
+
+    @Test
+    fun `submit strips path components from the persisted file name`() {
+        allowPendingPayment()
+        `when`(organizations.findById(organizationId)).thenReturn(Optional.of(com.daycare.api.persistence.Organization(id = organizationId, name = "Tenant")))
+        `when`(subscriptions.findByOrganizationId(organizationId)).thenReturn(com.daycare.api.persistence.TenantSubscription(organizationId = organizationId))
+        `when`(proofs.findFirstByPaymentIdOrderByVersionNumberDesc(paymentId)).thenReturn(null)
+        `when`(proofs.save(org.mockito.ArgumentMatchers.any(com.daycare.api.persistence.TenantPaymentProof::class.java))).thenAnswer { it.arguments[0] }
+
+        val response = createService(enabled = true).submit(
+            jwt,
+            organizationId,
+            paymentId,
+            UUID.randomUUID(),
+            pdfRequest().copy(fileName = "folder\\nested/receipt.pdf"),
+        )
+
+        assertEquals("receipt.pdf", response.fileName)
+    }
+
+    @Test
+    fun `submit persists a payment proof and an audit event for a valid pdf`() {
+        val user = allowPendingPayment()
         `when`(organizations.findById(organizationId)).thenReturn(Optional.of(com.daycare.api.persistence.Organization(id = organizationId, name = "Tenant")))
         `when`(subscriptions.findByOrganizationId(organizationId)).thenReturn(com.daycare.api.persistence.TenantSubscription(organizationId = organizationId))
         `when`(proofs.findFirstByPaymentIdOrderByVersionNumberDesc(paymentId)).thenReturn(null)
@@ -95,6 +170,7 @@ class TenantSubscriptionPaymentProofServiceTest {
         assertEquals(1, response.version)
         assertEquals("SUBMITTED", response.status)
         verify(audits).save(org.mockito.ArgumentMatchers.any(TenantSubscriptionAuditEvent::class.java))
+        verify(users).findWithLockById(user.id)
     }
 
     @Test
@@ -276,7 +352,9 @@ class TenantSubscriptionPaymentProofServiceTest {
     @Test
     fun `review approves a proof, marks the payment paid, and notifies staff admins`() {
         val service = createService(enabled = true)
-        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(com.daycare.api.persistence.UserProfile(id = UUID.randomUUID()))
+        val actorId = UUID.randomUUID()
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(com.daycare.api.persistence.UserProfile(id = actorId))
+        `when`(users.findWithLockById(actorId)).thenReturn(com.daycare.api.persistence.UserProfile(id = actorId))
         val staffUserId = UUID.randomUUID()
         val proof = com.daycare.api.persistence.TenantPaymentProof(id = UUID.randomUUID(), paymentId = paymentId, organizationId = organizationId, uploadedByUserId = staffUserId, status = "SUBMITTED")
         val payment = com.daycare.api.persistence.TenantPayment(id = paymentId, organizationId = organizationId, status = TenantPaymentStatus.PENDING, invoiceNumber = "UE-SUB-202610-000001")
@@ -298,7 +376,9 @@ class TenantSubscriptionPaymentProofServiceTest {
     @Test
     fun `review rejects a proof without marking the payment paid`() {
         val service = createService(enabled = true)
-        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(com.daycare.api.persistence.UserProfile(id = UUID.randomUUID()))
+        val actorId = UUID.randomUUID()
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(com.daycare.api.persistence.UserProfile(id = actorId))
+        `when`(users.findWithLockById(actorId)).thenReturn(com.daycare.api.persistence.UserProfile(id = actorId))
         val staffUserId = UUID.randomUUID()
         val proof = com.daycare.api.persistence.TenantPaymentProof(id = UUID.randomUUID(), paymentId = paymentId, organizationId = organizationId, uploadedByUserId = staffUserId, status = "SUBMITTED")
         val payment = com.daycare.api.persistence.TenantPayment(id = paymentId, organizationId = organizationId, status = TenantPaymentStatus.PENDING, invoiceNumber = "UE-SUB-202610-000001")
@@ -361,6 +441,7 @@ class TenantSubscriptionPaymentProofServiceTest {
         val service = createService(enabled = true)
         val actorId = UUID.randomUUID()
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(com.daycare.api.persistence.UserProfile(id = actorId))
+        `when`(users.findWithLockById(actorId)).thenReturn(com.daycare.api.persistence.UserProfile(id = actorId))
         val key = UUID.randomUUID()
         val reason = "Matches bank statement"
         val reviewed = com.daycare.api.persistence.TenantPaymentProof(id = UUID.randomUUID(), paymentId = paymentId, organizationId = organizationId, status = "VERIFIED")
@@ -375,6 +456,7 @@ class TenantSubscriptionPaymentProofServiceTest {
 
         assertEquals(reviewed.id, response.id)
         verify(proofs, never()).findWithLockById(reviewed.id)
+        verify(users).findWithLockById(actorId)
     }
 
     @Test
@@ -382,6 +464,7 @@ class TenantSubscriptionPaymentProofServiceTest {
         val service = createService(enabled = true)
         val actorId = UUID.randomUUID()
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(com.daycare.api.persistence.UserProfile(id = actorId))
+        `when`(users.findWithLockById(actorId)).thenReturn(com.daycare.api.persistence.UserProfile(id = actorId))
         val key = UUID.randomUUID()
         val reviewed = com.daycare.api.persistence.TenantPaymentProof(id = UUID.randomUUID(), paymentId = paymentId, organizationId = organizationId, status = "VERIFIED", reviewIdempotencyKey = key, reviewPayloadHash = "stored-hash")
         `when`(proofs.findByReviewedByUserIdAndReviewIdempotencyKey(actorId, key)).thenReturn(reviewed)
@@ -403,7 +486,9 @@ class TenantSubscriptionPaymentProofServiceTest {
         audits,
         platformAdministration,
         notifications,
+        users,
         enabled,
+        false,
     )
 
     /** Stubs a STAFF_ADMIN caller with an active membership and a PENDING payment; returns the caller's profile. */
@@ -413,6 +498,7 @@ class TenantSubscriptionPaymentProofServiceTest {
             .thenReturn(AccessScope(user, com.daycare.api.persistence.Membership(userId = user.id, organizationId = organizationId, active = true), emptySet(), emptySet()))
         `when`(payments.findById(paymentId)).thenReturn(Optional.of(com.daycare.api.persistence.TenantPayment(id = paymentId, organizationId = organizationId, status = TenantPaymentStatus.PENDING)))
         `when`(payments.findWithLockById(paymentId)).thenReturn(com.daycare.api.persistence.TenantPayment(id = paymentId, organizationId = organizationId, status = TenantPaymentStatus.PENDING))
+        `when`(users.findWithLockById(user.id)).thenReturn(user)
         return user
     }
 

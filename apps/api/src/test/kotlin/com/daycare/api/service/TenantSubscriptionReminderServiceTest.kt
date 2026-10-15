@@ -48,6 +48,22 @@ class TenantSubscriptionReminderServiceTest {
     private val organizations = mock(OrganizationRepository::class.java)
 
     @Test
+    fun `scheduled reminder entry point dispatches for the current Jakarta date`() {
+        val clock = Clock.fixed(Instant.parse("2024-03-10T18:00:00Z"), ZoneOffset.UTC)
+        val today = LocalDate.of(2024, 3, 11)
+        val reminderDates = listOf(today.plusDays(1), today.plusDays(3), today.plusDays(7))
+        `when`(subscriptions.findAllByStatusAndTrialEndsAtIn(TenantSubscriptionStatus.TRIAL, reminderDates)).thenReturn(emptyList())
+        `when`(subscriptions.findAllByStatusInAndCoveredPeriodEndIn(listOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.GRACE), reminderDates)).thenReturn(emptyList())
+        `when`(payments.findAllByStatusAndDueDateIn(TenantPaymentStatus.PENDING, reminderDates)).thenReturn(emptyList())
+
+        service(clock).sendDueReminders()
+
+        verify(subscriptions).findAllByStatusAndTrialEndsAtIn(TenantSubscriptionStatus.TRIAL, reminderDates)
+        verify(subscriptions).findAllByStatusInAndCoveredPeriodEndIn(listOf(TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.GRACE), reminderDates)
+        verify(payments).findAllByStatusAndDueDateIn(TenantPaymentStatus.PENDING, reminderDates)
+    }
+
+    @Test
     fun `creates one tenant scoped in-app notification at configured lead time`() {
         val today = LocalDate.of(2026, 10, 14)
         val clock = Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"), ZoneOffset.UTC)
