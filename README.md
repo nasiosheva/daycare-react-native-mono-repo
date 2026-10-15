@@ -47,7 +47,7 @@ Staff Admin memiliki self-service subscription melalui `/tenant-subscription`, t
 
 Billing Parent mengirim `Idempotency-Key` stabil untuk pembelian paket dan upload bukti; retry aman mengembalikan invoice yang sama, sedangkan key dengan payload berbeda ditolak. Semantik invoice Parent tetap terpisah dari langganan SaaS tenant.
 
-Setiap branch yang membuka PR/MR wajib menyertakan checklist branch tersendiri dari [template checklist MR](docs/checklists/branch-mr-checklist-template.md), lengkap dengan bukti test/CI dan blocker. Perubahan kode mengikuti test-first: test ditulis dan dibuktikan gagal sebelum implementasi, lalu dijalankan kembali sampai lulus.
+Setiap branch yang membuka PR/MR wajib menyertakan checklist branch tersendiri dari [template checklist MR](docs/checklists/branch-mr-checklist-template.md), lengkap dengan bukti test/CI dan blocker. Deskripsi PR/MR juga harus memuat tabel ringkasan status sepuluh area review beserta gap/blocker dan tautan bukti checklist branch. Perubahan kode mengikuti test-first: test ditulis dan dibuktikan gagal sebelum implementasi, lalu dijalankan kembali sampai lulus. Sebelum commit, buat/perbarui salinan [checklist kesiapan commit](docs/checklists/pre-commit-readiness-template.md) per branch berdasarkan sepuluh area di checklist code review lokal; tinjau diff, perbaiki semua temuan, dan commit hanya jika checklist menyatakan READY tanpa temuan terbuka.
 
 ## Environment files
 

@@ -15,6 +15,29 @@
 | Work item / tujuan | `<tautan atau ringkasan>` |
 | Tanggal checklist | `YYYY-MM-DD` |
 
+## Ringkasan untuk deskripsi PR/MR
+
+Salin tabel ini ke deskripsi PR/MR dan perbarui statusnya. Status harus
+merangkum seluruh item terkait dalam bagian yang sama di checklist review kode
+lokal (`docs/personal-docs/code-review-checklist.md`), bukan menggantikan
+review item per item.
+
+| Area review | Status | Gap / blocker / bukti |
+| --- | --- | --- |
+| 1. Scope dan konsistensi perubahan | `PASS / PARTIAL / N/A` | |
+| 2. Konsistensi dokumentasi | `PASS / PARTIAL / N/A` | |
+| 3. Test dan coverage | `PASS / PARTIAL / N/A` | |
+| 4. Arsitektur dan maintainability | `PASS / PARTIAL / N/A` | |
+| 5. Business rule, role, dan security | `PASS / PARTIAL / N/A` | |
+| 6. Database dan API contract | `PASS / PARTIAL / N/A` | |
+| 7. UI/UX dan accessibility | `PASS / PARTIAL / N/A` | |
+| 8. Performance dan reliability | `PASS / PARTIAL / N/A` | |
+| 9. Verification dan release readiness | `PASS / PARTIAL / N/A` | |
+| 10. Keputusan akhir reviewer | `APPROVE / REQUEST CHANGES / DEFER` | |
+
+Checklist branch lengkap: `<path atau URL>`
+Temuan terbuka/blocker: `<tidak ada atau daftar>`
+
 ## Scope dan aturan produk
 
 - [ ] Tujuan branch dan acceptance criteria tertulis; perubahan tetap dalam scope.
@@ -26,6 +49,8 @@
 ## Implementasi dan pengalaman pengguna
 
 - [ ] Perubahan mengikuti arsitektur, abstraksi, pola, dan penamaan repo; tidak menduplikasi aturan yang sudah ada.
+- [ ] Checklist kesiapan commit per branch (`docs/changes/YYYY-MM-DD/pre-commit-checklist-<branch-slug>.md`) terlampir/ditautkan; status akhir READY, semua item wajib selesai, dan tidak ada temuan atau blocker terbuka.
+- [ ] Sebelum commit, seluruh diff ditinjau memakai `docs/personal-docs/code-review-checklist.md`; semua temuan diperbaiki, test/verifikasi terkait dijalankan ulang, dan tidak ada temuan correctness/security yang belum terselesaikan.
 - [ ] Loading, empty, error/retry, disabled, submitting, dan hasil sukses ditangani untuk alur yang berubah.
 - [ ] Teks baru diterjemahkan untuk semua locale yang diwajibkan; aksesibilitas, keyboard, ukuran teks, dan layout web/mobile diperiksa bila relevan.
 - [ ] Tidak ada secret, token, data pribadi, log lokal, atau file lokal-only yang ikut masuk perubahan.

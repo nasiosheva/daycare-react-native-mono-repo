@@ -89,6 +89,44 @@ hari yang sama.
   disebut: `TENANT_SUBSCRIPTION_PAYMENT_PROOF_ENABLED`,
   `TENANT_SUBSCRIPTION_CORRECTION_ENABLED`, `TENANT_SUBSCRIPTION_PAYMENT_INSTRUCTIONS`.
 
+### 8. Serialisasi key idempotency bukti dan koreksi
+- Review checklist menemukan bahwa submit/review proof dan create/review correction
+  membaca key sebelum mengambil lock aktor. Unique constraint mencegah duplikasi
+  database, tetapi dua request paralel dengan key sama pada payment berbeda dapat
+  berakhir sebagai unique-constraint error, bukan replay/conflict domain yang
+  konsisten.
+- Service terkait sekarang mengambil pessimistic lock row aktor di dalam
+  transaksi sebelum lookup idempotency key. Test memverifikasi lock dilakukan
+  pada jalur submit proof, submit correction, dan replay review.
+
+### 9. Scope daftar koreksi Staff Admin
+- Review lanjutan menemukan endpoint `/self/payments/{paymentId}/corrections`
+  sebelumnya hanya memfilter organisasi dan payment, sehingga koreksi yang
+  diajukan Staff Admin lain pada tenant yang sama ikut dikirim. Ini tidak sesuai
+  dengan endpoint/client `ownCorrections` dan prinsip least privilege.
+- Query kini juga dibatasi pada `requestedByUserId` milik actor yang sudah
+  tervalidasi oleh `AccessService`. Regression test baru dibuktikan merah pada
+  implementasi lama (hasil berisi semua request), lalu hijau sesudah filter
+  actor diterapkan.
+
+### 10. Coverage controller dan tanggal scheduler reminder
+- Menambahkan test delegasi untuk seluruh endpoint pada controller
+  subscription Staff Admin dan Platform Admin, termasuk tenant scope,
+  pagination, request body, serta `Idempotency-Key`.
+- Regression test scheduler membuktikan `sendDueReminders()` sebelumnya
+  mengabaikan injected `Clock` dan membaca tanggal sistem langsung. Entry point
+  kini menghitung tanggal memakai clock yang sama pada zona `Asia/Jakarta`;
+  tes merah/hijau memakai waktu tetap yang melintasi tanggal WIB.
+
+### 11. Actor lock harus fail-closed
+- Review kode menemukan hasil `UserProfileRepository.findWithLockById` diabaikan
+  pada submit/review bukti dan koreksi. Jika row aktor hilang di antara
+  autentikasi dan command, operasi masih dapat melanjutkan tanpa lock sehingga
+  jaminan serialisasi idempotency tidak berlaku.
+- Kedua service kini menolak command bila row aktor tidak ditemukan. Regression
+  tests untuk proof dan correction terlebih dahulu gagal karena pembayaran
+  masih disentuh, lalu lulus setelah guard diterapkan.
+
 ## Verifikasi
 
 - `./apps/api/gradlew -p apps/api test --no-daemon` — BUILD SUCCESSFUL, seluruh
@@ -97,6 +135,43 @@ hari yang sama.
   perbaikan bug argumen yang hilang di atas).
 - `pnpm lint` — lulus bersih di seluruh workspace TS (exit 0).
 - `pnpm test` — 224 test mobile + seluruh test `packages/*` lulus.
+- Test terarah `TenantSubscriptionPaymentProofServiceTest` dan
+  `TenantSubscriptionCorrectionServiceTest` — checkpoint red gagal pada 5
+  verifikasi karena actor lock belum dipanggil; setelah implementasi lock
+  ditambahkan, suite terarah lulus. Suite backend penuh dan `pnpm verify`
+  kemudian lulus dengan implementasi final.
+- Verifikasi ulang 15 Oktober setelah merapikan assertion duplikat:
+  `pnpm verify` lulus (327 test frontend), backend Gradle lulus (864 test,
+  0 failure, 4 ignored), dan kedua test service terarah lulus.
+- Seluruh file migration SQL V1–V33 dieksekusi berurutan terhadap PostgreSQL
+  scratch kosong terisolasi; berhasil. Ini memvalidasi SQL pada database kosong,
+  bukan Flyway startup/history migration atau database existing. PostgreSQL
+  lokal biasa tidak tersedia saat audit.
+- `pnpm --filter @daycare/app exec expo export --platform web --output-dir
+  .subscription-web-export-check` — bundle web berhasil; folder output sementara
+  dibersihkan. Ini bukan validasi interaksi browser/device.
+- Test merah/hijau `ownRequests only returns correction requests submitted by
+  the current staff admin` — merah sebelum filter actor, hijau sesudah query
+  repository dibatasi ke `requestedByUserId`.
+- Verifikasi penuh terbaru setelah regression fix: `pnpm verify` lulus (327
+  test frontend); backend Gradle lulus (871 test, 0 failure, 4 ignored).
+  JaCoCo aggregate backend line 93.80% (9,107/9,709), branch 88.08%
+  (5,726/6,501), method 66.41% (4,232/6,373); angka
+  aggregate bukan coverage khusus diff.
+- `TenantSubscriptionControllerTest` menguji delegasi 17 handler subscription
+  pada controller Staff Admin, Platform Admin subscription, dan Platform Admin
+  tenant (renewal, grace, audit, serta perubahan status).
+- Test reminder terjadwal lulus untuk tanggal tetap pada zona Jakarta; test
+  sengaja dibuat gagal pada implementasi lama yang membaca system clock.
+- Format bukti PDF, JPEG, dan PNG diuji dengan signature file; signature PNG
+  yang salah ditolak dan nama file dibersihkan dari komponen path.
+- Regression tests actor row missing gagal sebelum guard fail-closed; setelah
+  perubahan, kedua suite service terkait lulus.
+- Verifikasi terakhir setelah guard dan controller tests: `pnpm verify` lulus
+  (327 test frontend); backend Gradle lulus (874 test, 0 failure, 4 ignored).
+  JaCoCo aggregate: line 93.95% (9,122/9,709), branch 87.99%
+  (5,724/6,505), method 66.53% (4,240/6,373). Aggregate ini bukan coverage
+  khusus diff.
 
 ## Follow-up yang masih terbuka (tidak dikerjakan di sesi ini)
 
