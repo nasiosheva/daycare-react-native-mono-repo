@@ -90,6 +90,21 @@ Parent dapat membatalkan aplikasi yang masih `PENDING_APPROVAL`. Ketika invoice 
   kapasitas, larangan booking tumpang-tindih, verifikasi pembayaran Staff
   Admin, ataupun constraint domain yang sudah ada. Resubmit bukti setelah
   status ditolak adalah aksi baru dan harus menggunakan key baru.
+- Pemeriksaan booking tumpang-tindih dan pembuatan booking untuk anak yang sama
+  diserialisasi dalam transaksi dengan mengunci record anak sebelum pemeriksaan
+  tanggal, sehingga wali berbeda tidak dapat membuat booking pada tanggal yang
+  sama melalui request paralel.
+- Pembelian paket bulanan Parent memiliki business identity tenant + anak +
+  paket + rentang periode layanan. Paket yang sama tidak boleh memiliki dua
+  entitlement dengan periode bertumpang-tindih, termasuk saat request memakai
+  idempotency key berbeda atau diajukan melalui approval enrollment. Server
+  mengunci record anak sebelum memeriksa periode dan membuat invoice/entitlement
+  agar request paralel terserialisasi. Retry dengan intent dan key yang sama
+  mengembalikan invoice semula; intent bulanan pending yang identik dengan key
+  baru juga memakai invoice pending yang sama. Pembelian yang sudah aktif/lunas,
+  permintaan pending dengan promo/periode berbeda, atau data lama yang ambigu
+  ditolak tanpa membuat tagihan baru. Periode baru yang tidak bertumpang-tindih,
+  paket berbeda, atau anak berbeda tetap dapat dibeli sesuai eligibility layanan.
 
 Parent yang memiliki anak **aktif** di satu tenant dapat mengajukan pindah anak itu ke tenant lain dari Profil Anak (`POST /parent-enrollment/transfer`). Alur ini memakai wizard pengajuan yang sama seperti pendaftaran baru (pilih lembaga/cabang tujuan lalu paket), hanya melewati langkah data anak karena nama, gender, dan tanggal lahir disalin langsung dari anak asal; anak tidak boleh sudah aktif di tenant tujuan, dan tidak boleh ada pengajuan pindah lain yang masih `PENDING_APPROVAL` untuk anak yang sama. Pengajuan pindah menghasilkan `Child` baru yang terpisah di tenant tujuan dengan status `PENDING`, disetujui atau ditolak oleh Staff Admin tenant tujuan sama seperti pendaftaran biasa. **Riwayat anak (kehadiran, catatan perkembangan, kesehatan, insiden, Program Pendampingan) tidak pernah ikut pindah** — riwayat itu tetap tersimpan di tenant asal sesuai aturan retensi §9, dan tidak ada relasi query lintas tenant antara kedua record `Child` tersebut selain penanda `transferredFromChildId` pada pengajuan itu sendiri. Anak di tenant asal baru dinonaktifkan (`active=false`, status `TRANSFERRED`) **saat** pengajuan pindah disetujui, bukan saat diajukan; bila pengajuan ditolak atau masih tertunda, anak tetap aktif seperti biasa di tenant asal. Tenant asal tidak perlu menyetujui kepergian anak secara terpisah.
 
@@ -2696,6 +2711,14 @@ bukan pengganti test domain yang lebih rinci.
   atau mengubah periode; (g) `EXPIRED` hanya kembali aktif setelah pembayaran
   renewal/aktivasi yang sah. Status tidak boleh diubah sebagai efek samping
   GET; lifecycle dievaluasi pada otorisasi dan/atau worker idempoten.
+- Jika invoice aktivasi awal `PENDING_PAYMENT` baru dikonfirmasi setelah
+  periode awal yang tercantum di invoice berakhir, periode invoice tetap menjadi
+  snapshot tagihan, tetapi coverage aktual dimulai pada tanggal konfirmasi WIB
+  dan berakhir satu bulan kalender kemudian (inklusif). Aktivasi awal tidak
+  mendapat grace. Pembayaran atas subscription `SUSPENDED` tidak pernah
+  mengaktifkan kembali akses. Jika periode invoice sudah lewat, coverage aktual
+  dicatat mulai tanggal konfirmasi WIB tetapi status tetap `SUSPENDED` sampai
+  Platform Admin melakukan reaktivasi manual dengan alasan dan audit.
 - Renewal boleh dibuat sebelum periode berakhir. Permintaan renewal dan bukti
   tidak memperpanjang akses. Satu payment/invoice renewal aktif maksimum untuk
   satu subscription dan periode target. Perubahan plan/harga berlaku untuk
@@ -2710,6 +2733,11 @@ bukan pengganti test domain yang lebih rinci.
   saat retry; payload sama harus replay resource payment yang sama dan payload
   berbeda dengan key yang sama menghasilkan HTTP 409. Unique constraint
   subscription-periode tetap menjadi proteksi duplikasi lintas key.
+- Jika periode lanjutan yang sudah dibayar mulai berlaku, tanggal periode
+  berjalan yang dikirim API untuk Staff Admin dan Platform Admin harus
+  mencerminkan periode lanjutan tersebut, bukan periode lama. Preview renewal
+  harus dihitung server menggunakan aturan renewal yang sama dengan pembuatan
+  invoice; client tidak menghitung ulang tanggal periode atau jatuh tempo.
 - Invoice awal non-trial jatuh tempo tujuh hari kalender setelah diterbitkan;
   invoice konversi trial dan renewal jatuh tempo pada akhir periode terkait.
   Mata uang MVP IDR dengan nominal rupiah bulat yang dihitung server. Nomor
@@ -2733,6 +2761,13 @@ bukan pengganti test domain yang lebih rinci.
   keamanan storage disahkan pemilik kebijakan keuangan/privasi.
 - Koreksi pembayaran memiliki request terpisah untuk nominal tidak cocok,
   referensi salah, bukti/invoice keliru, atau pembayaran ganda/lebih bayar.
+  Untuk kategori pembayaran ganda/lebih bayar, Staff Admin mengisi total
+  seluruh transfer yang benar-benar telah dibayar; nilainya wajib lebih besar
+  daripada nominal payment/invoice yang tercatat. Platform Admin menyetujui
+  selisih sebagai `EXCESS_CREDIT`, bukan sebagai kekurangan bayar. Untuk
+  kategori nominal tidak cocok, nominal usulan tetap berarti nominal tagihan
+  yang benar, sehingga selisih di atas tagihan tercatat sebagai kekurangan
+  bayar dan selisih di bawahnya sebagai kredit lebih bayar.
   Payment asli immutable. Platform Admin memutuskan dengan alasan dan
   adjustment/reversal yang merujuk payment asal. Kekurangan bayar menjaga
   saldo; kelebihan/duplikasi dicatat sebagai kredit yang tidak otomatis

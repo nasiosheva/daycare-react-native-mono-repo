@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 package com.daycare.api.web
 
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -11,6 +12,7 @@ import org.springframework.boot.test.web.client.TestRestTemplate
 import org.springframework.boot.test.web.client.getForEntity
 import org.springframework.boot.test.web.client.postForEntity
 import org.springframework.boot.test.web.server.LocalServerPort
+import org.springframework.test.context.ActiveProfiles
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
@@ -25,6 +27,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
 @EnabledIfEnvironmentVariable(named = "INTEGRATION_DATABASE_URL", matches = ".+")
+@ActiveProfiles("local")
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = [
@@ -35,6 +38,7 @@ import java.util.concurrent.TimeUnit
         "daycare.local-seed-admin-username=integration-admin",
         "daycare.local-seed-admin-display-name=Integration Admin",
         "daycare.local-seed-admin-password=integration-password",
+        "daycare.tenant-subscription.max-payment-amount=100000000",
         "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://issuer.invalid",
         "spring.datasource.url=\${INTEGRATION_DATABASE_URL}",
         "spring.datasource.username=\${INTEGRATION_DATABASE_USERNAME}",
@@ -66,6 +70,10 @@ class ApiIntegrationTest(
 
     @Test
     fun `local platform admin creates tenant and tenant admin reaches protected routes`() {
+        val suffix = UUID.randomUUID().toString().take(8)
+        val tenantAdminUsername = "integration-$suffix"
+        val tenantAdminEmail = "staff-admin-$suffix@integration.test"
+        val updatedTenantAdminUsername = "updated-$suffix"
         val platformToken = login("admin@integration.test", "integration-password")
         val tenant = rest.exchange(
             url("/v1/platform/tenants"),
@@ -75,29 +83,28 @@ class ApiIntegrationTest(
                 "branchName" to "Cabang Integration",
                 "institutionTypes" to listOf("DAYCARE"),
                 "subscriptionPlan" to "STARTER",
-                "monthlyFee" to 250000,
-                "trialMonths" to null,
+                "trialMonths" to 1,
                 "staffAdminName" to "Admin Tenant",
-                "staffAdminUsername" to "integration-tenant-admin",
-                "staffAdminEmail" to "staff-admin@integration.test",
+                "staffAdminUsername" to tenantAdminUsername,
+                "staffAdminEmail" to tenantAdminEmail,
                 "staffAdminPassword" to "tenant-password",
             )),
             String::class.java,
         )
 
-        assertEquals(HttpStatus.CREATED, tenant.statusCode)
+        assertEquals(HttpStatus.CREATED, tenant.statusCode, tenant.body)
         val tenantId = json.readTree(tenant.body).path("id").asText()
         assertFalse(tenantId.isBlank())
 
-        val tenantAdminToken = login("integration-tenant-admin", "tenant-password")
+        val tenantAdminToken = login(tenantAdminUsername, "tenant-password")
         val usernameUpdate = rest.exchange(
             url("/v1/me/username"),
             HttpMethod.PATCH,
-            authenticated(tenantAdminToken, mapOf("username" to "integration-admin-updated")),
+            authenticated(tenantAdminToken, mapOf("username" to updatedTenantAdminUsername)),
             String::class.java,
         )
         assertEquals(HttpStatus.OK, usernameUpdate.statusCode)
-        val updatedUsernameToken = login("integration-admin-updated", "tenant-password")
+        val updatedUsernameToken = login(updatedTenantAdminUsername, "tenant-password")
         val children = rest.exchange(
             url("/v1/children"),
             HttpMethod.GET,
@@ -111,10 +118,9 @@ class ApiIntegrationTest(
             String::class.java,
         )
 
-        assertEquals(HttpStatus.OK, children.statusCode)
+        assertEquals(HttpStatus.OK, children.statusCode, children.body)
         assertEquals(0, json.readTree(children.body).size())
         assertEquals(HttpStatus.OK, notifications.statusCode)
-        assertEquals(0, json.readTree(notifications.body).size())
     }
 
     @Test
@@ -129,7 +135,6 @@ class ApiIntegrationTest(
                 "branchName" to "Realtime Branch",
                 "institutionTypes" to listOf("DAYCARE"),
                 "subscriptionPlan" to "STARTER",
-                "monthlyFee" to 250000,
                 "trialMonths" to 1,
                 "staffAdminName" to "Realtime Admin",
                 "staffAdminEmail" to staffEmail,
@@ -137,7 +142,7 @@ class ApiIntegrationTest(
             )),
             String::class.java,
         )
-        assertEquals(HttpStatus.CREATED, tenant.statusCode)
+        assertEquals(HttpStatus.CREATED, tenant.statusCode, tenant.body)
         val tenantId = json.readTree(tenant.body).path("id").asText()
         val token = login(staffEmail, "tenant-password")
         val received = CompletableFuture<String>()

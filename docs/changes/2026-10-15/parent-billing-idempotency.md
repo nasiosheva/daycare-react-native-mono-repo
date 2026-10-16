@@ -28,9 +28,10 @@
 
 ## Batas
 
-- Idempotency key mencegah duplikasi akibat retry dengan key yang sama. Ia
-  bukan constraint domain universal untuk dua aksi Parent berbeda dengan key
-  berbeda; constraint tambahan harus mengikuti aturan pembelian/booking Parent
-  yang sah, agar pembelian layanan berulang yang valid tetap dapat dilakukan.
+- Idempotency key mencegah duplikasi akibat retry dengan key yang sama. Aturan
+  duplikasi paket bulanan lintas-key ditambahkan terpisah sebagai constraint
+  domain pada [catatan 16 Oktober](../2026-10-16/parent-monthly-service-purchase-uniqueness.md);
+  domain lain tetap memerlukan business identity yang sesuai agar pembelian
+  berulang yang sah tidak terhalang.
 - Status rollout, retensi bukti, keamanan storage, dan gate subscription SaaS
   tetap mengikuti `docs/business-rules.md` dan plan utama.

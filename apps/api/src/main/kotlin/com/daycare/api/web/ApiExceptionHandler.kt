@@ -14,11 +14,13 @@ import com.daycare.api.service.ChildMessageError
 import com.daycare.api.service.ChildMessageTemplateError
 import com.daycare.api.service.ParentEnrollmentError
 import com.daycare.api.service.TenantPaymentInstructionError
+import com.daycare.api.service.TenantPaymentCorrectionError
 import com.daycare.api.service.StaffLeaveRequestError
 import com.daycare.api.service.TenantFeedbackError
 import com.daycare.api.service.ChildAttendanceReportError
 import com.daycare.api.service.PlatformAdminError
 import com.daycare.api.service.DaycareOperationError
+import com.daycare.api.service.BillingPurchaseError
 import org.springframework.context.MessageSource
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -61,6 +63,7 @@ class ApiExceptionHandler(private val messages: MessageSource) {
     private companion object {
         val errorKeys = mapOf(
             "validation" to "error.validation", "invalid_request" to "error.invalidRequest",
+            BillingPurchaseError.MONTHLY_PURCHASE_EXISTS to "error.monthlyServicePurchaseExists",
             LocalAuthenticationError.INVALID_CREDENTIALS to "error.invalidLocalCredentials",
             LocalAuthenticationError.DISPLAY_NAME_REQUIRED to "error.localDisplayNameRequired",
             LocalAuthenticationError.EMAIL_REQUIRED to "error.localEmailRequired",
@@ -194,6 +197,7 @@ class ApiExceptionHandler(private val messages: MessageSource) {
             "Tenant payment proof content does not match its file type" to "error.tenantPaymentProofContentMismatch", "A tenant payment proof references a missing organization" to "error.tenantPaymentProofMissingOrganization", "Tenant subscription payment proof is not enabled" to "error.tenantPaymentProofFeatureDisabled",
             "A correction explanation of 3 to 1000 characters is required" to "error.tenantPaymentCorrectionDescriptionLength", "Correction reference must not exceed 200 characters" to "error.tenantPaymentCorrectionReferenceLength",
             "A proposed amount is required for this correction type" to "error.tenantPaymentCorrectionAmountRequired", "A proposed amount is not applicable to this correction type" to "error.tenantPaymentCorrectionAmountNotApplicable", "A corrected payment reference is required" to "error.tenantPaymentCorrectionReferenceRequired",
+            TenantPaymentCorrectionError.OVERPAYMENT_TOTAL_REQUIRED to "error.tenantPaymentCorrectionOverpaymentTotalRequired",
             "Invalid tenant payment correction page" to "error.tenantPaymentCorrectionInvalidPage", "Tenant payment correction was not found" to "error.tenantPaymentCorrectionNotFound", "Tenant payment correction is no longer awaiting review" to "error.tenantPaymentCorrectionNotPending",
             "A tenant payment correction references a missing payment" to "error.tenantPaymentCorrectionMissingPayment", "A tenant payment correction references a missing organization" to "error.tenantPaymentCorrectionMissingOrganization", "Tenant subscription payment correction is not enabled" to "error.tenantPaymentCorrectionFeatureDisabled",
         )

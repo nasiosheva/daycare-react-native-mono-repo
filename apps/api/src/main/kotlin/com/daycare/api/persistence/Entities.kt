@@ -239,6 +239,7 @@ class TenantPayment(
     @Column(name = "idempotency_key") var idempotencyKey: UUID? = null,
     @Column(name = "idempotency_payload_hash", length = 64) var idempotencyPayloadHash: String? = null,
     @Column(name = "decision_by_user_id") var decisionByUserId: UUID? = null,
+    @Column(name = "decision_operation", length = 20) var decisionOperation: String? = null,
     @Column(name = "decision_idempotency_key") var decisionIdempotencyKey: UUID? = null,
     @Column(name = "decision_payload_hash", length = 64) var decisionPayloadHash: String? = null,
     @Version @Column(nullable = false) var version: Long? = null,

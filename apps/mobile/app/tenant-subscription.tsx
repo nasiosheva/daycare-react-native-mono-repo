@@ -60,15 +60,7 @@ export default function TenantSubscriptionScreen() {
   const canRenew = Boolean(data?.monthlyFee && !hasPendingPayment && ["TRIAL", "ACTIVE", "GRACE", "EXPIRED"].includes(data.status));
   const confirmRenewal = () => setRenewalPreviewVisible(true);
   const submitRenewal = () => { setRenewalPreviewVisible(false); renew.mutate(); };
-  // Preview only: mirrors the common-case server computation (carriesCoverage
-  // for TRIAL/ACTIVE/GRACE, a fresh period from today for EXPIRED) so the
-  // confirmation shows concrete figures without claiming a precise date for
-  // the rarer already-chained-next-period case, which only the server resolves.
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const renewalStartsToday = data?.status === "EXPIRED";
-  const newPeriodStart = data ? (renewalStartsToday ? todayIso : addDaysToIsoDate(data.periodEnd, 1)) : null;
-  const newPeriodEnd = newPeriodStart ? addDaysToIsoDate(addMonthsToIsoDate(newPeriodStart, 1), -1) : null;
-  const newDueDate = data ? (renewalStartsToday ? addDaysToIsoDate(todayIso, 7) : data.periodEnd) : null;
+  const renewalPreview = data?.renewalPreview;
   const uploadProof = async (paymentId: string) => {
     try {
       const selection = await DocumentPicker.getDocumentAsync({ type: ["application/pdf", "image/jpeg", "image/png"], copyToCacheDirectory: true, multiple: false });
@@ -161,7 +153,10 @@ export default function TenantSubscriptionScreen() {
       <ChipGroup>
         {CORRECTION_CATEGORIES.map((category) => <Chip key={category} label={t(`tenantSelf.correction.${category}`)} selected={correctionCategory === category} onPress={() => setCorrectionCategory(category)} />)}
       </ChipGroup>
-      {(correctionCategory === "AMOUNT_MISMATCH" || correctionCategory === "DUPLICATE_OR_OVERPAYMENT") && <TextField label={t("tenantSelf.correctionAmount")} keyboardType="numeric" value={correctionAmount} onChangeText={setCorrectionAmount} />}
+      {(correctionCategory === "AMOUNT_MISMATCH" || correctionCategory === "DUPLICATE_OR_OVERPAYMENT") && <>
+        <TextField label={t(correctionCategory === "DUPLICATE_OR_OVERPAYMENT" ? "tenantSelf.correctionTotalPaid" : "tenantSelf.correctionAmount")} keyboardType="numeric" value={correctionAmount} onChangeText={setCorrectionAmount} />
+        {correctionCategory === "DUPLICATE_OR_OVERPAYMENT" && <AppText tone="muted">{t("tenantSelf.correctionTotalPaidHint")}</AppText>}
+      </>}
       {correctionCategory === "WRONG_REFERENCE" && <TextField label={t("tenantSelf.correctionReference")} value={correctionReference} onChangeText={setCorrectionReference} />}
       <TextField label={t("tenantSelf.correctionDescription")} required multiline value={correctionDescription} onChangeText={setCorrectionDescription} />
     </View>
@@ -169,10 +164,10 @@ export default function TenantSubscriptionScreen() {
   <BottomSheet visible={renewalPreviewVisible} onClose={() => setRenewalPreviewVisible(false)} closeAccessibilityLabel={t("common.close")} title={t("tenantSelf.renew")} negativeAction={{ label: t("tenantSelf.cancel"), onPress: () => setRenewalPreviewVisible(false) }} positiveAction={{ label: t("tenantSelf.confirm"), loading: renew.isPending, onPress: submitRenewal }}>
     <View style={styles.form}>
       <AppText tone="muted">{t("tenantSelf.renewConfirm")}</AppText>
-      {data?.monthlyFee != null && newPeriodStart && newPeriodEnd && newDueDate && <>
+      {data?.monthlyFee != null && renewalPreview && <>
         <AppText>{t("tenantSelf.renewPreviewAmount", { amount: formatCurrency(data.monthlyFee) })}</AppText>
-        <AppText>{t("tenantSelf.renewPreviewPeriod", { start: formatDate(newPeriodStart), end: formatDate(newPeriodEnd) })}</AppText>
-        <AppText>{t("tenantSelf.renewPreviewDueDate", { date: formatDate(newDueDate) })}</AppText>
+        <AppText>{t("tenantSelf.renewPreviewPeriod", { start: formatDate(renewalPreview.periodStart), end: formatDate(renewalPreview.periodEnd) })}</AppText>
+        <AppText>{t("tenantSelf.renewPreviewDueDate", { date: formatDate(renewalPreview.dueDate) })}</AppText>
       </>}
     </View>
   </BottomSheet>
@@ -186,18 +181,6 @@ function supportedProofType(mimeType: string | null | undefined, fileName: strin
   if (type === "application/pdf" || type === "image/jpeg" || type === "image/png") return type;
   const extension = fileName.split(".").pop()?.toLowerCase();
   return extension === "pdf" ? "application/pdf" : extension === "jpg" || extension === "jpeg" ? "image/jpeg" : extension === "png" ? "image/png" : null;
-}
-
-function addDaysToIsoDate(iso: string, days: number): string {
-  const date = new Date(`${iso}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-function addMonthsToIsoDate(iso: string, months: number): string {
-  const date = new Date(`${iso}T00:00:00Z`);
-  date.setUTCMonth(date.getUTCMonth() + months);
-  return date.toISOString().slice(0, 10);
 }
 
 const styles = StyleSheet.create({ content: { gap: spacing.md }, form: { gap: spacing.md } });

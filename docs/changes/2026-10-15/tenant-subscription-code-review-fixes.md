@@ -77,12 +77,9 @@ hari yang sama.
 - `tenant-subscription.tsx`: konfirmasi renewal sebelumnya memakai
   `Alert.alert` dengan teks statis generik. Diganti BottomSheet yang
   menampilkan nominal tagihan, periode tambahan, dan tanggal jatuh tempo —
-  dihitung dari data subscription yang sudah di-fetch (mirror kasus umum
-  logika server: TRIAL/ACTIVE/GRACE melanjutkan dari periode berjalan,
-  EXPIRED mulai dari hari ini), bukan nilai statis. Kasus langka
-  "periode berikutnya sudah dibuat dan di-chain" sengaja tidak direplikasi
-  persis di client (hanya server yang menghitungnya) untuk menghindari
-  recalculating server-owned value yang bisa menyimpang dari kebenaran server.
+  memakai preview server agar tanggalnya identik dengan invoice yang akan
+  dibuat, termasuk trial, periode prepaid yang di-chain, tanggal WIB, dan
+  subscription expired.
 
 ### 7. Non-blocking: README env var
 - Menambahkan 3 baris tabel environment variable yang sebelumnya tidak
@@ -173,6 +170,49 @@ hari yang sama.
   (5,724/6,505), method 66.53% (4,240/6,373). Aggregate ini bukan coverage
   khusus diff.
 
+### 12. Renewal setelah periode lanjutan dibayar lebih awal
+
+- Review menemukan bahwa renewal kedua setelah periode lanjutan dibayar tetapi
+  belum dimulai kembali memilih `subscription.periodEnd`, sehingga membentuk
+  rentang periode yang sama. Unique index database mencegah invoice ganda,
+  tetapi pelanggaran constraint akan menjadi error server yang tidak tertangani.
+- Test `renew chains after an already-paid future period` diubah lebih dulu
+  untuk mengharuskan periode baru dimulai sehari setelah `nextPeriodEnd`; test
+  gagal pada implementasi lama, lalu lulus setelah service selalu melanjutkan
+  dari periode terjadwal terakhir. Renewal setelah status efektif `EXPIRED`
+  tetap memulai coverage dari hari ini.
+- Review ulang menemukan status `TRIAL` juga dapat tetap aktif setelah renewal
+  dini dibayar. Regression test `renew chains after an already-paid future
+  period while trial is still active` dibuktikan gagal pada implementasi
+  sebelumnya; pemilihan `nextPeriodEnd` kini diprioritaskan sebelum fallback
+  `trialEndsAt`, dan test tersebut lulus.
+- Verifikasi: test service terarah lulus dan suite backend penuh lulus.
+- Tidak ada perubahan aturan produk atau README: perilaku chaining tersebut
+  sudah ditetapkan di `docs/business-rules.md` §13.13; perubahan ini membuat
+  implementasi mematuhi aturan yang ada.
+
+### 13. Temuan review lanjutan: status pembayaran, lifecycle, idempotency, dan booking
+
+- `PlatformAdministrationService.markPaymentPaid` tidak lagi mengubah status
+  `SUSPENDED` menjadi `ACTIVE`. Test regresi memastikan invoice tetap dapat
+  dibayar tanpa membuka kembali akses; reaktivasi tetap membutuhkan aksi manual.
+- Pembayaran aktivasi awal yang dikonfirmasi setelah periode invoice berakhir
+  mempertahankan periode invoice sebagai snapshot dan mencatat coverage aktual
+  dari tanggal konfirmasi WIB selama satu bulan tanpa grace. Aturan ini kini
+  ditulis di `docs/business-rules.md` dan plan utama.
+- `markPaymentPaid` dan `voidPayment` mengunci row aktor sebelum lookup replay.
+  Scope key kini tenant + aktor + operasi; migration additive V34 mengganti
+  unique constraint lama dan mengisi operasi untuk keputusan yang sudah ada.
+- API Staff Admin menyediakan `renewalPreview` hasil kalkulasi bersama service
+  renewal. UI tidak lagi menghitung periode atau due date dengan jam lokal/UTC;
+  tanggal periode top-level API untuk kedua role juga memakai periode prepaid
+  ketika sudah efektif.
+- Semua jalur pembuatan booking harian mengunci row anak sebelum memeriksa
+  booking overlap dan menyimpan booking, menyerialisasi wali yang berbeda.
+- Tes regresi ditulis sebelum implementasi. Tes terarah yang tercatat pada
+  review awal menunjukkan status `RED` untuk perilaku yang belum tersedia;
+  hasil verifikasi akhir dicatat di bagian verifikasi setelah dijalankan.
+
 ## Follow-up yang masih terbuka (tidak dikerjakan di sesi ini)
 
 - `docs/business-rules.md` §13.13: definisi metrik laporan Tahap 6 (§12.11
@@ -187,3 +227,81 @@ hari yang sama.
 - Release gates produksi (batas nominal finance sign-off, pajak, retensi
   bukti, mekanisme refund, matriks E2E) tetap eksplisit belum terpenuhi,
   sesuai `docs/changes/2026-10-14/tenant-subscription-operational-controls.md`.
+
+### 14. Verifikasi Flyway V34 di PostgreSQL scratch
+
+- Flyway cold-start pada database scratch kosong menerapkan V1–V34 dengan
+  seluruh versi berstatus sukses.
+- Scratch kedua dihentikan di history V33, lalu startup berikutnya tanpa target
+  menerapkan V34 dan mencatatnya sukses. Ini membuktikan jalur upgrade Flyway
+  dari versi tepat sebelumnya pada schema scratch.
+- Sebelum upgrade, dua row fixture synthetic pada schema V33 disisipkan dengan
+  status PAID dan VOID. Setelah Flyway V34, query membuktikan keduanya terisi
+  `decision_operation=MARK_PAID` dan `decision_operation=VOID`; unique constraint
+  baru juga terpasang.
+- Pemeriksaan PostgreSQL awal menemukan API integration test belum mengaktifkan
+  Spring profile `local`, payload trial membawa monthly fee, dan assertion
+  mengasumsikan notification list selalu kosong. Test setup/payload/assertion
+  diperbaiki agar sesuai konfigurasi dan kontrak.
+- `SecurityConfig` kini menunda Firebase issuer discovery sampai token Firebase
+  pertama benar-benar didecode. Regression test dengan `issuer.invalid` gagal
+  sebelum patch lalu lulus sesudahnya; verifikasi JWT lokal tidak memerlukan
+  jaringan, sedangkan validasi token Firebase tetap menggunakan issuer decoder.
+- Keempat `ApiIntegrationTest` lulus pada PostgreSQL scratch setelah profile,
+  billing cap, dan trial diselaraskan. Verifikasi penuh dengan integration
+  database aktif lulus: backend 882 test, 0 failure/error/skipped; `pnpm verify`
+  juga lulus dengan 327 test frontend.
+- Suite `ApiIntegrationTest` dijalankan ulang pada database scratch yang sama
+  tanpa reset; tetap lulus, karena test sekarang menggunakan identitas tenant
+  admin unik dan tidak bergantung pada notification count yang kosong.
+- JaCoCo diperiksa sesudah full backend unit suite: semua method production
+  yang ditambah/diubah (termasuk `SecurityConfig.jwtDecoder`, kedua keputusan
+  payment, `tenantResponse`, booking lock helper, current/renewal preview, dan
+  `renewalTerms`) memiliki method coverage 100%. Branch coverage khusus diff
+  belum 100%; ini dicatat sebagai gap, bukan diklaim selesai.
+- Database tenant existing/produksi tidak disentuh atau divalidasi; fixture
+  tersebut hanya membuktikan transformasi SQL pada scratch yang terisolasi.
+
+### 15. Regression coverage lanjutan setelah review ulang
+
+- Ditambahkan test untuk keputusan payment yang fail-closed jika row Platform
+  Admin tidak lagi tersedia ketika lock; lookup payment tidak boleh dilanjutkan.
+- Ditambahkan test renewal preview untuk status suspended dan fallback
+  `trialEndsAt` ke `periodEnd`; jalur booking-lock juga diuji untuk anak hilang
+  dan anak lintas-tenant.
+- Konfirmasi payment sekarang punya coverage eksplisit untuk periode aktif,
+  jadwal periode mendatang, periode invoice parsial, stale initial payment,
+  suspended pada jalur current/fresh/fallback, serta pending grace-period
+  override dan fallback.
+- Test `tenantResponse` dengan grace aktif memverifikasi akhir grace dari
+  periode prepaid berikutnya dan fallback ke grace standar; implementasi
+  menghindari null-fallback redundan dengan menghitung periode dalam scope
+  subscription yang sudah dipastikan ada.
+- Semua perubahan saldo kredit booking kini diserialisasi pada row entitlement:
+  pembuatan booking mengunci child lalu entitlement, penolakan mengunci child,
+  booking, lalu entitlement, dan check-in mengunci booking serta entitlement.
+  Saldo hanya dibaca/diubah setelah entitlement di-refresh dengan pessimistic
+  write lock.
+- Submit bukti memeriksa replay idempotency setelah tenant scope tetapi
+  sebelum status payment. Retry payload yang sama tetap mengembalikan bukti
+  terdahulu walaupun payment sudah dikonfirmasi; key/payload berbeda tetap
+  menghasilkan conflict.
+- Koreksi pembayaran ganda/lebih bayar memakai total semua transfer, wajib
+  lebih besar daripada payment tercatat, dan menghasilkan adjustment
+  `EXCESS_CREDIT` sebesar selisih. Label serta keterangan field UI tersedia
+  dalam tujuh locale; aturan normatif dan plan utama juga diperbarui.
+- Test `SecurityConfig` membuktikan issuer Firebase tidak dicari ketika decoder
+  dibuat, lalu dispatch token Firebase ke decoder lazy tanpa akses jaringan.
+- Verifikasi akhir lokal: `./gradlew test --no-daemon` lulus, 889 tests,
+  0 failure/error, 4 API integration tests skipped karena DB integrasi tidak
+  disiapkan pada run terakhir. Run integrasi PostgreSQL scratch yang tercatat
+  sebelumnya tetap bukti terpisah dan tidak mencakup test tambahan ini.
+- Verifikasi ulang setelah temuan review terbaru: `./apps/api/gradlew -p apps/api
+  test --no-daemon` lulus (895 test cases, 0 failure/error, 4 skipped), dan
+  `pnpm verify` lulus (lint, typecheck, serta 327 test frontend). Test terarah
+  untuk booking/approval/check-in/proof/correction juga lulus.
+- JaCoCo aggregate branch: 5,776/6,523 (88.55%). Branches pada jalur baru yang
+  diperiksa sudah ter-cover; aggregate backend masih di bawah target 90% karena
+  branch yang tersisa berada di berbagai kode lain dan bukan seluruhnya bagian
+  diff ini.
+- `git diff --check` lulus. Tidak ada commit atau push dalam tindak lanjut ini.

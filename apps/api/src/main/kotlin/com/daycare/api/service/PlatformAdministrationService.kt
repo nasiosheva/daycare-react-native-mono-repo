@@ -460,8 +460,9 @@ class PlatformAdministrationService(
     @Transactional
     fun markPaymentPaid(jwt: Jwt, organizationId: UUID, paymentId: UUID, idempotencyKey: UUID): TenantResponse {
         val actor = platformAccess.requirePlatformAdmin(jwt)
+        users.findWithLockById(actor.id) ?: throw IllegalArgumentException("Platform Admin was not found")
         val payloadHash = sha256("$organizationId|$paymentId|MARK_PAID|${actor.id}")
-        payments.findByDecisionByUserIdAndDecisionIdempotencyKey(actor.id, idempotencyKey)?.let { existing ->
+        payments.findByOrganizationIdAndDecisionByUserIdAndDecisionOperationAndDecisionIdempotencyKey(organizationId, actor.id, "MARK_PAID", idempotencyKey)?.let { existing ->
             if (existing.decisionPayloadHash != payloadHash) throw TenantSubscriptionIdempotencyConflict()
             return tenantResponse(requireOrganization(existing.organizationId))
         }
@@ -471,22 +472,25 @@ class PlatformAdministrationService(
         payment.status = TenantPaymentStatus.PAID
         payment.paidAt = Instant.now()
         payment.decisionByUserId = actor.id
+        payment.decisionOperation = "MARK_PAID"
         payment.decisionIdempotencyKey = idempotencyKey
         payment.decisionPayloadHash = payloadHash
         val subscription = subscriptions.findById(payment.subscriptionId).orElseThrow { IllegalArgumentException("Tenant subscription was not found") }
         val today = LocalDate.now(BILLING_TIME_ZONE)
         if (payment.periodStart != null && payment.periodEnd != null) {
             val statusAtConfirmation = subscriptionLifecycle.effectiveStatus(subscription, today)
-            val coverageStart = if (statusAtConfirmation == TenantSubscriptionStatus.EXPIRED) today else payment.periodStart!!
-            val coverageEnd = if (statusAtConfirmation == TenantSubscriptionStatus.EXPIRED) today.plusMonths(1).minusDays(1) else payment.periodEnd!!
+            val startsFreshCoverage = statusAtConfirmation == TenantSubscriptionStatus.EXPIRED ||
+                (statusAtConfirmation in setOf(TenantSubscriptionStatus.PENDING_PAYMENT, TenantSubscriptionStatus.SUSPENDED) && payment.periodEnd!!.isBefore(today))
+            val coverageStart = if (startsFreshCoverage) today else payment.periodStart!!
+            val coverageEnd = if (startsFreshCoverage) today.plusMonths(1).minusDays(1) else payment.periodEnd!!
             payment.coveragePeriodStart = coverageStart
             payment.coveragePeriodEnd = coverageEnd
-            if (statusAtConfirmation == TenantSubscriptionStatus.EXPIRED) {
+            if (startsFreshCoverage) {
                 subscription.periodStart = coverageStart
                 subscription.periodEnd = coverageEnd
                 subscription.nextPeriodStart = null
                 subscription.nextPeriodEnd = null
-                subscription.status = TenantSubscriptionStatus.ACTIVE
+                if (statusAtConfirmation != TenantSubscriptionStatus.SUSPENDED) subscription.status = TenantSubscriptionStatus.ACTIVE
                 subscription.trialEndsAt = null
                 subscription.nextGracePeriodDays?.let { subscription.gracePeriodDays = it; subscription.nextGracePeriodDays = null }
             } else if (payment.periodStart!! <= today) {
@@ -494,7 +498,7 @@ class PlatformAdministrationService(
                 subscription.periodEnd = coverageEnd
                 subscription.nextPeriodStart = null
                 subscription.nextPeriodEnd = null
-                subscription.status = TenantSubscriptionStatus.ACTIVE
+                if (statusAtConfirmation != TenantSubscriptionStatus.SUSPENDED) subscription.status = TenantSubscriptionStatus.ACTIVE
                 subscription.trialEndsAt = null
                 subscription.nextGracePeriodDays?.let { subscription.gracePeriodDays = it; subscription.nextGracePeriodDays = null }
             } else {
@@ -502,7 +506,7 @@ class PlatformAdministrationService(
                 subscription.nextPeriodEnd = coverageEnd
             }
         } else {
-            subscription.status = TenantSubscriptionStatus.ACTIVE
+            if (subscription.status != TenantSubscriptionStatus.SUSPENDED) subscription.status = TenantSubscriptionStatus.ACTIVE
             subscription.periodStart = today
             subscription.periodEnd = today.plusMonths(1).minusDays(1)
             subscription.trialEndsAt = null
@@ -517,8 +521,9 @@ class PlatformAdministrationService(
     @Transactional
     fun voidPayment(jwt: Jwt, organizationId: UUID, paymentId: UUID, idempotencyKey: UUID): TenantResponse {
         val actor = platformAccess.requirePlatformAdmin(jwt)
+        users.findWithLockById(actor.id) ?: throw IllegalArgumentException("Platform Admin was not found")
         val payloadHash = sha256("$organizationId|$paymentId|VOID|${actor.id}")
-        payments.findByDecisionByUserIdAndDecisionIdempotencyKey(actor.id, idempotencyKey)?.let { existing ->
+        payments.findByOrganizationIdAndDecisionByUserIdAndDecisionOperationAndDecisionIdempotencyKey(organizationId, actor.id, "VOID", idempotencyKey)?.let { existing ->
             if (existing.decisionPayloadHash != payloadHash) throw TenantSubscriptionIdempotencyConflict()
             return tenantResponse(requireOrganization(existing.organizationId))
         }
@@ -527,6 +532,7 @@ class PlatformAdministrationService(
         require(payment.status == TenantPaymentStatus.PENDING) { "Tenant payment is not awaiting payment" }
         payment.status = TenantPaymentStatus.VOID
         payment.decisionByUserId = actor.id
+        payment.decisionOperation = "VOID"
         payment.decisionIdempotencyKey = idempotencyKey
         payment.decisionPayloadHash = payloadHash
         recordSubscriptionAudit(organizationId, payment.subscriptionId, actor.id, "PAYMENT_VOIDED", "Pending payment voided by Platform Admin", TenantPaymentStatus.PENDING.name, TenantPaymentStatus.VOID.name, paymentId, idempotencyKey)
@@ -570,13 +576,14 @@ class PlatformAdministrationService(
             ?.let { invitation -> TenantStaffAdminResponse(invitation.id, invitation.email ?: invitation.phoneNumber, null, "PENDING", true) }
         val tenantBranches = branches.findAllByOrganizationId(organization.id).sortedWith(compareByDescending<Branch> { it.primary }.thenBy { it.name })
         val today = LocalDate.now(BILLING_TIME_ZONE)
-        val graceEndsAt = subscription?.takeIf { effectiveStatus == TenantSubscriptionStatus.GRACE }?.let {
-            val nextPeriodGrace = it.nextPeriodEnd != null && today.isAfter(it.nextPeriodEnd)
-            val periodEnd = if (nextPeriodGrace) it.nextPeriodEnd!! else it.periodEnd
-            val days = if (nextPeriodGrace) it.nextGracePeriodDays ?: it.gracePeriodDays else it.gracePeriodDays
-            periodEnd.plusDays(days.toLong())
+        val currentPeriod = subscription?.let { currentTenantSubscriptionPeriod(it, today) }
+        val graceEndsAt = subscription?.takeIf { effectiveStatus == TenantSubscriptionStatus.GRACE }?.let { graceSubscription ->
+            val gracePeriod = currentTenantSubscriptionPeriod(graceSubscription, today)
+            val nextPeriodGrace = gracePeriod.end == graceSubscription.nextPeriodEnd
+            val days = if (nextPeriodGrace) graceSubscription.nextGracePeriodDays ?: graceSubscription.gracePeriodDays else graceSubscription.gracePeriodDays
+            gracePeriod.end.plusDays(days.toLong())
         }
-        return TenantResponse(organization.id, organization.name, tenantBranches.firstOrNull { it.primary }?.name, tenantBranches.map(::branchResponse), capabilities.types, capabilities.capabilities, subscription?.plan, effectiveStatus, subscription?.periodStart, subscription?.periodEnd, subscription?.trialEndsAt, subscription?.monthlyFee, subscription?.nextGracePeriodDays ?: subscription?.gracePeriodDays ?: 7, graceEndsAt, activeStaffAdmin ?: pendingStaffAdmin, staffAdmins, payments.findAllByOrganizationIdOrderByCreatedAtDesc(organization.id).map { TenantPaymentResponse(it.id, it.invoiceNumber, it.amount, it.status, it.dueDate, it.paidAt, it.periodStart, it.periodEnd, it.coveragePeriodStart, it.coveragePeriodEnd, it.planCodeSnapshot) })
+        return TenantResponse(organization.id, organization.name, tenantBranches.firstOrNull { it.primary }?.name, tenantBranches.map(::branchResponse), capabilities.types, capabilities.capabilities, subscription?.plan, effectiveStatus, currentPeriod?.start, currentPeriod?.end, subscription?.trialEndsAt, subscription?.monthlyFee, subscription?.nextGracePeriodDays ?: subscription?.gracePeriodDays ?: 7, graceEndsAt, activeStaffAdmin ?: pendingStaffAdmin, staffAdmins, payments.findAllByOrganizationIdOrderByCreatedAtDesc(organization.id).map { TenantPaymentResponse(it.id, it.invoiceNumber, it.amount, it.status, it.dueDate, it.paidAt, it.periodStart, it.periodEnd, it.coveragePeriodStart, it.coveragePeriodEnd, it.planCodeSnapshot) })
     }
 
     private fun recordSubscriptionAudit(organizationId: UUID, subscriptionId: UUID, actorUserId: UUID, action: String, reason: String, beforeValue: String?, afterValue: String?, referenceId: UUID? = null, correlationId: UUID? = null) {

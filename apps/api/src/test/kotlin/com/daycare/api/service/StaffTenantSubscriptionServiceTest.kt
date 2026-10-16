@@ -55,7 +55,38 @@ class StaffTenantSubscriptionServiceTest {
         assertEquals(organizationId, result.organizationId)
         assertEquals("Tenant sendiri", result.organizationName)
         assertEquals(TenantSubscriptionStatus.GRACE, result.status)
+        assertEquals(subscription.periodStart, result.periodStart)
+        assertEquals(subscription.periodEnd, result.periodEnd)
         verify(access).require(jwt, organizationId, setOf(Role.STAFF_ADMIN), null, false, setOf(Role.STAFF_ADMIN), emptySet(), emptySet())
+    }
+
+    @Test
+    fun `current subscription exposes effective prepaid period and server-calculated renewal preview`() {
+        allowStaffAdmin()
+        val today = LocalDate.now(BILLING_TIME_ZONE)
+        val nextStart = today.minusDays(2)
+        val nextEnd = today.plusDays(27)
+        val subscription = TenantSubscription(
+            organizationId = organizationId,
+            plan = TenantSubscriptionPlan.STANDARD,
+            status = TenantSubscriptionStatus.ACTIVE,
+            periodStart = today.minusMonths(1),
+            periodEnd = today.minusDays(3),
+            nextPeriodStart = nextStart,
+            nextPeriodEnd = nextEnd,
+            monthlyFee = BigDecimal("250000"),
+        )
+        val preview = TenantSubscriptionRenewalPreview(nextEnd.plusDays(1), nextEnd.plusDays(1).plusMonths(1).minusDays(1), nextEnd)
+        `when`(organizations.findById(organizationId)).thenReturn(Optional.of(Organization(id = organizationId, name = "Tenant sendiri")))
+        `when`(subscriptions.findByOrganizationId(organizationId)).thenReturn(subscription)
+        `when`(payments.findAllByOrganizationIdOrderByCreatedAtDesc(organizationId)).thenReturn(emptyList())
+        `when`(renewals.previewTerms(subscription, today)).thenReturn(preview)
+
+        val result = service.current(jwt, organizationId)
+
+        assertEquals(nextStart, result.periodStart)
+        assertEquals(nextEnd, result.periodEnd)
+        assertEquals(preview, result.renewalPreview)
     }
 
     @Test

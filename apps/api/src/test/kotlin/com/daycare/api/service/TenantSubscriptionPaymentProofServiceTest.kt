@@ -218,6 +218,28 @@ class TenantSubscriptionPaymentProofServiceTest {
     }
 
     @Test
+    fun `submit replays an accepted proof after the payment has already been confirmed`() {
+        val user = allowPendingPayment()
+        val paidPayment = com.daycare.api.persistence.TenantPayment(id = paymentId, organizationId = organizationId, status = TenantPaymentStatus.PAID)
+        `when`(payments.findWithLockById(paymentId)).thenReturn(paidPayment)
+        `when`(organizations.findById(organizationId)).thenReturn(Optional.of(com.daycare.api.persistence.Organization(id = organizationId, name = "Tenant")))
+        val service = createService(enabled = true)
+        val key = UUID.randomUUID()
+        val request = pdfRequest()
+        val bytes = Base64.getDecoder().decode(request.fileBase64)
+        val fileHash = invokePrivate(service, "sha256", bytes) as String
+        val payloadHash = invokePrivate(service, "sha256", "$paymentId|${request.fileName.trim()}|${request.contentType}|$fileHash") as String
+        val existing = com.daycare.api.persistence.TenantPaymentProof(paymentId = paymentId, organizationId = organizationId, uploadIdempotencyKey = key, uploadPayloadHash = payloadHash, status = "VERIFIED")
+        `when`(proofs.findByOrganizationIdAndUploadedByUserIdAndUploadIdempotencyKey(organizationId, user.id, key)).thenReturn(existing)
+
+        val response = service.submit(jwt, organizationId, paymentId, key, request)
+
+        assertEquals(existing.id, response.id)
+        assertEquals("VERIFIED", response.status)
+        verify(proofs, never()).save(org.mockito.ArgumentMatchers.any(com.daycare.api.persistence.TenantPaymentProof::class.java))
+    }
+
+    @Test
     fun `submit rejects a retried idempotency key whose payload has changed`() {
         val user = allowPendingPayment()
         val service = createService(enabled = true)

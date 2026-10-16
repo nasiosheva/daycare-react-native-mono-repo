@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 package com.daycare.api.service
 
 import com.daycare.api.domain.BookingStatus
@@ -5,6 +6,8 @@ import com.daycare.api.domain.EntitlementStatus
 import com.daycare.api.domain.ServicePlanType
 import com.daycare.api.persistence.BookingRepository
 import com.daycare.api.persistence.ServiceEntitlementRepository
+import jakarta.persistence.EntityManager
+import jakarta.persistence.LockModeType
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -14,6 +17,7 @@ import java.util.UUID
 class BookingEligibilityService(
     private val entitlements: ServiceEntitlementRepository,
     private val bookings: BookingRepository,
+    private val entityManager: EntityManager,
 ) {
     @Transactional(readOnly = true)
     fun checkInEligibility(organizationId: UUID, childId: UUID, date: LocalDate): BookingEligibility {
@@ -36,9 +40,13 @@ class BookingEligibilityService(
         }
         if (monthlyEntitlement != null) return
 
-        val booking = bookings.findByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)
+        val booking = bookings.findWithLockByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)
             ?: throw AttendanceConflict("Child does not have a confirmed booking or active monthly plan")
-        val entitlement = entitlements.findById(booking.entitlementId).orElseThrow { AttendanceConflict("Booking service entitlement was not found") }
+        if (booking.organizationId != organizationId || booking.childId != childId || booking.bookingDate != date || booking.status != BookingStatus.CONFIRMED) {
+            throw AttendanceConflict("Child does not have a confirmed booking or active monthly plan")
+        }
+        val entitlement = entitlements.findWithLockById(booking.entitlementId) ?: throw AttendanceConflict("Booking service entitlement was not found")
+        entityManager.refresh(entitlement, LockModeType.PESSIMISTIC_WRITE)
         if (entitlement.status != EntitlementStatus.ACTIVE) throw AttendanceConflict("Booking service entitlement is not active")
         booking.status = BookingStatus.COMPLETED
         entitlement.reservedCredits = (entitlement.reservedCredits - 1).coerceAtLeast(0)

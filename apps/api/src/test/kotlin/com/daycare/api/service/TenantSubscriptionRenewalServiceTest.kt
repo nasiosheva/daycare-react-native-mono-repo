@@ -35,6 +35,71 @@ class TenantSubscriptionRenewalServiceTest {
     private val organizationId = UUID.randomUUID()
     private val actorId = UUID.randomUUID()
 
+    @Test
+    fun `preview terms use the already-paid next period as renewal baseline`() {
+        val today = LocalDate.now(BILLING_TIME_ZONE)
+        val subscription = TenantSubscription(
+            organizationId = organizationId,
+            status = TenantSubscriptionStatus.ACTIVE,
+            periodStart = today.minusMonths(1),
+            periodEnd = today.plusDays(5),
+            nextPeriodStart = today.plusDays(6),
+            nextPeriodEnd = today.plusDays(35),
+            monthlyFee = BigDecimal("250000"),
+        )
+
+        val terms = service.previewTerms(subscription, today)
+
+        assertEquals(today.plusDays(36), terms?.periodStart)
+        assertEquals(today.plusDays(36).plusMonths(1).minusDays(1), terms?.periodEnd)
+        assertEquals(today.plusDays(35), terms?.dueDate)
+    }
+
+    @Test
+    fun `preview terms use trial end and WIB date for trial and expired subscriptions`() {
+        val today = LocalDate.now(BILLING_TIME_ZONE)
+        val trial = TenantSubscription(
+            organizationId = organizationId,
+            status = TenantSubscriptionStatus.TRIAL,
+            periodEnd = today.plusDays(4),
+            trialEndsAt = today.plusDays(10),
+        )
+        val trialTerms = service.previewTerms(trial, today)
+        assertEquals(today.plusDays(11), trialTerms?.periodStart)
+        assertEquals(today.plusDays(10), trialTerms?.dueDate)
+
+        val expired = TenantSubscription(
+            organizationId = organizationId,
+            status = TenantSubscriptionStatus.EXPIRED,
+            periodEnd = today.minusDays(1),
+        )
+        val expiredTerms = service.previewTerms(expired, today)
+        assertEquals(today, expiredTerms?.periodStart)
+        assertEquals(today.plusMonths(1).minusDays(1), expiredTerms?.periodEnd)
+        assertEquals(today.plusDays(7), expiredTerms?.dueDate)
+    }
+
+    @Test
+    fun `preview terms omit suspended subscriptions and fall back to period end when trial end is absent`() {
+        val today = LocalDate.now(BILLING_TIME_ZONE)
+        val suspended = TenantSubscription(
+            organizationId = organizationId,
+            status = TenantSubscriptionStatus.SUSPENDED,
+            periodEnd = today.plusDays(5),
+        )
+        val trialWithoutExplicitEnd = TenantSubscription(
+            organizationId = organizationId,
+            status = TenantSubscriptionStatus.TRIAL,
+            periodEnd = today.plusDays(5),
+            trialEndsAt = null,
+        )
+
+        assertEquals(null, service.previewTerms(suspended, today))
+        val terms = service.previewTerms(trialWithoutExplicitEnd, today)
+        assertEquals(today.plusDays(6), terms?.periodStart)
+        assertEquals(today.plusDays(5), terms?.dueDate)
+    }
+
     /**
      * Stubs the create path: no pending payment and an allocatable invoice
      * sequence. The idempotency-key lookup is left unstubbed so Mockito's
@@ -106,15 +171,39 @@ class TenantSubscriptionRenewalServiceTest {
     }
 
     @Test
-    fun `renew keeps the stored period end while an already-paid next period has not started yet`() {
+    fun `renew chains after an already-paid future period`() {
         val today = LocalDate.now(BILLING_TIME_ZONE)
         val subscription = TenantSubscription(organizationId = organizationId, plan = TenantSubscriptionPlan.STANDARD, status = TenantSubscriptionStatus.ACTIVE, periodStart = today.minusDays(1), periodEnd = today.plusDays(20), nextPeriodStart = today.plusDays(21), nextPeriodEnd = today.plusDays(50), monthlyFee = BigDecimal("250000"))
         allowCreate(subscription)
 
         val payment = service.renew(organizationId, actorId, UUID.randomUUID())
 
-        assertEquals(today.plusDays(21), payment.periodStart)
-        assertEquals(today.plusDays(20), payment.dueDate)
+        assertEquals(today.plusDays(51), payment.periodStart)
+        assertEquals(today.plusDays(51).plusMonths(1).minusDays(1), payment.periodEnd)
+        assertEquals(today.plusDays(50), payment.dueDate)
+    }
+
+    @Test
+    fun `renew chains after an already-paid future period while trial is still active`() {
+        val today = LocalDate.now(BILLING_TIME_ZONE)
+        val subscription = TenantSubscription(
+            organizationId = organizationId,
+            plan = TenantSubscriptionPlan.STANDARD,
+            status = TenantSubscriptionStatus.TRIAL,
+            periodStart = today.minusDays(1),
+            periodEnd = today.plusDays(20),
+            trialEndsAt = today.plusDays(20),
+            nextPeriodStart = today.plusDays(21),
+            nextPeriodEnd = today.plusDays(50),
+            monthlyFee = BigDecimal("250000"),
+        )
+        allowCreate(subscription)
+
+        val payment = service.renew(organizationId, actorId, UUID.randomUUID())
+
+        assertEquals(today.plusDays(51), payment.periodStart)
+        assertEquals(today.plusDays(51).plusMonths(1).minusDays(1), payment.periodEnd)
+        assertEquals(today.plusDays(50), payment.dueDate)
     }
 
     @Test

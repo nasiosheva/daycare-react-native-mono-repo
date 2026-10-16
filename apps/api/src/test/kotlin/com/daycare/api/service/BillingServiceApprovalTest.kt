@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 package com.daycare.api.service
 
 import com.daycare.api.domain.BookingStatus
@@ -25,6 +26,7 @@ import com.daycare.api.persistence.ServicePlanTemplateRepository
 import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.UserProfileRepository
 import com.daycare.api.realtime.RealtimeFlag
+import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
@@ -66,6 +68,23 @@ class BillingServiceApprovalTest {
         verify(fixture.notifications).notify(fixture.organizationId, fixture.parent.id, "Booking ditolak", "Booking ${fixture.child.firstName} pada ${booking.bookingDate} ditolak.", null, setOf(RealtimeFlag.BOOKINGS, RealtimeFlag.ENTITLEMENTS))
     }
 
+    @Test
+    fun `rejected booking uses the serialized entitlement credit balance`() {
+        val fixture = fixture()
+        val booking = fixture.booking()
+        fixture.stub(booking)
+        `when`(fixture.children.findWithLockById(fixture.child.id)).thenAnswer {
+            // Another booking has reserved a credit before this rejection obtains the child lock.
+            fixture.entitlement.reservedCredits = 2
+            fixture.child
+        }
+
+        fixture.service.approveBooking(fixture.jwt, fixture.organizationId, booking.id, BookingApprovalRequest(approved = false))
+
+        assertEquals(1, fixture.entitlement.reservedCredits)
+        verify(fixture.children).findWithLockById(fixture.child.id)
+    }
+
     private fun fixture(): ApprovalFixture {
         val access = mock(AccessService::class.java)
         val childScopes = mock(ChildScopeService::class.java)
@@ -95,7 +114,7 @@ class BillingServiceApprovalTest {
         val entitlement = ServiceEntitlement(organizationId = organizationId, branchId = child.branchId, childId = child.id, ownerUserId = parent.id, invoiceId = invoice.id, planName = "Paket Harian", planType = ServicePlanType.DAILY, status = EntitlementStatus.ACTIVE, totalCredits = 5, reservedCredits = 1)
         val scope = AccessScope(staffAdmin, Membership(userId = staffAdmin.id, organizationId = organizationId, role = Role.STAFF_ADMIN), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
         return ApprovalFixture(
-            BillingService(access, childScopes, children, branches, plans, invoices, paymentProofs, entitlements, bookings, users, discounts, discountRedemptions, templates, capacity, notifications, events, parentEnrollments, memberships, identity, branchFilters, mock(BillingCommandIdempotencyService::class.java)),
+            BillingService(access, childScopes, children, branches, plans, invoices, paymentProofs, entitlements, bookings, users, discounts, discountRedemptions, templates, capacity, notifications, events, parentEnrollments, memberships, identity, branchFilters, mock(BillingCommandIdempotencyService::class.java), mock(EntityManager::class.java)),
             access, childScopes, children, invoices, entitlements, bookings, capacity, notifications, parentEnrollments, organizationId, parent, child, invoice, entitlement, scope, mock(Jwt::class.java),
         )
     }
@@ -124,10 +143,13 @@ class BillingServiceApprovalTest {
         fun stub(booking: Booking) {
             `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(scope)
             `when`(bookings.findById(booking.id)).thenReturn(Optional.of(booking))
+            `when`(bookings.findWithLockById(booking.id)).thenReturn(booking)
             `when`(parentEnrollments.findByInvoiceId(invoice.id)).thenReturn(null)
             `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
             `when`(entitlements.findById(entitlement.id)).thenReturn(Optional.of(entitlement))
+            `when`(entitlements.findWithLockById(entitlement.id)).thenReturn(entitlement)
             `when`(children.findById(child.id)).thenReturn(Optional.of(child))
+            `when`(children.findWithLockById(child.id)).thenReturn(child)
             `when`(invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
         }
     }

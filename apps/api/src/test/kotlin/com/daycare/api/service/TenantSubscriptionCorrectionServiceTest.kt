@@ -135,6 +135,26 @@ class TenantSubscriptionCorrectionServiceTest {
     }
 
     @Test
+    fun `duplicate or overpayment correction requires total paid to exceed the invoice amount`() {
+        allowStaffAdmin()
+        allowPaymentAndOrganization()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            service().create(
+                jwt,
+                organizationId,
+                paymentId,
+                UUID.randomUUID(),
+                CreateTenantPaymentCorrectionRequest(
+                    TenantPaymentCorrectionCategory.DUPLICATE_OR_OVERPAYMENT,
+                    "Duplicate transfer",
+                    proposedAmount = payment.amount,
+                ),
+            )
+        }
+    }
+
+    @Test
     fun `create requires a proposed reference only for wrong reference corrections`() {
         allowStaffAdmin()
 
@@ -262,6 +282,35 @@ class TenantSubscriptionCorrectionServiceTest {
         assertEquals("UNDERPAYMENT", adjustmentCaptor.value.kind)
         assertEquals(BigDecimal("200000"), adjustmentCaptor.value.amount)
         verify(notifications).notify(organizationId, staffUserId, "Koreksi pembayaran disetujui", "Pengajuan koreksi ${payment.invoiceNumber}: Verified against bank statement", "/tenant-subscription")
+    }
+
+    @Test
+    fun `approving an overpayment records an excess credit rather than underpayment`() {
+        val actorId = UUID.randomUUID()
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile(id = actorId))
+        `when`(users.findWithLockById(actorId)).thenReturn(UserProfile(id = actorId))
+        val correction = TenantPaymentCorrectionRequest(
+            organizationId = organizationId,
+            paymentId = paymentId,
+            requestedByUserId = staffUserId,
+            category = TenantPaymentCorrectionCategory.DUPLICATE_OR_OVERPAYMENT.name,
+            proposedAmount = BigDecimal("700000"),
+        )
+        `when`(corrections.findById(correction.id)).thenReturn(Optional.of(correction))
+        `when`(corrections.findWithLockById(correction.id)).thenReturn(correction)
+        `when`(payments.findWithLockById(paymentId)).thenReturn(payment)
+        `when`(payments.findById(paymentId)).thenReturn(Optional.of(payment))
+        `when`(subscriptions.findByOrganizationId(organizationId)).thenReturn(subscription)
+        `when`(organizations.findById(organizationId)).thenReturn(Optional.of(Organization(id = organizationId, name = "Tenant")))
+        `when`(adjustments.findByCorrectionRequestId(correction.id)).thenReturn(null)
+        `when`(memberships.findAllByOrganizationId(organizationId)).thenReturn(emptyList())
+
+        service().review(jwt, correction.id, UUID.randomUUID(), ReviewTenantPaymentCorrectionRequest(approved = true, reason = "Verified two transfers"))
+
+        val adjustmentCaptor = org.mockito.ArgumentCaptor.forClass(TenantPaymentAdjustment::class.java)
+        verify(adjustments).save(adjustmentCaptor.capture())
+        assertEquals("EXCESS_CREDIT", adjustmentCaptor.value.kind)
+        assertEquals(BigDecimal("200000"), adjustmentCaptor.value.amount)
     }
 
     @Test

@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 package com.daycare.api.web
 
 import org.junit.jupiter.api.AfterEach
@@ -13,6 +14,7 @@ import com.daycare.api.service.TenantUserAccountError
 import com.daycare.api.service.DevelopmentEntryMediaError
 import com.daycare.api.service.DevelopmentProgramError
 import com.daycare.api.service.StaffLeaveRequestError
+import com.daycare.api.service.BillingPurchaseError
 import java.util.Locale
 
 class ApiExceptionHandlerTest {
@@ -132,6 +134,16 @@ class ApiExceptionHandlerTest {
         val problem = handler.invalidRequest(IllegalArgumentException(TenantUserAccountError.STAFF_EDIT_NOT_ALLOWED))
 
         assertEquals("Only active Staff accounts in this tenant can be edited.", problem.detail)
+        assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
+    }
+
+    @Test
+    fun `localizes overlapping monthly service purchase rejection`() {
+        LocaleContextHolder.setLocale(Locale.ENGLISH)
+
+        val problem = handler.invalidRequest(IllegalArgumentException(BillingPurchaseError.MONTHLY_PURCHASE_EXISTS))
+
+        assertEquals("This child already has the same monthly service plan for an overlapping service period.", problem.detail)
         assertEquals("VALIDATION_ERROR", problem.properties?.get("code"))
     }
 

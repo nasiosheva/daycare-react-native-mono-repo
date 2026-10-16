@@ -8,12 +8,15 @@ import com.daycare.api.persistence.TenantPaymentRepository
 import com.daycare.api.persistence.TenantSubscriptionAuditEvent
 import com.daycare.api.persistence.TenantSubscriptionAuditEventRepository
 import com.daycare.api.persistence.TenantSubscriptionRepository
+import com.daycare.api.persistence.TenantSubscription
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.security.MessageDigest
 import java.time.LocalDate
 import java.util.UUID
+
+data class TenantSubscriptionRenewalPreview(val periodStart: LocalDate, val periodEnd: LocalDate, val dueDate: LocalDate)
 
 @Service
 class TenantSubscriptionRenewalService(
@@ -48,25 +51,16 @@ class TenantSubscriptionRenewalService(
             "A tenant payment is already awaiting review or payment"
         }
 
-        val currentPeriodEnd = if (status == TenantSubscriptionStatus.TRIAL) {
-            subscription.trialEndsAt ?: subscription.periodEnd
-        } else {
-            subscription.nextPeriodEnd?.takeIf { subscription.nextPeriodStart?.let { start -> !today.isBefore(start) } == true }
-                ?: subscription.periodEnd
-        }
-        val carriesCoverage = status in setOf(TenantSubscriptionStatus.TRIAL, TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.GRACE)
-        val periodStart = if (carriesCoverage) currentPeriodEnd.plusDays(1) else today
-        val periodEnd = periodStart.plusMonths(1).minusDays(1)
-        val dueDate = if (carriesCoverage) currentPeriodEnd else today.plusDays(7)
+        val terms = renewalTerms(subscription, status, today)
         val payment = payments.save(
             TenantPayment(
                 invoiceNumber = invoiceNumbers.next(today),
                 subscriptionId = subscription.id,
                 organizationId = organizationId,
                 amount = amount,
-                dueDate = dueDate,
-                periodStart = periodStart,
-                periodEnd = periodEnd,
+                dueDate = terms.dueDate,
+                periodStart = terms.periodStart,
+                periodEnd = terms.periodEnd,
                 planCodeSnapshot = subscription.plan.name,
                 idempotencyKey = idempotencyKey,
                 idempotencyPayloadHash = payloadHash,
@@ -79,12 +73,33 @@ class TenantSubscriptionRenewalService(
                 actorUserId = actorUserId,
                 action = "RENEWAL_PAYMENT_CREATED",
                 reason = "Renewal payment created",
-                afterValue = "$periodStart/$periodEnd:${subscription.plan.name}:$amount",
+                afterValue = "${terms.periodStart}/${terms.periodEnd}:${subscription.plan.name}:$amount",
                 referenceId = payment.id,
                 correlationId = idempotencyKey,
             ),
         )
         return payment
+    }
+
+    fun previewTerms(subscription: TenantSubscription, today: LocalDate): TenantSubscriptionRenewalPreview? {
+        val status = lifecycle.effectiveStatus(subscription, today)
+        if (status !in setOf(TenantSubscriptionStatus.TRIAL, TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.GRACE, TenantSubscriptionStatus.EXPIRED)) return null
+        return renewalTerms(subscription, status, today)
+    }
+
+    private fun renewalTerms(subscription: TenantSubscription, status: TenantSubscriptionStatus, today: LocalDate): TenantSubscriptionRenewalPreview {
+        val currentPeriodEnd = subscription.nextPeriodEnd ?: if (status == TenantSubscriptionStatus.TRIAL) {
+            subscription.trialEndsAt ?: subscription.periodEnd
+        } else {
+            subscription.periodEnd
+        }
+        val carriesCoverage = status in setOf(TenantSubscriptionStatus.TRIAL, TenantSubscriptionStatus.ACTIVE, TenantSubscriptionStatus.GRACE)
+        val periodStart = if (carriesCoverage) currentPeriodEnd.plusDays(1) else today
+        return TenantSubscriptionRenewalPreview(
+            periodStart = periodStart,
+            periodEnd = periodStart.plusMonths(1).minusDays(1),
+            dueDate = if (carriesCoverage) currentPeriodEnd else today.plusDays(7),
+        )
     }
 
     private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")

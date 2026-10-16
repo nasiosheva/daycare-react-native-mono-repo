@@ -26,6 +26,10 @@ import java.util.UUID
 
 enum class TenantPaymentCorrectionCategory { AMOUNT_MISMATCH, WRONG_REFERENCE, WRONG_PROOF_OR_INVOICE, DUPLICATE_OR_OVERPAYMENT }
 
+object TenantPaymentCorrectionError {
+    const val OVERPAYMENT_TOTAL_REQUIRED = "tenant_payment_correction.overpayment_total_required"
+}
+
 data class CreateTenantPaymentCorrectionRequest(
     val category: TenantPaymentCorrectionCategory,
     val description: String,
@@ -89,6 +93,9 @@ class TenantSubscriptionCorrectionService(
         lockActor(scope.user.id)
         val payment = payments.findWithLockById(paymentId) ?: throw IllegalArgumentException("Tenant payment was not found")
         require(payment.organizationId == organizationId) { "Tenant payment was not found" }
+        if (request.category == TenantPaymentCorrectionCategory.DUPLICATE_OR_OVERPAYMENT) {
+            require(amount != null && amount > payment.amount) { TenantPaymentCorrectionError.OVERPAYMENT_TOTAL_REQUIRED }
+        }
         val payloadHash = sha256("$paymentId|${request.category}|$description|${amount?.stripTrailingZeros()?.toPlainString()}|$proposedReference")
         corrections.findByOrganizationIdAndRequestedByUserIdAndRequestIdempotencyKey(organizationId, scope.user.id, idempotencyKey)?.let { existing ->
             if (existing.requestPayloadHash != payloadHash) throw TenantSubscriptionIdempotencyConflict()
@@ -144,9 +151,15 @@ class TenantSubscriptionCorrectionService(
         correction.reviewPayloadHash = payloadHash
         if (request.approved) {
             val proposed = correction.proposedAmount
-            val difference = proposed?.subtract(payment.amount)?.abs() ?: BigDecimal.ZERO
+            val category = TenantPaymentCorrectionCategory.valueOf(correction.category)
+            val difference = if (category == TenantPaymentCorrectionCategory.DUPLICATE_OR_OVERPAYMENT) {
+                proposed?.subtract(payment.amount) ?: BigDecimal.ZERO
+            } else {
+                proposed?.subtract(payment.amount)?.abs() ?: BigDecimal.ZERO
+            }
             val kind = when {
                 proposed == null || difference.compareTo(BigDecimal.ZERO) == 0 -> "REVIEWED_NO_AMOUNT_CHANGE"
+                category == TenantPaymentCorrectionCategory.DUPLICATE_OR_OVERPAYMENT -> "EXCESS_CREDIT"
                 proposed > payment.amount -> "UNDERPAYMENT"
                 else -> "EXCESS_CREDIT"
             }

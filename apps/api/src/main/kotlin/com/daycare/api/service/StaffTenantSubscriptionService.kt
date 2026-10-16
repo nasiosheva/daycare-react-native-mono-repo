@@ -30,6 +30,7 @@ data class StaffTenantSubscriptionResponse(
     val paymentProofEnabled: Boolean,
     val correctionEnabled: Boolean,
     val paymentInstructions: String?,
+    val renewalPreview: TenantSubscriptionRenewalPreview?,
 )
 
 @Service
@@ -50,13 +51,15 @@ class StaffTenantSubscriptionService(
         val organization = organizations.findById(organizationId).orElseThrow { IllegalArgumentException("Tenant was not found") }
         val subscription = subscriptions.findByOrganizationId(organizationId)
             ?: throw IllegalArgumentException("Tenant subscription was not found")
+        val today = LocalDate.now(BILLING_TIME_ZONE)
+        val currentPeriod = currentTenantSubscriptionPeriod(subscription, today)
         return StaffTenantSubscriptionResponse(
             organizationId = organization.id,
             organizationName = organization.name,
             plan = subscription.plan,
-            status = lifecycle.effectiveStatus(subscription, LocalDate.now(BILLING_TIME_ZONE)),
-            periodStart = subscription.periodStart,
-            periodEnd = subscription.periodEnd,
+            status = lifecycle.effectiveStatus(subscription, today),
+            periodStart = currentPeriod.start,
+            periodEnd = currentPeriod.end,
             trialEndsAt = subscription.trialEndsAt,
             monthlyFee = subscription.monthlyFee,
             gracePeriodDays = subscription.nextGracePeriodDays ?: subscription.gracePeriodDays,
@@ -66,6 +69,7 @@ class StaffTenantSubscriptionService(
             paymentProofEnabled = paymentProofEnabled,
             correctionEnabled = correctionEnabled,
             paymentInstructions = paymentInstructions.trim().ifBlank { null },
+            renewalPreview = renewals.previewTerms(subscription, today),
         )
     }
 

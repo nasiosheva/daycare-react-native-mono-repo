@@ -79,13 +79,13 @@ class TenantSubscriptionPaymentProofService(
         lockActor(scope.user.id)
         val payment = payments.findWithLockById(paymentId) ?: throw IllegalArgumentException("Tenant payment was not found")
         require(payment.organizationId == organizationId) { "Tenant payment was not found" }
-        require(payment.status == TenantPaymentStatus.PENDING) { "Only pending tenant payments accept proof" }
         val bytes = decodeAndValidate(request)
         val payloadHash = sha256("$paymentId|${request.fileName.trim()}|${request.contentType}|${sha256(bytes)}")
         proofs.findByOrganizationIdAndUploadedByUserIdAndUploadIdempotencyKey(organizationId, scope.user.id, idempotencyKey)?.let { existing ->
             if (existing.uploadPayloadHash != payloadHash) throw TenantSubscriptionIdempotencyConflict()
             return response(existing, payment)
         }
+        require(payment.status == TenantPaymentStatus.PENDING) { "Only pending tenant payments accept proof" }
         val current = proofs.findFirstByPaymentIdOrderByVersionNumberDesc(paymentId)
         require(current == null || current.status == REJECTED) { "A tenant payment proof is already awaiting review or has been verified" }
         val subscription = subscriptions.findByOrganizationId(organizationId) ?: throw IllegalArgumentException("Tenant subscription was not found")

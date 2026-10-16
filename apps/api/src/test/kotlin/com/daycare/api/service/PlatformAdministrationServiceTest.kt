@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 package com.daycare.api.service
 
 import com.daycare.api.domain.Role
@@ -45,7 +46,7 @@ import java.util.UUID
  * PlatformAdministrationService has no unit coverage yet and is out of scope
  * for this change.
  */
-private class PlatformAdministrationServiceFixture {
+private class PlatformAdministrationServiceFixture(graceEnabled: Boolean = false) {
     val platformAccess = mock(PlatformAccessService::class.java)
     val organizations = mock(OrganizationRepository::class.java)
     val organizationTypes = mock(OrganizationTypeAssignmentRepository::class.java)
@@ -56,7 +57,7 @@ private class PlatformAdministrationServiceFixture {
     val subscriptionAudits = mock(TenantSubscriptionAuditEventRepository::class.java)
     val subscriptionBillingPolicy = mock(TenantSubscriptionBillingPolicy::class.java)
     val invoiceNumbers = mock(TenantSubscriptionInvoiceNumberGenerator::class.java)
-    private val subscriptionLifecycle = TenantSubscriptionLifecyclePolicy(graceEnabled = false)
+    private val subscriptionLifecycle = TenantSubscriptionLifecyclePolicy(graceEnabled = graceEnabled)
     val subscriptionRenewals = TenantSubscriptionRenewalService(subscriptions, payments, subscriptionBillingPolicy, subscriptionLifecycle, subscriptionAudits, invoiceNumbers)
     val invitations = mock(InvitationRepository::class.java)
     val memberships = mock(MembershipRepository::class.java)
@@ -85,7 +86,9 @@ private class PlatformAdministrationServiceFixture {
 
     /** Stubs a platform admin caller and an organization that exists. */
     fun allowPlatformAdmin() {
-        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
+        val actor = UserProfile(id = userId)
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(actor)
+        `when`(users.findWithLockById(userId)).thenReturn(actor)
         `when`(organizations.findById(organizationId)).thenReturn(Optional.of(Organization(id = organizationId)))
     }
 
@@ -108,6 +111,22 @@ class PlatformAdministrationServiceTest {
         `when`(payments.findAllByOrganizationIdOrderByCreatedAtDesc(organization.id)).thenReturn(emptyList())
         `when`(subscriptions.findByOrganizationId(organization.id)).thenReturn(subscription)
         `when`(subscriptions.findByOrganizationIdForUpdate(organization.id)).thenReturn(subscription)
+    }
+
+    @Test
+    fun `payment decisions fail closed when the locked platform admin no longer exists`() {
+        val fixture = PlatformAdministrationServiceFixture()
+        val actorId = UUID.randomUUID()
+        `when`(fixture.platformAccess.requirePlatformAdmin(fixture.jwt)).thenReturn(UserProfile(id = actorId))
+        `when`(fixture.users.findWithLockById(actorId)).thenReturn(null)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.markPaymentPaid(fixture.jwt, fixture.organizationId, UUID.randomUUID(), UUID.randomUUID())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.voidPayment(fixture.jwt, fixture.organizationId, UUID.randomUUID(), UUID.randomUUID())
+        }
+        verifyNoInteractions(fixture.payments)
     }
 
     @Test
@@ -225,6 +244,175 @@ class PlatformAdministrationServiceTest {
     }
 
     @Test
+    fun `late initial payment starts coverage on confirmation date without grace`() {
+        val fixture = PlatformAdministrationServiceFixture(); fixture.allowPlatformAdmin()
+        val organization = Organization(id = fixture.organizationId, name = "Tenant")
+        val today = LocalDate.now(BILLING_TIME_ZONE)
+        val subscription = TenantSubscription(
+            id = UUID.randomUUID(), organizationId = organization.id,
+            status = TenantSubscriptionStatus.PENDING_PAYMENT,
+            periodStart = today.minusMonths(2), periodEnd = today.minusDays(1),
+            monthlyFee = BigDecimal("100"), gracePeriodDays = 7,
+            nextGracePeriodDays = 9,
+        )
+        val payment = TenantPayment(
+            id = UUID.randomUUID(), organizationId = organization.id, subscriptionId = subscription.id,
+            amount = BigDecimal("100"), status = TenantPaymentStatus.PENDING,
+            periodStart = subscription.periodStart, periodEnd = subscription.periodEnd,
+        )
+        val invoicePeriodStart = payment.periodStart
+        fixture.stubTenantResponse(organization, subscription)
+        `when`(fixture.payments.findWithLockById(payment.id)).thenReturn(payment)
+        `when`(fixture.subscriptions.findById(subscription.id)).thenReturn(Optional.of(subscription))
+
+        val result = fixture.service.markPaymentPaid(fixture.jwt, organization.id, payment.id, UUID.randomUUID())
+
+        assertEquals(invoicePeriodStart, payment.periodStart)
+        assertEquals(today, payment.coveragePeriodStart)
+        assertEquals(today.plusMonths(1).minusDays(1), payment.coveragePeriodEnd)
+        assertEquals(today, subscription.periodStart)
+        assertEquals(today.plusMonths(1).minusDays(1), subscription.periodEnd)
+        assertEquals(9, subscription.gracePeriodDays)
+        assertEquals(null, subscription.nextGracePeriodDays)
+        assertEquals(TenantSubscriptionStatus.ACTIVE, result.subscriptionStatus)
+    }
+
+    @Test
+    fun `payment confirmation activates current coverage and applies a scheduled grace period`() {
+        val fixture = PlatformAdministrationServiceFixture(); fixture.allowPlatformAdmin()
+        val organization = Organization(id = fixture.organizationId, name = "Tenant")
+        val today = LocalDate.now(BILLING_TIME_ZONE)
+        val subscription = TenantSubscription(
+            id = UUID.randomUUID(), organizationId = organization.id,
+            status = TenantSubscriptionStatus.PENDING_PAYMENT,
+            periodStart = today, periodEnd = today.plusDays(29),
+            nextGracePeriodDays = 10,
+        )
+        val payment = TenantPayment(
+            id = UUID.randomUUID(), organizationId = organization.id, subscriptionId = subscription.id,
+            amount = BigDecimal("100"), status = TenantPaymentStatus.PENDING,
+            periodStart = today, periodEnd = today.plusDays(29),
+        )
+        fixture.stubTenantResponse(organization, subscription)
+        `when`(fixture.payments.findWithLockById(payment.id)).thenReturn(payment)
+        `when`(fixture.subscriptions.findById(subscription.id)).thenReturn(Optional.of(subscription))
+
+        val result = fixture.service.markPaymentPaid(fixture.jwt, organization.id, payment.id, UUID.randomUUID())
+
+        assertEquals(TenantSubscriptionStatus.ACTIVE, result.subscriptionStatus)
+        assertEquals(today, subscription.periodStart)
+        assertEquals(today.plusDays(29), subscription.periodEnd)
+        assertEquals(10, subscription.gracePeriodDays)
+        assertEquals(null, subscription.nextGracePeriodDays)
+    }
+
+    @Test
+    fun `payment confirmation schedules future coverage and does not activate suspended fallback`() {
+        val fixture = PlatformAdministrationServiceFixture(); fixture.allowPlatformAdmin()
+        val organization = Organization(id = fixture.organizationId, name = "Tenant")
+        val today = LocalDate.now(BILLING_TIME_ZONE)
+        val subscription = TenantSubscription(
+            id = UUID.randomUUID(), organizationId = organization.id,
+            status = TenantSubscriptionStatus.ACTIVE,
+            periodStart = today.minusDays(10), periodEnd = today.plusDays(19),
+        )
+        val futurePayment = TenantPayment(
+            id = UUID.randomUUID(), organizationId = organization.id, subscriptionId = subscription.id,
+            amount = BigDecimal("100"), status = TenantPaymentStatus.PENDING,
+            periodStart = today.plusDays(20), periodEnd = today.plusDays(49),
+        )
+        fixture.stubTenantResponse(organization, subscription)
+        `when`(fixture.payments.findWithLockById(futurePayment.id)).thenReturn(futurePayment)
+        `when`(fixture.subscriptions.findById(subscription.id)).thenReturn(Optional.of(subscription))
+
+        fixture.service.markPaymentPaid(fixture.jwt, organization.id, futurePayment.id, UUID.randomUUID())
+
+        assertEquals(today.plusDays(20), subscription.nextPeriodStart)
+        assertEquals(today.plusDays(49), subscription.nextPeriodEnd)
+        assertEquals(TenantSubscriptionStatus.ACTIVE, subscription.status)
+
+        val suspendedCurrent = TenantSubscription(
+            id = UUID.randomUUID(), organizationId = organization.id,
+            status = TenantSubscriptionStatus.SUSPENDED,
+            periodStart = today, periodEnd = today.plusDays(29),
+        )
+        val suspendedPayment = TenantPayment(
+            id = UUID.randomUUID(), organizationId = organization.id, subscriptionId = suspendedCurrent.id,
+            amount = BigDecimal("100"), status = TenantPaymentStatus.PENDING,
+            periodStart = today, periodEnd = today.plusDays(29),
+        )
+        fixture.stubTenantResponse(organization, suspendedCurrent)
+        `when`(fixture.payments.findWithLockById(suspendedPayment.id)).thenReturn(suspendedPayment)
+        `when`(fixture.subscriptions.findById(suspendedCurrent.id)).thenReturn(Optional.of(suspendedCurrent))
+
+        val suspendedCurrentResult = fixture.service.markPaymentPaid(fixture.jwt, organization.id, suspendedPayment.id, UUID.randomUUID())
+
+        assertEquals(TenantSubscriptionStatus.SUSPENDED, suspendedCurrentResult.subscriptionStatus)
+        assertEquals(TenantSubscriptionStatus.SUSPENDED, suspendedCurrent.status)
+
+        val suspended = TenantSubscription(id = UUID.randomUUID(), organizationId = organization.id, status = TenantSubscriptionStatus.SUSPENDED)
+        val noPeriodPayment = TenantPayment(id = UUID.randomUUID(), organizationId = organization.id, subscriptionId = suspended.id, amount = BigDecimal("100"), status = TenantPaymentStatus.PENDING)
+        fixture.stubTenantResponse(organization, suspended)
+        `when`(fixture.payments.findWithLockById(noPeriodPayment.id)).thenReturn(noPeriodPayment)
+        `when`(fixture.subscriptions.findById(suspended.id)).thenReturn(Optional.of(suspended))
+
+        val result = fixture.service.markPaymentPaid(fixture.jwt, organization.id, noPeriodPayment.id, UUID.randomUUID())
+
+        assertEquals(TenantSubscriptionStatus.SUSPENDED, result.subscriptionStatus)
+        assertEquals(TenantSubscriptionStatus.SUSPENDED, suspended.status)
+        assertEquals(today, noPeriodPayment.coveragePeriodStart)
+        assertEquals(today.plusMonths(1).minusDays(1), noPeriodPayment.coveragePeriodEnd)
+
+        val partialPeriodSubscription = TenantSubscription(
+            id = UUID.randomUUID(), organizationId = organization.id,
+            status = TenantSubscriptionStatus.PENDING_PAYMENT,
+        )
+        val partialPeriodPayment = TenantPayment(
+            id = UUID.randomUUID(), organizationId = organization.id, subscriptionId = partialPeriodSubscription.id,
+            amount = BigDecimal("100"), status = TenantPaymentStatus.PENDING,
+            periodStart = today,
+        )
+        fixture.stubTenantResponse(organization, partialPeriodSubscription)
+        `when`(fixture.payments.findWithLockById(partialPeriodPayment.id)).thenReturn(partialPeriodPayment)
+        `when`(fixture.subscriptions.findById(partialPeriodSubscription.id)).thenReturn(Optional.of(partialPeriodSubscription))
+
+        val partialPeriodResult = fixture.service.markPaymentPaid(fixture.jwt, organization.id, partialPeriodPayment.id, UUID.randomUUID())
+
+        assertEquals(TenantSubscriptionStatus.ACTIVE, partialPeriodResult.subscriptionStatus)
+        assertEquals(today, partialPeriodPayment.coveragePeriodStart)
+        assertEquals(today.plusMonths(1).minusDays(1), partialPeriodPayment.coveragePeriodEnd)
+    }
+
+    @Test
+    fun `payment confirmation does not reactivate a manually suspended subscription`() {
+        val fixture = PlatformAdministrationServiceFixture(); fixture.allowPlatformAdmin()
+        val organization = Organization(id = fixture.organizationId, name = "Tenant")
+        val today = LocalDate.now(BILLING_TIME_ZONE)
+        val subscription = TenantSubscription(
+            id = UUID.randomUUID(), organizationId = organization.id,
+            status = TenantSubscriptionStatus.SUSPENDED,
+            periodStart = today.minusMonths(2), periodEnd = today.minusDays(1),
+        )
+        val payment = TenantPayment(
+            id = UUID.randomUUID(), organizationId = organization.id, subscriptionId = subscription.id,
+            amount = BigDecimal("100"), status = TenantPaymentStatus.PENDING,
+            periodStart = subscription.periodStart, periodEnd = subscription.periodEnd,
+        )
+        fixture.stubTenantResponse(organization, subscription)
+        `when`(fixture.payments.findWithLockById(payment.id)).thenReturn(payment)
+        `when`(fixture.subscriptions.findById(subscription.id)).thenReturn(Optional.of(subscription))
+
+        val result = fixture.service.markPaymentPaid(fixture.jwt, organization.id, payment.id, UUID.randomUUID())
+
+        assertEquals(TenantPaymentStatus.PAID, payment.status)
+        assertEquals(TenantSubscriptionStatus.SUSPENDED, subscription.status)
+        assertEquals(TenantSubscriptionStatus.SUSPENDED, result.subscriptionStatus)
+        assertEquals(today, payment.coveragePeriodStart)
+        assertEquals(today.plusMonths(1).minusDays(1), payment.coveragePeriodEnd)
+        assertEquals(today, subscription.periodStart)
+    }
+
+    @Test
     fun `markPaymentPaid replays the same response for a retried idempotency key and rejects a changed payload`() {
         val fixture = PlatformAdministrationServiceFixture()
         val actorId = UUID.randomUUID()
@@ -236,15 +424,19 @@ class PlatformAdministrationServiceTest {
         `when`(fixture.payments.findWithLockById(payment.id)).thenReturn(payment)
         `when`(fixture.subscriptions.findById(subscription.id)).thenReturn(Optional.of(subscription))
         val key = UUID.randomUUID()
-        `when`(fixture.payments.findByDecisionByUserIdAndDecisionIdempotencyKey(actorId, key)).thenReturn(null, payment)
+        `when`(fixture.users.findWithLockById(actorId)).thenReturn(UserProfile(id = actorId))
+        `when`(fixture.payments.findByOrganizationIdAndDecisionByUserIdAndDecisionOperationAndDecisionIdempotencyKey(organization.id, actorId, "MARK_PAID", key)).thenReturn(null, payment, payment)
 
         val first = fixture.service.markPaymentPaid(fixture.jwt, organization.id, payment.id, key)
         assertEquals(TenantPaymentStatus.PAID, payment.status)
         assertEquals(actorId, payment.decisionByUserId)
+        assertEquals("MARK_PAID", payment.decisionOperation)
 
         val replay = fixture.service.markPaymentPaid(fixture.jwt, organization.id, payment.id, key)
         assertEquals(first.subscriptionStatus, replay.subscriptionStatus)
         assertEquals(TenantPaymentStatus.PAID, payment.status)
+        verify(fixture.users, times(2)).findWithLockById(actorId)
+        verify(fixture.payments, times(2)).findByOrganizationIdAndDecisionByUserIdAndDecisionOperationAndDecisionIdempotencyKey(organization.id, actorId, "MARK_PAID", key)
 
         val otherPayment = TenantPayment(id = UUID.randomUUID(), organizationId = organization.id, subscriptionId = subscription.id, amount = BigDecimal("100"), status = TenantPaymentStatus.PENDING)
         assertThrows(TenantSubscriptionIdempotencyConflict::class.java) { fixture.service.markPaymentPaid(fixture.jwt, organization.id, otherPayment.id, key) }
@@ -260,14 +452,18 @@ class PlatformAdministrationServiceTest {
         val payment = TenantPayment(id = UUID.randomUUID(), organizationId = organization.id, subscriptionId = UUID.randomUUID(), amount = BigDecimal("10"), status = TenantPaymentStatus.PENDING)
         `when`(fixture.payments.findWithLockById(payment.id)).thenReturn(payment)
         val key = UUID.randomUUID()
-        `when`(fixture.payments.findByDecisionByUserIdAndDecisionIdempotencyKey(actorId, key)).thenReturn(null, payment)
+        `when`(fixture.users.findWithLockById(actorId)).thenReturn(UserProfile(id = actorId))
+        `when`(fixture.payments.findByOrganizationIdAndDecisionByUserIdAndDecisionOperationAndDecisionIdempotencyKey(organization.id, actorId, "VOID", key)).thenReturn(null, payment, payment)
 
         fixture.service.voidPayment(fixture.jwt, organization.id, payment.id, key)
         assertEquals(TenantPaymentStatus.VOID, payment.status)
         assertEquals(actorId, payment.decisionByUserId)
+        assertEquals("VOID", payment.decisionOperation)
 
         val replay = fixture.service.voidPayment(fixture.jwt, organization.id, payment.id, key)
         assertEquals(organization.id, replay.id)
+        verify(fixture.users, times(2)).findWithLockById(actorId)
+        verify(fixture.payments, times(2)).findByOrganizationIdAndDecisionByUserIdAndDecisionOperationAndDecisionIdempotencyKey(organization.id, actorId, "VOID", key)
 
         val otherPayment = TenantPayment(id = UUID.randomUUID(), organizationId = organization.id, subscriptionId = UUID.randomUUID(), amount = BigDecimal("10"), status = TenantPaymentStatus.PENDING)
         assertThrows(TenantSubscriptionIdempotencyConflict::class.java) { fixture.service.voidPayment(fixture.jwt, organization.id, otherPayment.id, key) }
@@ -607,6 +803,28 @@ class PlatformAdministrationServiceTest {
     }
 
     @Test
+    fun `platform tenant response reports prepaid next period once it becomes effective`() {
+        val fixture = PlatformAdministrationServiceFixture(); fixture.allowPlatformAdmin()
+        val organization = Organization(id = fixture.organizationId, name = "Tenant")
+        val today = LocalDate.now(BILLING_TIME_ZONE)
+        val subscription = TenantSubscription(
+            organizationId = organization.id,
+            status = TenantSubscriptionStatus.ACTIVE,
+            periodStart = today.minusMonths(1),
+            periodEnd = today.minusDays(1),
+            nextPeriodStart = today,
+            nextPeriodEnd = today.plusDays(29),
+        )
+        fixture.stubTenantResponse(organization, subscription)
+
+        val result = fixture.service.tenant(fixture.jwt, organization.id)
+
+        assertEquals(TenantSubscriptionStatus.ACTIVE, result.subscriptionStatus)
+        assertEquals(today, result.periodStart)
+        assertEquals(today.plusDays(29), result.periodEnd)
+    }
+
+    @Test
     fun `platform parent and tenant searches cover empty results and subscription guards`() {
         val fixture = PlatformAdministrationServiceFixture(); fixture.allowPlatformAdmin()
         `when`(fixture.users.findRegisteredParents("")).thenReturn(emptyList())
@@ -724,6 +942,40 @@ class PlatformAdministrationServiceTest {
         `when`(f.subscriptions.findByOrganizationId(organization.id)).thenReturn(active)
         val expired = invokePrivate(f.service, "tenantResponse", organization) as TenantResponse
         assertEquals(TenantSubscriptionStatus.EXPIRED, expired.subscriptionStatus)
+    }
+
+    @Test
+    fun `tenant response computes grace end from current prepaid period and grace overrides`() {
+        val f = PlatformAdministrationServiceFixture(graceEnabled = true)
+        val organization = Organization(id = f.organizationId, name = "Tenant")
+        val today = LocalDate.now(BILLING_TIME_ZONE)
+        val subscription = TenantSubscription(
+            organizationId = organization.id,
+            status = TenantSubscriptionStatus.GRACE,
+            periodEnd = today.minusDays(30),
+            nextPeriodStart = today.minusDays(30),
+            nextPeriodEnd = today.minusDays(2),
+            gracePeriodDays = 7,
+            nextGracePeriodDays = 10,
+        )
+        f.stubTenantResponse(organization, subscription)
+
+        val futurePeriodGrace = invokePrivate(f.service, "tenantResponse", organization) as TenantResponse
+
+        assertEquals(TenantSubscriptionStatus.GRACE, futurePeriodGrace.subscriptionStatus)
+        assertEquals(today.minusDays(2).plusDays(10), futurePeriodGrace.graceEndsAt)
+
+        subscription.nextGracePeriodDays = null
+        val futurePeriodGraceFallback = invokePrivate(f.service, "tenantResponse", organization) as TenantResponse
+        assertEquals(today.minusDays(2).plusDays(7), futurePeriodGraceFallback.graceEndsAt)
+
+        subscription.nextPeriodStart = null
+        subscription.nextPeriodEnd = null
+        subscription.periodEnd = today.minusDays(3)
+        val currentPeriodGrace = invokePrivate(f.service, "tenantResponse", organization) as TenantResponse
+
+        assertEquals(TenantSubscriptionStatus.GRACE, currentPeriodGrace.subscriptionStatus)
+        assertEquals(today.minusDays(3).plusDays(7), currentPeriodGrace.graceEndsAt)
     }
 
     @Test

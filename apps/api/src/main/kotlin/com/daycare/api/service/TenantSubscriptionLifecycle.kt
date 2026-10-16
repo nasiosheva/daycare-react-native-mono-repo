@@ -10,6 +10,18 @@ import java.time.ZoneId
 
 internal val BILLING_TIME_ZONE: ZoneId = ZoneId.of("Asia/Jakarta")
 
+internal data class TenantSubscriptionPeriod(val start: LocalDate, val end: LocalDate)
+
+internal fun currentTenantSubscriptionPeriod(subscription: TenantSubscription, today: LocalDate): TenantSubscriptionPeriod {
+    val nextStart = subscription.nextPeriodStart
+    val nextEnd = subscription.nextPeriodEnd
+    return if (nextStart != null && nextEnd != null && !today.isBefore(nextStart)) {
+        TenantSubscriptionPeriod(nextStart, nextEnd)
+    } else {
+        TenantSubscriptionPeriod(subscription.periodStart, subscription.periodEnd)
+    }
+}
+
 internal fun effectiveTenantSubscriptionStatus(
     subscription: TenantSubscription,
     today: LocalDate,

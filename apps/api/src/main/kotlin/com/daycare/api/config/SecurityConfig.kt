@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 package com.daycare.api.config
 
 import com.daycare.api.service.LOCAL_TOKEN_ISSUER
@@ -52,7 +53,7 @@ class SecurityConfig {
         @Value("\${spring.security.oauth2.resourceserver.jwt.issuer-uri}") firebaseIssuer: String,
     ): JwtDecoder {
         val localDecoder: JwtDecoder = localJwtService.decoder()
-        val firebaseDecoder: JwtDecoder = JwtDecoders.fromIssuerLocation(firebaseIssuer)
+        val firebaseDecoder: JwtDecoder by lazy { JwtDecoders.fromIssuerLocation(firebaseIssuer) }
         return JwtDecoder { token ->
             if (tokenRevocations.isRevoked(token)) throw JwtException("Token has been revoked")
             val claims = try { SignedJWT.parse(token).jwtClaimsSet } catch (error: Exception) { throw JwtException("Invalid token", error) }
