@@ -1,3 +1,5 @@
+<!-- Mories Deo Hutapea,S.E.,S.Kom -->
+
 # Usia Emas
 
 Usia Emas adalah platform multi-tenant untuk Daycare, PAUD, TK, dan layanan
@@ -37,10 +39,22 @@ Aturan role, institution type, tenant scope, consent, billing, kelas, screening,
 chat, dan keamanan hanya didefinisikan di [docs/business-rules.md](docs/business-rules.md).
 Flow khusus tersedia di [docs/](docs/).
 
+Pengelolaan langganan SaaS tenant dipisahkan dari billing Parent. Aturan, status,
+akses, dan tahap implementasi ada di [business rules](docs/business-rules.md#1313-langganan-saas-tenant)
+dan [plan langganan tenant](docs/plans/tenant-subscription-management.md). Renewal memakai tanggal preview dari server; invoice tetap menyimpan periode tagihannya, sedangkan coverage aktual dapat dimulai pada tanggal konfirmasi bila pembayaran terlambat. Pembayaran tidak mengaktifkan kembali tenant yang ditangguhkan manual.
+Daftar Platform Admin mendukung pencarian, filter status/jenis lembaga, ringkasan jumlah per status, dan pagination melalui `GET /api/v1/platform/tenants/page`.
+Staff Admin memiliki self-service subscription melalui `/tenant-subscription`, termasuk renewal idempoten, bukti pembayaran privat maksimal 2 MB, dan pengajuan koreksi. Platform Admin meninjau bukti/koreksi dan melihat reminder H-7/H-3/H-1; upload dan koreksi tetap nonaktif sampai gate kebijakan/keuangan disetujui. Lihat [plan](docs/plans/tenant-subscription-management.md) untuk gap dan syarat rilis.
+
+Billing Parent mengirim `Idempotency-Key` stabil untuk pembelian paket dan upload bukti; retry aman mengembalikan invoice yang sama, sedangkan key dengan payload berbeda ditolak. Paket bulanan yang sama untuk anak yang sama tidak dapat dibeli lagi selama periode layanannya bertumpang tindih; retry atas invoice bulanan yang masih menunggu dengan intent identik memakai invoice yang sama. Semantik invoice Parent tetap terpisah dari langganan SaaS tenant.
+
+Setiap branch yang membuka PR/MR wajib menyertakan checklist branch tersendiri dari [template checklist MR](docs/checklists/branch-mr-checklist-template.md), lengkap dengan bukti test/CI dan blocker. Deskripsi PR/MR juga harus memuat tabel ringkasan status sepuluh area review beserta gap/blocker dan tautan bukti checklist branch. Perubahan kode mengikuti test-first: test ditulis dan dibuktikan gagal sebelum implementasi, lalu dijalankan kembali sampai lulus. Sebelum commit, buat/perbarui salinan [checklist kesiapan commit](docs/checklists/pre-commit-readiness-template.md) per branch berdasarkan sepuluh area di checklist code review lokal; tinjau diff, perbaiki semua temuan, dan commit hanya jika checklist menyatakan READY tanpa temuan terbuka.
+
 ## Environment files
 
 Semua file environment bersifat lokal dan di-ignore Git. Mulai dari file contoh;
 jangan menyimpan secret di repository.
+`TENANT_SUBSCRIPTION_GRACE_ENABLED` tetap `false` sampai preview rollout
+read-only ditinjau dan rollout dikonfirmasi.
 
 | File | Kegunaan |
 | --- | --- |
@@ -65,6 +79,10 @@ jangan menyimpan secret di repository.
 | `PLATFORM_ADMIN_EMAILS` | Email bootstrap Platform Admin |
 | `EXPO_PUSH_URL` | Endpoint Expo Push opsional |
 | `CHAT_NOTIFICATION_TRANSPORT` | `WEBSOCKET` (default), `EXPO`, atau alias `FIREBASE` |
+| `TENANT_SUBSCRIPTION_MAX_PAYMENT_AMOUNT` | Batas maksimum transaksi SaaS tenant dalam IDR bulat; wajib disetel sebelum membuat tagihan |
+| `TENANT_SUBSCRIPTION_PAYMENT_PROOF_ENABLED` | `false` (default) sampai kebijakan penyimpanan/retensi bukti pembayaran disahkan |
+| `TENANT_SUBSCRIPTION_CORRECTION_ENABLED` | `false` (default) sampai prosedur persetujuan koreksi pembayaran disahkan |
+| `TENANT_SUBSCRIPTION_PAYMENT_INSTRUCTIONS` | Instruksi pembayaran SaaS tenant yang ditampilkan ke Staff Admin, dikonfigurasi server-side |
 
 `EXPO_PUBLIC_*` hanya untuk konfigurasi client publik. Jangan gunakan prefix itu
 untuk password, private key, signing secret, atau credential server.

@@ -53,14 +53,14 @@ class PickupAuthorizationService(
 ) {
     @Transactional(readOnly = true)
     fun list(jwt: Jwt, organizationId: UUID, childId: UUID): List<PickupAuthorizationResponse> {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT))
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT))
         requireDaycareOffering(requireVisibleChild(scope, childId, organizationId))
         return authorizations.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, childId).map { response(it, canRevoke(scope, it)) }
     }
 
     @Transactional
     fun create(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreatePickupAuthorizationRequest): PickupAuthorizationResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.PARENT))
+        val scope = access.require(jwt, organizationId, setOf(Role.PARENT), allowGraceForRoles = setOf(Role.PARENT))
         val child = childScopes.requireParentOperationalChild(scope, childId, organizationId)
         access.requireWritable(scope)
         requireDaycareOffering(child)
@@ -83,7 +83,7 @@ class PickupAuthorizationService(
 
     @Transactional
     fun activate(jwt: Jwt, organizationId: UUID, childId: UUID, authorizationId: UUID): PickupAuthorizationResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), allowGraceForRoles = setOf(Role.STAFF_ADMIN))
         access.requireWritable(scope)
         requireDaycareOffering(childScopes.requireStaffManagedChild(scope, childId, organizationId))
         val authorization = requireAuthorization(organizationId, childId, authorizationId)
@@ -97,7 +97,7 @@ class PickupAuthorizationService(
 
     @Transactional
     fun revoke(jwt: Jwt, organizationId: UUID, childId: UUID, authorizationId: UUID, request: RevokePickupAuthorizationRequest): PickupAuthorizationResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT))
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.PARENT), allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.PARENT))
         access.requireWritable(scope)
         requireDaycareOffering(if (scope.membership.role == Role.PARENT) childScopes.requireParentOperationalChild(scope, childId, organizationId) else requireVisibleChild(scope, childId, organizationId))
         val authorization = requireAuthorization(organizationId, childId, authorizationId)

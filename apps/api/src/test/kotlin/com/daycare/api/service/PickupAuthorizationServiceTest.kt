@@ -76,8 +76,8 @@ class PickupAuthorizationServiceTest {
         val jwt = mock(org.springframework.security.oauth2.jwt.Jwt::class.java)
         val parentScope = scope.copy(membership = Membership(organizationId = organizationId, role = Role.PARENT))
         val adminScope = scope.copy(membership = Membership(organizationId = organizationId, role = Role.STAFF_ADMIN))
-        `when`(access.require(jwt, organizationId, setOf(Role.PARENT))).thenReturn(parentScope)
-        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(adminScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT), allowGraceForRoles = setOf(Role.PARENT))).thenReturn(parentScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), allowGraceForRoles = setOf(Role.STAFF_ADMIN))).thenReturn(adminScope)
         `when`(childScopes.requireParentOperationalChild(parentScope, child.id, organizationId)).thenReturn(child)
         `when`(childScopes.requireStaffManagedChild(adminScope, child.id, organizationId)).thenReturn(child)
         `when`(offerings.findAllByOrganizationIdAndBranchIdAndStatus(organizationId, child.branchId, EducationOfferingStatus.PUBLISHED)).thenReturn(listOf(publishedDaycareOffering()))
@@ -97,7 +97,7 @@ class PickupAuthorizationServiceTest {
     fun `parent cannot revoke another parent authorization and expired records cannot be revoked`() {
         val jwt = mock(org.springframework.security.oauth2.jwt.Jwt::class.java)
         val parentScope = scope.copy(membership = Membership(organizationId = organizationId, role = Role.PARENT))
-        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF_ADMIN))).thenReturn(parentScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF_ADMIN), allowGraceForRoles = setOf(Role.PARENT, Role.STAFF_ADMIN))).thenReturn(parentScope)
         `when`(childScopes.requireParentOperationalChild(parentScope, child.id, organizationId)).thenReturn(child)
         `when`(offerings.findAllByOrganizationIdAndBranchIdAndStatus(organizationId, child.branchId, EducationOfferingStatus.PUBLISHED)).thenReturn(listOf(publishedDaycareOffering()))
         val foreign = PickupAuthorization(organizationId = organizationId, childId = child.id, pickupPersonName = "A", relationship = "B", verificationMethod = PickupVerificationMethod.PHOTO_ID, createdByUserId = UUID.randomUUID())
@@ -123,7 +123,7 @@ class PickupAuthorizationServiceTest {
     fun `list and revoke cover staff admin ownership and terminal states`() {
         val jwt = mock(org.springframework.security.oauth2.jwt.Jwt::class.java)
         val adminScope = scope.copy(membership = Membership(organizationId = organizationId, role = Role.STAFF_ADMIN))
-        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT))).thenReturn(adminScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT), allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.STAFF, Role.PARENT))).thenReturn(adminScope)
         `when`(childScopes.requireStaffManagedChild(adminScope, child.id, organizationId)).thenReturn(child)
         `when`(offerings.findAllByOrganizationIdAndBranchIdAndStatus(organizationId, child.branchId, EducationOfferingStatus.PUBLISHED)).thenReturn(listOf(publishedDaycareOffering()))
         val active = PickupAuthorization(organizationId = organizationId, childId = child.id, pickupPersonName = "A", relationship = "B", verificationMethod = PickupVerificationMethod.PHOTO_ID, status = PickupAuthorizationStatus.ACTIVE)
@@ -132,7 +132,7 @@ class PickupAuthorizationServiceTest {
         val rows = service.list(jwt, organizationId, child.id)
         assertEquals(listOf(true, false), rows.map { it.canRevoke })
 
-        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF_ADMIN))).thenReturn(adminScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF_ADMIN), allowGraceForRoles = setOf(Role.PARENT, Role.STAFF_ADMIN))).thenReturn(adminScope)
         `when`(childScopes.requireStaffManagedChild(adminScope, child.id, organizationId)).thenReturn(child)
         `when`(authorizations.findById(active.id)).thenReturn(Optional.of(active))
         val result = service.revoke(jwt, organizationId, child.id, active.id, RevokePickupAuthorizationRequest("  Tidak diperlukan  "))
@@ -144,7 +144,7 @@ class PickupAuthorizationServiceTest {
     fun `authorization lifecycle rejects invalid expiry and terminal activation`() {
         val jwt = mock(org.springframework.security.oauth2.jwt.Jwt::class.java)
         val parentScope = scope.copy(membership = Membership(organizationId = organizationId, role = Role.PARENT))
-        `when`(access.require(jwt, organizationId, setOf(Role.PARENT))).thenReturn(parentScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.PARENT), allowGraceForRoles = setOf(Role.PARENT))).thenReturn(parentScope)
         `when`(childScopes.requireParentOperationalChild(parentScope, child.id, organizationId)).thenReturn(child)
         `when`(offerings.findAllByOrganizationIdAndBranchIdAndStatus(organizationId, child.branchId, EducationOfferingStatus.PUBLISHED)).thenReturn(listOf(publishedDaycareOffering()))
         val start = Instant.parse("2026-01-02T00:00:00Z")
@@ -153,7 +153,7 @@ class PickupAuthorizationServiceTest {
         }
 
         val adminScope = scope.copy(membership = Membership(organizationId = organizationId, role = Role.STAFF_ADMIN))
-        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))).thenReturn(adminScope)
+        `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN), allowGraceForRoles = setOf(Role.STAFF_ADMIN))).thenReturn(adminScope)
         `when`(childScopes.requireStaffManagedChild(adminScope, child.id, organizationId)).thenReturn(child)
         val revoked = PickupAuthorization(organizationId = organizationId, childId = child.id, pickupPersonName = "A", relationship = "B", verificationMethod = PickupVerificationMethod.PHOTO_ID, status = PickupAuthorizationStatus.REVOKED)
         `when`(authorizations.findById(revoked.id)).thenReturn(Optional.of(revoked))

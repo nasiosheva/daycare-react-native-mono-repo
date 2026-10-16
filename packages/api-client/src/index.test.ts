@@ -339,11 +339,12 @@ describe("ApiClient", () => {
 
     await client.invoice("invoice-id", "tenant-id");
     await client.paymentProof("invoice-id", "tenant-id");
-    await client.submitPaymentProof("invoice-id", { fileName: "proof.jpg", contentType: "image/jpeg", imageBase64: "abc" }, "tenant-id");
+    await client.submitPaymentProof("invoice-id", { fileName: "proof.jpg", contentType: "image/jpeg", imageBase64: "abc" }, "proof-key", "tenant-id");
 
     for (const [, init] of fetchMock.mock.calls) {
       expect(init.headers).toHaveProperty("X-Organization-Id", "tenant-id");
     }
+    expect(fetchMock.mock.calls[2]?.[1]?.headers).toHaveProperty("Idempotency-Key", "proof-key");
   });
 
   it("lists and creates Platform-managed institution types", async () => {

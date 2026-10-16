@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 package com.daycare.api.service
 
 import com.daycare.api.domain.BookingStatus
@@ -7,6 +8,7 @@ import com.daycare.api.persistence.Booking
 import com.daycare.api.persistence.BookingRepository
 import com.daycare.api.persistence.ServiceEntitlement
 import com.daycare.api.persistence.ServiceEntitlementRepository
+import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -21,7 +23,7 @@ import java.util.UUID
 class BookingEligibilityServiceTest {
     private val entitlements = mock(ServiceEntitlementRepository::class.java)
     private val bookings = mock(BookingRepository::class.java)
-    private val service = BookingEligibilityService(entitlements, bookings)
+    private val service = BookingEligibilityService(entitlements, bookings, mock(EntityManager::class.java))
     private val organizationId = UUID.randomUUID()
     private val childId = UUID.randomUUID()
     private val date = LocalDate.of(2026, 7, 21)
@@ -52,7 +54,9 @@ class BookingEligibilityServiceTest {
         val booking = Booking(organizationId = organizationId, childId = childId, entitlementId = entitlement.id, bookingDate = date, status = BookingStatus.CONFIRMED)
         `when`(entitlements.findAllByOrganizationIdAndChildId(organizationId, childId)).thenReturn(emptyList())
         `when`(bookings.findByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)).thenReturn(booking)
+        `when`(bookings.findWithLockByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)).thenReturn(booking)
         `when`(entitlements.findById(entitlement.id)).thenReturn(Optional.of(entitlement))
+        `when`(entitlements.findWithLockById(entitlement.id)).thenReturn(entitlement)
 
         service.consumeCheckIn(organizationId, childId, date)
 
@@ -60,6 +64,20 @@ class BookingEligibilityServiceTest {
         assertEquals(0, entitlement.reservedCredits)
         assertEquals(1, entitlement.usedCredits)
         assertEquals(EntitlementStatus.EXHAUSTED, entitlement.status)
+        verify(bookings).findWithLockByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)
+        verify(entitlements).findWithLockById(entitlement.id)
+    }
+
+    @Test
+    fun `check-in rejects a booking that stopped being confirmed while waiting for its lock`() {
+        val booking = Booking(organizationId = organizationId, childId = childId, entitlementId = UUID.randomUUID(), bookingDate = date, status = BookingStatus.CONFIRMED)
+        `when`(entitlements.findAllByOrganizationIdAndChildId(organizationId, childId)).thenReturn(emptyList())
+        `when`(bookings.findByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)).thenReturn(booking)
+        `when`(bookings.findWithLockByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)).thenReturn(null)
+
+        assertThrows(AttendanceConflict::class.java) { service.consumeCheckIn(organizationId, childId, date) }
+
+        verify(entitlements, never()).findWithLockById(booking.entitlementId)
     }
 
     @Test
@@ -83,14 +101,15 @@ class BookingEligibilityServiceTest {
         assertThrows(AttendanceConflict::class.java) { service.consumeCheckIn(organizationId, childId, date) }
         val booking = Booking(organizationId = organizationId, childId = childId, entitlementId = UUID.randomUUID(), bookingDate = date, status = BookingStatus.CONFIRMED)
         `when`(bookings.findByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)).thenReturn(booking)
-        `when`(entitlements.findById(booking.entitlementId)).thenReturn(Optional.empty())
+        `when`(bookings.findWithLockByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)).thenReturn(booking)
+        `when`(entitlements.findWithLockById(booking.entitlementId)).thenReturn(null)
         assertThrows(AttendanceConflict::class.java) { service.consumeCheckIn(organizationId, childId, date) }
-        `when`(entitlements.findById(booking.entitlementId)).thenReturn(Optional.of(ServiceEntitlement(status = EntitlementStatus.EXPIRED)))
+        `when`(entitlements.findWithLockById(booking.entitlementId)).thenReturn(ServiceEntitlement(status = EntitlementStatus.EXPIRED))
         assertThrows(AttendanceConflict::class.java) { service.consumeCheckIn(organizationId, childId, date) }
         val monthly = ServiceEntitlement(organizationId = organizationId, childId = childId, status = EntitlementStatus.ACTIVE, planType = ServicePlanType.MONTHLY, periodStart = date.minusDays(1), validUntil = date.plusDays(1))
         `when`(entitlements.findAllByOrganizationIdAndChildId(organizationId, childId)).thenReturn(listOf(monthly))
         service.consumeCheckIn(organizationId, childId, date)
-        verify(bookings, org.mockito.Mockito.times(3)).findByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)
+        verify(bookings, org.mockito.Mockito.times(3)).findWithLockByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)
     }
 
     @Test
@@ -99,13 +118,15 @@ class BookingEligibilityServiceTest {
         val booking = Booking(organizationId = organizationId, childId = childId, entitlementId = entitlement.id, bookingDate = date, status = BookingStatus.CONFIRMED)
         `when`(entitlements.findAllByOrganizationIdAndChildId(organizationId, childId)).thenReturn(emptyList())
         `when`(bookings.findByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)).thenReturn(booking)
-        `when`(entitlements.findById(entitlement.id)).thenReturn(Optional.of(entitlement))
+        `when`(bookings.findWithLockByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)).thenReturn(booking)
+        `when`(entitlements.findWithLockById(entitlement.id)).thenReturn(entitlement)
         service.consumeCheckIn(organizationId, childId, date)
         assertEquals(EntitlementStatus.ACTIVE, entitlement.status)
         val unlimited = ServiceEntitlement(organizationId = organizationId, childId = childId, status = EntitlementStatus.ACTIVE, planType = ServicePlanType.WEEKLY, totalCredits = null, reservedCredits = 0)
         val second = Booking(organizationId = organizationId, childId = childId, entitlementId = unlimited.id, bookingDate = date, status = BookingStatus.CONFIRMED)
         `when`(bookings.findByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)).thenReturn(second)
-        `when`(entitlements.findById(unlimited.id)).thenReturn(Optional.of(unlimited))
+        `when`(bookings.findWithLockByOrganizationIdAndChildIdAndBookingDateAndStatus(organizationId, childId, date, BookingStatus.CONFIRMED)).thenReturn(second)
+        `when`(entitlements.findWithLockById(unlimited.id)).thenReturn(unlimited)
         service.consumeCheckIn(organizationId, childId, date)
         assertEquals(EntitlementStatus.ACTIVE, unlimited.status)
     }

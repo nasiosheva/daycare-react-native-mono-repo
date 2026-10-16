@@ -21,6 +21,7 @@ import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.DayOfWeek
+import java.time.LocalDate
 import java.util.UUID
 
 enum class TenantReadinessStatus { READY, NEEDS_ATTENTION }
@@ -64,6 +65,7 @@ class TenantReadinessService(
     private val branchCapacities: BranchCapacitySettingRepository,
     private val operatingHours: BranchOperatingHourRepository,
     private val paymentInstructions: TenantPaymentInstructionRepository,
+    private val subscriptionLifecycle: TenantSubscriptionLifecyclePolicy = TenantSubscriptionLifecyclePolicy(graceEnabled = true),
 ) {
     @Transactional(readOnly = true)
     fun readiness(jwt: Jwt): TenantReadinessSummaryResponse {
@@ -85,7 +87,7 @@ class TenantReadinessService(
             val offerings = offeringsByOrganization[organizationId].orEmpty()
             val publishedDaycareBranchIds = publishedDaycareBranchIds(offerings).intersect(activeBranchIds)
             val issues = evaluateIssues(
-                subscriptionActive = subscriptionsByOrganization[organizationId]?.status in ACTIVE_SUBSCRIPTION_STATUSES,
+                subscriptionActive = subscriptionsByOrganization[organizationId]?.let { subscriptionLifecycle.effectiveStatus(it, LocalDate.now(BILLING_TIME_ZONE)) } in ACTIVE_SUBSCRIPTION_STATUSES,
                 hasActiveStaffAdmin = membershipsByOrganization[organizationId].orEmpty().any { it.role == Role.STAFF_ADMIN && it.active },
                 activeBranchIds = activeBranchIds,
                 hasPublishedOffering = offerings.any { it.status == EducationOfferingStatus.PUBLISHED },
@@ -115,7 +117,7 @@ class TenantReadinessService(
         val offerings = educationOfferings.findAllByOrganizationIdOrderByCreatedAtAsc(organizationId)
         val publishedDaycareBranchIds = publishedDaycareBranchIds(offerings).intersect(activeBranchIds)
         val issues = evaluateIssues(
-            subscriptionActive = subscriptions.findByOrganizationId(organizationId)?.status in ACTIVE_SUBSCRIPTION_STATUSES,
+            subscriptionActive = subscriptions.findByOrganizationId(organizationId)?.let { subscriptionLifecycle.effectiveStatus(it, LocalDate.now(BILLING_TIME_ZONE)) } in ACTIVE_SUBSCRIPTION_STATUSES,
             hasActiveStaffAdmin = memberships.findAllByOrganizationId(organizationId).any { it.role == Role.STAFF_ADMIN && it.active },
             activeBranchIds = activeBranchIds,
             hasPublishedOffering = offerings.any { it.status == EducationOfferingStatus.PUBLISHED },

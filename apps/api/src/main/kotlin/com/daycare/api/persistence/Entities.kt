@@ -1,5 +1,7 @@
 package com.daycare.api.persistence
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.InstitutionTypeCodes
 import com.daycare.api.domain.Role
@@ -61,6 +63,7 @@ import jakarta.persistence.Version
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
 import java.time.Instant
+import java.math.BigDecimal
 import java.time.LocalDate
 import java.util.UUID
 
@@ -210,17 +213,127 @@ class TenantSubscription(
     @Column(name = "period_end", nullable = false) var periodEnd: LocalDate = LocalDate.now(),
     @Column(name = "trial_ends_at") var trialEndsAt: LocalDate? = null,
     @Column(name = "monthly_fee", precision = 14, scale = 2) var monthlyFee: java.math.BigDecimal? = null,
+    @Column(name = "grace_period_days", nullable = false) var gracePeriodDays: Int = 7,
+    @Column(name = "next_grace_period_days") var nextGracePeriodDays: Int? = null,
+    @Column(name = "next_period_start") var nextPeriodStart: LocalDate? = null,
+    @Column(name = "next_period_end") var nextPeriodEnd: LocalDate? = null,
+    @Version @Column(nullable = false) var version: Long? = null,
 )
 
 @Entity @Table(name = "tenant_payments")
 class TenantPayment(
     @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "invoice_number", nullable = false, unique = true, length = 64) var invoiceNumber: String = "",
     @Column(name = "subscription_id", nullable = false) var subscriptionId: UUID = UUID.randomUUID(),
     @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
     @Column(nullable = false, precision = 14, scale = 2) var amount: java.math.BigDecimal = java.math.BigDecimal.ZERO,
     @Enumerated(EnumType.STRING) @Column(nullable = false) var status: TenantPaymentStatus = TenantPaymentStatus.PENDING,
     @Column(name = "due_date", nullable = false) var dueDate: LocalDate = LocalDate.now(),
     @Column(name = "paid_at") var paidAt: Instant? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "period_start") var periodStart: LocalDate? = null,
+    @Column(name = "period_end") var periodEnd: LocalDate? = null,
+    @Column(name = "coverage_period_start") var coveragePeriodStart: LocalDate? = null,
+    @Column(name = "coverage_period_end") var coveragePeriodEnd: LocalDate? = null,
+    @Column(name = "plan_code_snapshot", length = 20) var planCodeSnapshot: String? = null,
+    @Column(name = "idempotency_key") var idempotencyKey: UUID? = null,
+    @Column(name = "idempotency_payload_hash", length = 64) var idempotencyPayloadHash: String? = null,
+    @Column(name = "decision_by_user_id") var decisionByUserId: UUID? = null,
+    @Column(name = "decision_operation", length = 20) var decisionOperation: String? = null,
+    @Column(name = "decision_idempotency_key") var decisionIdempotencyKey: UUID? = null,
+    @Column(name = "decision_payload_hash", length = 64) var decisionPayloadHash: String? = null,
+    @Version @Column(nullable = false) var version: Long? = null,
+)
+
+@Entity
+@Table(name = "tenant_payment_proofs", uniqueConstraints = [
+    UniqueConstraint(name = "tenant_payment_proof_version_unique", columnNames = ["payment_id", "version_number"]),
+    UniqueConstraint(name = "tenant_payment_proof_upload_key_unique", columnNames = ["organization_id", "uploaded_by_user_id", "upload_idempotency_key"]),
+    UniqueConstraint(name = "tenant_payment_proof_review_key_unique", columnNames = ["reviewed_by_user_id", "review_idempotency_key"]),
+])
+class TenantPaymentProof(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "payment_id", nullable = false) var paymentId: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "version_number", nullable = false) var versionNumber: Int = 1,
+    @Column(name = "uploaded_by_user_id", nullable = false) var uploadedByUserId: UUID = UUID.randomUUID(),
+    @Column(name = "file_name", nullable = false, length = 255) var fileName: String = "payment-proof.pdf",
+    @Column(name = "content_type", nullable = false, length = 64) var contentType: String = "application/pdf",
+    @Column(name = "file_data", nullable = false, columnDefinition = "bytea") var fileData: ByteArray = byteArrayOf(),
+    @Column(name = "upload_idempotency_key") var uploadIdempotencyKey: UUID? = null,
+    @Column(name = "upload_payload_hash", length = 64) var uploadPayloadHash: String? = null,
+    @Column(name = "review_idempotency_key") var reviewIdempotencyKey: UUID? = null,
+    @Column(name = "review_payload_hash", length = 64) var reviewPayloadHash: String? = null,
+    @Column(nullable = false, length = 20) var status: String = "SUBMITTED",
+    @Column(name = "submitted_at", nullable = false) var submittedAt: Instant = Instant.now(),
+    @Column(name = "reviewed_at") var reviewedAt: Instant? = null,
+    @Column(name = "reviewed_by_user_id") var reviewedByUserId: UUID? = null,
+    @Column(name = "review_reason", length = 1000) var reviewReason: String? = null,
+)
+
+@Entity
+@Table(name = "tenant_payment_correction_requests", uniqueConstraints = [UniqueConstraint(name = "tenant_payment_correction_request_key_unique", columnNames = ["organization_id", "requested_by_user_id", "request_idempotency_key"])])
+class TenantPaymentCorrectionRequest(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "payment_id", nullable = false) var paymentId: UUID = UUID.randomUUID(),
+    @Column(name = "requested_by_user_id", nullable = false) var requestedByUserId: UUID = UUID.randomUUID(),
+    @Column(name = "category", nullable = false, length = 40) var category: String = "",
+    @Column(name = "description", nullable = false, length = 1000) var description: String = "",
+    @Column(name = "proposed_amount", precision = 14, scale = 0) var proposedAmount: BigDecimal? = null,
+    @Column(name = "proposed_reference", length = 200) var proposedReference: String? = null,
+    @Column(name = "request_idempotency_key", nullable = false) var requestIdempotencyKey: UUID = UUID.randomUUID(),
+    @Column(name = "request_payload_hash", nullable = false, length = 64) var requestPayloadHash: String = "",
+    @Column(name = "status", nullable = false, length = 20) var status: String = "PENDING",
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "reviewed_at") var reviewedAt: Instant? = null,
+    @Column(name = "reviewed_by_user_id") var reviewedByUserId: UUID? = null,
+    @Column(name = "review_reason", length = 1000) var reviewReason: String? = null,
+    @Column(name = "review_idempotency_key") var reviewIdempotencyKey: UUID? = null,
+    @Column(name = "review_payload_hash", length = 64) var reviewPayloadHash: String? = null,
+)
+
+@Entity
+@Table(name = "tenant_payment_adjustments", uniqueConstraints = [UniqueConstraint(name = "tenant_payment_adjustment_request_unique", columnNames = ["correction_request_id"])])
+class TenantPaymentAdjustment(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "payment_id", nullable = false) var paymentId: UUID = UUID.randomUUID(),
+    @Column(name = "correction_request_id", nullable = false) var correctionRequestId: UUID = UUID.randomUUID(),
+    @Column(name = "approved_by_user_id", nullable = false) var approvedByUserId: UUID = UUID.randomUUID(),
+    @Column(name = "kind", nullable = false, length = 30) var kind: String = "REVIEWED_NO_AMOUNT_CHANGE",
+    @Column(name = "amount", nullable = false, precision = 14, scale = 0) var amount: BigDecimal = BigDecimal.ZERO,
+    @Column(name = "reason", nullable = false, length = 1000) var reason: String = "",
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "tenant_subscription_audit_events")
+class TenantSubscriptionAuditEvent(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "subscription_id", nullable = false) var subscriptionId: UUID = UUID.randomUUID(),
+    @Column(name = "actor_user_id", nullable = false) var actorUserId: UUID = UUID.randomUUID(),
+    @Column(name = "action", nullable = false, length = 80) var action: String = "",
+    @Column(name = "reason", nullable = false, length = 1000) var reason: String = "",
+    @Column(name = "before_value", columnDefinition = "text") var beforeValue: String? = null,
+    @Column(name = "after_value", columnDefinition = "text") var afterValue: String? = null,
+    @Column(name = "reference_id") var referenceId: UUID? = null,
+    @Column(name = "correlation_id") var correlationId: UUID? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "tenant_subscription_reminders", uniqueConstraints = [
+    UniqueConstraint(name = "tenant_subscription_reminder_event_unique", columnNames = ["event_key"]),
+])
+class TenantSubscriptionReminder(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "event_key", nullable = false, length = 200) var eventKey: String = "",
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "subscription_id", nullable = false) var subscriptionId: UUID = UUID.randomUUID(),
+    @Column(name = "payment_id") var paymentId: UUID? = null,
+    @Column(name = "event_type", nullable = false, length = 32) var eventType: String = "PERIOD_END",
+    @Column(name = "event_date", nullable = false) var eventDate: LocalDate = LocalDate.now(),
+    @Column(name = "lead_days", nullable = false) var leadDays: Int = 1,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 

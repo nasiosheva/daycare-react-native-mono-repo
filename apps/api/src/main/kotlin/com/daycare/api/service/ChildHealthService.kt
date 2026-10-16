@@ -52,14 +52,14 @@ class ChildHealthService(
 ) {
     @Transactional(readOnly = true)
     fun get(jwt: Jwt, organizationId: UUID, childId: UUID): ChildHealthRecordResponse? {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet())
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), allowGraceForRoles = Role.entries.toSet())
         if (scope.membership.role == Role.PARENT) childScopes.requireParentLinkedChild(scope, childId, organizationId) else childScopes.requireStaffManagedChild(scope, childId, organizationId)
         return records.findByOrganizationIdAndChildId(organizationId, childId)?.let(::response)
     }
 
     @Transactional
     fun upsert(jwt: Jwt, organizationId: UUID, childId: UUID, request: UpsertChildHealthRecordRequest): ChildHealthRecordResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.STAFF))
         access.requireWritable(scope)
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         val record = records.findByOrganizationIdAndChildId(organizationId, childId) ?: ChildHealthRecord(organizationId = organizationId, childId = childId)
@@ -78,14 +78,14 @@ class ChildHealthService(
 
     @Transactional(readOnly = true)
     fun listNotes(jwt: Jwt, organizationId: UUID, childId: UUID): List<ChildHealthNoteResponse> {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet())
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), allowGraceForRoles = Role.entries.toSet())
         if (scope.membership.role == Role.PARENT) childScopes.requireParentLinkedChild(scope, childId, organizationId) else childScopes.requireStaffManagedChild(scope, childId, organizationId)
         return notes.findAllByOrganizationIdAndChildIdOrderByRecordedAtDesc(organizationId, childId).map(::noteResponse)
     }
 
     @Transactional
     fun addNote(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreateChildHealthNoteRequest): ChildHealthNoteResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF))
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.STAFF))
         access.requireWritable(scope)
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         val note = notes.save(ChildHealthNote(organizationId = organizationId, childId = childId, authorUserId = scope.user.id, note = request.note.trim(), recordedAt = Instant.now()))

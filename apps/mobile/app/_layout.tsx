@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "@daycare/api-client";
 import { Stack, useNavigationContainerRef, usePathname, useRouter } from "expo-router";
@@ -46,7 +47,7 @@ if (Platform.OS !== "web") {
   };
 }
 
-const bottomNavigationScreenNames = ["home", "platform-tenants", "platform-catalog", "tenant-detail", "children", "academic", "development", "booking-approvals", "billing-admin", "staff-admin", "staff-operations", "parent-qr", "booking", "operational-hours", "parent-enrollment", "profile"];
+const bottomNavigationScreenNames = ["home", "platform-tenants", "platform-catalog", "tenant-detail", "tenant-subscription", "children", "academic", "development", "booking-approvals", "billing-admin", "staff-admin", "staff-operations", "parent-qr", "booking", "operational-hours", "parent-enrollment", "profile"];
 
 function NotificationRouteHandler() {
   const { organizationId, profile } = useAuth();

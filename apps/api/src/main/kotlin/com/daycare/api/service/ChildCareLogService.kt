@@ -68,7 +68,7 @@ class ChildCareLogService(
 ) {
     @Transactional(readOnly = true)
     fun list(jwt: Jwt, organizationId: UUID, childId: UUID): List<ChildCareLogResponse> {
-        val scope = access.require(jwt, organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)
+        val scope = access.require(jwt, organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true, allowGraceForRoles = Role.entries.toSet())
         val child = if (scope.membership.role == Role.PARENT) childScopes.requireParentLinkedChild(scope, childId, organizationId) else childScopes.requireStaffManagedChild(scope, childId, organizationId)
         publishedCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)
         return logs.findAllByOrganizationIdAndChildIdOrderByOccurredAtDesc(organizationId, childId).map(::response)
@@ -76,7 +76,7 @@ class ChildCareLogService(
 
     @Transactional
     fun create(jwt: Jwt, organizationId: UUID, childId: UUID, request: CreateChildCareLogRequest, idempotencyKey: UUID? = null): ChildCareLogResponse {
-        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS)
+        val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS, allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.STAFF))
         access.requireWritable(scope)
         val child = childScopes.requireStaffManagedChild(scope, childId, organizationId)
         publishedCapabilities.requirePublishedCapability(organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)

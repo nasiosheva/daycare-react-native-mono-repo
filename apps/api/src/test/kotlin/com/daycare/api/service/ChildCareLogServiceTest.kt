@@ -99,7 +99,7 @@ class ChildCareLogServiceTest {
         val fixture = Fixture()
         val parent = UserProfile()
         val parentScope = AccessScope(parent, Membership(userId = parent.id, organizationId = fixture.organizationId, role = Role.PARENT), emptySet(), emptySet())
-        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)).thenReturn(parentScope)
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true, allowGraceForRoles = Role.entries.toSet())).thenReturn(parentScope)
         `when`(fixture.childScopes.requireParentLinkedChild(parentScope, fixture.child.id, fixture.organizationId)).thenReturn(fixture.child)
         val stored = ChildCareLog(organizationId = fixture.organizationId, childId = fixture.child.id, type = ChildCareLogType.MEAL, mealType = ChildMealType.LUNCH, mealAmount = ChildMealAmount.ALL)
         `when`(fixture.logs.findAllByOrganizationIdAndChildIdOrderByOccurredAtDesc(fixture.organizationId, fixture.child.id)).thenReturn(listOf(stored))
@@ -164,7 +164,7 @@ class ChildCareLogServiceTest {
             fixture.service.create(fixture.jwt, fixture.organizationId, fixture.child.id, fixture.mealRequest(missingOriginalId, "Alasan"))
         }
 
-        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)).thenReturn(fixture.scope)
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true, allowGraceForRoles = Role.entries.toSet())).thenReturn(fixture.scope)
         `when`(fixture.childScopes.requireStaffManagedChild(fixture.scope, fixture.child.id, fixture.organizationId)).thenReturn(fixture.child)
         `when`(fixture.logs.findAllByOrganizationIdAndChildIdOrderByOccurredAtDesc(fixture.organizationId, fixture.child.id)).thenReturn(emptyList())
         assertEquals(emptyList<ChildCareLogResponse>(), fixture.service.list(fixture.jwt, fixture.organizationId, fixture.child.id))
@@ -215,7 +215,7 @@ class ChildCareLogServiceTest {
     fun `care log listing fails when daycare capability is not published`() {
         val fixture = Fixture()
         org.mockito.Mockito.doThrow(IllegalArgumentException("unpublished")).`when`(fixture.capabilities).requirePublishedCapability(fixture.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, fixture.child.branchId)
-        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true)).thenReturn(fixture.scope)
+        `when`(fixture.access.require(fixture.jwt, fixture.organizationId, Role.entries.toSet(), InstitutionCapability.DAYCARE_OPERATIONS, readOnly = true, allowGraceForRoles = Role.entries.toSet())).thenReturn(fixture.scope)
         `when`(fixture.childScopes.requireStaffManagedChild(fixture.scope, fixture.child.id, fixture.organizationId)).thenReturn(fixture.child)
         assertThrows(IllegalArgumentException::class.java) { fixture.service.list(fixture.jwt, fixture.organizationId, fixture.child.id) }
     }
@@ -259,7 +259,7 @@ class ChildCareLogServiceTest {
         val service = ChildCareLogService(access, childScopes, capabilities, logs, guardians, audits, realtime)
 
         init {
-            `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS)).thenReturn(scope)
+            `when`(access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN, Role.STAFF), InstitutionCapability.DAYCARE_OPERATIONS, allowGraceForRoles = setOf(Role.STAFF_ADMIN, Role.STAFF))).thenReturn(scope)
             `when`(childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
         }
 
