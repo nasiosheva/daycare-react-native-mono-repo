@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import { invalidateRealtimeFlags } from "./queryInvalidation";
@@ -51,6 +52,17 @@ describe("invalidateRealtimeFlags", () => {
     expect(client.getQueryState(["child-messages", "tenant-a", "child-b"])?.isInvalidated).toBe(false);
     expect(client.getQueryState(["child-message-summary", "tenant-a", "child-a"])?.isInvalidated).toBe(true);
     expect(client.getQueryState(["child-message-summary", "tenant-a", "child-b"])?.isInvalidated).toBe(false);
+  });
+
+  it("invalidates cached child message threads across tenants after a reconnect without a child payload", () => {
+    const client = new QueryClient();
+    client.setQueryData(["child-messages", "tenant-a", "child-a"], []);
+    client.setQueryData(["child-messages", "tenant-b", "child-b"], []);
+
+    invalidateRealtimeFlags(client, ["CHILD_MESSAGES"], "tenant-a");
+
+    expect(client.getQueryState(["child-messages", "tenant-a", "child-a"])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(["child-messages", "tenant-b", "child-b"])?.isInvalidated).toBe(true);
   });
 
   it("refreshes the tenant's Staff unread chat summary on every chat event", () => {

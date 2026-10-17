@@ -350,10 +350,13 @@ Status minimum lifecycle Platform Knowledge adalah `CANDIDATE`, `APPROVED`, `PUB
 
 - **Satu thread per anak** (`ChildMessage`, append-only, tanpa edit/hapus) — bukan percakapan 1-on-1 per pasangan Parent–Staff. Semua wali anak yang terhubung dan semua Staff dalam scope anak itu (`ChildScopeService.requireStaffManagedChild`/`requireParentLinkedChild`, sama seperti insiden dan catatan kesehatan) berbagi satu riwayat pesan.
 - **Staff Admin** selalu punya akses baca-tulis ke thread anak manapun dalam tenant (mengikuti `requireStaffManagedChild` yang selalu `true` untuk `STAFF_ADMIN`), untuk keperluan supervisi bila ada komplain — tetapi **tidak** menerima notifikasi push/inbox untuk setiap pesan Parent–Staff, supaya inboxnya tidak kebanjiran dari seluruh anak tenant.
-- **Penerima event pesan baru**: bila pengirim Parent, event dikirim ke Staff yang secara langsung
-  di-assign ke anak itu (`ChildStaffAssignment`); bila tidak ada Staff yang di-assign, jatuh ke seluruh
-  Staff Admin aktif tenant (fallback, bukan default). Bila pengirim Staff/Staff Admin, event dikirim ke
-  seluruh wali anak yang terhubung — sama seperti pola `ChildIncidentService.notifyGuardians`.
+- **Penerima event pesan baru**: penerima wajib memiliki membership aktif dengan role tenant yang
+  sesuai di tenant asal, selain memenuhi relasi wali atau assignment anak. Bila pengirim Parent, event
+  dikirim ke Staff aktif yang secara langsung di-assign ke anak itu (`ChildStaffAssignment`); bila tidak
+  ada Staff aktif yang di-assign, jatuh ke seluruh Staff Admin aktif tenant (fallback, bukan default).
+  Bila pengirim Staff/Staff Admin, event dikirim ke seluruh wali anak yang terhubung dan memiliki
+  membership Parent aktif — sama seperti pola `ChildIncidentService.notifyGuardians`, dengan validasi
+  membership untuk mencegah notifikasi kepada akses tenant yang sudah dinonaktifkan.
 - Transport chat selalu menerbitkan invalidation WebSocket `CHILD_MESSAGES`; event hanya berisi
   identifier agar client memuat ulang thread melalui REST yang tetap terotorisasi. Event tidak
   menyimpan `Notification`, tidak menerbitkan flag realtime `NOTIFICATIONS`, dan tidak menambah
@@ -363,8 +366,17 @@ Status minimum lifecycle Platform Knowledge adalah `CANDIDATE`, `APPROVED`, `PUB
   (tanpa isi pesan) dan action path `/child-messages?childId=...` dengan `organizationId` event; ketika
   ditekan, aplikasi memvalidasi ulang tenant, membership, capability, dan child scope sebelum membuka
   thread. Local notification tidak ditampilkan bila permission OS belum `granted`, perangkat sedang
-  mute (`pushMutedUntil` preferensi perangkat), atau penerima sedang membuka thread anak yang sama di
-  foreground; satu `messageId` hanya diberitahukan sekali. Web tidak menampilkan notifikasi chat.
+  mute (`pushMutedUntil` pada device registration tenant asal event), atau penerima sedang membuka
+  thread anak yang sama di foreground; satu `messageId` hanya diberitahukan sekali. Web tidak
+  menampilkan notifikasi chat.
+- Event realtime chat dikirim hanya ke user penerima yang telah dipilih backend sesuai aturan di atas,
+  termasuk validasi membership aktif dan role pada tenant asal, tetapi boleh mencapai sesi WebSocket
+  user itu walaupun sesi sedang memakai tenant aktif lain. Payload
+  tetap menyebut tenant asal dan hanya berisi identifier; client menginvalidasi cache tepat untuk
+  tenant + anak tersebut dan mengambil isi lewat endpoint REST yang mengulang otorisasi. Routing lintas
+  tenant ini khusus untuk `CHILD_MESSAGES`; event tenant/user lainnya tetap mengikuti scope sesi yang
+  ada. Bila koneksi pulih, thread yang sedang diamati di-refresh; membuka kembali thread atau membawa
+  aplikasi ke foreground juga memuat ulang REST thread untuk menutup celah event yang terlewat.
 - Backend memiliki switch `CHAT_NOTIFICATION_TRANSPORT` dengan nilai default `WEBSOCKET`. Nilai
   `WEBSOCKET` hanya menerbitkan event realtime (sumber local notification), sedangkan `EXPO` menambahkan
   push melalui `EXPO_PUSH_URL` ke device token yang terdaftar dan tidak mute; mengaktifkannya dapat

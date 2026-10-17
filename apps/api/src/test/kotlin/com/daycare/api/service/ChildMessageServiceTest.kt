@@ -22,7 +22,6 @@ import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.UserProfileRepository
 import com.daycare.api.realtime.ChildMessageRealtimeEvent
 import com.daycare.api.realtime.ChildMessageRealtimePayload
-import com.daycare.api.realtime.RealtimeFlag
 import com.daycare.api.realtime.RealtimePublisher
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -76,6 +75,9 @@ class ChildMessageServiceTest {
         `when`(fixture.staffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id)).thenReturn(listOf(
             ChildStaffAssignment(organizationId = organizationId, childId = child.id, userId = assignedStaffId),
         ))
+        `when`(fixture.memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(
+            Membership(organizationId = organizationId, userId = assignedStaffId, role = Role.STAFF, active = true),
+        ))
 
         val response = fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest("Anak saya belum makan siang"))
 
@@ -86,7 +88,7 @@ class ChildMessageServiceTest {
         verify(fixture.messages).save(saved.capture())
         verify(fixture.notifications).notifyChat(organizationId, assignedStaffId, "Pesan baru", "Ada pesan baru di chat anak.", "/child-messages?childId=${child.id}", saved.value.id)
         verifyNoMoreInteractions(fixture.notifications)
-        verify(fixture.realtime).publishToUser(organizationId, assignedStaffId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, saved.value.id, ChildMessageRealtimeEvent.MESSAGE_CREATED))
+        verify(fixture.realtime).publishChildMessageToUser(organizationId, assignedStaffId, ChildMessageRealtimePayload(child.id, saved.value.id, ChildMessageRealtimeEvent.MESSAGE_CREATED))
         verifyNoInteractions(fixture.guardians)
     }
 
@@ -157,7 +159,7 @@ class ChildMessageServiceTest {
         val saved = ArgumentCaptor.forClass(ChildMessage::class.java)
         verify(fixture.messages).save(saved.capture())
         verify(fixture.notifications).notifyChat(organizationId, activeStaffAdminId, "Pesan baru", "Ada pesan baru di chat anak.", "/child-messages?childId=${child.id}", saved.value.id)
-        verify(fixture.realtime).publishToUser(organizationId, activeStaffAdminId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, saved.value.id, ChildMessageRealtimeEvent.MESSAGE_CREATED))
+        verify(fixture.realtime).publishChildMessageToUser(organizationId, activeStaffAdminId, ChildMessageRealtimePayload(child.id, saved.value.id, ChildMessageRealtimeEvent.MESSAGE_CREATED))
         org.mockito.Mockito.verifyNoMoreInteractions(fixture.notifications)
     }
 
@@ -174,6 +176,9 @@ class ChildMessageServiceTest {
         `when`(fixture.childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
         `when`(fixture.messages.save(any(ChildMessage::class.java))).thenAnswer { it.arguments[0] }
         `when`(fixture.guardians.findAllByChildId(child.id)).thenReturn(listOf(GuardianLink(childId = child.id, userId = guardianId)))
+        `when`(fixture.memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(
+            Membership(organizationId = organizationId, userId = guardianId, role = Role.PARENT, active = true),
+        ))
 
         val response = fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest("Hari ini ceria sekali"))
 
@@ -181,8 +186,65 @@ class ChildMessageServiceTest {
         val saved = ArgumentCaptor.forClass(ChildMessage::class.java)
         verify(fixture.messages).save(saved.capture())
         verify(fixture.notifications).notifyChat(organizationId, guardianId, "Pesan baru", "Ada pesan baru di chat anak.", "/child-messages?childId=${child.id}", saved.value.id)
-        verify(fixture.realtime).publishToUser(organizationId, guardianId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, saved.value.id, ChildMessageRealtimeEvent.MESSAGE_CREATED))
+        verify(fixture.realtime).publishChildMessageToUser(organizationId, guardianId, ChildMessageRealtimePayload(child.id, saved.value.id, ChildMessageRealtimeEvent.MESSAGE_CREATED))
         verifyNoInteractions(fixture.staffAssignments)
+    }
+
+    @Test
+    fun `Staff message does not notify guardians whose tenant membership is inactive`() {
+        val fixture = ChildMessageServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val staff = UserProfile(displayName = "Bu Sari")
+        val child = Child(organizationId = organizationId)
+        val activeGuardianId = UUID.randomUUID()
+        val inactiveGuardianId = UUID.randomUUID()
+        val scope = fixture.scope(staff, organizationId, Role.STAFF)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN), allowGraceForRoles = setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(scope)
+        `when`(fixture.childScopes.requireStaffManagedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.messages.save(any(ChildMessage::class.java))).thenAnswer { it.arguments[0] }
+        `when`(fixture.guardians.findAllByChildId(child.id)).thenReturn(listOf(
+            GuardianLink(childId = child.id, userId = activeGuardianId),
+            GuardianLink(childId = child.id, userId = inactiveGuardianId),
+        ))
+        `when`(fixture.memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(
+            Membership(organizationId = organizationId, userId = activeGuardianId, role = Role.PARENT, active = true),
+            Membership(organizationId = organizationId, userId = inactiveGuardianId, role = Role.PARENT, active = false),
+        ))
+
+        val response = fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest("Catatan untuk wali"))
+
+        verify(fixture.notifications).notifyChat(organizationId, activeGuardianId, "Pesan baru", "Ada pesan baru di chat anak.", "/child-messages?childId=${child.id}", response.id)
+        verify(fixture.realtime).publishChildMessageToUser(organizationId, activeGuardianId, ChildMessageRealtimePayload(child.id, response.id, ChildMessageRealtimeEvent.MESSAGE_CREATED))
+        verify(fixture.notifications, never()).notifyChat(organizationId, inactiveGuardianId, "Pesan baru", "Ada pesan baru di chat anak.", "/child-messages?childId=${child.id}", response.id)
+        verify(fixture.realtime, never()).publishChildMessageToUser(organizationId, inactiveGuardianId, ChildMessageRealtimePayload(child.id, response.id, ChildMessageRealtimeEvent.MESSAGE_CREATED))
+    }
+
+    @Test
+    fun `Parent message falls back to active Staff Admin when assigned Staff membership is inactive`() {
+        val fixture = ChildMessageServiceFixture()
+        val jwt = mock(Jwt::class.java)
+        val organizationId = UUID.randomUUID()
+        val parent = UserProfile(displayName = "Budi")
+        val child = Child(organizationId = organizationId)
+        val inactiveAssignedStaffId = UUID.randomUUID()
+        val activeStaffAdminId = UUID.randomUUID()
+        val scope = fixture.scope(parent, organizationId, Role.PARENT)
+        `when`(fixture.access.require(jwt, organizationId, setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN), allowGraceForRoles = setOf(Role.PARENT, Role.STAFF, Role.STAFF_ADMIN))).thenReturn(scope)
+        `when`(fixture.childScopes.requireParentLinkedChild(scope, child.id, organizationId)).thenReturn(child)
+        `when`(fixture.messages.save(any(ChildMessage::class.java))).thenAnswer { it.arguments[0] }
+        `when`(fixture.staffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id)).thenReturn(listOf(
+            ChildStaffAssignment(organizationId = organizationId, childId = child.id, userId = inactiveAssignedStaffId),
+        ))
+        `when`(fixture.memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(
+            Membership(organizationId = organizationId, userId = inactiveAssignedStaffId, role = Role.STAFF, active = false),
+            Membership(organizationId = organizationId, userId = activeStaffAdminId, role = Role.STAFF_ADMIN, active = true),
+        ))
+
+        val response = fixture.service.send(jwt, organizationId, child.id, SendChildMessageRequest("Mohon kabari saya"))
+
+        verify(fixture.realtime).publishChildMessageToUser(organizationId, activeStaffAdminId, ChildMessageRealtimePayload(child.id, response.id, ChildMessageRealtimeEvent.MESSAGE_CREATED))
+        verify(fixture.realtime, never()).publishChildMessageToUser(organizationId, inactiveAssignedStaffId, ChildMessageRealtimePayload(child.id, response.id, ChildMessageRealtimeEvent.MESSAGE_CREATED))
     }
 
     @Test
@@ -217,7 +279,10 @@ class ChildMessageServiceTest {
         `when`(fixture.users.findAllById(listOf(parent.id, staff.id))).thenReturn(listOf(parent, staff))
         `when`(fixture.staffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id)).thenReturn(listOf(ChildStaffAssignment(organizationId = organizationId, childId = child.id, userId = staff.id)))
         `when`(fixture.guardians.findAllByChildId(child.id)).thenReturn(emptyList())
-        `when`(fixture.memberships.findAllByOrganizationId(organizationId)).thenReturn(emptyList())
+        `when`(fixture.memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(
+            Membership(organizationId = organizationId, userId = parent.id, role = Role.PARENT, active = true),
+            Membership(organizationId = organizationId, userId = staff.id, role = Role.STAFF, active = true),
+        ))
         `when`(fixture.reads.findAllByChildId(child.id)).thenReturn(listOf(ChildMessageRead(childId = child.id, userId = staff.id, lastReadAt = Instant.now().plusSeconds(1))))
 
         val response = fixture.service.list(jwt, organizationId, child.id)
@@ -260,6 +325,9 @@ class ChildMessageServiceTest {
         `when`(fixture.reads.findByChildIdAndUserId(child.id, parent.id)).thenReturn(null)
         `when`(fixture.messages.findAllByOrganizationIdAndChildIdOrderByCreatedAtAsc(organizationId, child.id)).thenReturn(listOf(incoming))
         `when`(fixture.staffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id)).thenReturn(listOf(ChildStaffAssignment(organizationId = organizationId, childId = child.id, userId = assignedStaffId)))
+        `when`(fixture.memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(
+            Membership(organizationId = organizationId, userId = assignedStaffId, role = Role.STAFF, active = true),
+        ))
 
         fixture.service.markRead(jwt, organizationId, child.id)
 
@@ -267,7 +335,7 @@ class ChildMessageServiceTest {
         verify(fixture.reads).save(captor.capture())
         assertEquals(child.id, captor.value.childId)
         assertEquals(parent.id, captor.value.userId)
-        verify(fixture.realtime).publishToUser(organizationId, assignedStaffId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, incoming.id, ChildMessageRealtimeEvent.MESSAGE_READ))
+        verify(fixture.realtime).publishChildMessageToUser(organizationId, assignedStaffId, ChildMessageRealtimePayload(child.id, incoming.id, ChildMessageRealtimeEvent.MESSAGE_READ))
     }
 
     @Test
@@ -517,7 +585,10 @@ class ChildMessageServiceTest {
         `when`(fixture.messages.findAllByOrganizationIdAndChildIdOrderByCreatedAtAsc(organizationId, child.id)).thenReturn(listOf(original, reply))
         `when`(fixture.users.findAllById(listOf(parent.id, staff.id))).thenReturn(listOf(parent, staff))
         `when`(fixture.staffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId, child.id)).thenReturn(listOf(assigned, assigned))
-        `when`(fixture.memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(Membership(organizationId = organizationId, userId = staff.id, role = Role.STAFF_ADMIN, active = true)))
+        `when`(fixture.memberships.findAllByOrganizationId(organizationId)).thenReturn(listOf(
+            Membership(organizationId = organizationId, userId = staff.id, role = Role.STAFF, active = true),
+            Membership(organizationId = organizationId, userId = parent.id, role = Role.PARENT, active = true),
+        ))
         `when`(fixture.guardians.findAllByChildId(child.id)).thenReturn(listOf(GuardianLink(childId = child.id, userId = parent.id)))
         `when`(fixture.reads.findAllByChildId(child.id)).thenReturn(listOf(
             ChildMessageRead(childId = child.id, userId = staff.id, lastReadAt = reply.createdAt.plusSeconds(1)),

@@ -38,6 +38,25 @@ class RealtimePublisherTest {
     }
 
     @Test
+    fun `publishes a user-targeted chat event to sessions across tenant contexts`() {
+        val organizationId = UUID.randomUUID()
+        val userId = UUID.randomUUID()
+
+        publisher.publishChildMessageToUser(
+            organizationId,
+            userId,
+            ChildMessageRealtimePayload(UUID.randomUUID(), UUID.randomUUID(), ChildMessageRealtimeEvent.MESSAGE_CREATED),
+        )
+
+        val invocation = mockingDetails(sessions).invocations.single()
+        assertTrue(invocation.method.name == "sendToUserAcrossTenants")
+        assertTrue(invocation.arguments[0] == userId)
+        val event = invocation.arguments[1] as String
+        assertTrue(event.contains(organizationId.toString()))
+        assertTrue(event.contains("MESSAGE_CREATED"))
+    }
+
+    @Test
     fun `defers tenant role event until transaction commit and serializes payload`() {
         val organizationId = UUID.randomUUID()
         TransactionSynchronizationManager.initSynchronization()

@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import type { QueryClient } from "@tanstack/react-query";
 import type { RealtimeFlag } from "@daycare/api-client";
 
@@ -37,8 +38,18 @@ const queryKeysByFlag: Record<RealtimeFlag, readonly string[]> = {
 export function invalidateRealtimeFlags(queryClient: QueryClient, flags: readonly RealtimeFlag[], organizationId?: string | null, userId?: string | null, payload?: unknown): void {
   const childMessageChildId = flags.includes("CHILD_MESSAGES") ? readChildMessageChildId(payload) : undefined;
   new Set(flags.flatMap((flag) => queryKeysByFlag[flag])).forEach((key) => {
-    if ((key === "child-messages" || key === "child-message-summary") && organizationId && childMessageChildId) {
-      void queryClient.invalidateQueries({ queryKey: [key, organizationId, childMessageChildId] });
+    if (key === "child-messages" || key === "child-message-summary") {
+      if (organizationId && childMessageChildId) {
+        void queryClient.invalidateQueries({ queryKey: [key, organizationId, childMessageChildId] });
+      } else {
+        // Reconnect events have no child id; refresh any currently observed
+        // thread, including one opened from a non-active Parent tenant.
+        void queryClient.invalidateQueries({ queryKey: [key] });
+      }
+      return;
+    }
+    if (key === "child-message-unread-summary" && !childMessageChildId) {
+      void queryClient.invalidateQueries({ queryKey: [key] });
       return;
     }
     if (key === "parent-enrollments") {
