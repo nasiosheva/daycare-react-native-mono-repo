@@ -477,7 +477,8 @@ class PlatformController(
         @RequestParam(required = false) institutionType: String?,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
-    ) = platformAdministration.tenantPage(jwt, search, status, institutionType, page, size)
+        @RequestParam(required = false) attentionGroup: com.daycare.api.domain.TenantSubscriptionAttentionGroup?,
+    ) = platformAdministration.tenantPage(jwt, search, status, institutionType, page, size, attentionGroup)
 
     @GetMapping("/tenant-subscription/grace-rollout-preview")
     fun previewGraceRollout(

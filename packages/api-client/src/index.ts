@@ -1,5 +1,5 @@
 // Mories Deo Hutapea,S.E.,S.Kom
-import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildAbsencePurpose, ChildAbsenceRequestStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, EducationEnrollmentMode, EducationOfferingStatus, GoalDomain, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, ParentFamilyProfileInput, ParentIncomeRange, ParentOccupation, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffLeaveRequestStatus, StaffLeaveRequestType, StaffReminderTarget, TenantFeedbackCategory, TenantFeedbackStatus, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
+import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildAbsencePurpose, ChildAbsenceRequestStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, EducationEnrollmentMode, EducationOfferingStatus, GoalDomain, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, ParentFamilyProfileInput, ParentIncomeRange, ParentOccupation, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffLeaveRequestStatus, StaffLeaveRequestType, StaffReminderTarget, TenantFeedbackCategory, TenantFeedbackStatus, TenantPaymentStatus, TenantSubscriptionAttentionGroup, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -418,11 +418,12 @@ export class ApiClient {
   async cancelParentPrivateTutoringRequest(requestId: string, organizationId?: string): Promise<PrivateTutoringRequest> { return this.request(`/private-tutoring/parent/requests/${requestId}/cancel`, { method: "POST", ...this.orgOverride(organizationId) }); }
 
   async tenants(search?: string): Promise<Tenant[]> { const query = search?.trim(); return this.request(`/platform/tenants${query ? `?${new URLSearchParams({ search: query }).toString()}` : ""}`); }
-  async tenantPage(input: { search?: string; status?: TenantSubscriptionStatus | null; institutionType?: string | null; page?: number; size?: number } = {}): Promise<TenantPage> {
+  async tenantPage(input: { search?: string; status?: TenantSubscriptionStatus | null; institutionType?: string | null; page?: number; size?: number; attentionGroup?: TenantSubscriptionAttentionGroup | null } = {}): Promise<TenantPage> {
     const query = new URLSearchParams({ page: String(input.page ?? 0), size: String(input.size ?? 20) });
     if (input.search?.trim()) query.set("search", input.search.trim());
     if (input.status) query.set("status", input.status);
     if (input.institutionType) query.set("institutionType", input.institutionType);
+    if (input.attentionGroup) query.set("attentionGroup", input.attentionGroup);
     return this.request(`/platform/tenants/page?${query.toString()}`);
   }
   async tenantGraceRolloutPreview(page = 0, size = 20): Promise<TenantGraceRolloutPreview> { return this.request(`/platform/tenant-subscription/grace-rollout-preview?${new URLSearchParams({ page: String(page), size: String(size) })}`); }

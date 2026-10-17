@@ -8,8 +8,10 @@ import com.daycare.api.domain.InstitutionTypeCodes
 import com.daycare.api.domain.Role
 import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.TenantPaymentStatus
+import com.daycare.api.domain.TenantSubscriptionAttentionGroup
 import com.daycare.api.domain.TenantSubscriptionPlan
 import com.daycare.api.domain.TenantSubscriptionStatus
+import com.daycare.api.domain.attentionGroup
 import com.daycare.api.persistence.Branch
 import com.daycare.api.persistence.BranchRepository
 import com.daycare.api.persistence.Invitation
@@ -213,10 +215,11 @@ class PlatformAdministrationService(
     }
 
     @Transactional(readOnly = true)
-    fun tenantPage(jwt: Jwt, search: String?, status: TenantSubscriptionStatus?, institutionType: String?, page: Int, size: Int): TenantPageResponse {
+    fun tenantPage(jwt: Jwt, search: String?, status: TenantSubscriptionStatus?, institutionType: String?, page: Int, size: Int, attentionGroup: TenantSubscriptionAttentionGroup? = null): TenantPageResponse {
         platformAccess.requirePlatformAdmin(jwt)
         require(page >= 0) { "Page must be zero or greater" }
         require(size in 1..50) { "Page size must be between 1 and 50" }
+        require(status == null || attentionGroup == null) { "Only one of status or attentionGroup can be set" }
         val query = search?.trim().orEmpty()
         val candidates = if (query.isEmpty()) organizations.findAll() else {
             val byName = organizations.findAllByNameContainingIgnoreCase(query)
@@ -237,7 +240,12 @@ class PlatformAdministrationService(
             subscriptionsByOrganization[organization.id]?.let { subscriptionLifecycle.effectiveStatus(it, today) }
         }
         val filtered = typeFiltered.filter { organization ->
-            status == null || subscriptionsByOrganization[organization.id]?.let { subscriptionLifecycle.effectiveStatus(it, today) } == status
+            val organizationEffectiveStatus = subscriptionsByOrganization[organization.id]?.let { subscriptionLifecycle.effectiveStatus(it, today) }
+            when {
+                status != null -> organizationEffectiveStatus == status
+                attentionGroup != null -> organizationEffectiveStatus?.attentionGroup() == attentionGroup
+                else -> true
+            }
         }.sortedBy { it.name.lowercase() }
         val start = (page.toLong() * size).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
         val totalPages = if (filtered.isEmpty()) 0 else (filtered.size + size - 1) / size
