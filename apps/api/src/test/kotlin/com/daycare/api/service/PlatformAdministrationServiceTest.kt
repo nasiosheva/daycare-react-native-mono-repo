@@ -695,6 +695,32 @@ class PlatformAdministrationServiceTest {
     }
 
     @Test
+    fun `tenant page filters by attention group and rejects combining it with an exact status`() {
+        val fixture = PlatformAdministrationServiceFixture()
+        fixture.allowPlatformAdmin()
+        val pending = Organization(id = UUID.randomUUID(), name = "Pending")
+        val active = Organization(id = UUID.randomUUID(), name = "Active")
+        val suspended = Organization(id = UUID.randomUUID(), name = "Suspended")
+        `when`(fixture.organizations.findAll()).thenReturn(listOf(pending, active, suspended))
+        `when`(fixture.organizationTypes.findAllByOrganizationIdIn(listOf(pending.id, active.id, suspended.id))).thenReturn(emptyList())
+        `when`(fixture.subscriptions.findAllByOrganizationIdIn(listOf(pending.id, active.id, suspended.id))).thenReturn(listOf(
+            TenantSubscription(organizationId = pending.id, status = TenantSubscriptionStatus.PENDING_PAYMENT),
+            TenantSubscription(organizationId = active.id, status = TenantSubscriptionStatus.ACTIVE, periodEnd = LocalDate.now(BILLING_TIME_ZONE).plusDays(10)),
+            TenantSubscription(organizationId = suspended.id, status = TenantSubscriptionStatus.SUSPENDED),
+        ))
+        fixture.stubTenantResponse(pending)
+        fixture.stubTenantResponse(active)
+        fixture.stubTenantResponse(suspended)
+
+        val result = fixture.service.tenantPage(fixture.jwt, null, null, null, 0, 10, attentionGroup = com.daycare.api.domain.TenantSubscriptionAttentionGroup.ATTENTION)
+
+        assertEquals(listOf("Pending"), result.items.map { it.name })
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.tenantPage(fixture.jwt, null, TenantSubscriptionStatus.ACTIVE, null, 0, 10, attentionGroup = com.daycare.api.domain.TenantSubscriptionAttentionGroup.ACTIVE)
+        }
+    }
+
+    @Test
     fun `platform can create a paid tenant and rejects invalid billing choices`() {
         val fixture = PlatformAdministrationServiceFixture()
         fixture.allowPlatformAdmin()

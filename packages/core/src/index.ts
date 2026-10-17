@@ -53,6 +53,18 @@ export const tenantSubscriptionPlans = ["STARTER", "STANDARD", "PREMIUM"] as con
 export type TenantSubscriptionPlan = (typeof tenantSubscriptionPlans)[number];
 export const tenantSubscriptionStatuses = ["TRIAL", "PENDING_PAYMENT", "ACTIVE", "GRACE", "SUSPENDED", "EXPIRED"] as const;
 export type TenantSubscriptionStatus = (typeof tenantSubscriptionStatuses)[number];
+// Dashboard grouping for the Platform Admin tenant list (plan §5-A): PENDING_PAYMENT/GRACE
+// need action, TRIAL/ACTIVE operate normally, SUSPENDED/EXPIRED are restricted.
+export const tenantSubscriptionAttentionGroups = ["ATTENTION", "ACTIVE", "RESTRICTED"] as const;
+export type TenantSubscriptionAttentionGroup = (typeof tenantSubscriptionAttentionGroups)[number];
+export const tenantSubscriptionStatusAttentionGroup: Record<TenantSubscriptionStatus, TenantSubscriptionAttentionGroup> = {
+  PENDING_PAYMENT: "ATTENTION",
+  GRACE: "ATTENTION",
+  TRIAL: "ACTIVE",
+  ACTIVE: "ACTIVE",
+  SUSPENDED: "RESTRICTED",
+  EXPIRED: "RESTRICTED",
+};
 export const tenantPaymentStatuses = ["PENDING", "PAID", "VOID"] as const;
 export type TenantPaymentStatus = (typeof tenantPaymentStatuses)[number];
 

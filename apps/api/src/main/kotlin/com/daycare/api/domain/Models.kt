@@ -60,6 +60,14 @@ enum class InvitationStatus { PENDING, ACCEPTED, EXPIRED }
 enum class PushNotificationMuteDuration { ONE_HOUR, ONE_WEEK, ONE_MONTH }
 enum class TenantSubscriptionPlan { STARTER, STANDARD, PREMIUM }
 enum class TenantSubscriptionStatus { TRIAL, PENDING_PAYMENT, ACTIVE, GRACE, SUSPENDED, EXPIRED }
+// Dashboard grouping for the Platform Admin tenant list (plan §5-A): PENDING_PAYMENT/GRACE
+// need action, TRIAL/ACTIVE operate normally, SUSPENDED/EXPIRED are restricted.
+enum class TenantSubscriptionAttentionGroup { ATTENTION, ACTIVE, RESTRICTED }
+fun TenantSubscriptionStatus.attentionGroup(): TenantSubscriptionAttentionGroup = when (this) {
+    TenantSubscriptionStatus.PENDING_PAYMENT, TenantSubscriptionStatus.GRACE -> TenantSubscriptionAttentionGroup.ATTENTION
+    TenantSubscriptionStatus.TRIAL, TenantSubscriptionStatus.ACTIVE -> TenantSubscriptionAttentionGroup.ACTIVE
+    TenantSubscriptionStatus.SUSPENDED, TenantSubscriptionStatus.EXPIRED -> TenantSubscriptionAttentionGroup.RESTRICTED
+}
 enum class TenantPaymentStatus { PENDING, PAID, VOID }
 enum class InstitutionCapability { DAYCARE_OPERATIONS, ACADEMIC_CURRICULUM }
 enum class EducationOfferingStatus { DRAFT, PUBLISHED, PAUSED, CLOSED, ARCHIVED }

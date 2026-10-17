@@ -486,8 +486,38 @@ run_android_local_client_through_adb() {
   exit 1
 }
 
+stop_stale_project_metro() {
+  # A Metro left over from a previous session (crashed terminal, forced quit,
+  # etc.) still holds port 8081. Starting a second Expo process only produces
+  # an interactive "Use port 8082 instead?" prompt that this non-interactive
+  # launcher mode cannot answer, so Expo silently skips the dev server.
+  # Scoped to this project's own apps/mobile directory (via the holder's cwd)
+  # so an unrelated process on 8081 is left untouched.
+  metro_pids=$(lsof -t -iTCP:8081 -sTCP:LISTEN 2>/dev/null || true)
+  stopped_stale_metro=false
+  for metro_pid in $metro_pids; do
+    metro_cwd=$(lsof -a -p "$metro_pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' || true)
+    case "$metro_cwd" in
+      "$repository_root/apps/mobile"|"$repository_root/apps/mobile"/*)
+        echo "Stopping a stale Metro instance on localhost:8081 (PID $metro_pid)." >&2
+        kill "$metro_pid" >/dev/null 2>&1 || true
+        stopped_stale_metro=true
+        ;;
+    esac
+  done
+
+  if [ "$stopped_stale_metro" = "true" ]; then
+    release_attempts=0
+    while [ "$release_attempts" -lt 5 ] && [ -n "$(lsof -t -iTCP:8081 -sTCP:LISTEN 2>/dev/null || true)" ]; do
+      sleep 1
+      release_attempts=$((release_attempts + 1))
+    done
+  fi
+}
+
 run_web_local_client() {
   export EXPO_PUBLIC_API_URL="http://localhost:8080/api/v1"
+  stop_stale_project_metro
   corepack pnpm --filter @daycare/app exec expo start --web --clear
 }
 

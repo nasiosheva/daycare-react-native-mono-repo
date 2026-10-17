@@ -138,6 +138,15 @@ describe("ApiClient API wrappers", () => {
     ]]);
   });
 
+  it("maps the Platform Admin tenant page attention-group filter", async () => {
+    const { client, fetchMock } = createHarness();
+    await client.tenantPage({ attentionGroup: "ATTENTION" });
+    expect(requests(fetchMock).map(({ url, method }) => [url, method])).toEqual([[
+      "https://api.example.test/api/v1/platform/tenants/page?page=0&size=20&attentionGroup=ATTENTION",
+      "GET",
+    ]]);
+  });
+
   it("maps Parent screening and Platform screening-catalog workflows to their endpoints", async () => {
     const { client, fetchMock } = createHarness();
     const profile = { subjectName: "Anak", dateOfBirth: "2024-01-01", prematureBirth: false };

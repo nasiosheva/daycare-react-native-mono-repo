@@ -1,6 +1,6 @@
 // Mories Deo Hutapea,S.E.,S.Kom
 import { describe, expect, it } from "vitest";
-import { can, attendanceCommandSchema, capabilitiesForInstitutionTypes, childSchema, developmentEntrySchema, hasInstitutionCapability, parentFamilyProfileSchema, purchaseServiceSchema } from "./index";
+import { can, attendanceCommandSchema, capabilitiesForInstitutionTypes, childSchema, developmentEntrySchema, hasInstitutionCapability, parentFamilyProfileSchema, purchaseServiceSchema, tenantSubscriptionStatusAttentionGroup } from "./index";
 
 describe("permissions", () => {
   it("only permits staff to record attendance", () => {
@@ -52,5 +52,14 @@ describe("permissions", () => {
   it("permits an optional Parent family profile with supported dropdown values", () => {
     expect(parentFamilyProfileSchema.safeParse({ husbandOccupation: "PNS", husbandIncomeRange: "THREE_TO_FIVE_MILLION", wifeDateOfBirth: null }).success).toBe(true);
     expect(parentFamilyProfileSchema.safeParse({ husbandOccupation: "UNKNOWN" }).success).toBe(false);
+  });
+
+  it("groups tenant subscription statuses into the Platform Admin attention dashboard", () => {
+    expect(tenantSubscriptionStatusAttentionGroup.PENDING_PAYMENT).toBe("ATTENTION");
+    expect(tenantSubscriptionStatusAttentionGroup.GRACE).toBe("ATTENTION");
+    expect(tenantSubscriptionStatusAttentionGroup.TRIAL).toBe("ACTIVE");
+    expect(tenantSubscriptionStatusAttentionGroup.ACTIVE).toBe("ACTIVE");
+    expect(tenantSubscriptionStatusAttentionGroup.SUSPENDED).toBe("RESTRICTED");
+    expect(tenantSubscriptionStatusAttentionGroup.EXPIRED).toBe("RESTRICTED");
   });
 });
