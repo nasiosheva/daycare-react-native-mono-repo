@@ -8,7 +8,7 @@
 | --- | --- |
 | Branch sumber | `feature/ui-component-gallery` |
 | Target branch | `production` |
-| PR | Belum dibuat |
+| PR | Akan dibuat setelah checklist dan autentikasi GitHub siap |
 | Tujuan | Pratinjau lengkap komponen visual bersama dan aturan pemeliharaan inventarisnya |
 | Tanggal checklist | 2026-10-17 |
 
@@ -50,5 +50,5 @@ Temuan terbuka/blocker: pemeriksaan visual browser oleh reviewer; CI PR belum be
 - [x] Tidak ada perubahan produksi terhadap theme atau komponen yang dipakai layar lain.
 - [x] Tes dan daily note diperbarui; tidak ada perubahan API/database/business rule.
 - [x] `.agents/`, `run-logs/`, `docs/personal-docs/`, dan `CLAUDE.md` tidak boleh ikut PR.
-- [ ] `run-logs/` dikosongkan dan diverifikasi sebelum PR dibuka sesuai aturan repo.
+- [x] `run-logs/` dikosongkan dan diverifikasi sebelum PR dibuka sesuai aturan repo.
 - [ ] CI PR lulus setelah PR dibuat.
