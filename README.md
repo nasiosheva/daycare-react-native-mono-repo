@@ -55,6 +55,8 @@ Billing Parent mengirim `Idempotency-Key` stabil untuk pembelian paket, booking 
 
 Indikator koneksi membedakan perangkat yang benar-benar terputus dari server API yang tidak dapat dijangkau. Kegagalan request API saat perangkat masih terhubung ditampilkan sebagai `API_UNAVAILABLE`, bukan status offline.
 
+Event chat lintas tenant hanya dikirim kepada wali atau Staff yang masih memiliki membership aktif dengan role yang sesuai di tenant asal; isi thread tetap dimuat melalui REST yang memeriksa ulang otorisasi.
+
 Setiap branch yang membuka PR/MR wajib menyertakan checklist branch tersendiri dari [template checklist MR](docs/checklists/branch-mr-checklist-template.md), lengkap dengan bukti test/CI dan blocker. Deskripsi PR/MR juga harus memuat tabel ringkasan status sepuluh area review beserta gap/blocker dan tautan bukti checklist branch. Perubahan kode mengikuti test-first: test ditulis dan dibuktikan gagal sebelum implementasi, lalu dijalankan kembali sampai lulus. Sebelum commit, buat/perbarui salinan [checklist kesiapan commit](docs/checklists/pre-commit-readiness-template.md) per branch berdasarkan sepuluh area di checklist code review lokal; tinjau diff, perbaiki semua temuan, dan commit hanya jika checklist menyatakan READY tanpa temuan terbuka.
 
 ## Environment files
@@ -163,7 +165,11 @@ Client terautentikasi terhubung ke `ws(s)://<api-host>/api/v1/realtime` dan
 mengirim frame `CONNECT` berisi JWT serta organization scope bila diperlukan.
 Server memvalidasi token/scope sebelum mendaftarkan sesi. Event hanya invalidation
 hint; client tetap mengambil data sumber melalui REST API. Reconnect melakukan
-revalidasi profile dan refresh query. Logout, expiry, dan password change menutup
+revalidasi profile dan refresh query, termasuk thread chat aktif lintas tenant.
+Event chat ditargetkan ke user yang sudah diotorisasi backend, sehingga tetap
+sampai walau socket sedang memilih tenant lain; payload membawa tenant/anak agar
+invalidasi cache tetap tepat sasaran. Membuka kembali thread atau membawa app ke
+foreground juga memuat ulang thread. Logout, expiry, dan password change menutup
 sesi realtime.
 
 ## Core packages

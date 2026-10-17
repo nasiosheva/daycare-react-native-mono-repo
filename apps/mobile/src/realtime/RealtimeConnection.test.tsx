@@ -291,6 +291,31 @@ describe("RealtimeConnection", () => {
     rendered.unmount();
   });
 
+  it("loads the chat mute preference for the event tenant rather than the active tenant", async () => {
+    mocks.platformOS = "android";
+    const api = { notifications: vi.fn().mockResolvedValue({ items: [] }) };
+    mocks.auth = authState({ api, organizationId: "tenant-active" });
+    const rendered = renderConnection();
+    await flushPromises();
+    const socket = MockWebSocket.instances[0];
+
+    socket.open();
+    socket.message(JSON.stringify({ type: "CONNECTED" }));
+    await flushPromises();
+    socket.message(JSON.stringify({
+      type: "EVENT",
+      flags: ["CHILD_MESSAGES"],
+      organizationId: "tenant-event",
+      payload: { childId: "child-1", messageId: "message-1", event: "MESSAGE_CREATED" },
+    }));
+    await flushPromises();
+
+    const chatNotificationOptions = mocks.presentChildMessageLocalNotification.mock.calls[0]?.[1] as { loadMutedUntil: () => Promise<unknown> } | undefined;
+    await chatNotificationOptions?.loadMutedUntil();
+    expect(mocks.loadDeviceNotificationMutedUntil).toHaveBeenCalledWith(mocks.queryClient, api, "tenant-event");
+    rendered.unmount();
+  });
+
   it("backs off after repeated connection failures and cancels reconnect on cleanup", async () => {
     vi.useFakeTimers();
     mocks.auth = authState();

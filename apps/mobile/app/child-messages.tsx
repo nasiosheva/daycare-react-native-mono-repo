@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { useEffect, useRef, useState } from "react";
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,6 +17,7 @@ import { useChildMessageTemplates } from "@/chat/useChildMessageTemplates";
 import { childMessageNotificationScope } from "@/notifications/childMessageLocalNotificationPolicy";
 import { useLocalNotificationScope } from "@/notifications/useLocalNotificationScope";
 import { childMessageUnreadSummaryQueryKey } from "@/chat/useChildMessageUnreadSummary";
+import { useChildMessagesRefreshOnFocus } from "@/chat/useChildMessagesRefreshOnFocus";
 
 export default function ChildMessagesScreen() {
   const router = useRouter();
@@ -46,6 +48,7 @@ export default function ChildMessagesScreen() {
   useLocalNotificationScope(organizationId && typeof childId === "string" ? childMessageNotificationScope(organizationId, childId) : null);
 
   const messages = useQuery({ queryKey: ["child-messages", organizationId, childId], queryFn: () => api.childMessages(childId!, organizationId), enabled: Boolean(organizationId && childId && canUse) });
+  useChildMessagesRefreshOnFocus(messages.refetch, Boolean(organizationId && childId && canUse));
   const send = useMutation({
     mutationFn: async ({ body, replyToMessageId, photo: picked }: { body: string; replyToMessageId?: string; photo?: PickedImage }) => api.sendChildMessage(childId!, body, organizationId, replyToMessageId, picked ? await pickedImageUpload(picked) : undefined),
     onSuccess: () => { setDraft(""); setReplyTo(null); setPhoto(null); setSendError(null); void queryClient.invalidateQueries({ queryKey: ["child-messages", organizationId, childId] }); },

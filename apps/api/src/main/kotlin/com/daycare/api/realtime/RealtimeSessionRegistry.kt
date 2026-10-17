@@ -1,5 +1,7 @@
 package com.daycare.api.realtime
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.Role
 import org.springframework.web.socket.CloseStatus
 import org.springframework.stereotype.Component
@@ -37,6 +39,9 @@ class RealtimeSessionRegistry {
     }
 
     fun sendToUser(organizationId: UUID?, userId: UUID, message: String) = send(sessions.values.filter { it.userId == userId && (it.organizationId == organizationId || it.organizationId == null) }, message)
+
+    /** Chat recipients are authorized by ChildMessageService and may have their active socket scoped to another tenant. */
+    fun sendToUserAcrossTenants(userId: UUID, message: String) = send(sessions.values.filter { it.userId == userId }, message)
 
     fun sendToTenantRoles(organizationId: UUID, roles: Set<Role>, message: String) = send(sessions.values.filter { it.organizationId == organizationId && it.role in roles }, message)
 

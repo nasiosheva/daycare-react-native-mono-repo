@@ -1,5 +1,7 @@
 package com.daycare.api.realtime
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.Role
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.stereotype.Service
@@ -14,6 +16,10 @@ class RealtimePublisher(
 ) {
     fun publishToUser(organizationId: UUID, userId: UUID, flags: Set<RealtimeFlag>, payload: Any? = null) = afterCommit {
         sessions.sendToUser(organizationId, userId, serialize(organizationId, flags, payload))
+    }
+
+    fun publishChildMessageToUser(organizationId: UUID, userId: UUID, payload: ChildMessageRealtimePayload) = afterCommit {
+        sessions.sendToUserAcrossTenants(userId, serialize(organizationId, setOf(RealtimeFlag.CHILD_MESSAGES), payload))
     }
 
     fun publishToTenantRoles(organizationId: UUID, roles: Set<Role>, flags: Set<RealtimeFlag>, payload: Any? = null) = afterCommit {

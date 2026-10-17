@@ -1,5 +1,7 @@
 package com.daycare.api.service
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.Role
 import com.daycare.api.persistence.Child
 import com.daycare.api.persistence.ChildMessage
@@ -16,7 +18,6 @@ import com.daycare.api.persistence.UserProfile
 import com.daycare.api.persistence.UserProfileRepository
 import com.daycare.api.realtime.ChildMessageRealtimeEvent
 import com.daycare.api.realtime.ChildMessageRealtimePayload
-import com.daycare.api.realtime.RealtimeFlag
 import com.daycare.api.realtime.RealtimePublisher
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
@@ -186,7 +187,7 @@ class ChildMessageService(
             .lastOrNull { it.senderUserId != scope.user.id }
         if (latestIncoming != null) {
             readRecipientUserIds(child, scope.membership.role).forEach { userId ->
-                realtime.publishToUser(organizationId, userId, setOf(RealtimeFlag.CHILD_MESSAGES), ChildMessageRealtimePayload(child.id, latestIncoming.id, ChildMessageRealtimeEvent.MESSAGE_READ))
+                realtime.publishChildMessageToUser(organizationId, userId, ChildMessageRealtimePayload(child.id, latestIncoming.id, ChildMessageRealtimeEvent.MESSAGE_READ))
             }
         }
     }
@@ -236,9 +237,9 @@ class ChildMessageService(
         return contentType to bytes
     }
 
-    // A Parent's message notifies the Staff directly assigned to the child, falling back to active
-    // Staff Admins when no Staff is assigned yet. A Staff/Staff Admin's message always notifies every
-    // guardian, mirroring ChildIncidentService.notifyGuardians.
+    // A Parent's message notifies active Staff directly assigned to the child, falling back to active
+    // Staff Admins when no assigned Staff is active. A Staff/Staff Admin's message notifies guardians
+    // with an active Parent membership in this tenant.
     private fun notifyOtherSide(child: Child, senderRole: Role, senderName: String, message: ChildMessage) {
         val title = "Pesan baru"
         val body = "Ada pesan baru di chat anak."
@@ -247,20 +248,47 @@ class ChildMessageService(
     }
 
     private fun notificationRecipientUserIds(child: Child, senderRole: Role): List<UUID> = if (senderRole == Role.PARENT) {
-        val assignedStaffUserIds = staffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(child.organizationId, child.id).map { it.userId }.distinct()
-        assignedStaffUserIds.ifEmpty {
-            memberships.findAllByOrganizationId(child.organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.map { it.userId }.distinct()
-        }
+        activeAssignedStaffUserIds(child).ifEmpty { activeStaffAdminUserIds(child.organizationId) }
     } else {
-        guardians.findAllByChildId(child.id).map { it.userId }.distinct()
+        activeGuardianUserIds(child)
     }
 
     private fun readRecipientUserIds(child: Child, senderRole: Role): List<UUID> = if (senderRole == Role.PARENT) {
-        (staffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(child.organizationId, child.id).map { it.userId } +
-            memberships.findAllByOrganizationId(child.organizationId).filter { it.active && it.role == Role.STAFF_ADMIN }.map { it.userId }).distinct()
+        (activeAssignedStaffUserIds(child) + activeStaffAdminUserIds(child.organizationId)).distinct()
     } else {
-        guardians.findAllByChildId(child.id).map { it.userId }.distinct()
+        activeGuardianUserIds(child)
     }
+
+    private fun activeAssignedStaffUserIds(child: Child): List<UUID> {
+        val assignedUserIds = staffAssignments.findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(child.organizationId, child.id)
+            .map { it.userId }
+            .toSet()
+        return activeTenantMemberUserIds(child.organizationId, assignedUserIds, setOf(Role.STAFF))
+    }
+
+    private fun activeGuardianUserIds(child: Child): List<UUID> {
+        val linkedUserIds = guardians.findAllByChildId(child.id).map { it.userId }.toSet()
+        return activeTenantMemberUserIds(child.organizationId, linkedUserIds, setOf(Role.PARENT))
+    }
+
+    private fun activeStaffAdminUserIds(organizationId: UUID): List<UUID> = activeTenantMemberUserIds(
+        organizationId,
+        candidateUserIds = null,
+        allowedRoles = setOf(Role.STAFF_ADMIN),
+    )
+
+    private fun activeTenantMemberUserIds(
+        organizationId: UUID,
+        candidateUserIds: Set<UUID>?,
+        allowedRoles: Set<Role>,
+    ): List<UUID> = memberships.findAllByOrganizationId(organizationId)
+        .asSequence()
+        .filter { membership ->
+            membership.active && membership.role in allowedRoles && (candidateUserIds == null || membership.userId in candidateUserIds)
+        }
+        .map { it.userId }
+        .distinct()
+        .toList()
 
     private fun readAtFor(message: ChildMessage, recipientUserIds: Set<UUID>, readAtByUserId: Map<UUID, ChildMessageRead>): Instant? =
         recipientUserIds.mapNotNull { readAtByUserId[it]?.lastReadAt }
@@ -272,10 +300,9 @@ class ChildMessageService(
         // identifiers only; the client must refetch the authorized thread over
         // REST. No inbox row or generic NOTIFICATIONS event is created.
         notifications.notifyChat(child.organizationId, userId, title, body, path, message.id)
-        realtime.publishToUser(
+        realtime.publishChildMessageToUser(
             child.organizationId,
             userId,
-            setOf(RealtimeFlag.CHILD_MESSAGES),
             ChildMessageRealtimePayload(child.id, message.id, ChildMessageRealtimeEvent.MESSAGE_CREATED),
         )
     }

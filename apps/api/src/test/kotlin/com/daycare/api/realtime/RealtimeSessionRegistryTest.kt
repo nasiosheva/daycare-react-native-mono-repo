@@ -64,6 +64,23 @@ class RealtimeSessionRegistryTest {
     }
 
     @Test
+    fun `chat event reaches the intended user session regardless of active tenant`() {
+        val recipientSession = mock(WebSocketSession::class.java)
+        val unrelatedUserSession = mock(WebSocketSession::class.java)
+        `when`(recipientSession.id).thenReturn("recipient")
+        `when`(unrelatedUserSession.id).thenReturn("unrelated")
+        val recipientId = UUID.randomUUID()
+        val registry = RealtimeSessionRegistry()
+        registry.register(recipientSession, recipientId, UUID.randomUUID(), Role.PARENT, platformAdmin = false)
+        registry.register(unrelatedUserSession, UUID.randomUUID(), UUID.randomUUID(), Role.PARENT, platformAdmin = false)
+
+        registry.sendToUserAcrossTenants(recipientId, "chat-event")
+
+        verify(recipientSession).sendMessage(TextMessage("chat-event"))
+        org.mockito.Mockito.verify(unrelatedUserSession, org.mockito.Mockito.never()).sendMessage(org.mockito.ArgumentMatchers.any(TextMessage::class.java))
+    }
+
+    @Test
     fun `failed sends remove the session and close failures are ignored`() {
         val session = mock(WebSocketSession::class.java)
         `when`(session.id).thenReturn("broken")

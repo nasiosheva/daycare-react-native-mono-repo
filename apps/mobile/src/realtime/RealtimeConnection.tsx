@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { realtimeUrl, type RealtimeConnectRequest, type RealtimeEvent } from "@daycare/api-client";
@@ -38,16 +39,17 @@ export function RealtimeConnection() {
       invalidateRealtimeFlags(queryClient, event.flags, event.organizationId ?? organizationId, userId, event.payload);
       if (Platform.OS === "web" && event.flags.includes("NOTIFICATIONS")) void showBrowserNotification(() => api.notifications().then((page) => page.items), notificationId(event));
       if (Platform.OS !== "web") {
-        const loadMutedUntil = () => loadDeviceNotificationMutedUntil(queryClient, api, organizationId);
         const eventOrganizationId = event.organizationId ?? organizationId ?? undefined;
+        const loadChatMutedUntil = () => loadDeviceNotificationMutedUntil(queryClient, api, eventOrganizationId);
+        const loadInboxMutedUntil = () => loadDeviceNotificationMutedUntil(queryClient, api, organizationId);
         void presentChildMessageLocalNotification(event, {
           title: translateRef.current("childMessage.localNotificationTitle"),
           body: translateRef.current("childMessage.localNotificationBody"),
-          loadMutedUntil,
+          loadMutedUntil: loadChatMutedUntil,
         }).catch((error: unknown) => warnLocalNotificationSkipped("Chat", error));
         void presentInboxLocalNotification(event, {
           loadNotification: (id) => api.notifications(undefined, eventOrganizationId).then((page) => page.items.find((item) => item.id === id)),
-          loadMutedUntil,
+          loadMutedUntil: loadInboxMutedUntil,
         }).catch((error: unknown) => warnLocalNotificationSkipped("Inbox", error));
       }
     };
