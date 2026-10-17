@@ -1,17 +1,17 @@
 import { useEffect, useState } from "react";
-import { Alert, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { AppText, BackButton, BottomSheet, Button, EmptyState, NavigationCard, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Banner, BottomSheet, Button, EmptyState, NavigationCard, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { notify } from "@/notify/notify";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
 import { hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
 
-type Sheet = "edit" | "assessment" | null;
+type Sheet = "edit" | "assessment" | "archive" | null;
 
 export default function CurriculumActivityDetailScreen() {
   const router = useRouter();
@@ -57,12 +57,7 @@ export default function CurriculumActivityDetailScreen() {
       closeEditSheet();
     } catch (error) { notify(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
-  const archive = () => {
-    Alert.alert(t("learning.archive"), t("learning.activityArchived"), [
-      { text: t("common.cancel"), style: "cancel" },
-      { text: t("learning.archive"), style: "destructive", onPress: () => void archiveActivity.mutateAsync().catch((error: unknown) => Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"))) },
-    ]);
-  };
+  const confirmArchive = () => void archiveActivity.mutateAsync().then(() => setSheet(null)).catch((error: unknown) => { setSheet(null); notify(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); });
   const openAssessmentSheet = () => { setListOpen(false); setSheet("assessment"); };
   const closeAssessmentSheet = () => { setSheet(null); setAssessmentName(""); setAssessmentDescription(""); };
   const saveAssessment = async () => {
@@ -81,7 +76,7 @@ export default function CurriculumActivityDetailScreen() {
         {!activity.active && <AppText tone="muted">{t("learning.activityArchived")}</AppText>}
         {canManage && <View style={styles.options}>
           <IconButton icon="pencil-outline" tone="secondary" accessibilityLabel={t("learning.editActivity")} onPress={() => setSheet("edit")} />
-          {activity.active && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.archive")} onPress={archive} />}
+          {activity.active && <IconButton icon="trash-outline" tone="danger" accessibilityLabel={t("learning.archive")} onPress={() => setSheet("archive")} />}
         </View>}
       </View>
 
@@ -112,6 +107,10 @@ export default function CurriculumActivityDetailScreen() {
     <BottomSheet visible={sheet === "assessment"} onClose={closeAssessmentSheet} closeAccessibilityLabel={t("common.close")} title={t("learning.addAssessment")} negativeAction={{ label: t("common.cancel"), onPress: closeAssessmentSheet }} positiveAction={{ label: t("common.save"), loading: createAssessment.isPending, disabled: !assessmentName.trim(), onPress: () => void saveAssessment() }}>
       <TextField label={t("learning.assessmentName")} value={assessmentName} onChangeText={setAssessmentName} />
       <TextField label={t("learning.assessmentDescription")} value={assessmentDescription} onChangeText={setAssessmentDescription} />
+    </BottomSheet>
+
+    <BottomSheet visible={sheet === "archive"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("learning.archive")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("learning.archive"), variant: "danger", loading: archiveActivity.isPending, onPress: confirmArchive }}>
+      {activity && <Banner tone="warning" title={t("learning.archiveActivityConfirmation", { name: activity.name })} />}
     </BottomSheet>
   </AppScreen>;
 }

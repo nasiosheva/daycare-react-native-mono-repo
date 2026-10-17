@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppText, BackButton, Banner, BottomSheet, Button, Chip, ChipGroup, EmptyState, ErrorState, FloatingActionButton, NavigationCard, ShimmerList, TabBar, TextField, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
+import { notify } from "@/notify/notify";
 import { AppScreen } from "@/navigation/AppScreen";
 import type { Classroom } from "@daycare/api-client";
 import { hasLegacyLearningAccess, hasOfferingCapability, useUiAccessContext } from "@/education/useUiAccessContext";
@@ -44,7 +45,7 @@ export default function ClassroomsScreen() {
   if (!membership || !["STAFF_ADMIN", "STAFF"].includes(membership.role)) return <Redirect href="/home" />;
   if (!access.isLoading && !canAccessLegacyClasses) return <Redirect href="/academic" />;
 
-  const failure = (error: unknown) => Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"));
+  const failure = (error: unknown) => notify(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger");
   const editClassroom = (classroom: Classroom) => { setEditingClassroomId(classroom.id); setName(classroom.name); setBranchId(classroom.branchId); setLevelId(classroom.learningLevelId ?? undefined); setPeriodId(classroom.learningPeriodId ?? undefined); setCapacity(classroom.capacity?.toString() ?? ""); };
   const cancelEdit = () => { setEditingClassroomId(undefined); setName(""); setBranchId(undefined); setLevelId(undefined); setPeriodId(undefined); setCapacity(""); };
   const openCreate = () => { cancelEdit(); setVisible(true); };
@@ -53,10 +54,10 @@ export default function ClassroomsScreen() {
   const openLearningLevels = () => { close(); router.push("/learning-levels"); };
   const save = async () => {
     const trimmedCapacity = capacity.trim();
-    if (!name.trim()) return Alert.alert(t("learning.classroomRequired"));
-    if (!branchId) return Alert.alert(t("learning.selectBranch"));
-    if (!levelId) return Alert.alert(t(levels.data?.some((level) => level.active) ? "learning.selectLevel" : "learning.noActiveLevelsForClassroom"));
-    if (trimmedCapacity && (!/^\d+$/.test(trimmedCapacity) || !Number.isSafeInteger(Number(trimmedCapacity)) || Number(trimmedCapacity) <= 0)) return Alert.alert(t("learning.invalidCapacity"));
+    if (!name.trim()) return notify(t("learning.classroomRequired"), undefined, "warning");
+    if (!branchId) return notify(t("learning.selectBranch"), undefined, "warning");
+    if (!levelId) return notify(t(levels.data?.some((level) => level.active) ? "learning.selectLevel" : "learning.noActiveLevelsForClassroom"), undefined, "warning");
+    if (trimmedCapacity && (!/^\d+$/.test(trimmedCapacity) || !Number.isSafeInteger(Number(trimmedCapacity)) || Number(trimmedCapacity) <= 0)) return notify(t("learning.invalidCapacity"), undefined, "warning");
     const input = { name: name.trim(), learningLevelId: levelId, branchId, learningPeriodId: periodId, capacity: trimmedCapacity ? Number(trimmedCapacity) : undefined };
     try {
       if (editingClassroomId) await updateClassroom.mutateAsync({ id: editingClassroomId, input }); else await createClassroom.mutateAsync(input);
@@ -111,7 +112,7 @@ function ClassroomCard({ classroom, levelName, branchName, periodName, canManage
     try {
       await createProgram.mutateAsync({ name: programName.trim(), description: programDescription.trim() || undefined });
       closeProgramSheet();
-    } catch (error) { Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    } catch (error) { notify(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
   const closeStaffSheet = () => { setCardSheet(null); setStaffId(undefined); setRole("STAFF"); };
   const saveAssignment = async () => {
@@ -119,7 +120,7 @@ function ClassroomCard({ classroom, levelName, branchName, periodName, canManage
     try {
       await assign.mutateAsync({ userId: staffId, assignmentRole: role });
       closeStaffSheet();
-    } catch (error) { Alert.alert(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    } catch (error) { notify(t("learning.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
   return <View style={[styles.card, !classroom.active && styles.cardArchived]}><View style={styles.cardHeader}><View style={styles.cardTitle}><AppText variant="h6">{classroom.name}</AppText><AppText variant="bodySmall" tone="muted">{levelName ?? t("common.noData")}</AppText></View><View style={[styles.statusBadge, classroom.active ? isFull ? styles.statusBadgeFull : styles.statusBadgeActive : styles.statusBadgeArchived]}><AppText variant="caption" tone={classroom.active && isFull ? "danger" : "muted"}>{classroom.active ? isFull ? t("learning.classroomFull") : t("status.ACTIVE") : t("learning.archived")}</AppText></View></View>
     <View style={styles.metadata}><AppText variant="caption" tone="muted">{t("learning.branch")}: {branchName ?? t("common.noData")}</AppText><AppText variant="caption" tone="muted">{t("learning.period")}: {periodName ?? t("common.noData")}</AppText></View>

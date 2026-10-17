@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { FontAwesome, Ionicons } from "@expo/vector-icons";
-import { Alert, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { appBrandName, AppText, Button, colors, PasswordInput, Screen, spacing, TextField } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
+import { notify } from "@/notify/notify";
 import { capitalizeWords } from "@/text/capitalizeWords";
 
 export default function SignUpScreen() {
@@ -16,12 +17,12 @@ export default function SignUpScreen() {
     try {
       setLoading(true);
       const { usernameWarning } = await signUpWithEmail(email.trim(), password, displayName.trim(), username.trim() || undefined);
-      if (usernameWarning) Alert.alert(t("auth.usernameSaveFailed"), usernameWarning);
+      if (usernameWarning) notify(t("auth.usernameSaveFailed"), usernameWarning, "warning");
       router.replace("/");
-    } catch (error) { Alert.alert(t("auth.signUpFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    } catch (error) { notify(t("auth.signUpFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
     finally { setLoading(false); }
   };
-  const submitGoogle = async () => { try { setLoading(true); const result = await signInWithGoogle(); if (result.needsRegistration) { if (result.email) setEmail(result.email); return; } await signOut(); Alert.alert(t("auth.googleFailed"), t("auth.useEmail")); router.replace("/sign-in"); } catch (error) { Alert.alert(t("auth.googleFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); } finally { setLoading(false); } };
+  const submitGoogle = async () => { try { setLoading(true); const result = await signInWithGoogle(); if (result.needsRegistration) { if (result.email) setEmail(result.email); return; } await signOut(); notify(t("auth.googleFailed"), t("auth.useEmail"), "danger"); router.replace("/sign-in"); } catch (error) { notify(t("auth.googleFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); } finally { setLoading(false); } };
   return <Screen><View style={styles.content}>
     <AppText variant="title">{appBrandName}</AppText><AppText tone="muted">{t("auth.signUpSubtitle")}</AppText>
     <TextField label={t("profile.name")} required leadingIcon="person-outline" autoCapitalize="words" autoComplete="name" value={displayName} onChangeText={(value) => setDisplayName(capitalizeWords(value))} />

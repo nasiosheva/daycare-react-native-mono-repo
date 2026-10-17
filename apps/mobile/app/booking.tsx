@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { AppText, Badge, Banner, BottomSheet, Button, Card, Chip, ChipGroup, EmptyState, ErrorState, MenuItem, NavigationCard, SectionHeader, ShimmerList, colors, radius, spacing } from "@daycare/ui";
@@ -15,6 +15,7 @@ import { bookingStatusKey, invoiceSourceKey, invoiceStatusKey, servicePlanTypeKe
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate, isIsoDate } from "@/date-picker/date";
 import { useAuth } from "@/auth/AuthProvider";
+import { notify } from "@/notify/notify";
 
 type ListSheet = "plan" | "remaining" | "invoices" | "history" | null;
 
@@ -66,16 +67,16 @@ function BookingScreenContent() {
   const submit = async () => {
     if (selectedChildRestricted) return;
     if (creditEntitlement) {
-      if (bookingDates.length === 0) return Alert.alert(t("booking.selectDate"), t("booking.selectDateDescription"));
-      try { await bookEntitlement.mutateAsync({ entitlementId: creditEntitlement.id, bookingDates, organizationId: selectedOrganizationId }); closeBookForm(); Alert.alert(t("booking.created"), t("booking.usingCredit")); }
-      catch (error) { Alert.alert(t("booking.createFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+      if (bookingDates.length === 0) return notify(t("booking.selectDate"), t("booking.selectDateDescription"), "warning");
+      try { await bookEntitlement.mutateAsync({ entitlementId: creditEntitlement.id, bookingDates, organizationId: selectedOrganizationId }); closeBookForm(); notify(t("booking.created"), t("booking.usingCredit"), "success"); }
+      catch (error) { notify(t("booking.createFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
       return;
     }
     if (!childId || !plan) return;
     const dates = plan.type === "MONTHLY" ? [] : bookingDates;
-    if (plan.type !== "MONTHLY" && dates.length === 0) return Alert.alert(t("booking.selectDate"), t("booking.selectDateDescription"));
-    try { await purchase.mutateAsync({ childId, planId: plan.id, bookingDates: dates, organizationId: selectedOrganizationId }); closeBookForm(); Alert.alert(t("booking.orderCreated"), t("booking.orderDescription")); }
-    catch (error) { Alert.alert(t("booking.orderFailed"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    if (plan.type !== "MONTHLY" && dates.length === 0) return notify(t("booking.selectDate"), t("booking.selectDateDescription"), "warning");
+    try { await purchase.mutateAsync({ childId, planId: plan.id, bookingDates: dates, organizationId: selectedOrganizationId }); closeBookForm(); notify(t("booking.orderCreated"), t("booking.orderDescription"), "success"); }
+    catch (error) { notify(t("booking.orderFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
   };
   return <AppScreen title={t("booking.title")}>
     <AppText tone="muted">{t("booking.subtitle")}</AppText>

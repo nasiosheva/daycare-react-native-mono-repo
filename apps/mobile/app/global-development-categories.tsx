@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, BottomSheet, EmptyState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, EmptyState, ErrorState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
@@ -49,7 +49,7 @@ export default function GlobalDevelopmentCategoriesScreen() {
   return <AppScreen showBottomNavigation={false} title={t("development.globalCategories")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton icon="add" accessibilityLabel={t("development.addCategory")} onPress={() => setAddVisible(true)}>{t("development.addCategory")}</FloatingActionButton>}>
     <AppText tone="muted">{t("development.globalCategoriesSubtitle")}</AppText>
     {categories.isFetching && <ShimmerList />}
-    {categories.isError && <AppText tone="danger">{t("home.tenantsError")}</AppText>}
+    {categories.isError && !categories.isFetching && <ErrorState compact title={t("common.loadFailed")} retryLabel={t("common.retry")} onRetry={() => void categories.refetch()} />}
     {!categories.isFetching && categories.data?.map((item) => <View key={item.id} style={styles.item}>
       <AppText variant="label">{item.name}</AppText>
       <AppText tone="muted">{item.active ? t("development.categoryActive") : t("development.categoryInactive")}</AppText>

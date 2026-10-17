@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Linking, StyleSheet, View } from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -38,7 +38,7 @@ export default function ParentChildProfileScreen() {
     const url = childProfile.data?.branch.googleMapsUrl;
     if (!url) return;
     try { await Linking.openURL(url); }
-    catch { Alert.alert(t("branch.mapsOpenFailed")); }
+    catch { notify(t("branch.mapsOpenFailed"), undefined, "danger"); }
   };
   const staffRole = (role: string) => role === "NURSE" ? t("children.nurse") : role === "MISS" ? t("children.miss") : t("children.staff");
   const statusLabel = (status: ChildProgramStatus) => t(status === "ACTIVE" ? "children.programStatus.ACTIVE" : status === "COMPLETED" ? "children.programStatus.COMPLETED" : "children.programStatus.DISCONTINUED");

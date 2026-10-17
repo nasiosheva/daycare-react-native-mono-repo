@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Linking, Pressable, StyleSheet, View } from "react-native";
+import { Linking, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,6 +7,7 @@ import { AppText, BackButton, Badge, Banner, Button, EmptyState, ErrorState, Inf
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
+import { notify } from "@/notify/notify";
 import { servicePlanTypeKey } from "@/i18n/translations";
 import { GenderPicker } from "@/children/GenderPicker";
 import { DatePicker } from "@/date-picker/DatePicker";
@@ -128,7 +129,7 @@ export default function ParentEnrollmentFormScreen() {
   };
   const openMaps = async (url: string) => {
     try { await Linking.openURL(url); }
-    catch { Alert.alert(t("branch.mapsOpenFailed")); }
+    catch { notify(t("branch.mapsOpenFailed"), undefined, "danger"); }
   };
 
   return <AppScreen

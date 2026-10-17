@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, Avatar, Badge, Button, EmptyState, FloatingActionButton, SearchField, ShimmerList, TabBar, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Avatar, Badge, Button, EmptyState, ErrorState, FloatingActionButton, SearchField, ShimmerList, TabBar, colors, radius, spacing } from "@daycare/ui";
 import { statusTone } from "@/ui/statusTone";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { tenantSubscriptionStatuses, type TenantSubscriptionStatus } from "@daycare/core";
@@ -48,7 +48,7 @@ export default function PlatformTenantsScreen() {
     <AppText variant="label">{t("tenant.institutionTypes")}</AppText>
     <TabBar accessibilityLabel={t("tenant.filterAll")} selected={institutionType ?? ""} onSelect={(key) => setInstitutionType(key || null)} items={[{ key: "", label: t("tenant.filterAll") }, ...(institutionTypes.data?.map((item) => ({ key: item.code, label: item.name })) ?? [])]} />
     {tenants.isFetching && <ShimmerList />}
-    {tenants.isError && <Button variant="secondary" onPress={() => tenants.refetch()}>{t("tenant.reload")}</Button>}
+    {tenants.isError && !tenants.isFetching && <ErrorState compact title={t("common.loadFailed")} retryLabel={t("tenant.reload")} onRetry={() => tenants.refetch()} />}
     {!tenants.isFetching && !tenants.isError && visibleTenants.length === 0 && <EmptyState compact title={t("common.noData")} />}
     {!tenants.isFetching && visibleTenants.map((tenant) => <View key={tenant.id} style={styles.card}>
       <View style={styles.tenantHeader}>

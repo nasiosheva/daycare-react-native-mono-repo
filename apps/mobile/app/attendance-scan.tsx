@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,6 +9,7 @@ import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
 import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAccess";
 import { useRecordAttendance } from "@/attendance/useAttendance";
 import { useI18n } from "@/i18n/I18nProvider";
+import { notify } from "@/notify/notify";
 
 type QrPayload = { child: { id: string; name: string }; token: string };
 
@@ -29,10 +30,11 @@ function AttendanceScanScreenContent() {
       const payload = JSON.parse(data) as QrPayload;
       if (!payload.child?.id || !payload.child.name || !payload.token) throw new Error(t("attendance.invalidQr"));
       await record.mutateAsync({ childId: payload.child.id, action: "CHECK_IN", method: "QR", qrToken: payload.token });
-      Alert.alert(t("attendance.success"), t("attendance.qrRecorded"), [{ text: t("common.ok"), onPress: () => router.back() }]);
+      notify(t("attendance.success"), t("attendance.qrRecorded"), "success");
+      router.back();
     } catch (error) {
       setScanned(false);
-      Alert.alert(t("attendance.invalidQr"), error instanceof Error ? error.message : t("attendance.rescan"));
+      notify(t("attendance.invalidQr"), error instanceof Error ? error.message : t("attendance.rescan"), "danger");
     }
   };
   const screenProps = { showBottomNavigation: false, title: t("attendance.scanTitle"), header: <BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} /> };

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { AppText, BackButton, Badge, Button, EmptyState, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Badge, Button, EmptyState, ErrorState, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import type { TenantSubscriptionStatus } from "@daycare/core";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -33,7 +33,7 @@ export default function TenantGraceRolloutScreen() {
     <AppText variant="title">{t("tenant.graceRolloutTitle")}</AppText>
     <AppText variant="body" tone="muted">{t("tenant.graceRolloutDescription")}</AppText>
     {preview.isLoading && <ShimmerList />}
-    {preview.isError && <Button variant="secondary" onPress={() => void preview.refetch()}>{t("tenant.reload")}</Button>}
+    {preview.isError && !preview.isLoading && <ErrorState compact title={t("common.loadFailed")} retryLabel={t("tenant.reload")} onRetry={() => void preview.refetch()} />}
     {data && <>
       <View style={styles.statusRow}>
         <Badge tone={data.graceLifecycleEnabled ? "success" : "warning"} label={t(data.graceLifecycleEnabled ? "tenant.graceRolloutEnabled" : "tenant.graceRolloutDisabled")} />

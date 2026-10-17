@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, Banner, BottomSheet, Button, Chip, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Banner, BottomSheet, Button, Chip, ErrorState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -71,7 +71,7 @@ export default function LearningLevelsScreen() {
   return <AppScreen showBottomNavigation={false} title={levelTitle} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton icon="add" accessibilityLabel={addLevelTitle} onPress={openCreate}>{addLevelTitle}</FloatingActionButton> : undefined}>
     {archiveError && <Banner tone="danger" title={archiveError} />}
     {levels.isFetching && <ShimmerList />}
-    {levels.isError && <View style={styles.feedback}><Banner tone="danger" title={t("learning.loadFailed")} /><Button variant="secondary" onPress={() => void levels.refetch()}>{t("common.retry")}</Button></View>}
+    {levels.isError && !levels.isFetching && <ErrorState compact title={t("learning.loadFailed")} retryLabel={t("common.retry")} onRetry={() => void levels.refetch()} />}
     {!levels.isFetching && levels.data?.map((level) => <View key={level.id} style={styles.card}>
       <AppText variant="label">{level.name}</AppText>
       <AppText tone="muted">{t("learning.ageMonths", { min: level.minAgeMonths ?? "–", max: level.maxAgeMonths ?? "–" })}</AppText>
@@ -88,7 +88,7 @@ export default function LearningLevelsScreen() {
       {formError && <Banner tone="danger" title={formError} />}
       <AppText variant="label">{t("learning.templates")}</AppText>
       {templates.isLoading && <ShimmerList variant="tile" />}
-      {templates.isError && <View style={styles.feedback}><Banner tone="danger" title={t("learning.loadFailed")} /><Button variant="secondary" onPress={() => void templates.refetch()}>{t("common.retry")}</Button></View>}
+      {templates.isError && !templates.isLoading && <ErrorState compact title={t("learning.loadFailed")} retryLabel={t("common.retry")} onRetry={() => void templates.refetch()} />}
       {!templates.isLoading && <View style={styles.options}>{templates.data?.map((template) => <Button key={template.code} variant="secondary" onPress={() => applyTemplate(template.name, template.minAgeMonths, template.maxAgeMonths)}>{template.name}</Button>)}</View>}
       <TextField label={t(hasAcademicOffering ? "learning.levelName" : "learning.legacyLevelName")} value={name} onChangeText={(value) => { setName(value); setFormError(null); }} />
       <TextField label={t("learning.minAge")} inputMode="numeric" value={minAge} onChangeText={(value) => { setMinAge(value); setFormError(null); }} />
@@ -96,7 +96,7 @@ export default function LearningLevelsScreen() {
       <TextField label={t("learning.order")} inputMode="numeric" value={displayOrder} onChangeText={(value) => { setDisplayOrder(value); setFormError(null); }} />
       {hasAcademicOffering && <><AppText variant="label">{t("academic.program")}</AppText>
         {programs.isLoading && <ShimmerList variant="tile" />}
-        {programs.isError && <View style={styles.feedback}><Banner tone="danger" title={t("learning.loadFailed")} /><Button variant="secondary" onPress={() => void programs.refetch()}>{t("common.retry")}</Button></View>}
+        {programs.isError && !programs.isLoading && <ErrorState compact title={t("learning.loadFailed")} retryLabel={t("common.retry")} onRetry={() => void programs.refetch()} />}
         {!programs.isLoading && <View style={styles.options}>{programs.data?.map((program) => <Chip key={program.id} label={program.source === "GLOBAL" ? `${program.name} · ${t("globalCurriculum.global")}` : program.name} selected={selectedPrograms.includes(program.id)} onPress={() => toggleProgram(program.id)} />)}</View>}
       </>}
     </BottomSheet>
@@ -128,7 +128,6 @@ function IconButton({ icon, tone = "secondary", onPress, accessibilityLabel, dis
 
 const styles = StyleSheet.create({
   card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTint },
-  feedback: { gap: spacing.sm },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, alignItems: "center" },
   iconButton: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },

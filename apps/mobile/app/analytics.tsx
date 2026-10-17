@@ -2,7 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, BackButton, EmptyState, ShimmerList, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, EmptyState, ErrorState, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
@@ -23,7 +23,7 @@ export default function AnalyticsScreen() {
     <View style={styles.section}>
       <AppText variant="heading">{t("analytics.occupancy")}</AppText>
       {occupancy.isFetching && <ShimmerList variant="row" />}
-      {occupancy.isError && <AppText tone="danger">{t("common.error")}</AppText>}
+      {occupancy.isError && !occupancy.isFetching && <ErrorState compact title={t("common.loadFailed")} retryLabel={t("common.retry")} onRetry={() => void occupancy.refetch()} />}
       {!occupancy.isFetching && occupancy.data?.map((branch) => <View key={branch.branchId} style={styles.row}>
         <AppText>{branch.branchName}</AppText>
         <AppText tone="muted">{branch.dailyCapacity != null ? t("analytics.occupancyWithCapacity", { count: branch.activeChildrenCount, capacity: branch.dailyCapacity }) : t("analytics.occupancyNoCapacity", { count: branch.activeChildrenCount })}</AppText>
@@ -34,7 +34,7 @@ export default function AnalyticsScreen() {
     <View style={styles.section}>
       <AppText variant="heading">{t("analytics.retention")}</AppText>
       {retention.isFetching && <ShimmerList variant="row" />}
-      {retention.isError && <AppText tone="danger">{t("common.error")}</AppText>}
+      {retention.isError && !retention.isFetching && <ErrorState compact title={t("common.loadFailed")} retryLabel={t("common.retry")} onRetry={() => void retention.refetch()} />}
       {!retention.isFetching && retention.data && <>
         <AppText tone="muted">{t("analytics.currentActiveParents", { count: retention.data.currentActiveParents })}</AppText>
         {retention.data.monthly.map((item) => <View key={item.month} style={styles.row}><AppText>{item.month}</AppText><AppText tone="muted">{t("analytics.deactivatedCount", { count: item.deactivatedCount })}</AppText></View>)}
@@ -44,7 +44,7 @@ export default function AnalyticsScreen() {
     <View style={styles.section}>
       <AppText variant="heading">{t("analytics.developmentTrend")}</AppText>
       {trend.isFetching && <ShimmerList variant="row" />}
-      {trend.isError && <AppText tone="danger">{t("common.error")}</AppText>}
+      {trend.isError && !trend.isFetching && <ErrorState compact title={t("common.loadFailed")} retryLabel={t("common.retry")} onRetry={() => void trend.refetch()} />}
       {!trend.isFetching && trend.data?.map((item) => <View key={item.month} style={styles.row}>
         <AppText>{item.month}</AppText>
         <AppText tone="muted">{item.goalCount === 0 ? t("analytics.noGoalsThatMonth") : item.averageYesPercent != null ? t("analytics.averageYesPercent", { percent: item.averageYesPercent, count: item.goalCount }) : t("analytics.noCheckInsThatMonth", { count: item.goalCount })}</AppText>
