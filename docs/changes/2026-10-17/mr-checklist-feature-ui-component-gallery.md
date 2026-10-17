@@ -8,7 +8,7 @@
 | --- | --- |
 | Branch sumber | `feature/ui-component-gallery` |
 | Target branch | `production` |
-| PR | Akan dibuat setelah checklist dan autentikasi GitHub siap |
+| PR | https://github.com/nasiosheva/daycare-react-native-mono-repo/pull/86 |
 | Tujuan | Pratinjau lengkap komponen visual bersama dan aturan pemeliharaan inventarisnya |
 | Tanggal checklist | 2026-10-17 |
 
@@ -38,7 +38,7 @@ Temuan terbuka/blocker: pemeriksaan visual browser oleh reviewer; CI PR belum be
 | Test frontend | PASS — `pnpm verify` | lint, typecheck, 340 tes Vitest lulus. |
 | Test UI | PASS — `pnpm --filter @daycare/app test:ui --silent` | 8 suite, 32 tes lulus. |
 | Test backend | PASS — `./apps/api/gradlew -p apps/api test --no-daemon` | BUILD SUCCESSFUL; task test up-to-date. |
-| CI head PR | PENDING | PR belum dibuat. |
+| CI head PR | IN_PROGRESS | Mobile unit tests sedang berjalan untuk head PR saat checklist diperbarui. |
 | Coverage galeri | 92.45% statements / 91.66% branches / 89.18% functions / 91.66% lines | Jest focused report untuk `ComponentDesignPreview.tsx`. |
 | DB/migration | N/A | Tidak ada perubahan persistence. |
 | Browser/device/live service | PARTIAL | Route lokal `http://localhost:8081/component-preview` HTTP 200; visual browser/device belum dicek karena tidak ada browser yang tersedia. |

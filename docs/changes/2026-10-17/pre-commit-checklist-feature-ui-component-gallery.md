@@ -10,7 +10,7 @@
 | Status kesiapan | `READY` |
 | Item wajib tertunda | 0 |
 | Temuan review terbuka | 0 |
-| Blocker | Tidak ada untuk commit lokal; browser visual QA dicatat sebagai follow-up reviewer PR; autentikasi GitHub CLI perlu dipulihkan sebelum PR dibuat |
+| Blocker | Tidak ada untuk commit lokal; browser visual QA dicatat sebagai follow-up reviewer PR; CI PR sedang berjalan |
 
 ## Status per area review
 
@@ -24,7 +24,7 @@
 | 6. Database dan API contract | `N/A` | Butir 6: tidak ada perubahan API, client contract, database, atau migrasi. |
 | 7. UI/UX dan accessibility | `DONE` | Butir 7: contoh komponen aktual, label/role aksesibilitas dan interaksi diuji; route lokal merespons HTTP 200. Browser visual manual tidak dilakukan karena Browser tidak tersedia pada sesi ini; follow-up ini dicatat untuk reviewer PR. |
 | 8. Performance dan reliability | `DONE` | Butir 8: daftar statis terbatas untuk galeri development-only; tidak ada request, subscription baru, timer, atau dependency runtime. PIN, BottomSheet, wizard, tab, chip, audio, switch, dan umpan balik diuji interaktif. |
-| 9. Verification dan release readiness | `DONE` | Butir 9: lint/typecheck/test penuh frontend dan test backend lulus; route lokal 200; `git diff --check` lulus. `run-logs/` sudah dikosongkan sebelum PR. Belum ada bukti CI atau screenshot browser/device. |
+| 9. Verification dan release readiness | `DONE` | Butir 9: lint/typecheck/test penuh frontend dan test backend lulus; route lokal 200; `git diff --check` lulus. `run-logs/` sudah dikosongkan sebelum PR. CI Mobile unit tests sedang berjalan; screenshot browser/device belum tersedia. |
 | 10. Keputusan akhir reviewer | `APPROVE` | Tidak ada temuan code correctness/security terbuka. Batas verifikasi visual dicantumkan secara eksplisit. |
 
 ## Temuan review dan perbaikannya
