@@ -3,7 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import type { ChildProgramTemplate, ChildProgramTemplateStepInput } from "@daycare/api-client";
-import { AppText, BackButton, Banner, BottomSheet, Button, EmptyState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Banner, BottomSheet, Button, EmptyState, ErrorState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -63,7 +63,7 @@ export default function ChildProgramTemplatesScreen() {
   return <AppScreen showBottomNavigation={false} title={t("children.programTemplates")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton icon="add" accessibilityLabel={t("children.addTemplate")} onPress={openCreate}>{t("children.addTemplate")}</FloatingActionButton>}>
     <AppText tone="muted">{t("children.programTemplatesSubtitle")}</AppText>
     {templates.isFetching && <ShimmerList variant="row" />}
-    {templates.isError && <View style={styles.errorState}><AppText tone="muted">{t("common.error")}</AppText><Button variant="secondary" onPress={() => void templates.refetch()}>{t("common.retry")}</Button></View>}
+    {templates.isError && !templates.isFetching && <ErrorState compact title={t("common.loadFailed")} retryLabel={t("common.retry")} onRetry={() => void templates.refetch()} />}
     {!templates.isFetching && templates.data?.map((template) => <View key={template.id} style={styles.item}>
       <View style={styles.itemContent}>
         <AppText variant="label">{template.name}</AppText>
@@ -100,7 +100,6 @@ const styles = StyleSheet.create({
   item: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   itemContent: { flex: 1, gap: spacing.xs },
   actions: { gap: spacing.xs, alignItems: "flex-end" },
-  errorState: { gap: spacing.sm, alignItems: "flex-start" },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   multiline: { minHeight: 80, paddingTop: spacing.sm, textAlignVertical: "top" },
   stepRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceTint },

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, Banner, BackButton, BottomSheet, Button, EmptyState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Banner, BackButton, BottomSheet, EmptyState, ErrorState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
@@ -67,7 +67,7 @@ export default function GlobalLearningLevelsScreen() {
   return <AppScreen showBottomNavigation={false} title={t("globalLearningLevels.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton icon="add" accessibilityLabel={t("globalLearningLevels.addLevel")} onPress={openCreate}>{t("globalLearningLevels.addLevel")}</FloatingActionButton>}>
     <AppText tone="muted">{t("globalLearningLevels.subtitle")}</AppText>
     {levels.isFetching && <ShimmerList />}
-    {levels.isError && !levels.isFetching && <View style={styles.feedback}><Banner tone="danger" title={t("learning.loadFailed")} /><Button variant="secondary" onPress={() => void levels.refetch()}>{t("common.retry")}</Button></View>}
+    {levels.isError && !levels.isFetching && <ErrorState compact title={t("learning.loadFailed")} retryLabel={t("common.retry")} onRetry={() => void levels.refetch()} />}
     {!levels.isFetching && levels.data?.map((level) => <View key={level.id} style={styles.card}>
       <AppText variant="label">{level.name}</AppText>
       <AppText tone="muted">{t("learning.ageMonths", { min: level.minAgeMonths ?? "–", max: level.maxAgeMonths ?? "–" })}</AppText>
@@ -122,7 +122,6 @@ function IconButton({ icon, tone = "secondary", onPress, accessibilityLabel, dis
 
 const styles = StyleSheet.create({
   card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTint },
-  feedback: { gap: spacing.sm },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   iconButton: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   iconButtonDanger: { borderColor: colors.danger },

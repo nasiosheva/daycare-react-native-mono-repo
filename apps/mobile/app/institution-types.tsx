@@ -3,7 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InstitutionTypeDefinition, InstitutionTypeDefinitionInput, InstitutionTypeParameters } from "@daycare/api-client";
-import { AppText, BackButton, Button, EmptyState, ShimmerList, TextField, ToggleSwitch, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Button, EmptyState, ErrorState, ShimmerList, TextField, ToggleSwitch, colors, radius, spacing } from "@daycare/ui";
 import { notify } from "@/notify/notify";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -129,7 +129,7 @@ export default function InstitutionTypesScreen() {
       : <Button onPress={openCreate}>{t("institutionCatalog.add")}</Button>}
 
     {institutionTypes.isFetching && <ShimmerList />}
-    {institutionTypes.isError && <Button variant="secondary" onPress={() => institutionTypes.refetch()}>{t("institutionCatalog.reload")}</Button>}
+    {institutionTypes.isError && !institutionTypes.isFetching && <ErrorState compact title={t("common.loadFailed")} retryLabel={t("institutionCatalog.reload")} onRetry={() => institutionTypes.refetch()} />}
     {!institutionTypes.isFetching && !institutionTypes.isError && institutionTypes.data?.length === 0 && <EmptyState compact title={t("institutionCatalog.empty")} />}
     {!institutionTypes.isFetching && institutionTypes.data?.map((type) => {
       const isSelected = selectedType?.code === type.code;

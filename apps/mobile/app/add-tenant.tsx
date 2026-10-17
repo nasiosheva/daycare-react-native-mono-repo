@@ -3,7 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppText, BackButton, Button, MultiStepFormWizard, PasswordInput, ShimmerList, TextField, colors, radius, spacing, type MultiStepFormWizardStep } from "@daycare/ui";
+import { AppText, BackButton, Button, ErrorState, MultiStepFormWizard, PasswordInput, ShimmerList, TextField, colors, radius, spacing, type MultiStepFormWizardStep } from "@daycare/ui";
 import { isApiNetworkError, type InstitutionTypeDefinition } from "@daycare/api-client";
 import { tenantSubscriptionPlans } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
@@ -143,10 +143,7 @@ export default function AddTenantScreen() {
           <AppText variant="label">{t("tenant.institutionTypes")}</AppText>
           <AppText variant="caption" tone="muted">{t("tenant.institutionTypesInfo")}</AppText>
           {institutionTypes.isLoading && <ShimmerList variant="tile" />}
-          {institutionTypes.isError && <View accessibilityRole="alert" style={styles.errorCard}>
-            <AppText tone="danger">{t("tenantCreation.catalogLoadFailed")}</AppText>
-            <Button variant="secondary" onPress={() => void institutionTypes.refetch()}>{t("common.retry")}</Button>
-          </View>}
+          {institutionTypes.isError && <ErrorState compact title={t("tenantCreation.catalogLoadFailed")} retryLabel={t("common.retry")} onRetry={() => void institutionTypes.refetch()} />}
           {!institutionTypes.isLoading && !institutionTypes.isError && <View style={styles.options}>
             {institutionTypes.data?.map((type) => <Button
               key={type.code}

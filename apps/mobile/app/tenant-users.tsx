@@ -2,7 +2,7 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
-import { AppText, Avatar, BackButton, Badge, Banner, BottomSheet, Button, Chip, FloatingActionButton, PasswordInput, ShimmerList, TextField, ToggleSwitch, colors, radius, spacing } from "@daycare/ui";
+import { AppText, Avatar, BackButton, Badge, Banner, BottomSheet, Button, Chip, ErrorState, FloatingActionButton, PasswordInput, ShimmerList, TextField, ToggleSwitch, colors, radius, spacing } from "@daycare/ui";
 import { statusTone } from "@/ui/statusTone";
 import { notify } from "@/notify/notify";
 import type { Role } from "@daycare/core";
@@ -145,7 +145,7 @@ export default function TenantUsersScreen() {
     <Button variant="secondary" onPress={openBranchFilter}>{t(filterBranchId ? "branchFilter.active" : "branchFilter.title")}</Button>
     <AppText variant="heading">{t("tenantUsers.accounts")}</AppText>
     {tenantUsers.isFetching && <ShimmerList variant="row" />}
-    {tenantUsers.isError && <View style={styles.feedback}><Banner tone="danger" title={t("common.error")} /><Button variant="secondary" onPress={() => tenantUsers.refetch()}>{t("common.retry")}</Button></View>}
+    {tenantUsers.isError && !tenantUsers.isFetching && <ErrorState compact title={t("common.loadFailed")} retryLabel={t("common.retry")} onRetry={() => tenantUsers.refetch()} />}
     {!tenantUsers.isFetching && tenantUsers.data?.map((item) => <View key={item.id} style={styles.user}>
       <View style={styles.userHeader}>
         <Avatar name={item.displayName ?? item.email ?? "?"} />
@@ -204,7 +204,6 @@ const styles = StyleSheet.create({
   grow: { flex: 1, gap: 2 },
   form: { gap: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface },
   input: { minHeight: 48, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface },
-  feedback: { gap: spacing.sm },
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   user: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
 });
