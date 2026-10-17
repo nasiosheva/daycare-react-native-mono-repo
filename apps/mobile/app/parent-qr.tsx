@@ -1,7 +1,7 @@
 import { useState } from "react";
 import QRCode from "react-native-qrcode-svg";
 import { StyleSheet, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { AppText, BottomSheet, EmptyState, ErrorState, MenuItem, Shimmer, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
@@ -28,6 +28,7 @@ export default function ParentQrScreen() {
 
 function ParentQrScreenContent() {
   const { childId } = useLocalSearchParams<{ childId?: string }>();
+  const router = useRouter();
   const { profile } = useAuth();
   const parentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT" && membership.active);
   const showsTenantLabel = parentMemberships.length > 1;
@@ -46,13 +47,21 @@ function ParentQrScreenContent() {
   const [selectedChildId, setSelectedChildId] = useState<string | null>(typeof childId === "string" ? childId : null);
   const selectedChild = visibleChildren.find((child) => child.id === selectedChildId) ?? null;
   const onlyChild = visibleChildren.length === 1 ? visibleChildren[0] : null;
+  const hasOperationalTenantChildren = children.data.some((child) => !child.tenantSubscriptionRestricted);
   return <AppScreen>
     <AppText variant="title">{t("qr.title")}</AppText>
     {!onlyChild && visibleChildren.length > 0 && <AppText tone="muted">{t("qr.chooseChild")}</AppText>}
     {(children.isFetching || entitlements.isFetching || offerings.isLoading) && <ShimmerList variant="tile" />}
     {!(children.isFetching || entitlements.isFetching || offerings.isLoading) && onlyChild && <View style={styles.single}><AppText variant="h5">{onlyChild.fullName}</AppText><ChildQr childId={onlyChild.id} name={onlyChild.fullName} organizationId={onlyChild.organizationId} /></View>}
     {!(children.isFetching || entitlements.isFetching || offerings.isLoading) && !onlyChild && visibleChildren.map((child) => <MenuItem key={child.id} icon="qr-code-outline" title={child.fullName} description={showsTenantLabel ? child.organizationName : t("qr.showQr", { name: child.fullName })} onPress={() => setSelectedChildId(child.id)} />)}
-    {!(children.isFetching || entitlements.isFetching || offerings.isLoading) && visibleChildren.length === 0 && <EmptyState icon="happy-outline" title={t("children.empty")} />}
+    {!(children.isFetching || entitlements.isFetching || offerings.isLoading) && visibleChildren.length === 0 && (children.data.length === 0
+      ? <EmptyState icon="happy-outline" title={t("children.empty")} />
+      : <EmptyState
+        icon="qr-code-outline"
+        title={t("qr.unavailable")}
+        description={t(hasOperationalTenantChildren ? "qr.entitlementRequired" : "qr.tenantUnavailable")}
+        action={hasOperationalTenantChildren ? { label: t("qr.openBooking"), onPress: () => router.push("/booking") } : undefined}
+      />)}
     {!onlyChild && <BottomSheet visible={Boolean(selectedChild)} onClose={() => setSelectedChildId(null)} closeAccessibilityLabel={t("common.close")} title={selectedChild?.fullName ?? t("qr.title")}>
       {selectedChild && <ChildQr childId={selectedChild.id} name={selectedChild.fullName} organizationId={selectedChild.organizationId} />}
     </BottomSheet>}

@@ -146,6 +146,7 @@ class BillingServiceCoverageTest {
     fun `create entitlement bookings reserves dates and selects approval status`() {
         val f = fixture()
         val today = LocalDate.now()
+        val key = UUID.randomUUID()
         val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-BOOK", totalAmount = BigDecimal("100"), branchId = f.child.branchId, childId = f.child.id)
         val entitlement = ServiceEntitlement(id = UUID.randomUUID(), organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, ownerUserId = f.parent.id, planId = f.planId, invoiceId = invoice.id, planName = "Harian", planType = ServicePlanType.DAILY, status = EntitlementStatus.ACTIVE, totalCredits = 2, bookingRequiresApproval = true, validUntil = today.plusDays(2))
         val booking = Booking(organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, entitlementId = entitlement.id, invoiceId = invoice.id, bookingDate = today, status = BookingStatus.PENDING_APPROVAL, planName = entitlement.planName)
@@ -155,11 +156,54 @@ class BillingServiceCoverageTest {
         `when`(f.capacity.requireAvailability(f.organizationId, f.child.branchId, f.planId, listOf(today), false)).thenReturn(ServicePlan(id = f.planId, organizationId = f.organizationId, name = "Harian", type = ServicePlanType.DAILY, price = BigDecimal("100"), creditCount = 1))
         `when`(f.bookings.save(any(Booking::class.java))).thenReturn(booking)
         `when`(f.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
-        val result = f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(today, today)))
+        `when`(f.billingIdempotency.payloadHash(entitlement.id.toString(), today.toString())).thenReturn("booking-payload")
+        `when`(f.billingIdempotency.replayResourceId(f.organizationId, f.parent.id, "PARENT_ENTITLEMENT_BOOKING", key, "booking-payload")).thenReturn(null)
+        val result = f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, key, CreateEntitlementBookingsRequest(listOf(today, today)))
         assertEquals(1, result.size)
         assertEquals(BookingStatus.PENDING_APPROVAL, result.single().status)
         assertEquals(1, entitlement.reservedCredits)
         verify(f.capacity).reserve(f.organizationId, f.child.branchId, f.planId, entitlement.id, listOf(today), mapOf(today to booking.id))
+        verify(f.billingIdempotency).record(f.organizationId, f.parent.id, "PARENT_ENTITLEMENT_BOOKING", key, "booking-payload", "BOOKING_BATCH", entitlement.id)
+    }
+
+    @Test
+    fun `parent booking retry with the same idempotency key replays the original bookings`() {
+        val f = fixture()
+        val today = LocalDate.now()
+        val key = UUID.randomUUID()
+        val entitlement = ServiceEntitlement(
+            id = UUID.randomUUID(), organizationId = f.organizationId, branchId = f.child.branchId,
+            childId = f.child.id, ownerUserId = f.parent.id, planId = f.planId, invoiceId = f.invoiceId,
+            planName = "Mingguan", planType = ServicePlanType.WEEKLY, status = EntitlementStatus.ACTIVE,
+            totalCredits = 3, validUntil = today.plusDays(6),
+        )
+        val booking = Booking(
+            id = UUID.randomUUID(), organizationId = f.organizationId, branchId = f.child.branchId,
+            childId = f.child.id, entitlementId = entitlement.id, invoiceId = f.invoiceId,
+            bookingDate = today, planName = entitlement.planName,
+        )
+        val invoice = Invoice(
+            id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id,
+            invoiceNumber = "INV-REPLAY", totalAmount = BigDecimal("100"), branchId = f.child.branchId,
+            childId = f.child.id,
+        )
+        `when`(f.entitlements.findById(entitlement.id)).thenReturn(Optional.of(entitlement))
+        `when`(f.childScopes.requireParentLinkedChild(f.parentScope, entitlement.childId, f.organizationId)).thenReturn(f.child)
+        `when`(f.billingIdempotency.payloadHash(entitlement.id.toString(), today.toString())).thenReturn("booking-payload")
+        `when`(f.billingIdempotency.replayResourceId(f.organizationId, f.parent.id, "PARENT_ENTITLEMENT_BOOKING", key, "booking-payload")).thenReturn(entitlement.id)
+        `when`(f.bookings.findAllByOrganizationIdAndEntitlementIdAndBookingDateInOrderByBookingDateAsc(f.organizationId, entitlement.id, listOf(today))).thenReturn(listOf(booking))
+        `when`(f.invoices.findById(invoice.id)).thenReturn(Optional.of(invoice))
+
+        val result = f.service.createBookingsFromEntitlement(
+            f.jwt,
+            f.organizationId,
+            entitlement.id,
+            key,
+            CreateEntitlementBookingsRequest(listOf(today)),
+        )
+
+        assertEquals(listOf(booking.id), result.map { it.id })
+        verify(f.bookings, never()).save(any(Booking::class.java))
     }
 
     @Test
@@ -181,7 +225,7 @@ class BillingServiceCoverageTest {
         }
 
         assertThrows(IllegalArgumentException::class.java) {
-            f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(today)))
+            f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, UUID.randomUUID(), CreateEntitlementBookingsRequest(listOf(today)))
         }
         verify(f.bookings, never()).save(any(Booking::class.java))
     }
@@ -682,10 +726,10 @@ class BillingServiceCoverageTest {
         `when`(f.entitlements.findById(entitlement.id)).thenReturn(Optional.of(entitlement))
         `when`(f.childScopes.requireParentLinkedChild(f.parentScope, entitlement.childId, f.organizationId)).thenReturn(f.child)
         `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), today)).thenReturn(emptyList())
-        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(today))) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, UUID.randomUUID(), CreateEntitlementBookingsRequest(listOf(today))) }
         entitlement.status = EntitlementStatus.ACTIVE
         entitlement.planType = ServicePlanType.MONTHLY
-        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(today))) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, UUID.randomUUID(), CreateEntitlementBookingsRequest(listOf(today))) }
 
         val invoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV", status = InvoiceStatus.PAID, branchId = f.child.branchId, childId = f.child.id)
         `when`(f.invoices.findById(f.invoiceId)).thenReturn(Optional.of(invoice))
@@ -827,13 +871,13 @@ class BillingServiceCoverageTest {
         `when`(f.entitlements.findById(entitlement.id)).thenReturn(Optional.of(entitlement))
         `when`(f.childScopes.requireParentLinkedChild(f.parentScope, entitlement.childId, f.organizationId)).thenReturn(f.child)
         `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), today)).thenReturn(emptyList())
-        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(emptyList())) }
-        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(today.minusDays(1)))) }
-        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(today.plusDays(3)))) }
-        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(today, today.plusDays(1)))) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, UUID.randomUUID(), CreateEntitlementBookingsRequest(emptyList())) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, UUID.randomUUID(), CreateEntitlementBookingsRequest(listOf(today.minusDays(1)))) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, UUID.randomUUID(), CreateEntitlementBookingsRequest(listOf(today.plusDays(3)))) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, UUID.randomUUID(), CreateEntitlementBookingsRequest(listOf(today, today.plusDays(1)))) }
         `when`(f.bookings.existsByOrganizationIdAndChildIdAndBookingDateAndStatusIn(f.organizationId, f.child.id, today, setOf(BookingStatus.PENDING_PAYMENT, BookingStatus.PENDING_APPROVAL, BookingStatus.CONFIRMED, BookingStatus.COMPLETED))).thenReturn(true)
         entitlement.reservedCredits = 0
-        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(today))) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, UUID.randomUUID(), CreateEntitlementBookingsRequest(listOf(today))) }
         val lockOrder = inOrder(f.children, f.bookings)
         lockOrder.verify(f.children, times(5)).findWithLockById(f.child.id)
         lockOrder.verify(f.bookings).existsByOrganizationIdAndChildIdAndBookingDateAndStatusIn(f.organizationId, f.child.id, today, setOf(BookingStatus.PENDING_PAYMENT, BookingStatus.PENDING_APPROVAL, BookingStatus.CONFIRMED, BookingStatus.COMPLETED))
@@ -1078,7 +1122,7 @@ class BillingServiceCoverageTest {
         val entitlement = ServiceEntitlement(id = UUID.randomUUID(), organizationId = f.organizationId, ownerUserId = UUID.randomUUID(), childId = f.child.id, planId = f.planId, invoiceId = f.invoiceId, planName = plan.name, planType = plan.type, totalCredits = 1, status = EntitlementStatus.ACTIVE, validUntil = LocalDate.now().plusDays(1))
         `when`(f.invoices.findAllByOrganizationIdAndStatusInAndDueDateBefore(f.organizationId, setOf(InvoiceStatus.PENDING, InvoiceStatus.PAYMENT_SUBMITTED), LocalDate.now())).thenReturn(emptyList())
         `when`(f.entitlements.findById(entitlement.id)).thenReturn(Optional.of(entitlement))
-        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, CreateEntitlementBookingsRequest(listOf(LocalDate.now()))) }
+        assertThrows(IllegalArgumentException::class.java) { f.service.createBookingsFromEntitlement(f.jwt, f.organizationId, entitlement.id, UUID.randomUUID(), CreateEntitlementBookingsRequest(listOf(LocalDate.now()))) }
 
         val pendingInvoice = Invoice(id = f.invoiceId, organizationId = f.organizationId, payerUserId = f.parent.id, invoiceNumber = "INV-PENDING", status = InvoiceStatus.PENDING, branchId = f.child.branchId, childId = f.child.id)
         val paidEntitlement = ServiceEntitlement(id = UUID.randomUUID(), organizationId = f.organizationId, branchId = f.child.branchId, childId = f.child.id, ownerUserId = f.parent.id, planId = f.planId, invoiceId = pendingInvoice.id, planName = plan.name, planType = ServicePlanType.DAILY, status = EntitlementStatus.PENDING_PAYMENT, totalCredits = 1, bookingRequiresApproval = false, validUntil = LocalDate.now().plusDays(1))

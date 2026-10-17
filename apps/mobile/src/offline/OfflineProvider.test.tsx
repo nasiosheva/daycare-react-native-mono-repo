@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   platformOS: "web",
   auth: {
     api: { createChildCareLog: vi.fn() },
-    profile: { id: "user-1", memberships: [{ organizationId: "tenant-1", role: "STAFF" }] } as { id: string; memberships: Array<{ organizationId: string; role: string }> } | null,
+    profile: { id: "user-1", memberships: [{ organizationId: "tenant-1", role: "STAFF" }] } as { id: string; memberships: { organizationId: string; role: string }[] } | null,
     organizationId: "tenant-1" as string | null,
   },
   queryClient: {
@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   },
   cacheSubscriber: undefined as ((event: unknown) => void) | undefined,
   networkSubscriber: undefined as ((online: boolean) => void) | undefined,
+  deviceStateListener: undefined as ((state: { type?: string; isConnected: boolean | null }) => void) | undefined,
   appStateListener: undefined as ((state: string) => void) | undefined,
   appStateRemove: vi.fn(),
   addWindowListener: vi.fn(),
@@ -40,9 +41,18 @@ vi.mock("react-native", () => ({
   }) },
 }));
 vi.mock("@/auth/AuthProvider", () => ({ useAuth: () => mocks.auth }));
+vi.mock("expo-network", () => ({
+  NetworkStateType: { NONE: "NONE", UNKNOWN: "UNKNOWN" },
+  getNetworkStateAsync: vi.fn().mockResolvedValue({ type: "WIFI", isConnected: true }),
+  addNetworkStateListener: (listener: (state: { type?: string; isConnected: boolean | null }) => void) => {
+    mocks.deviceStateListener = listener;
+    return { remove: () => { mocks.deviceStateListener = undefined; } };
+  },
+}));
 vi.mock("./networkSignal", () => ({
-  markNetworkOnline: vi.fn(),
-  subscribeNetworkSignal: (listener: (online: boolean) => void) => {
+  markApiAvailable: vi.fn(),
+  markApiUnavailable: vi.fn(),
+  subscribeApiReachability: (listener: (available: boolean) => void) => {
     mocks.networkSubscriber = listener;
     return () => { mocks.networkSubscriber = undefined; };
   },
@@ -109,6 +119,7 @@ describe("OfflineProvider", () => {
     mocks.platformOS = "web";
     mocks.cacheSubscriber = undefined;
     mocks.networkSubscriber = undefined;
+    mocks.deviceStateListener = undefined;
     mocks.appStateListener = undefined;
     mocks.queryClient.getQueryCache.mockImplementation(() => ({
       subscribe: (listener: (event: unknown) => void) => {
@@ -165,7 +176,7 @@ describe("OfflineProvider", () => {
     rendered.unmount();
   });
 
-  it("retains retryable failures offline and flushes them immediately when connectivity returns", async () => {
+  it("reports API unavailability without claiming the device is offline, then flushes after API recovery", async () => {
     mocks.auth.api.createChildCareLog.mockRejectedValueOnce(new ApiNetworkError()).mockResolvedValueOnce({ id: "log-2" });
     const rendered = renderOfflineProvider();
     await flushEffects();
@@ -173,7 +184,7 @@ describe("OfflineProvider", () => {
     let result: { synced: boolean } | undefined;
     await act(async () => { result = await offlineValue().enqueueChildCareLog("child-1", payload); });
     expect(result?.synced).toBe(false);
-    expect(offlineValue()).toMatchObject({ status: "OFFLINE", isOffline: true, pendingCount: 1 });
+    expect(offlineValue()).toMatchObject({ status: "API_UNAVAILABLE", isOffline: false, pendingCount: 1 });
 
     await act(async () => mocks.networkSubscriber?.(true));
     await flushEffects();
@@ -183,7 +194,62 @@ describe("OfflineProvider", () => {
     rendered.unmount();
   });
 
-  it("retries timed-out mutations and permits Staff Admin care-log capture", async () => {
+  it("does not submit the same queued mutation twice when recovery signals overlap", async () => {
+    const scope: OfflineScope = { userId: "user-1", organizationId: "tenant-1", role: "STAFF" };
+    const clientMutationId = "offline-mutation-1";
+    mocks.loadOutbox.mockResolvedValueOnce([{
+      id: clientMutationId,
+      kind: "CHILD_CARE_LOG_CREATE",
+      scope,
+      childId: "child-1",
+      payload: { ...payload, clientMutationId },
+      createdAt: "2026-10-17T00:00:00.000Z",
+      status: "READY_TO_SYNC",
+      attempts: 0,
+    }]);
+
+    let completeRequest!: (response: { id: string }) => void;
+    mocks.auth.api.createChildCareLog.mockImplementationOnce(() => new Promise((resolve) => {
+      completeRequest = resolve;
+    }));
+
+    const rendered = renderOfflineProvider();
+    await flushEffects();
+    expect(mocks.auth.api.createChildCareLog).toHaveBeenCalledOnce();
+    expect(mocks.auth.api.createChildCareLog).toHaveBeenCalledWith(
+      "child-1",
+      expect.objectContaining({ clientMutationId }),
+      "tenant-1",
+    );
+
+    await act(async () => {
+      mocks.networkSubscriber?.(true);
+      mocks.deviceStateListener?.({ type: "WIFI", isConnected: true });
+      mocks.appStateListener?.("active");
+      await Promise.resolve();
+    });
+
+    expect(mocks.auth.api.createChildCareLog).toHaveBeenCalledOnce();
+
+    await act(async () => completeRequest({ id: "log-1" }));
+    await flushEffects();
+
+    expect(mocks.auth.api.createChildCareLog).toHaveBeenCalledOnce();
+    expect(offlineValue()).toMatchObject({ status: "ONLINE", pendingCount: 0 });
+    rendered.unmount();
+  });
+
+  it("reports offline only when the device connectivity provider confirms disconnection", async () => {
+    const rendered = renderOfflineProvider();
+    await flushEffects();
+
+    await act(async () => mocks.deviceStateListener?.({ type: "NONE", isConnected: false }));
+
+    expect(offlineValue()).toMatchObject({ status: "OFFLINE", isOffline: true });
+    rendered.unmount();
+  });
+
+  it("keeps API timeouts distinct from device disconnection and permits Staff Admin care-log capture", async () => {
     staffScope("STAFF_ADMIN");
     mocks.auth.api.createChildCareLog.mockRejectedValueOnce(new ApiTimeoutError()).mockResolvedValueOnce({ id: "log-3" });
     const rendered = renderOfflineProvider();
@@ -193,7 +259,7 @@ describe("OfflineProvider", () => {
       const result = await offlineValue().enqueueChildCareLog("child-3", payload);
       expect(result.synced).toBe(false);
     });
-    expect(offlineValue()).toMatchObject({ status: "OFFLINE", pendingCount: 1 });
+    expect(offlineValue()).toMatchObject({ status: "API_UNAVAILABLE", isOffline: false, pendingCount: 1 });
 
     await act(async () => mocks.networkSubscriber?.(true));
     await flushEffects();
@@ -265,19 +331,18 @@ describe("OfflineProvider", () => {
     rendered.unmount();
   });
 
-  it("subscribes to browser/app state and removes listeners on unmount", async () => {
+  it("subscribes to API reachability, device connectivity, and app state", async () => {
     const rendered = renderOfflineProvider();
     await flushEffects();
-    expect(mocks.addWindowListener).toHaveBeenCalledWith("online", expect.any(Function));
-    expect(mocks.addWindowListener).toHaveBeenCalledWith("offline", expect.any(Function));
+    expect(mocks.networkSubscriber).toBeTypeOf("function");
+    expect(mocks.deviceStateListener).toBeTypeOf("function");
     expect(mocks.appStateListener).toBeTypeOf("function");
 
     rendered.unmount();
 
-    expect(mocks.removeWindowListener).toHaveBeenCalledWith("online", expect.any(Function));
-    expect(mocks.removeWindowListener).toHaveBeenCalledWith("offline", expect.any(Function));
     expect(mocks.appStateRemove).toHaveBeenCalledOnce();
     expect(mocks.networkSubscriber).toBeUndefined();
+    expect(mocks.deviceStateListener).toBeUndefined();
   });
 
   it("keeps an unscoped user online and skips native background sync without pending work", async () => {

@@ -48,6 +48,8 @@ import com.daycare.api.domain.ScreeningAnswerCode
 import com.daycare.api.domain.ScreeningSeedManifestStatus
 import com.daycare.api.domain.ScreeningTemplateStatus
 import com.daycare.api.domain.PickupAuthorizationStatus
+import com.daycare.api.domain.PickupExceptionStatus
+import com.daycare.api.domain.PickupExceptionVerificationMethod
 import com.daycare.api.domain.PickupVerificationMethod
 import com.daycare.api.domain.ConsentPurpose
 import com.daycare.api.domain.ConsentStatus
@@ -831,6 +833,7 @@ class AttendanceRecord(
     @Column(name = "check_in_method") var checkInMethod: String? = null,
     @Column(name = "check_out_method") var checkOutMethod: String? = null,
     @Column(name = "pickup_authorization_id") var pickupAuthorizationId: UUID? = null,
+    @Column(name = "pickup_exception_request_id") var pickupExceptionRequestId: UUID? = null,
     @Column(name = "pickup_person_name", length = 160) var pickupPersonName: String? = null,
     @Column(name = "pickup_verification_method", length = 40) var pickupVerificationMethod: String? = null,
     @Column(name = "checkout_verified_by_user_id") var checkoutVerifiedByUserId: UUID? = null,
@@ -859,6 +862,28 @@ class PickupAuthorization(
     @Column(name = "revoked_at") var revokedAt: Instant? = null,
     @Column(name = "revocation_reason", length = 500) var revocationReason: String? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity @Table(name = "pickup_exception_requests")
+class PickupExceptionRequest(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "organization_id", nullable = false) var organizationId: UUID = UUID.randomUUID(),
+    @Column(name = "branch_id", nullable = false) var branchId: UUID = UUID.randomUUID(),
+    @Column(name = "child_id", nullable = false) var childId: UUID = UUID.randomUUID(),
+    @Column(name = "requested_by_user_id", nullable = false) var requestedByUserId: UUID = UUID.randomUUID(),
+    @Column(name = "pickup_person_name", nullable = false, length = 160) var pickupPersonName: String = "",
+    @Column(nullable = false, length = 100) var relationship: String = "",
+    @Column(nullable = false, length = 500) var reason: String = "",
+    @Column(name = "requested_at", nullable = false) var requestedAt: Instant = Instant.now(),
+    @Column(name = "request_expires_at", nullable = false) var requestExpiresAt: Instant = Instant.now(),
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 32) var status: PickupExceptionStatus = PickupExceptionStatus.PENDING,
+    @Column(name = "reviewed_by_user_id") var reviewedByUserId: UUID? = null,
+    @Column(name = "reviewed_at") var reviewedAt: Instant? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "verification_method", length = 48) var verificationMethod: PickupExceptionVerificationMethod? = null,
+    @Column(name = "verification_note", length = 500) var verificationNote: String? = null,
+    @Column(name = "approval_expires_at") var approvalExpiresAt: Instant? = null,
+    @Column(name = "rejection_reason", length = 500) var rejectionReason: String? = null,
+    @Column(name = "consumed_at") var consumedAt: Instant? = null,
 )
 
 @Entity @Table(name = "emergency_contacts")

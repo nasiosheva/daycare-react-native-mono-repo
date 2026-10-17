@@ -267,13 +267,39 @@ class AttendanceServiceTest {
         `when`(fixtures.branches.findById(child.branchId)).thenReturn(Optional.of(fixtures.branch))
         `when`(fixtures.publishedOfferings.hasPublishedCapability(fixtures.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)).thenReturn(true)
         `when`(fixtures.attendance.findByChildIdAndOperationalDate(child.id, today)).thenReturn(checkedIn)
-        `when`(fixtures.pickupAuthorizations.verifyCheckout(staffScope, child, authorizationId, "exception")).thenReturn(PickupCheckoutVerification(authorizationId, "Ayah", PickupVerificationMethod.PHOTO_ID, "exception"))
+        `when`(fixtures.pickupAuthorizations.verifyCheckout(staffScope, child, authorizationId)).thenReturn(PickupCheckoutVerification(authorizationId, "Ayah", PickupVerificationMethod.PHOTO_ID, null))
         `when`(fixtures.attendance.save(any(AttendanceRecord::class.java))).thenAnswer { it.arguments[0] }
 
-        val response = fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_OUT, AttendanceMethod.MANUAL, "out", pickupAuthorizationId = authorizationId, pickupExceptionReason = "exception", at = checkedOutAt))
+        val response = fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_OUT, AttendanceMethod.MANUAL, "out", pickupAuthorizationId = authorizationId, at = checkedOutAt))
 
         assertEquals(checkedOutAt, response.checkedOutAt)
-        verify(fixtures.pickupAuthorizations).verifyCheckout(staffScope, child, authorizationId, "exception")
+        verify(fixtures.pickupAuthorizations).verifyCheckout(staffScope, child, authorizationId)
+    }
+
+    @Test
+    fun `staff checkout consumes an approved one time pickup exception and records its audit reference`() {
+        val fixtures = Fixtures()
+        val staffScope = AccessScope(UserProfile(), Membership(organizationId = fixtures.organizationId, role = Role.STAFF), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        val child = Child(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, firstName = "Alya")
+        val today = LocalDate.now(ZoneId.of(fixtures.branch.timezone))
+        val checkedIn = AttendanceRecord(organizationId = fixtures.organizationId, branchId = fixtures.branch.id, childId = child.id, operationalDate = today, checkedInAt = Instant.now().minusSeconds(600))
+        val requestId = UUID.randomUUID()
+        val grant = PickupExceptionCheckoutGrant(requestId, "Bibi Ani", PickupVerificationMethod.OTHER, "Wali menghubungi lembaga")
+        `when`(fixtures.access.require(fixtures.jwt, fixtures.organizationId, setOf(Role.STAFF), allowGraceForRoles = setOf(Role.STAFF))).thenReturn(staffScope)
+        `when`(fixtures.childScopes.requireStaffManagedChild(staffScope, child.id, fixtures.organizationId)).thenReturn(child)
+        `when`(fixtures.branches.findById(child.branchId)).thenReturn(Optional.of(fixtures.branch))
+        `when`(fixtures.publishedOfferings.hasPublishedCapability(fixtures.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)).thenReturn(true)
+        `when`(fixtures.attendance.findByChildIdAndOperationalDate(child.id, today)).thenReturn(checkedIn)
+        `when`(fixtures.pickupExceptions.consumeCheckoutGrant(staffScope, child, requestId)).thenReturn(grant)
+        `when`(fixtures.attendance.save(any(AttendanceRecord::class.java))).thenAnswer { it.arguments[0] }
+
+        val result = fixtures.service.record(fixtures.jwt, fixtures.organizationId, child.id, AttendanceCommand(AttendanceAction.CHECK_OUT, AttendanceMethod.MANUAL, "out-exception", pickupExceptionRequestId = requestId))
+
+        assertEquals(requestId, result.pickupExceptionRequestId)
+        assertEquals(requestId, checkedIn.pickupExceptionRequestId)
+        assertEquals("Bibi Ani", checkedIn.pickupPersonName)
+        assertEquals("Wali menghubungi lembaga", checkedIn.checkoutExceptionReason)
+        verify(fixtures.pickupExceptions).consumeCheckoutGrant(staffScope, child, requestId)
     }
 
     @Test
@@ -479,6 +505,12 @@ class AttendanceServiceTest {
         val today = LocalDate.now(ZoneId.of(f.branch.timezone))
         val parentScope = AccessScope(UserProfile(), Membership(organizationId = f.organizationId, role = Role.PARENT), emptySet(), emptySet())
         assertEquals(null, invokePrivate(f.service, "attendanceContext", parentScope, child, f.branch.timezone, today, null))
+        val staffAdminScope = AccessScope(UserProfile(), Membership(organizationId = f.organizationId, role = Role.STAFF_ADMIN), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
+        `when`(f.publishedOfferings.hasPublishedCapability(f.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)).thenReturn(true)
+        `when`(f.bookingEligibility.checkInEligibility(f.organizationId, child.id, today)).thenReturn(BookingEligibility(true))
+        val staffAdminContext = invokePrivate(f.service, "attendanceContext", staffAdminScope, child, f.branch.timezone, today, null) as AttendanceContext
+        assertEquals(AttendancePolicy.DAYCARE_BOOKING_REQUIRED, staffAdminContext.attendancePolicy)
+        assertEquals(emptySet<AttendanceAction>(), staffAdminContext.allowedActions)
         val staffScope = AccessScope(UserProfile(), Membership(organizationId = f.organizationId, role = Role.STAFF), emptySet(), setOf(InstitutionCapability.DAYCARE_OPERATIONS))
         `when`(f.publishedOfferings.hasPublishedCapability(f.organizationId, InstitutionCapability.DAYCARE_OPERATIONS, child.branchId)).thenReturn(false)
         val unavailable = invokePrivate(f.service, "attendanceContext", staffScope, child, f.branch.timezone, today, null) as AttendanceContext
@@ -487,6 +519,8 @@ class AttendanceServiceTest {
         val closed = AttendanceRecord(organizationId = f.organizationId, childId = child.id, branchId = child.branchId, operationalDate = today, checkedInAt = Instant.now(), checkedOutAt = Instant.now())
         assertEquals(emptySet<AttendanceAction>(), (invokePrivate(f.service, "attendanceContext", staffScope, child, f.branch.timezone, today, closed) as AttendanceContext).allowedActions)
         val open = AttendanceRecord(organizationId = f.organizationId, childId = child.id, branchId = child.branchId, operationalDate = today, checkedInAt = Instant.now())
+        val staffAdminOpenContext = invokePrivate(f.service, "attendanceContext", staffAdminScope, child, f.branch.timezone, today, open) as AttendanceContext
+        assertEquals(emptySet<AttendanceAction>(), staffAdminOpenContext.allowedActions)
         assertEquals(setOf(AttendanceAction.CHECK_OUT), (invokePrivate(f.service, "attendanceContext", staffScope, child, f.branch.timezone, today, open) as AttendanceContext).allowedActions)
         `when`(f.bookingEligibility.checkInEligibility(f.organizationId, child.id, today)).thenReturn(BookingEligibility(true))
         assertEquals(setOf(AttendanceAction.CHECK_IN), (invokePrivate(f.service, "attendanceContext", staffScope, child, f.branch.timezone, today, null) as AttendanceContext).allowedActions)
@@ -526,6 +560,7 @@ class AttendanceServiceTest {
         val qr: AttendanceQrService = mock(AttendanceQrService::class.java)
         val bookingEligibility: BookingEligibilityService = mock(BookingEligibilityService::class.java)
         val pickupAuthorizations: PickupAuthorizationService = mock(PickupAuthorizationService::class.java)
+        val pickupExceptions: PickupExceptionService = mock(PickupExceptionService::class.java)
         val publishedOfferings: PublishedOfferingCapabilityService = mock(PublishedOfferingCapabilityService::class.java)
         val notifications: NotificationService = mock(NotificationService::class.java)
         val branch = Branch(organizationId = organizationId)
@@ -546,6 +581,7 @@ class AttendanceServiceTest {
             notifications,
             bookingEligibility,
             pickupAuthorizations,
+            pickupExceptions,
             publishedOfferings,
         )
     }

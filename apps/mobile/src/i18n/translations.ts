@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import type { BookingStatus, GoalDomain, InvoiceStatus, Role, ServicePlanType, TenantPaymentStatus, TenantSubscriptionPlan, TenantSubscriptionStatus } from "@daycare/core";
 import type { TenantReadinessIssue } from "@daycare/api-client";
 
@@ -35,6 +36,61 @@ const tenantSubscriptionAuditTranslations = {
   pt: { "tenant.noAudit": "Ainda não há histórico da assinatura.", "tenant.commercialReason": "Motivo da alteração do plano ou preço (obrigatório)", "tenant.graceEndsAt": "O período de tolerância termina em: {date}" },
   es: { "tenant.noAudit": "Aún no hay historial de suscripción.", "tenant.commercialReason": "Motivo del cambio de plan o precio (obligatorio)", "tenant.graceEndsAt": "El período de gracia termina: {date}" },
   ru: { "tenant.noAudit": "История подписки пока отсутствует.", "tenant.commercialReason": "Причина изменения тарифа или цены (обязательно)", "tenant.graceEndsAt": "Льготный период заканчивается: {date}" },
+} as const;
+
+const qrEligibilityTranslations = {
+  id: {
+    "qr.unavailable": "QR belum tersedia",
+    "qr.entitlementRequired": "Anak belum memiliki paket layanan Daycare yang aktif. QR tersedia setelah entitlement layanan aktif.",
+    "qr.tenantUnavailable": "Langganan lembaga belum aktif untuk layanan Daycare. Hubungi Staff Admin lembaga.",
+    "qr.openBooking": "Lihat paket layanan",
+  },
+  en: {
+    "qr.unavailable": "QR not available yet",
+    "qr.entitlementRequired": "This child does not have an active Daycare service package. QR becomes available when the service entitlement is active.",
+    "qr.tenantUnavailable": "The institution subscription is not active for Daycare services. Contact the institution's Staff Admin.",
+    "qr.openBooking": "View service packages",
+  },
+  zh: {
+    "qr.unavailable": "二维码暂不可用",
+    "qr.entitlementRequired": "该儿童尚无有效的日托服务套餐。服务权益生效后即可使用二维码。",
+    "qr.tenantUnavailable": "机构的日托服务订阅尚未生效。请联系机构 Staff Admin。",
+    "qr.openBooking": "查看服务套餐",
+  },
+  fr: {
+    "qr.unavailable": "QR indisponible pour le moment",
+    "qr.entitlementRequired": "Cet enfant ne dispose pas d'un forfait de garde actif. Le QR sera disponible lorsque le droit au service sera actif.",
+    "qr.tenantUnavailable": "L'abonnement de l'établissement n'est pas actif pour la garde. Contactez le Staff Admin de l'établissement.",
+    "qr.openBooking": "Voir les forfaits",
+  },
+  pt: {
+    "qr.unavailable": "QR indisponível no momento",
+    "qr.entitlementRequired": "Esta criança não tem um pacote de creche ativo. O QR ficará disponível quando o direito ao serviço estiver ativo.",
+    "qr.tenantUnavailable": "A assinatura da instituição não está ativa para serviços de creche. Fale com o Staff Admin da instituição.",
+    "qr.openBooking": "Ver pacotes de serviços",
+  },
+  es: {
+    "qr.unavailable": "QR no disponible todavía",
+    "qr.entitlementRequired": "Este niño no tiene un paquete activo de guardería. El QR estará disponible cuando el derecho al servicio esté activo.",
+    "qr.tenantUnavailable": "La suscripción de la institución no está activa para los servicios de guardería. Contacta con el Staff Admin de la institución.",
+    "qr.openBooking": "Ver paquetes de servicios",
+  },
+  ru: {
+    "qr.unavailable": "QR-код пока недоступен",
+    "qr.entitlementRequired": "Для этого ребёнка нет активного пакета услуг дневного ухода. QR-код станет доступен после активации права на услугу.",
+    "qr.tenantUnavailable": "Подписка учреждения на услуги дневного ухода не активна. Обратитесь к Staff Admin учреждения.",
+    "qr.openBooking": "Посмотреть пакеты услуг",
+  },
+} as const;
+
+const bookingEligibilityTranslations = {
+  id: { "booking.noDaycareChildren": "Belum ada anak tertaut pada lembaga yang menyediakan layanan Daycare." },
+  en: { "booking.noDaycareChildren": "No linked children belong to an institution that offers Daycare services." },
+  zh: { "booking.noDaycareChildren": "目前没有已关联的儿童属于提供日托服务的机构。" },
+  fr: { "booking.noDaycareChildren": "Aucun enfant lié ne dépend d’un établissement proposant des services de garde." },
+  pt: { "booking.noDaycareChildren": "Não há crianças vinculadas a uma instituição que ofereça serviços de creche." },
+  es: { "booking.noDaycareChildren": "Ningún niño vinculado pertenece a una institución que ofrezca servicios de guardería." },
+  ru: { "booking.noDaycareChildren": "Нет связанных детей в учреждении, предоставляющем услуги дневного ухода." },
 } as const;
 
 const tenantListPaginationTranslations = {
@@ -1936,6 +1992,9 @@ const offlineTranslations = {
   id: {
     "offline.onlineTitle": "Tersambung",
     "offline.offlineTitle": "Mode offline",
+    "offline.apiUnavailableTitle": "Server tidak terjangkau",
+    "offline.apiUnavailableDescription": "Koneksi perangkat tersedia, tetapi server aplikasi tidak dapat dijangkau.",
+    "offline.pendingDrafts": "{count} draf menunggu dikirim.",
     "offline.syncingTitle": "Menyinkronkan",
     "offline.conflictTitle": "Konflik data",
     "offline.staleTitle": "Draf belum terkirim",
@@ -1950,6 +2009,9 @@ const offlineTranslations = {
   en: {
     "offline.onlineTitle": "Online",
     "offline.offlineTitle": "Offline mode",
+    "offline.apiUnavailableTitle": "Server unavailable",
+    "offline.apiUnavailableDescription": "Your device is connected, but the app server cannot be reached.",
+    "offline.pendingDrafts": "{count} draft(s) waiting to be sent.",
     "offline.syncingTitle": "Syncing",
     "offline.conflictTitle": "Data conflict",
     "offline.staleTitle": "Draft not sent",
@@ -1964,6 +2026,9 @@ const offlineTranslations = {
   zh: {
     "offline.onlineTitle": "在线",
     "offline.offlineTitle": "离线模式",
+    "offline.apiUnavailableTitle": "无法连接服务器",
+    "offline.apiUnavailableDescription": "设备已连接网络，但无法连接应用服务器。",
+    "offline.pendingDrafts": "有 {count} 份草稿等待发送。",
     "offline.syncingTitle": "正在同步",
     "offline.conflictTitle": "数据冲突",
     "offline.staleTitle": "草稿未发送",
@@ -1978,6 +2043,9 @@ const offlineTranslations = {
   fr: {
     "offline.onlineTitle": "En ligne",
     "offline.offlineTitle": "Mode hors ligne",
+    "offline.apiUnavailableTitle": "Serveur inaccessible",
+    "offline.apiUnavailableDescription": "Votre appareil est connecté, mais le serveur de l’application est inaccessible.",
+    "offline.pendingDrafts": "{count} brouillon(s) en attente d’envoi.",
     "offline.syncingTitle": "Synchronisation en cours",
     "offline.conflictTitle": "Conflit de données",
     "offline.staleTitle": "Brouillon non envoyé",
@@ -1992,6 +2060,9 @@ const offlineTranslations = {
   pt: {
     "offline.onlineTitle": "Online",
     "offline.offlineTitle": "Modo offline",
+    "offline.apiUnavailableTitle": "Servidor indisponível",
+    "offline.apiUnavailableDescription": "O dispositivo está conectado, mas não foi possível acessar o servidor do aplicativo.",
+    "offline.pendingDrafts": "{count} rascunho(s) aguardando envio.",
     "offline.syncingTitle": "A sincronizar",
     "offline.conflictTitle": "Conflito de dados",
     "offline.staleTitle": "Rascunho não enviado",
@@ -2006,6 +2077,9 @@ const offlineTranslations = {
   es: {
     "offline.onlineTitle": "En línea",
     "offline.offlineTitle": "Modo sin conexión",
+    "offline.apiUnavailableTitle": "Servidor no disponible",
+    "offline.apiUnavailableDescription": "El dispositivo tiene conexión, pero no se puede acceder al servidor de la aplicación.",
+    "offline.pendingDrafts": "{count} borrador(es) pendientes de envío.",
     "offline.syncingTitle": "Sincronizando",
     "offline.conflictTitle": "Conflicto de datos",
     "offline.staleTitle": "Borrador no enviado",
@@ -2020,6 +2094,9 @@ const offlineTranslations = {
   ru: {
     "offline.onlineTitle": "В сети",
     "offline.offlineTitle": "Офлайн-режим",
+    "offline.apiUnavailableTitle": "Сервер недоступен",
+    "offline.apiUnavailableDescription": "Устройство подключено к сети, но сервер приложения недоступен.",
+    "offline.pendingDrafts": "Черновиков ожидают отправки: {count}.",
     "offline.syncingTitle": "Синхронизация",
     "offline.conflictTitle": "Конфликт данных",
     "offline.staleTitle": "Черновик не отправлен",
@@ -2329,6 +2406,16 @@ const pickupActionTranslations = {
   en: { "pickup.activate": "Activate", "pickup.revoke": "Revoke authorization", "pickup.revokeReason": "Revocation reason (required)" },
   zh: { "pickup.activate": "启用", "pickup.revoke": "撤销授权", "pickup.revokeReason": "撤销原因（必填）" },
   fr: { "pickup.activate": "Activer", "pickup.revoke": "Révoquer l'autorisation", "pickup.revokeReason": "Motif de révocation (obligatoire)" },
+} as const;
+
+const pickupExceptionTranslations = {
+  id: { "pickupException.approvalsTitle": "Persetujuan check-out pengecualian", "pickupException.approvalsDescription": "Periksa instruksi wali sebelum menyetujui penjemputan satu kali.", "pickupException.noPending": "Tidak ada permintaan pengecualian yang menunggu.", "pickupException.review": "Tinjau permintaan", "pickupException.pickupPerson": "Penjemput: {name} · {relationship}", "pickupException.staffReason": "Alasan Staff: {reason}", "pickupException.requestedAt": "Diajukan: {date}", "pickupException.requestExpires": "Permintaan kedaluwarsa: {date}", "pickupException.verifyGuardianWarning": "Verifikasi wali terlebih dahulu", "pickupException.verifyGuardianDescription": "Setujui hanya setelah instruksi penjemputan dikonfirmasi melalui sumber wali yang sah.", "pickupException.verificationMethod": "Cara verifikasi wali", "pickupException.verificationNote": "Catatan verifikasi (wajib)", "pickupException.method.CALL_REGISTERED_GUARDIAN": "Telepon nomor wali terdaftar", "pickupException.method.VERIFIED_WRITTEN_INSTRUCTION": "Instruksi tertulis terverifikasi", "pickupException.method.IN_PERSON_GUARDIAN": "Dikonfirmasi langsung oleh wali", "pickupException.method.OTHER": "Cara lain", "pickupException.approveOnce": "Setujui sekali (5 menit)", "pickupException.reject": "Tolak permintaan", "pickupException.rejectionReason": "Alasan penolakan (wajib)", "pickupException.noAuthorization": "Tidak ada otorisasi penjemput aktif. Minta persetujuan Staff Admin sebelum check-out.", "pickupException.requestTitle": "Perlu persetujuan Staff Admin", "pickupException.requestDescription": "Isi identitas penjemput dan alasan. Staff Admin akan memverifikasi instruksi wali. Persetujuan hanya berlaku sekali selama 5 menit.", "pickupException.staffReasonLabel": "Alasan meminta pengecualian (wajib)", "pickupException.requestApproval": "Minta persetujuan satu kali", "pickupException.requestSent": "Permintaan dikirim", "pickupException.requestFailed": "Permintaan gagal", "pickupException.waitingApproval": "Menunggu persetujuan Staff Admin", "pickupException.pendingExpires": "Batas waktu permintaan: {date}", "pickupException.rejected": "Permintaan ditolak", "pickupException.rejectedHelp": "Hubungi Staff Admin untuk informasi lebih lanjut.", "pickupException.approvedGrant": "Disetujui sekali: {name}" },
+  en: { "pickupException.approvalsTitle": "Pickup exception approvals", "pickupException.approvalsDescription": "Verify the guardian's instruction before approving a one-time pickup.", "pickupException.noPending": "No pickup exception requests are waiting.", "pickupException.review": "Review request", "pickupException.pickupPerson": "Pickup person: {name} · {relationship}", "pickupException.staffReason": "Staff reason: {reason}", "pickupException.requestedAt": "Requested: {date}", "pickupException.requestExpires": "Request expires: {date}", "pickupException.verifyGuardianWarning": "Verify the guardian first", "pickupException.verifyGuardianDescription": "Approve only after confirming pickup instructions through a trusted guardian source.", "pickupException.verificationMethod": "How the guardian was verified", "pickupException.verificationNote": "Verification note (required)", "pickupException.method.CALL_REGISTERED_GUARDIAN": "Called registered guardian number", "pickupException.method.VERIFIED_WRITTEN_INSTRUCTION": "Verified written instruction", "pickupException.method.IN_PERSON_GUARDIAN": "Confirmed directly by guardian", "pickupException.method.OTHER": "Other method", "pickupException.approveOnce": "Approve once (5 minutes)", "pickupException.reject": "Reject request", "pickupException.rejectionReason": "Rejection reason (required)", "pickupException.noAuthorization": "No active pickup authorization. Ask a Staff Admin for approval before check-out.", "pickupException.requestTitle": "Staff Admin approval required", "pickupException.requestDescription": "Enter the pickup person's details and reason. A Staff Admin will verify the guardian's instruction. Approval is single-use and valid for 5 minutes.", "pickupException.staffReasonLabel": "Reason for exception request (required)", "pickupException.requestApproval": "Request one-time approval", "pickupException.requestSent": "Request sent", "pickupException.requestFailed": "Request failed", "pickupException.waitingApproval": "Waiting for Staff Admin approval", "pickupException.pendingExpires": "Request deadline: {date}", "pickupException.rejected": "Request rejected", "pickupException.rejectedHelp": "Contact the Staff Admin for more information.", "pickupException.approvedGrant": "Approved once: {name}" },
+  zh: { "pickupException.approvalsTitle": "接送例外审批", "pickupException.approvalsDescription": "批准一次性接送前，请先核实监护人的指示。", "pickupException.noPending": "没有待处理的接送例外申请。", "pickupException.review": "审核申请", "pickupException.pickupPerson": "接送人：{name} · {relationship}", "pickupException.staffReason": "员工说明：{reason}", "pickupException.requestedAt": "申请时间：{date}", "pickupException.requestExpires": "申请截止：{date}", "pickupException.verifyGuardianWarning": "请先核实监护人", "pickupException.verifyGuardianDescription": "仅在通过可信监护人渠道确认接送指示后批准。", "pickupException.verificationMethod": "监护人核实方式", "pickupException.verificationNote": "核实记录（必填）", "pickupException.method.CALL_REGISTERED_GUARDIAN": "致电登记的监护人号码", "pickupException.method.VERIFIED_WRITTEN_INSTRUCTION": "已核实书面指示", "pickupException.method.IN_PERSON_GUARDIAN": "监护人当面确认", "pickupException.method.OTHER": "其他方式", "pickupException.approveOnce": "批准一次（5分钟）", "pickupException.reject": "拒绝申请", "pickupException.rejectionReason": "拒绝原因（必填）", "pickupException.noAuthorization": "没有有效接送授权。请在签出前请求员工管理员批准。", "pickupException.requestTitle": "需要员工管理员批准", "pickupException.requestDescription": "填写接送人资料和原因。员工管理员将核实监护人指示。批准仅可使用一次，有效5分钟。", "pickupException.staffReasonLabel": "申请例外原因（必填）", "pickupException.requestApproval": "请求一次性批准", "pickupException.requestSent": "申请已发送", "pickupException.requestFailed": "申请失败", "pickupException.waitingApproval": "等待员工管理员批准", "pickupException.pendingExpires": "申请截止时间：{date}", "pickupException.rejected": "申请已拒绝", "pickupException.rejectedHelp": "请联系员工管理员了解详情。", "pickupException.approvedGrant": "已批准一次：{name}" },
+  fr: { "pickupException.approvalsTitle": "Approbations exceptionnelles de départ", "pickupException.approvalsDescription": "Vérifiez l'instruction du responsable avant d'approuver une récupération unique.", "pickupException.noPending": "Aucune demande exceptionnelle en attente.", "pickupException.review": "Examiner la demande", "pickupException.pickupPerson": "Personne autorisée : {name} · {relationship}", "pickupException.staffReason": "Motif du personnel : {reason}", "pickupException.requestedAt": "Demandé le : {date}", "pickupException.requestExpires": "Demande expirant le : {date}", "pickupException.verifyGuardianWarning": "Vérifiez d'abord le responsable", "pickupException.verifyGuardianDescription": "N'approuvez qu'après confirmation par une source fiable du responsable.", "pickupException.verificationMethod": "Méthode de vérification", "pickupException.verificationNote": "Note de vérification (obligatoire)", "pickupException.method.CALL_REGISTERED_GUARDIAN": "Appel au numéro enregistré", "pickupException.method.VERIFIED_WRITTEN_INSTRUCTION": "Instruction écrite vérifiée", "pickupException.method.IN_PERSON_GUARDIAN": "Confirmation en personne", "pickupException.method.OTHER": "Autre méthode", "pickupException.approveOnce": "Approuver une fois (5 minutes)", "pickupException.reject": "Refuser la demande", "pickupException.rejectionReason": "Motif du refus (obligatoire)", "pickupException.noAuthorization": "Aucune autorisation active. Demandez l'accord d'un administrateur avant le départ.", "pickupException.requestTitle": "Accord de l'administrateur requis", "pickupException.requestDescription": "Saisissez l'identité de la personne et le motif. L'administrateur vérifiera l'instruction du responsable. L'accord est unique et valable 5 minutes.", "pickupException.staffReasonLabel": "Motif de la demande (obligatoire)", "pickupException.requestApproval": "Demander une autorisation unique", "pickupException.requestSent": "Demande envoyée", "pickupException.requestFailed": "Échec de la demande", "pickupException.waitingApproval": "En attente de l'administrateur", "pickupException.pendingExpires": "Échéance : {date}", "pickupException.rejected": "Demande refusée", "pickupException.rejectedHelp": "Contactez l'administrateur pour plus d'informations.", "pickupException.approvedGrant": "Approuvé une fois : {name}" },
+  pt: { "pickupException.approvalsTitle": "Aprovações de exceção de retirada", "pickupException.approvalsDescription": "Confirme a instrução do responsável antes de aprovar uma retirada única.", "pickupException.noPending": "Não há solicitações pendentes.", "pickupException.review": "Revisar solicitação", "pickupException.pickupPerson": "Pessoa: {name} · {relationship}", "pickupException.staffReason": "Motivo da equipe: {reason}", "pickupException.requestedAt": "Solicitado: {date}", "pickupException.requestExpires": "Expira: {date}", "pickupException.verifyGuardianWarning": "Verifique o responsável primeiro", "pickupException.verifyGuardianDescription": "Aprove somente após confirmar a instrução por uma fonte confiável.", "pickupException.verificationMethod": "Método de verificação", "pickupException.verificationNote": "Nota de verificação (obrigatória)", "pickupException.method.CALL_REGISTERED_GUARDIAN": "Ligação para número cadastrado", "pickupException.method.VERIFIED_WRITTEN_INSTRUCTION": "Instrução escrita verificada", "pickupException.method.IN_PERSON_GUARDIAN": "Confirmação presencial", "pickupException.method.OTHER": "Outro método", "pickupException.approveOnce": "Aprovar uma vez (5 minutos)", "pickupException.reject": "Rejeitar solicitação", "pickupException.rejectionReason": "Motivo da rejeição (obrigatório)", "pickupException.noAuthorization": "Não há autorização ativa. Peça aprovação ao Staff Admin antes da saída.", "pickupException.requestTitle": "Aprovação do Staff Admin necessária", "pickupException.requestDescription": "Informe os dados da pessoa e o motivo. O Staff Admin verificará a instrução do responsável. A aprovação vale uma vez por 5 minutos.", "pickupException.staffReasonLabel": "Motivo da solicitação (obrigatório)", "pickupException.requestApproval": "Solicitar aprovação única", "pickupException.requestSent": "Solicitação enviada", "pickupException.requestFailed": "Falha na solicitação", "pickupException.waitingApproval": "Aguardando Staff Admin", "pickupException.pendingExpires": "Prazo: {date}", "pickupException.rejected": "Solicitação rejeitada", "pickupException.rejectedHelp": "Fale com o Staff Admin.", "pickupException.approvedGrant": "Aprovado uma vez: {name}" },
+  es: { "pickupException.approvalsTitle": "Aprobaciones excepcionales de recogida", "pickupException.approvalsDescription": "Verifique la instrucción del tutor antes de aprobar una recogida única.", "pickupException.noPending": "No hay solicitudes pendientes.", "pickupException.review": "Revisar solicitud", "pickupException.pickupPerson": "Persona: {name} · {relationship}", "pickupException.staffReason": "Motivo del personal: {reason}", "pickupException.requestedAt": "Solicitado: {date}", "pickupException.requestExpires": "Vence: {date}", "pickupException.verifyGuardianWarning": "Verifique primero al tutor", "pickupException.verifyGuardianDescription": "Apruebe solo después de confirmar la instrucción por una fuente confiable.", "pickupException.verificationMethod": "Método de verificación", "pickupException.verificationNote": "Nota de verificación (obligatoria)", "pickupException.method.CALL_REGISTERED_GUARDIAN": "Llamada al número registrado", "pickupException.method.VERIFIED_WRITTEN_INSTRUCTION": "Instrucción escrita verificada", "pickupException.method.IN_PERSON_GUARDIAN": "Confirmación en persona", "pickupException.method.OTHER": "Otro método", "pickupException.approveOnce": "Aprobar una vez (5 minutos)", "pickupException.reject": "Rechazar solicitud", "pickupException.rejectionReason": "Motivo del rechazo (obligatorio)", "pickupException.noAuthorization": "No hay autorización activa. Solicite aprobación al Staff Admin antes de la salida.", "pickupException.requestTitle": "Se requiere aprobación del Staff Admin", "pickupException.requestDescription": "Indique los datos de la persona y el motivo. El Staff Admin verificará la instrucción del tutor. La aprobación se usa una vez durante 5 minutos.", "pickupException.staffReasonLabel": "Motivo de la solicitud (obligatorio)", "pickupException.requestApproval": "Solicitar aprobación única", "pickupException.requestSent": "Solicitud enviada", "pickupException.requestFailed": "Error en la solicitud", "pickupException.waitingApproval": "Esperando aprobación del Staff Admin", "pickupException.pendingExpires": "Plazo: {date}", "pickupException.rejected": "Solicitud rechazada", "pickupException.rejectedHelp": "Contacte al Staff Admin para más información.", "pickupException.approvedGrant": "Aprobado una vez: {name}" },
+  ru: { "pickupException.approvalsTitle": "Одобрение исключения для получения ребёнка", "pickupException.approvalsDescription": "Проверьте указание опекуна перед разовым одобрением.", "pickupException.noPending": "Нет ожидающих запросов.", "pickupException.review": "Проверить запрос", "pickupException.pickupPerson": "Получатель: {name} · {relationship}", "pickupException.staffReason": "Причина сотрудника: {reason}", "pickupException.requestedAt": "Запрошено: {date}", "pickupException.requestExpires": "Запрос истекает: {date}", "pickupException.verifyGuardianWarning": "Сначала проверьте опекуна", "pickupException.verifyGuardianDescription": "Одобряйте только после подтверждения указания опекуна через надёжный источник.", "pickupException.verificationMethod": "Способ проверки", "pickupException.verificationNote": "Примечание проверки (обязательно)", "pickupException.method.CALL_REGISTERED_GUARDIAN": "Звонок на зарегистрированный номер", "pickupException.method.VERIFIED_WRITTEN_INSTRUCTION": "Проверенное письменное указание", "pickupException.method.IN_PERSON_GUARDIAN": "Личное подтверждение опекуна", "pickupException.method.OTHER": "Другой способ", "pickupException.approveOnce": "Одобрить один раз (5 минут)", "pickupException.reject": "Отклонить запрос", "pickupException.rejectionReason": "Причина отказа (обязательно)", "pickupException.noAuthorization": "Нет активного разрешения. Запросите одобрение администратора перед уходом.", "pickupException.requestTitle": "Требуется одобрение администратора", "pickupException.requestDescription": "Укажите данные получателя и причину. Администратор проверит указание опекуна. Одобрение действует один раз в течение 5 минут.", "pickupException.staffReasonLabel": "Причина запроса (обязательно)", "pickupException.requestApproval": "Запросить разовое одобрение", "pickupException.requestSent": "Запрос отправлен", "pickupException.requestFailed": "Не удалось отправить запрос", "pickupException.waitingApproval": "Ожидание одобрения администратора", "pickupException.pendingExpires": "Срок запроса: {date}", "pickupException.rejected": "Запрос отклонён", "pickupException.rejectedHelp": "Обратитесь к администратору.", "pickupException.approvedGrant": "Одобрено один раз: {name}" },
 } as const;
 
 const emergencyContactTranslations = {
@@ -2767,8 +2854,8 @@ const parentEnrollmentWizardTranslations = {
   },
 } as const;
 
-export type TranslationKey = keyof typeof id | keyof typeof legacyClassroomTranslations.id | keyof typeof institutionPresentationTranslations.id | keyof typeof readinessChecklistTranslations.id | keyof typeof guardianStatusTranslations.id | keyof typeof pickupTranslations.id | keyof typeof pickupActionTranslations.id | keyof typeof emergencyContactTranslations.id | keyof typeof consentTranslations.id | keyof typeof consentInformationTranslations.id | keyof typeof automaticOvertimeTranslations.id | keyof typeof profileAppInfoTranslations.id | keyof typeof daycareOperationsTranslations.id | keyof typeof staffAdminOperationalTaskTranslations.id | keyof typeof tenantCreationWizardTranslations.id | keyof typeof parentEnrollmentWizardTranslations.id | keyof typeof screeningTranslations.id | keyof typeof screeningPreviewTranslations.id | keyof typeof screeningSeedBatchTranslations.id | keyof typeof offlineTranslations.id | keyof typeof tenantSubscriptionTranslations.id | keyof typeof tenantGraceRolloutTranslations.id | keyof typeof tenantSubscriptionAuditTranslations.id | keyof typeof tenantListPaginationTranslations.id | keyof typeof staffTenantSubscriptionTranslations.id | keyof typeof tenantSubscriptionEvidenceTranslations.id | keyof typeof tenantSubscriptionCorrectionStatusTranslations.id | keyof typeof tenantSubscriptionReviewTranslations.id | keyof typeof tenantSubscriptionReminderTranslations.id;
-export const translations: Record<AppLocale, Record<TranslationKey, string>> = {
+export type TranslationKey = keyof typeof id | keyof typeof legacyClassroomTranslations.id | keyof typeof institutionPresentationTranslations.id | keyof typeof readinessChecklistTranslations.id | keyof typeof guardianStatusTranslations.id | keyof typeof pickupTranslations.id | keyof typeof pickupActionTranslations.id | keyof typeof pickupExceptionTranslations.id | keyof typeof emergencyContactTranslations.id | keyof typeof consentTranslations.id | keyof typeof consentInformationTranslations.id | keyof typeof automaticOvertimeTranslations.id | keyof typeof profileAppInfoTranslations.id | keyof typeof daycareOperationsTranslations.id | keyof typeof staffAdminOperationalTaskTranslations.id | keyof typeof tenantCreationWizardTranslations.id | keyof typeof parentEnrollmentWizardTranslations.id | keyof typeof screeningTranslations.id | keyof typeof screeningPreviewTranslations.id | keyof typeof screeningSeedBatchTranslations.id | keyof typeof offlineTranslations.id | keyof typeof tenantSubscriptionTranslations.id | keyof typeof tenantGraceRolloutTranslations.id | keyof typeof tenantSubscriptionAuditTranslations.id | keyof typeof tenantListPaginationTranslations.id | keyof typeof staffTenantSubscriptionTranslations.id | keyof typeof tenantSubscriptionEvidenceTranslations.id | keyof typeof tenantSubscriptionCorrectionStatusTranslations.id | keyof typeof tenantSubscriptionReviewTranslations.id | keyof typeof tenantSubscriptionReminderTranslations.id | keyof typeof qrEligibilityTranslations.id | keyof typeof bookingEligibilityTranslations.id;
+export const translations: Record<AppLocale, Record<string, string>> = {
   id: { ...id, ...legacyClassroomTranslations.id, ...institutionPresentationTranslations.id, ...readinessChecklistTranslations.id, ...guardianStatusTranslations.id, ...pickupTranslations.id, ...pickupActionTranslations.id, ...emergencyContactTranslations.id, ...consentTranslations.id, ...consentInformationTranslations.id, ...automaticOvertimeTranslations.id, ...profileAppInfoTranslations.id, ...daycareOperationsTranslations.id, ...staffAdminOperationalTaskTranslations.id, ...tenantCreationWizardTranslations.id, ...parentEnrollmentWizardTranslations.id, ...screeningTranslations.id, ...screeningPreviewTranslations.id, ...screeningSeedBatchTranslations.id, ...offlineTranslations.id, ...tenantSubscriptionTranslations.id, ...tenantGraceRolloutTranslations.id, ...tenantSubscriptionAuditTranslations.id, ...tenantListPaginationTranslations.id, ...staffTenantSubscriptionTranslations.id, ...tenantSubscriptionEvidenceTranslations.id, ...tenantSubscriptionCorrectionStatusTranslations.id, ...tenantSubscriptionReviewTranslations.id, ...tenantSubscriptionReminderTranslations.id },
   en: { ...en, ...legacyClassroomTranslations.en, ...institutionPresentationTranslations.en, ...readinessChecklistTranslations.en, ...guardianStatusTranslations.en, ...pickupTranslations.en, ...pickupActionTranslations.en, ...emergencyContactTranslations.en, ...consentTranslations.en, ...consentInformationTranslations.en, ...automaticOvertimeTranslations.en, ...profileAppInfoTranslations.en, ...daycareOperationsTranslations.en, ...staffAdminOperationalTaskTranslations.en, ...tenantCreationWizardTranslations.en, ...parentEnrollmentWizardTranslations.en, ...screeningTranslations.en, ...screeningPreviewTranslations.en, ...screeningSeedBatchTranslations.en, ...offlineTranslations.en, ...tenantSubscriptionTranslations.en, ...tenantGraceRolloutTranslations.en, ...tenantSubscriptionAuditTranslations.en, ...tenantListPaginationTranslations.en, ...staffTenantSubscriptionTranslations.en, ...tenantSubscriptionEvidenceTranslations.en, ...tenantSubscriptionCorrectionStatusTranslations.en, ...tenantSubscriptionReviewTranslations.en, ...tenantSubscriptionReminderTranslations.en },
   zh: { ...zh, ...uiFoundationTranslations.zh, ...flowWiringTranslations.zh, ...globalLearningLevelsTranslations.zh, ...childMessageTranslations.zh, ...uiFlowConfirmationTranslations.zh, ...operationalCloseReminderTranslations.zh, ...tenantStaffAdminPasswordTranslations.zh, ...platformParentTranslations.zh, ...platformParentTranslations.en, ...notificationInboxTranslations.zh, ...notificationActionTranslations.zh, ...tenantAggregateTranslations.zh, ...legacyClassroomTranslations.zh, ...institutionPresentationTranslations.zh, ...readinessChecklistTranslations.zh, ...guardianStatusTranslations.zh, ...pickupTranslations.zh, ...pickupActionTranslations.zh, ...emergencyContactTranslations.zh, ...consentTranslations.zh, ...consentInformationTranslations.zh, ...automaticOvertimeTranslations.zh, ...profileAppInfoTranslations.zh, ...daycareOperationsTranslations.id, ...staffAdminOperationalTaskTranslations.zh, ...tenantCreationWizardTranslations.zh, ...parentEnrollmentWizardTranslations.zh, ...tenantReadinessIssueTranslations.zh, ...tenantFeedbackTranslations.zh, ...paymentHistoryTranslations.zh, ...screeningTranslations.en, ...screeningPreviewTranslations.en, ...screeningSeedBatchTranslations.en, ...offlineTranslations.zh, ...tenantSubscriptionTranslations.zh, ...tenantGraceRolloutTranslations.zh, ...tenantSubscriptionAuditTranslations.zh, ...tenantListPaginationTranslations.zh, ...staffTenantSubscriptionTranslations.zh, ...tenantSubscriptionEvidenceTranslations.zh, ...tenantSubscriptionCorrectionStatusTranslations.zh, ...tenantSubscriptionReviewTranslations.zh, ...tenantSubscriptionReminderTranslations.zh },
@@ -2777,6 +2864,13 @@ export const translations: Record<AppLocale, Record<TranslationKey, string>> = {
   es: { ...es, ...uiFoundationTranslations.es, ...flowWiringTranslations.es, ...globalLearningLevelsTranslations.es, ...childMessageTranslations.es, ...uiFlowConfirmationTranslations.es, ...operationalCloseReminderTranslations.es, ...tenantStaffAdminPasswordTranslations.es, ...platformParentTranslations.es, ...platformParentTranslations.en, ...notificationInboxTranslations.es, ...notificationActionTranslations.es, ...tenantAggregateTranslations.es, ...consentTranslations.es, ...consentInformationTranslations.es, ...automaticOvertimeTranslations.es, ...profileAppInfoTranslations.es, ...daycareOperationsTranslations.en, ...staffAdminOperationalTaskTranslations.es, ...tenantCreationWizardTranslations.es, ...parentEnrollmentWizardTranslations.es, ...tenantReadinessIssueTranslations.es, ...tenantFeedbackTranslations.es, ...paymentHistoryTranslations.es, ...screeningTranslations.en, ...screeningPreviewTranslations.en, ...offlineTranslations.es, ...tenantSubscriptionTranslations.es, ...tenantGraceRolloutTranslations.es, ...tenantSubscriptionAuditTranslations.es, ...tenantListPaginationTranslations.es, ...staffTenantSubscriptionTranslations.es, ...tenantSubscriptionEvidenceTranslations.es, ...tenantSubscriptionCorrectionStatusTranslations.es, ...tenantSubscriptionReviewTranslations.es, ...tenantSubscriptionReminderTranslations.es },
   ru: { ...ru, ...uiFoundationTranslations.ru, ...flowWiringTranslations.ru, ...globalLearningLevelsTranslations.ru, ...childMessageTranslations.ru, ...uiFlowConfirmationTranslations.ru, ...operationalCloseReminderTranslations.ru, ...tenantStaffAdminPasswordTranslations.ru, ...platformParentTranslations.ru, ...platformParentTranslations.en, ...notificationInboxTranslations.ru, ...notificationActionTranslations.ru, ...tenantAggregateTranslations.ru, ...consentTranslations.ru, ...consentInformationTranslations.ru, ...automaticOvertimeTranslations.ru, ...profileAppInfoTranslations.ru, ...daycareOperationsTranslations.en, ...staffAdminOperationalTaskTranslations.ru, ...tenantCreationWizardTranslations.ru, ...parentEnrollmentWizardTranslations.ru, ...tenantReadinessIssueTranslations.ru, ...tenantFeedbackTranslations.ru, ...paymentHistoryTranslations.ru, ...screeningTranslations.en, ...screeningPreviewTranslations.en, ...offlineTranslations.ru, ...tenantSubscriptionTranslations.ru, ...tenantGraceRolloutTranslations.ru, ...tenantSubscriptionAuditTranslations.ru, ...tenantListPaginationTranslations.ru, ...staffTenantSubscriptionTranslations.ru, ...tenantSubscriptionEvidenceTranslations.ru, ...tenantSubscriptionCorrectionStatusTranslations.ru, ...tenantSubscriptionReviewTranslations.ru, ...tenantSubscriptionReminderTranslations.ru },
 };
+
+for (const locale of supportedLocales) {
+  Object.assign(translations[locale], pickupExceptionTranslations[locale]);
+  translations[locale]["pickup.empty"] = translations[locale]["pickupException.noAuthorization"] ?? translations.id["pickupException.noAuthorization"]!;
+  Object.assign(translations[locale], qrEligibilityTranslations[locale]);
+  Object.assign(translations[locale], bookingEligibilityTranslations[locale]);
+}
 
 export function translate(locale: AppLocale, key: TranslationKey, params: Record<string, string | number> = {}): string {
   const message = translations[locale][key] ?? translations.id[key] ?? key;

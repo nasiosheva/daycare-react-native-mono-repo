@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AttendanceAction, AttendanceMethod, TenantSubscriptionStatus } from "@daycare/core";
-import type { Child, ChildListFilter } from "@daycare/api-client";
+import type { Child, ChildListFilter, CreatePickupExceptionRequestInput } from "@daycare/api-client";
 import { useAuth } from "@/auth/AuthProvider";
 import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
 import { useAcrossTenants } from "@/tenants/acrossTenants";
@@ -37,8 +37,37 @@ export function useRecordAttendance() {
   const { api, organizationId } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ childId, action, method, qrToken, at, pickupAuthorizationId, pickupExceptionReason }: { childId: string; action: AttendanceAction; method: AttendanceMethod; qrToken?: string; at?: string; pickupAuthorizationId?: string; pickupExceptionReason?: string }) => api.recordAttendance(childId, { action, method, idempotencyKey: createIdempotencyKey(), qrToken, at, pickupAuthorizationId, pickupExceptionReason }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["children", organizationId] }),
+    mutationFn: ({ childId, action, method, qrToken, at, pickupAuthorizationId, pickupExceptionRequestId }: { childId: string; action: AttendanceAction; method: AttendanceMethod; qrToken?: string; at?: string; pickupAuthorizationId?: string; pickupExceptionRequestId?: string }) => api.recordAttendance(childId, { action, method, idempotencyKey: createIdempotencyKey(), qrToken, at, pickupAuthorizationId, pickupExceptionRequestId }),
+    onSuccess: async (_attendance, { childId, pickupExceptionRequestId }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["children", organizationId] }),
+        ...(pickupExceptionRequestId ? [queryClient.invalidateQueries({ queryKey: ["pickup-exception-requests", organizationId, childId] })] : []),
+      ]);
+    },
+  });
+}
+
+export function usePickupExceptionRequests(childId: string | null, enabled: boolean) {
+  const { api, organizationId } = useAuth();
+  return useQuery({
+    queryKey: ["pickup-exception-requests", organizationId, childId],
+    queryFn: () => api.pickupExceptionRequests(childId!),
+    enabled: Boolean(organizationId && childId && enabled),
+    refetchInterval: (query) => query.state.data?.some((request) => request.status === "PENDING" || (request.status === "APPROVED" && Boolean(request.approvalExpiresAt) && new Date(request.approvalExpiresAt!).getTime() > Date.now())) ? 5_000 : false,
+  });
+}
+
+export function useCreatePickupExceptionRequest() {
+  const { api, organizationId } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ childId, input }: { childId: string; input: CreatePickupExceptionRequestInput }) => api.createPickupExceptionRequest(childId, input),
+    onSuccess: async (_request, { childId }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["pickup-exception-requests", organizationId, childId] }),
+        queryClient.invalidateQueries({ queryKey: ["pickup-exception-approvals", organizationId] }),
+      ]);
+    },
   });
 }
 

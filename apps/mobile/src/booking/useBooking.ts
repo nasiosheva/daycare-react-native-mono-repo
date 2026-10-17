@@ -69,7 +69,16 @@ export function usePurchaseService() {
     (variables) => removeIdempotencyKey(storageKeyFor(variables)),
   );
 }
-export function useBookEntitlement() { const { api } = useAuth(); return useBookingMutation<{ entitlementId: string; bookingDates: string[]; organizationId?: string }>(({ entitlementId, bookingDates, organizationId }) => api.bookEntitlement(entitlementId, bookingDates, organizationId), (variables) => variables.organizationId); }
+export function useBookEntitlement() {
+  const { api } = useAuth();
+  type BookingInput = { entitlementId: string; bookingDates: string[]; organizationId?: string };
+  const storageKeyFor = (variables: BookingInput) => `parent-service-booking:${variables.organizationId ?? "active"}:${variables.entitlementId}:${[...variables.bookingDates].sort().join(",")}`;
+  return useBookingMutation<BookingInput>(
+    async ({ entitlementId, bookingDates, organizationId }) => api.bookEntitlement(entitlementId, bookingDates, await getOrCreateIdempotencyKey(storageKeyFor({ entitlementId, bookingDates, organizationId })), organizationId),
+    (variables) => variables.organizationId,
+    (variables) => removeIdempotencyKey(storageKeyFor(variables)),
+  );
+}
 export function useBookingApproval() { const { api } = useAuth(); return useBookingMutation<{ bookingId: string; approved: boolean }>(({ bookingId, approved }) => api.approveBooking(bookingId, approved)); }
 export function useMarkInvoicePaid() { const { api } = useAuth(); return useBookingMutation<string>((invoiceId) => api.markInvoicePaid(invoiceId)); }
 export function useCreateServicePlan() { const { api } = useAuth(); return useBookingMutation<Omit<ServicePlan, "id">>((input) => api.createServicePlan(input)); }

@@ -1,5 +1,14 @@
 // Mories Deo Hutapea,S.E.,S.Kom
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  defaultNotificationChannelId,
+  ensureDefaultNotificationChannel,
+  getNativeNotificationPermission,
+  nativeNotificationPlatform,
+  registerNativePushDevice,
+  requestNativeNotificationPermission,
+  type NativeNotificationPermission,
+} from "./nativePush";
 
 const mocks = vi.hoisted(() => ({
   platformOS: "android",
@@ -21,16 +30,6 @@ vi.mock("expo-notifications", () => ({
 }));
 vi.mock("@/device/installationId", () => ({ getDeviceInstallationId: mocks.getDeviceInstallationId }));
 vi.mock("@/config/env", () => ({ env: { get expoProjectId() { return mocks.expoProjectId; } } }));
-
-import {
-  defaultNotificationChannelId,
-  ensureDefaultNotificationChannel,
-  getNativeNotificationPermission,
-  nativeNotificationPlatform,
-  registerNativePushDevice,
-  requestNativeNotificationPermission,
-  type NativeNotificationPermission,
-} from "./nativePush";
 
 const grantedPermission = { status: "granted" } as NativeNotificationPermission;
 const deniedPermission = { status: "denied" } as NativeNotificationPermission;
@@ -98,6 +97,19 @@ describe("native push notifications", () => {
 
     expect(mocks.setNotificationChannelAsync).not.toHaveBeenCalled();
     expect(registerDevice).toHaveBeenCalledWith(expect.objectContaining({ platform: "ios" }));
+  });
+
+  it("deduplicates concurrent registration attempts for the same API installation", async () => {
+    const registerDevice = vi.fn().mockResolvedValue(undefined);
+    const api = { registerDevice };
+
+    await expect(Promise.all([
+      registerNativePushDevice(api, grantedPermission),
+      registerNativePushDevice(api, grantedPermission),
+    ])).resolves.toEqual([true, true]);
+
+    expect(registerDevice).toHaveBeenCalledOnce();
+    expect(mocks.getExpoPushTokenAsync).toHaveBeenCalledOnce();
   });
 
   it("skips device registration without native platform, permission, or project ID", async () => {

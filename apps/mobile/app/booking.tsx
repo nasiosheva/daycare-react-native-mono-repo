@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -15,6 +16,7 @@ import { bookingStatusKey, invoiceSourceKey, invoiceStatusKey, servicePlanTypeKe
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate, isIsoDate } from "@/date-picker/date";
 import { useAuth } from "@/auth/AuthProvider";
+import { useOfferingCapabilitiesByTenant } from "@/education/useUiAccessContext";
 import { notify } from "@/notify/notify";
 
 type ListSheet = "plan" | "remaining" | "invoices" | "history" | null;
@@ -32,8 +34,11 @@ function BookingScreenContent() {
   const parentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT" && membership.active);
   const showsTenantLabel = parentMemberships.length > 1;
   const children = useParentChildrenAcrossTenants(parentMemberships, true);
+  const offeringCapabilities = useOfferingCapabilitiesByTenant(parentMemberships, true);
+  const eligibleChildren = children.data.filter((child) => offeringCapabilities.hasCapability(child.organizationId, "DAYCARE_OPERATIONS"));
+  const childEligibilityLoading = children.isFetching || offeringCapabilities.isLoading;
   const [childId, setChildId] = useState<string | null>(null); const [planId, setPlanId] = useState<string | null>(null); const [creditEntitlementId, setCreditEntitlementId] = useState<string | null>(null); const [bookingDates, setBookingDates] = useState<string[]>([]);
-  const selectedChild = children.data.find((child) => child.id === childId);
+  const selectedChild = eligibleChildren.find((child) => child.id === childId);
   const selectedOrganizationId = selectedChild?.organizationId;
   const selectedChildRestricted = selectedChild?.tenantSubscriptionRestricted === true;
   const operationalQueryEnabled = Boolean(selectedOrganizationId && !selectedChildRestricted);
@@ -45,7 +50,13 @@ function BookingScreenContent() {
   const [bookFormOpen, setBookFormOpen] = useState(false);
   const plan = useMemo(() => plans.data?.find((item) => item.id === planId) ?? null, [plans.data, planId]);
   const creditEntitlement = useMemo(() => entitlements.data?.find((item) => item.id === creditEntitlementId) ?? null, [creditEntitlementId, entitlements.data]);
-  useEffect(() => { if (!childId && children.data?.[0]) setChildId(children.data[0].id); }, [childId, children.data]);
+  useEffect(() => {
+    if (childEligibilityLoading || eligibleChildren.some((child) => child.id === childId)) return;
+    setChildId(eligibleChildren[0]?.id ?? null);
+    setBookingDates([]);
+    setPlanId(null);
+    setCreditEntitlementId(null);
+  }, [childEligibilityLoading, childId, eligibleChildren]);
   const activeEntitlement = useMemo(() => entitlements.data?.find((item) => item.childId === childId && item.status === "ACTIVE") ?? null, [entitlements.data, childId]);
   const pendingChildInvoices = useMemo(() => invoices.data?.filter((item) => item.childId === childId && item.status === "PENDING") ?? [], [invoices.data, childId]);
   const pendingChildInvoicesTotal = useMemo(() => pendingChildInvoices.reduce((sum, item) => sum + item.totalAmount, 0), [pendingChildInvoices]);
@@ -82,12 +93,14 @@ function BookingScreenContent() {
     <AppText tone="muted">{t("booking.subtitle")}</AppText>
     <SectionHeader title={t("booking.child")} />
     {children.failedTenants.length > 0 && !children.allFailed && <Banner tone="warning" title={t("common.loadFailed")} action={<Button variant="secondary" onPress={children.retryFailed}>{t("common.retry")}</Button>} />}
+    {offeringCapabilities.failedTenants.length > 0 && <Banner tone="warning" title={t("common.loadFailed")} message={`${t("common.loadFailedDescription")} · ${offeringCapabilities.failedTenants.map((tenant) => tenant.organizationName ?? tenant.organizationId).join(", ")}`} action={<Button variant="secondary" onPress={() => void offeringCapabilities.retryFailed()}>{t("common.retry")}</Button>} />}
     {children.allFailed && !children.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={children.retryFailed} />}
-    {children.isFetching && <ShimmerList variant="tile" />}
-    {!children.isFetching && <ChipGroup accessibilityLabel={t("booking.child")}>{children.data.map((child) => <Chip key={child.id} label={showsTenantLabel ? `${child.fullName} (${child.organizationName})` : child.fullName} selected={child.id === childId} onPress={() => selectChild(child.id)} />)}</ChipGroup>}
-    {!children.isFetching && !children.allFailed && children.data.length === 0 && <EmptyState compact icon="happy-outline" title={t("children.empty")} />}
+    {childEligibilityLoading && <ShimmerList variant="tile" />}
+    {!childEligibilityLoading && <ChipGroup accessibilityLabel={t("booking.child")}>{eligibleChildren.map((child) => <Chip key={child.id} label={showsTenantLabel ? `${child.fullName} (${child.organizationName})` : child.fullName} selected={child.id === childId} onPress={() => selectChild(child.id)} />)}</ChipGroup>}
+    {!childEligibilityLoading && !children.allFailed && children.data.length === 0 && <EmptyState compact icon="happy-outline" title={t("children.empty")} />}
+    {!childEligibilityLoading && offeringCapabilities.failedTenants.length === 0 && !children.allFailed && children.data.length > 0 && eligibleChildren.length === 0 && <EmptyState compact icon="calendar-outline" title={t("booking.noDaycareChildren")} />}
     {selectedChildRestricted && <Banner tone="warning" title={t("tenantReadiness.issueSubscription")} />}
-    <Button leadingIcon={<Ionicons name="add-circle-outline" size={18} color={colors.onPrimary} />} disabled={!childId || selectedChildRestricted} onPress={() => setListSheet("plan")}>{t("booking.bookNow")}</Button>
+    <Button leadingIcon={<Ionicons name="add-circle-outline" size={18} color={colors.onPrimary} />} disabled={!selectedChild || selectedChildRestricted} onPress={() => setListSheet("plan")}>{t("booking.bookNow")}</Button>
     <View style={styles.grid}>
       <NavigationCard accessibilityLabel={t("booking.plan")} onPress={() => setListSheet("plan")} style={styles.tile} leading={<TileIcon name="pricetags-outline" />}>
         <AppText variant="label">{t("booking.plan")}</AppText>
@@ -111,29 +124,33 @@ function BookingScreenContent() {
     <BottomSheet visible={listSheet === "plan"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.plan")}>
       <AppText tone="muted">{t("booking.planDescription")}</AppText>
       {plans.isFetching && <ShimmerList />}
-      {!plans.isFetching && plans.data?.map((item) => <PlanCard key={item.id} plan={item} selected={item.id === planId && !creditEntitlementId} onPress={() => selectPlan(item)} formatCurrency={formatCurrency} t={t} />)}
-      {!plans.isFetching && plans.data?.length === 0 && <EmptyState compact icon="pricetags-outline" title={t("common.noData")} />}
+      {plans.isError && !plans.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void plans.refetch()} />}
+      {!plans.isFetching && !plans.isError && plans.data?.map((item) => <PlanCard key={item.id} plan={item} selected={item.id === planId && !creditEntitlementId} onPress={() => selectPlan(item)} formatCurrency={formatCurrency} t={t} />)}
+      {!plans.isFetching && !plans.isError && plans.data?.length === 0 && <EmptyState compact icon="pricetags-outline" title={t("common.noData")} />}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "remaining"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.remaining")}>
       <AppText tone="muted">{t("booking.remainingDescription")}</AppText>
       {entitlements.isFetching && <ShimmerList />}
-      {!entitlements.isFetching && entitlements.data?.map((item) => <Card key={item.id} variant="tinted" title={item.planName} subtitle={t("booking.validUntil", { date: formatDate(item.validUntil) })} trailing={<Badge tone={statusTone(item.status)} label={t(`status.${item.status}` as Parameters<typeof t>[0])} />}><AppText variant="h5">{item.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: item.remainingCredits })}</AppText>{item.status === "ACTIVE" && (item.remainingCredits ?? 0) > 0 && <Button variant="secondary" onPress={() => applyRemainingCredit(item.id, item.childId)}>{t("booking.useRemaining")}</Button>}</Card>)}
-      {!entitlements.isFetching && entitlements.data?.length === 0 && <EmptyState compact icon="ticket-outline" title={t("common.noData")} />}
+      {entitlements.isError && !entitlements.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void entitlements.refetch()} />}
+      {!entitlements.isFetching && !entitlements.isError && entitlements.data?.map((item) => <Card key={item.id} variant="tinted" title={item.planName} subtitle={t("booking.validUntil", { date: formatDate(item.validUntil) })} trailing={<Badge tone={statusTone(item.status)} label={t(`status.${item.status}` as Parameters<typeof t>[0])} />}><AppText variant="h5">{item.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: item.remainingCredits })}</AppText>{item.status === "ACTIVE" && (item.remainingCredits ?? 0) > 0 && <Button variant="secondary" onPress={() => applyRemainingCredit(item.id, item.childId)}>{t("booking.useRemaining")}</Button>}</Card>)}
+      {!entitlements.isFetching && !entitlements.isError && entitlements.data?.length === 0 && <EmptyState compact icon="ticket-outline" title={t("common.noData")} />}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "invoices"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.invoices")}>
       <AppText tone="muted">{t("booking.invoicesDescription")}</AppText>
       {invoices.isFetching && <ShimmerList />}
-      {!invoices.isFetching && childInvoices.map((item) => <Card key={item.id} variant="tinted" title={`${item.invoiceNumber} · ${formatCurrency(item.totalAmount)}`} subtitle={item.description ?? t(invoiceSourceKey(item.source))} trailing={<Badge tone={statusTone(item.status)} label={t(invoiceStatusKey(item.status))} />}><AppText variant="bodySmall" tone="muted">{t("tenant.dueDate", { date: formatDate(item.dueDate) })}</AppText>{item.status === "PENDING" && <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: item.id, ...(selectedOrganizationId ? { organizationId: selectedOrganizationId } : {}) } })}>{t("parentEnrollment.pay")}</Button>}{item.status === "PAYMENT_SUBMITTED" && <AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>}</Card>)}
-      {!invoices.isFetching && childInvoices.length === 0 && <EmptyState compact icon="receipt-outline" title={t("booking.noInvoicesForChild")} />}
+      {invoices.isError && !invoices.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void invoices.refetch()} />}
+      {!invoices.isFetching && !invoices.isError && childInvoices.map((item) => <Card key={item.id} variant="tinted" title={`${item.invoiceNumber} · ${formatCurrency(item.totalAmount)}`} subtitle={item.description ?? t(invoiceSourceKey(item.source))} trailing={<Badge tone={statusTone(item.status)} label={t(invoiceStatusKey(item.status))} />}><AppText variant="bodySmall" tone="muted">{t("tenant.dueDate", { date: formatDate(item.dueDate) })}</AppText>{item.status === "PENDING" && <Button variant="secondary" onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: item.id, ...(selectedOrganizationId ? { organizationId: selectedOrganizationId } : {}) } })}>{t("parentEnrollment.pay")}</Button>}{item.status === "PAYMENT_SUBMITTED" && <AppText tone="muted">{t("paymentProof.awaitingReview")}</AppText>}</Card>)}
+      {!invoices.isFetching && !invoices.isError && childInvoices.length === 0 && <EmptyState compact icon="receipt-outline" title={t("booking.noInvoicesForChild")} />}
     </BottomSheet>
 
     <BottomSheet visible={listSheet === "history"} onClose={closeListSheet} closeAccessibilityLabel={t("common.close")} title={t("booking.history")}>
       <AppText tone="muted">{t("booking.historyDescription")}</AppText>
       {bookings.isFetching && <ShimmerList />}
-      {!bookings.isFetching && childBookings.map((item) => <Card key={item.id} variant="tinted" title={formatDate(item.bookingDate)} subtitle={`${item.childName} · ${item.planName}`} trailing={<Badge tone={statusTone(item.status)} label={t(bookingStatusKey(item.status))} />} />)}
-      {!bookings.isFetching && childBookings.length === 0 && <EmptyState compact icon="calendar-outline" title={t("booking.noBookingsYet")} />}
+      {bookings.isError && !bookings.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void bookings.refetch()} />}
+      {!bookings.isFetching && !bookings.isError && childBookings.map((item) => <Card key={item.id} variant="tinted" title={formatDate(item.bookingDate)} subtitle={`${item.childName} · ${item.planName}`} trailing={<Badge tone={statusTone(item.status)} label={t(bookingStatusKey(item.status))} />} />)}
+      {!bookings.isFetching && !bookings.isError && childBookings.length === 0 && <EmptyState compact icon="calendar-outline" title={t("booking.noBookingsYet")} />}
     </BottomSheet>
 
     <BottomSheet

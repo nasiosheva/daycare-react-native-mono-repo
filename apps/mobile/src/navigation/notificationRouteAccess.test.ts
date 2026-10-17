@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { describe, expect, it } from "vitest";
 import type { CurrentUser } from "@daycare/core";
 import { canOpenNotificationRoute, isSelfServiceNotificationRoute, notificationRouteWithOrganizationId } from "./notificationRouteAccess";
@@ -51,6 +52,12 @@ describe("canOpenNotificationRoute", () => {
     };
 
     expect(canOpenNotificationRoute(staffWithoutDaycare, "tenant-a", "/attendance")).toBe(true);
+  });
+
+  it("blocks attendance roster and QR scanner notification routes for Staff Admin", () => {
+    expect(canOpenNotificationRoute(profile("STAFF_ADMIN"), "tenant-a", "/attendance")).toBe(false);
+    expect(canOpenNotificationRoute(profile("STAFF_ADMIN"), "tenant-a", "/attendance-scan", true)).toBe(false);
+    expect(canOpenNotificationRoute(profile("STAFF"), "tenant-a", "/attendance-scan", true)).toBe(true);
   });
 
   it("blocks inactive Parent child-data notification routes until a resource-specific server policy exists", () => {

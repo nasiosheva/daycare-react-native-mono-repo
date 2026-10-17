@@ -1,5 +1,6 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { describe, expect, it } from "vitest";
-import { attendanceStatus, filterRoster, matchesQuery, rosterCounts } from "./attendanceRoster";
+import { attendanceAction, attendanceStatus, filterRoster, matchesQuery, rosterCounts } from "./attendanceRoster";
 
 const roster = [
   { fullName: "Ayu Lestari", todayCheckedInAt: "2026-09-26T07:30:00Z", todayCheckedOutAt: null },
@@ -10,6 +11,10 @@ const roster = [
 describe("attendance roster", () => {
   it("derives today's status from check-in and check-out times", () => {
     expect(roster.map(attendanceStatus)).toEqual(["PRESENT", "LEFT", "NOT_YET"]);
+  });
+
+  it("offers only the next attendance action for each child status", () => {
+    expect(roster.map((child) => attendanceAction(attendanceStatus(child)))).toEqual(["CHECK_OUT", null, "CHECK_IN"]);
   });
 
   it("counts children per status", () => {

@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 package com.daycare.api.service
 
 import com.daycare.api.domain.AttendanceAction
@@ -40,7 +41,7 @@ data class AttendanceContext(
 )
 data class ChildResponse(val id: UUID, val organizationId: UUID, val branchId: UUID, val classroomId: UUID?, val firstName: String, val lastName: String?, val nisn: String?, val gender: Gender, val dateOfBirth: LocalDate, val todayCheckedInAt: Instant? = null, val todayCheckedOutAt: Instant? = null, val guardianStatus: ChildGuardianStatus? = null, val attendanceContext: AttendanceContext? = null) { val fullName get() = listOfNotNull(firstName, lastName).joinToString(" ") }
 data class ChildListFilter(val branchId: UUID? = null, val learningLevelId: UUID? = null, val classroomId: UUID? = null, val guardianStatus: ChildGuardianStatus? = null)
-data class AttendanceResponse(val id: UUID, val childId: UUID, val operationalDate: LocalDate, val checkedInAt: Instant?, val checkedOutAt: Instant?, val method: AttendanceMethod)
+data class AttendanceResponse(val id: UUID, val childId: UUID, val operationalDate: LocalDate, val checkedInAt: Instant?, val checkedOutAt: Instant?, val method: AttendanceMethod, val pickupExceptionRequestId: UUID? = null)
 data class ChildAttendanceSummary(val childId: UUID, val fullName: String, val nisn: String?, val totalCheckIns: Int, val totalCheckOuts: Int, val pendingCheckOuts: Int)
 data class ChildAttendanceReport(val branchName: String, val startsOn: LocalDate, val endsOn: LocalDate, val rows: List<ChildAttendanceSummary>)
 
@@ -61,6 +62,7 @@ class AttendanceService(
     private val notifications: NotificationService,
     private val bookingEligibility: BookingEligibilityService,
     private val pickupAuthorizations: PickupAuthorizationService,
+    private val pickupExceptions: PickupExceptionService,
     private val publishedOfferingCapabilities: PublishedOfferingCapabilityService,
 ) {
     @Transactional
@@ -145,11 +147,22 @@ class AttendanceService(
         if (command.action == AttendanceAction.CHECK_IN && hasDaycareOffering) bookingEligibility.consumeCheckIn(organizationId, child.id, operationalDate)
         if (command.action == AttendanceAction.CHECK_IN) { record.checkedInAt = eventTime; record.checkInMethod = command.method.name; record.checkInIdempotencyKey = command.idempotencyKey }
         else {
-            val pickup = if (hasDaycareOffering) pickupAuthorizations.verifyCheckout(scope, child, command.pickupAuthorizationId, command.pickupExceptionReason) else PickupCheckoutVerification(null, null, null, null)
+            val pickup = if (!hasDaycareOffering) {
+                PickupCheckoutVerification(null, null, null, null)
+            } else if (command.pickupAuthorizationId != null) {
+                if (command.pickupExceptionRequestId != null) throw IllegalArgumentException("Choose a pickup authorization or an approved exception, not both")
+                pickupAuthorizations.verifyCheckout(scope, child, command.pickupAuthorizationId)
+            } else if (command.pickupExceptionRequestId != null) {
+                val grant = pickupExceptions.consumeCheckoutGrant(scope, child, command.pickupExceptionRequestId)
+                PickupCheckoutVerification(null, grant.pickupPersonName, grant.verificationMethod, grant.reason, grant.requestId)
+            } else {
+                pickupAuthorizations.verifyCheckout(scope, child, null)
+            }
             record.checkedOutAt = eventTime
             record.checkOutMethod = command.method.name
             record.checkOutIdempotencyKey = command.idempotencyKey
             record.pickupAuthorizationId = pickup.authorizationId
+            record.pickupExceptionRequestId = pickup.exceptionRequestId
             record.pickupPersonName = pickup.pickupPersonName
             record.pickupVerificationMethod = pickup.verificationMethod?.name
             record.checkoutVerifiedByUserId = scope.user.id
@@ -169,20 +182,20 @@ class AttendanceService(
     }
 
     private fun toResponse(child: Child, todayRecord: AttendanceRecord? = null, guardianStatus: ChildGuardianStatus? = null, attendanceContext: AttendanceContext? = null) = ChildResponse(child.id, child.organizationId, child.branchId, child.classroomId, child.firstName, child.lastName, child.nisn, child.gender, child.dateOfBirth, todayRecord?.checkedInAt, todayRecord?.checkedOutAt, guardianStatus, attendanceContext)
-    private fun toResponse(record: AttendanceRecord, method: AttendanceMethod) = AttendanceResponse(record.id, record.childId, record.operationalDate, record.checkedInAt, record.checkedOutAt, method)
+    private fun toResponse(record: AttendanceRecord, method: AttendanceMethod) = AttendanceResponse(record.id, record.childId, record.operationalDate, record.checkedInAt, record.checkedOutAt, method, record.pickupExceptionRequestId)
     private fun Child.fullName() = listOfNotNull(firstName, lastName).joinToString(" ")
 
     private fun attendanceContext(scope: AccessScope, child: Child, timezone: String, operationalDate: LocalDate, record: AttendanceRecord?): AttendanceContext? {
         if (scope.membership.role !in setOf(Role.STAFF, Role.STAFF_ADMIN)) return null
         if (InstitutionCapability.DAYCARE_OPERATIONS !in scope.capabilities || !hasPublishedDaycareOffering(child.organizationId, child.branchId)) return AttendanceContext(operationalDate, timezone, AttendancePolicy.NONE, emptySet(), "Kehadiran Daycare tidak tersedia untuk cabang ini")
         if (record?.checkedOutAt != null) return AttendanceContext(operationalDate, timezone, AttendancePolicy.DAYCARE_BOOKING_REQUIRED, emptySet(), "Kehadiran hari ini sudah ditutup")
-        if (record?.checkedInAt != null) return AttendanceContext(operationalDate, timezone, AttendancePolicy.DAYCARE_BOOKING_REQUIRED, setOf(AttendanceAction.CHECK_OUT))
+        if (record?.checkedInAt != null) return AttendanceContext(operationalDate, timezone, AttendancePolicy.DAYCARE_BOOKING_REQUIRED, if (scope.membership.role == Role.STAFF) setOf(AttendanceAction.CHECK_OUT) else emptySet())
         val eligibility = bookingEligibility.checkInEligibility(child.organizationId, child.id, operationalDate)
         return AttendanceContext(
             operationalDate,
             timezone,
             AttendancePolicy.DAYCARE_BOOKING_REQUIRED,
-            if (eligibility.allowed) setOf(AttendanceAction.CHECK_IN) else emptySet(),
+            if (eligibility.allowed && scope.membership.role == Role.STAFF) setOf(AttendanceAction.CHECK_IN) else emptySet(),
             eligibility.reason,
         )
     }
@@ -231,4 +244,4 @@ class AttendanceService(
     }
 }
 
-data class AttendanceCommand(val action: AttendanceAction, val method: AttendanceMethod, @field:NotBlank @field:Size(max = 100) val idempotencyKey: String, val qrToken: String? = null, val note: String? = null, val at: Instant? = null, val pickupAuthorizationId: UUID? = null, val pickupExceptionReason: String? = null)
+data class AttendanceCommand(val action: AttendanceAction, val method: AttendanceMethod, @field:NotBlank @field:Size(max = 100) val idempotencyKey: String, val qrToken: String? = null, val note: String? = null, val at: Instant? = null, val pickupAuthorizationId: UUID? = null, val pickupExceptionRequestId: UUID? = null)

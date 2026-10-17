@@ -64,6 +64,25 @@ class AdministrationServiceTest {
     }
 
     @Test
+    fun `device registration reuses an existing token and removes the stale installation record`() {
+        val fixture = fixture()
+        val staleInstallation = DeviceToken(organizationId = fixture.organizationId, userId = fixture.staff.id, installationId = "this-install", token = "old-token", platform = "android")
+        val existingToken = DeviceToken(organizationId = UUID.randomUUID(), userId = UUID.randomUUID(), installationId = "previous-install", token = "current-token", platform = "android")
+        `when`(fixture.devices.findByInstallationId("this-install")).thenReturn(staleInstallation)
+        `when`(fixture.devices.findByToken("current-token")).thenReturn(existingToken)
+        `when`(fixture.devices.save(any(DeviceToken::class.java))).thenAnswer { it.arguments[0] }
+
+        fixture.service.registerDevice(fixture.jwt, fixture.organizationId, RegisterDeviceRequest("current-token", "android", "this-install", "Asia/Jakarta"))
+
+        verify(fixture.devices).delete(staleInstallation)
+        verify(fixture.devices).flush()
+        verify(fixture.devices).save(existingToken)
+        assertEquals(fixture.organizationId, existingToken.organizationId)
+        assertEquals(fixture.staff.id, existingToken.userId)
+        assertEquals("this-install", existingToken.installationId)
+    }
+
+    @Test
     fun `notifications support search pagination and mark all read`() {
         val fixture = fixture()
         val notification = Notification(organizationId = fixture.organizationId, recipientUserId = fixture.staff.id, title = "Info", body = "Body")

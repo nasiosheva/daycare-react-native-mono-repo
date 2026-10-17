@@ -47,28 +47,25 @@ class PickupAuthorizationServiceTest {
         `when`(authorizations.findById(authorization.id)).thenReturn(Optional.of(authorization))
         `when`(offerings.findAllByOrganizationIdAndBranchIdAndStatus(organizationId, child.branchId, EducationOfferingStatus.PUBLISHED)).thenReturn(listOf(publishedDaycareOffering()))
 
-        val result = service.verifyCheckout(scope, child, authorization.id, null)
+        val result = service.verifyCheckout(scope, child, authorization.id)
 
         assertEquals(authorization.id, result.authorizationId)
         assertEquals("Bibi Ani", result.pickupPersonName)
     }
 
     @Test
-    fun `checkout without authorization requires a Staff Admin exception reason`() {
+    fun `checkout without authorization requires an approved one time exception for every role`() {
         `when`(offerings.findAllByOrganizationIdAndBranchIdAndStatus(organizationId, child.branchId, EducationOfferingStatus.PUBLISHED)).thenReturn(listOf(publishedDaycareOffering()))
-        assertThrows(org.springframework.security.access.AccessDeniedException::class.java) { service.verifyCheckout(scope, child, null, null) }
         val staffAdmin = scope.copy(membership = Membership(role = Role.STAFF_ADMIN))
-
-        val result = service.verifyCheckout(staffAdmin, child, null, "Parent terlambat mengirim otorisasi")
-
-        assertEquals("Parent terlambat mengirim otorisasi", result.exceptionReason)
+        assertThrows(org.springframework.security.access.AccessDeniedException::class.java) { service.verifyCheckout(scope, child, null) }
+        assertThrows(org.springframework.security.access.AccessDeniedException::class.java) { service.verifyCheckout(staffAdmin, child, null) }
     }
 
     @Test
     fun `checkout rejects a child branch without a published Daycare offering`() {
         `when`(offerings.findAllByOrganizationIdAndBranchIdAndStatus(organizationId, child.branchId, EducationOfferingStatus.PUBLISHED)).thenReturn(emptyList())
 
-        assertThrows(org.springframework.security.access.AccessDeniedException::class.java) { service.verifyCheckout(scope, child, null, null) }
+        assertThrows(org.springframework.security.access.AccessDeniedException::class.java) { service.verifyCheckout(scope, child, null) }
     }
 
     @Test
@@ -113,10 +110,10 @@ class PickupAuthorizationServiceTest {
     fun `checkout rejects invalid exception and inactive authorization`() {
         `when`(offerings.findAllByOrganizationIdAndBranchIdAndStatus(organizationId, child.branchId, EducationOfferingStatus.PUBLISHED)).thenReturn(listOf(publishedDaycareOffering()))
         val adminScope = scope.copy(membership = Membership(organizationId = organizationId, role = Role.STAFF_ADMIN))
-        assertThrows(IllegalArgumentException::class.java) { service.verifyCheckout(adminScope, child, UUID.randomUUID(), "reason") }
+        assertThrows(IllegalArgumentException::class.java) { service.verifyCheckout(adminScope, child, UUID.randomUUID()) }
         val authorization = PickupAuthorization(organizationId = organizationId, childId = child.id, pickupPersonName = "A", relationship = "B", verificationMethod = PickupVerificationMethod.PHOTO_ID, status = PickupAuthorizationStatus.REVOKED, effectiveFrom = Instant.now().minusSeconds(100))
         `when`(authorizations.findById(authorization.id)).thenReturn(Optional.of(authorization))
-        assertThrows(org.springframework.security.access.AccessDeniedException::class.java) { service.verifyCheckout(scope, child, authorization.id, null) }
+        assertThrows(org.springframework.security.access.AccessDeniedException::class.java) { service.verifyCheckout(scope, child, authorization.id) }
     }
 
     @Test
@@ -165,12 +162,12 @@ class PickupAuthorizationServiceTest {
         `when`(offerings.findAllByOrganizationIdAndBranchIdAndStatus(organizationId, child.branchId, EducationOfferingStatus.PUBLISHED)).thenReturn(listOf(publishedDaycareOffering()))
         val expired = PickupAuthorization(organizationId = organizationId, childId = child.id, pickupPersonName = "A", relationship = "B", verificationMethod = PickupVerificationMethod.PHOTO_ID, status = PickupAuthorizationStatus.ACTIVE, effectiveFrom = Instant.now().minusSeconds(100), effectiveUntil = Instant.now().minusSeconds(1))
         `when`(authorizations.findById(expired.id)).thenReturn(Optional.of(expired))
-        assertThrows(org.springframework.security.access.AccessDeniedException::class.java) { service.verifyCheckout(scope, child, expired.id, null) }
+        assertThrows(org.springframework.security.access.AccessDeniedException::class.java) { service.verifyCheckout(scope, child, expired.id) }
         `when`(authorizations.findById(UUID.randomUUID())).thenReturn(Optional.empty())
-        assertThrows(IllegalArgumentException::class.java) { service.verifyCheckout(scope, child, UUID.randomUUID(), null) }
+        assertThrows(IllegalArgumentException::class.java) { service.verifyCheckout(scope, child, UUID.randomUUID()) }
 
         `when`(offerings.findAllByOrganizationIdAndBranchIdAndStatus(organizationId, child.branchId, EducationOfferingStatus.PUBLISHED)).thenReturn(listOf(EducationOffering(organizationId = organizationId, branchId = child.branchId, capabilities = "ACADEMIC_CURRICULUM", status = EducationOfferingStatus.PUBLISHED)))
-        assertThrows(org.springframework.security.access.AccessDeniedException::class.java) { service.verifyCheckout(scope, child, null, null) }
+        assertThrows(org.springframework.security.access.AccessDeniedException::class.java) { service.verifyCheckout(scope, child, null) }
     }
 
     @Test

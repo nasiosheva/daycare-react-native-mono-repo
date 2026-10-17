@@ -30,6 +30,31 @@ function requests(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>) {
 }
 
 describe("ApiClient API wrappers", () => {
+  it("maps staff pickup exception requests and Staff Admin decisions with tenant scope", async () => {
+    const { client, fetchMock } = createHarness();
+    const organizationId = "tenant-1";
+    const request = { pickupPersonName: "Bibi Ani", relationship: "Bibi", reason: "Wali menghubungi lembaga" };
+    const approval = { verificationMethod: "CALL_REGISTERED_GUARDIAN" as const, verificationNote: "Dikonfirmasi ke nomor wali terdaftar" };
+
+    await client.pickupExceptionRequests("child-1", organizationId);
+    await client.createPickupExceptionRequest("child-1", request, organizationId);
+    await client.pendingPickupExceptionRequests(organizationId);
+    await client.approvePickupExceptionRequest("request-1", approval, organizationId);
+    await client.rejectPickupExceptionRequest("request-2", { reason: "Instruksi wali belum dapat diverifikasi" }, organizationId);
+
+    const calls = requests(fetchMock);
+    expect(calls.map(({ url, method }) => [url.replace("https://api.example.test/api/v1", ""), method])).toEqual([
+      ["/children/child-1/pickup-exception-requests", "GET"],
+      ["/children/child-1/pickup-exception-requests", "POST"],
+      ["/pickup-exception-requests/pending", "GET"],
+      ["/pickup-exception-requests/request-1/approve", "POST"],
+      ["/pickup-exception-requests/request-2/reject", "POST"],
+    ]);
+    expect(calls[1]?.body).toBe(JSON.stringify(request));
+    expect(calls[3]?.body).toBe(JSON.stringify(approval));
+    expect(calls.every(({ headers }) => headers.get("X-Organization-Id") === organizationId)).toBe(true);
+  });
+
   it("maps tenant subscription payment evidence and correction review APIs", async () => {
     const { client, fetchMock } = createHarness();
     await client.platformTenantSubscriptionFeatures();
@@ -81,6 +106,17 @@ describe("ApiClient API wrappers", () => {
     expect(calls[1]?.headers.get("Idempotency-Key")).toBe("proof-key");
     expect(calls[0]?.headers.get("X-Organization-Id")).toBe("tenant-1");
     expect(calls[1]?.headers.get("X-Organization-Id")).toBe("tenant-1");
+  });
+
+  it("sends stable idempotency keys for Parent bookings from service credits", async () => {
+    const { client, fetchMock } = createHarness();
+    await client.bookEntitlement("entitlement-1", ["2026-10-20"], "booking-key", "tenant-1");
+
+    const call = requests(fetchMock)[0];
+    expect(call?.url.replace("https://api.example.test/api/v1", "")).toBe("/service-entitlements/entitlement-1/bookings");
+    expect(call?.method).toBe("POST");
+    expect(call?.headers.get("Idempotency-Key")).toBe("booking-key");
+    expect(call?.headers.get("X-Organization-Id")).toBe("tenant-1");
   });
 
   it("scopes Staff Admin subscription self-service to the active tenant", async () => {

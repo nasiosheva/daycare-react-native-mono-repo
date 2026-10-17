@@ -10,6 +10,10 @@ import com.daycare.api.service.AttendanceService
 import com.daycare.api.service.PickupAuthorizationService
 import com.daycare.api.service.CreatePickupAuthorizationRequest
 import com.daycare.api.service.RevokePickupAuthorizationRequest
+import com.daycare.api.service.PickupExceptionService
+import com.daycare.api.service.CreatePickupExceptionRequest
+import com.daycare.api.service.ApprovePickupExceptionRequest
+import com.daycare.api.service.RejectPickupExceptionRequest
 import com.daycare.api.service.EmergencyContactService
 import com.daycare.api.service.CreateEmergencyContactRequest
 import com.daycare.api.service.RevokeEmergencyContactRequest
@@ -561,7 +565,7 @@ class PlatformController(
 @RestController
 @RequestMapping("/v1")
 @SecurityRequirement(name = "bearerAuth")
-class InstitutionController(private val attendance: AttendanceService, private val pickupAuthorizations: PickupAuthorizationService, private val emergencyContacts: EmergencyContactService, private val consents: ConsentService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val parentChildProfiles: ParentChildProfileService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService, private val tenantReadiness: TenantReadinessService, private val childHealth: ChildHealthService, private val childIncidents: ChildIncidentService, private val childCareLogs: ChildCareLogService, private val staffHandovers: StaffHandoverService, private val tenantAnnouncements: TenantAnnouncementService, private val tenantFeedback: TenantFeedbackService, private val childMessages: ChildMessageService, private val childMessageTemplates: ChildMessageTemplateService) {
+class InstitutionController(private val attendance: AttendanceService, private val pickupAuthorizations: PickupAuthorizationService, private val pickupExceptions: PickupExceptionService, private val emergencyContacts: EmergencyContactService, private val consents: ConsentService, private val administration: AdministrationService, private val development: DevelopmentService, private val academic: AcademicService, private val childManagement: ChildManagementService, private val parentChildProfiles: ParentChildProfileService, private val learning: LearningStructureService, private val branchManagement: BranchManagementService, private val goalService: GoalService, private val staffReminders: StaffReminderService, private val childReports: ChildReportExportService, private val childAbsences: ChildAbsenceService, private val staffLeaveRequests: StaffLeaveRequestService, private val tenantReadiness: TenantReadinessService, private val childHealth: ChildHealthService, private val childIncidents: ChildIncidentService, private val childCareLogs: ChildCareLogService, private val staffHandovers: StaffHandoverService, private val tenantAnnouncements: TenantAnnouncementService, private val tenantFeedback: TenantFeedbackService, private val childMessages: ChildMessageService, private val childMessageTemplates: ChildMessageTemplateService) {
     @GetMapping("/tenant-readiness")
     fun tenantReadiness(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = tenantReadiness.organizationReadiness(jwt, organizationId)
 
@@ -742,6 +746,21 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PostMapping("/children/{childId}/pickup-authorizations/{authorizationId}/revoke")
     fun revokePickupAuthorization(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @PathVariable authorizationId: UUID, @Valid @RequestBody request: RevokePickupAuthorizationRequest) = pickupAuthorizations.revoke(jwt, organizationId, childId, authorizationId, request)
+
+    @GetMapping("/children/{childId}/pickup-exception-requests")
+    fun pickupExceptionRequests(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = pickupExceptions.forChild(jwt, organizationId, childId)
+
+    @PostMapping("/children/{childId}/pickup-exception-requests") @ResponseStatus(HttpStatus.CREATED)
+    fun createPickupExceptionRequest(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID, @Valid @RequestBody request: CreatePickupExceptionRequest) = pickupExceptions.request(jwt, organizationId, childId, request)
+
+    @GetMapping("/pickup-exception-requests/pending")
+    fun pendingPickupExceptionRequests(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = pickupExceptions.pending(jwt, organizationId)
+
+    @PostMapping("/pickup-exception-requests/{requestId}/approve")
+    fun approvePickupExceptionRequest(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable requestId: UUID, @Valid @RequestBody request: ApprovePickupExceptionRequest) = pickupExceptions.approve(jwt, organizationId, requestId, request)
+
+    @PostMapping("/pickup-exception-requests/{requestId}/reject")
+    fun rejectPickupExceptionRequest(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable requestId: UUID, @Valid @RequestBody request: RejectPickupExceptionRequest) = pickupExceptions.reject(jwt, organizationId, requestId, request)
 
     @GetMapping("/children/{childId}/emergency-contacts")
     fun emergencyContacts(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable childId: UUID) = emergencyContacts.list(jwt, organizationId, childId)
@@ -1180,7 +1199,7 @@ class BillingController(private val billing: BillingService, private val overtim
     fun entitlements(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?) = billing.entitlements(jwt, organizationId, BranchListFilter(branchId))
 
     @PostMapping("/service-entitlements/{entitlementId}/bookings") @ResponseStatus(HttpStatus.CREATED)
-    fun createEntitlementBookings(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable entitlementId: UUID, @Valid @RequestBody request: CreateEntitlementBookingsRequest) = billing.createBookingsFromEntitlement(jwt, organizationId, entitlementId, request)
+    fun createEntitlementBookings(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @PathVariable entitlementId: UUID, @RequestHeader("Idempotency-Key") idempotencyKey: UUID, @Valid @RequestBody request: CreateEntitlementBookingsRequest) = billing.createBookingsFromEntitlement(jwt, organizationId, entitlementId, idempotencyKey, request)
 
     @GetMapping("/bookings")
     fun bookings(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @RequestParam(required = false) branchId: UUID?) = billing.bookings(jwt, organizationId, false, BranchListFilter(branchId))

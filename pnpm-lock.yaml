@@ -92,6 +92,9 @@ importers:
       expo-location:
         specifier: ~18.1.6
         version: 18.1.6(expo@53.0.27(@babel/core@7.29.7)(@expo/metro-runtime@5.0.5(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0)))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0))
+      expo-network:
+        specifier: ~7.1.5
+        version: 7.1.5(expo@53.0.27(@babel/core@7.29.7)(@expo/metro-runtime@5.0.5(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0)))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0))(react@19.0.0)
       expo-notifications:
         specifier: ~0.31.4
         version: 0.31.5(expo@53.0.27(@babel/core@7.29.7)(@expo/metro-runtime@5.0.5(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0)))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0)
@@ -3421,6 +3424,12 @@ packages:
 
   expo-modules-core@2.5.0:
     resolution: {integrity: sha512-aIbQxZE2vdCKsolQUl6Q9Farlf8tjh/ROR4hfN1qT7QBGPl1XrJGnaOKkcgYaGrlzCPg/7IBe0Np67GzKMZKKQ==}
+
+  expo-network@7.1.5:
+    resolution: {integrity: sha512-VNgxNe3Y1xo00zMzFy7Q+35qWnSJnjZ9RRLtW3Nu/ITtv9ak+BIghfWj1PANLYB3ZkWzY5656R1YIkkRkeDukg==}
+    peerDependencies:
+      expo: '*'
+      react: '*'
 
   expo-notifications@0.31.5:
     resolution: {integrity: sha512-HsitfTrSESFDWwaX0Y+6GQlWEooQqZKdGbNTwTPHfp5PNCr02tVPwwya9j1tdg3Awj8/vmfXmSxzNhULfmgJhQ==}
@@ -10026,6 +10035,11 @@ snapshots:
   expo-modules-core@2.5.0:
     dependencies:
       invariant: 2.2.4
+
+  expo-network@7.1.5(expo@53.0.27(@babel/core@7.29.7)(@expo/metro-runtime@5.0.5(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0)))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0))(react@19.0.0):
+    dependencies:
+      expo: 53.0.27(@babel/core@7.29.7)(@expo/metro-runtime@5.0.5(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0)))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0)
+      react: 19.0.0
 
   expo-notifications@0.31.5(expo@53.0.27(@babel/core@7.29.7)(@expo/metro-runtime@5.0.5(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0)))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0))(react-native@0.79.4(@babel/core@7.29.7)(@types/react@19.0.10)(react@19.0.0))(react@19.0.0):
     dependencies:

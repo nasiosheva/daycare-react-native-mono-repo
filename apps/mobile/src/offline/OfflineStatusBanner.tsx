@@ -10,6 +10,8 @@ export function OfflineStatusBanner() {
   if (status === "ONLINE" && pendingCount === 0) return null;
   const message = status === "OFFLINE"
     ? t("offline.offlineDescription", { count: pendingCount })
+    : status === "API_UNAVAILABLE"
+      ? `${t("offline.apiUnavailableDescription")}${pendingCount > 0 ? ` · ${t("offline.pendingDrafts", { count: pendingCount })}` : ""}`
     : status === "SYNCING"
       ? t("offline.syncing")
       : status === "CONFLICT"
@@ -17,6 +19,7 @@ export function OfflineStatusBanner() {
         : status === "STALE"
           ? t("offline.stale")
           : t("offline.online", { count: pendingCount });
-  return <Banner tone={status === "CONFLICT" || status === "STALE" ? "danger" : status === "OFFLINE" ? "warning" : "info"} title={t(`offline.${status.toLowerCase()}Title` as never)} message={`${message}${lastSyncAt ? ` · ${t("offline.lastSync", { date: lastSyncAt })}` : ""}`} />;
+  const titleKey = status === "API_UNAVAILABLE" ? "offline.apiUnavailableTitle" : `offline.${status.toLowerCase()}Title`;
+  return <Banner tone={status === "CONFLICT" || status === "STALE" ? "danger" : status === "OFFLINE" || status === "API_UNAVAILABLE" ? "warning" : "info"} title={t(titleKey as never)} message={`${message}${lastSyncAt ? ` · ${t("offline.lastSync", { date: lastSyncAt })}` : ""}`} />;
 }
 

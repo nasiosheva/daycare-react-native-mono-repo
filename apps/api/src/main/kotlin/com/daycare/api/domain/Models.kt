@@ -19,6 +19,8 @@ enum class ChildCareRole { STAFF, NURSE, MISS }
 enum class AttendanceMethod { MANUAL, QR }
 enum class AttendanceAction { CHECK_IN, CHECK_OUT }
 enum class PickupAuthorizationStatus { PENDING_VERIFICATION, ACTIVE, SUSPENDED, EXPIRED, REVOKED }
+enum class PickupExceptionStatus { PENDING, APPROVED, REJECTED, EXPIRED, CONSUMED }
+enum class PickupExceptionVerificationMethod { CALL_REGISTERED_GUARDIAN, VERIFIED_WRITTEN_INSTRUCTION, IN_PERSON_GUARDIAN, OTHER }
 enum class EmergencyContactStatus { ACTIVE, EXPIRED, REVOKED }
 enum class PickupVerificationMethod { PHOTO_ID, KNOWN_TO_GUARDIAN, OTHER }
 enum class ConsentPurpose { MEDIA_MARKETING, HEALTH_EMERGENCY, MEDICATION, OUTING, PICKUP }

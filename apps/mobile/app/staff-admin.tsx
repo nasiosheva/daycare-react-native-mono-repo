@@ -123,6 +123,7 @@ export default function StaffAdminScreen() {
     </View>
     <MenuSection title={t("menu.groupDaily")}>
       {hasDaycareOperations && <AdminMenuItem icon="checkmark-done-outline" title={t("staffAdmin.approvals")} description={t("staffAdmin.approvalsDescription")} onPress={() => router.push("/booking-approvals")} />}
+      {hasDaycareOperations && <AdminMenuItem icon="shield-checkmark-outline" title={t("pickupException.approvalsTitle")} description={t("pickupException.approvalsDescription")} onPress={() => router.push("/pickup-exception-approvals" as never)} />}
       <AdminMenuItem icon="calendar-outline" title={t("absence.menu")} description={t("absence.menuDescription")} onPress={() => router.push("/absence-requests")} />
       <AdminMenuItem icon="airplane-outline" title={t("staffLeave.approvalsTitle")} description={t("staffLeave.approvalsDescription")} onPress={() => router.push("/staff-leave-approvals")} />
       <AdminMenuItem icon="document-text-outline" title={t("childAttendanceReport.menu")} description={t("childAttendanceReport.menuDescription")} onPress={() => router.push("/child-attendance-report" as never)} />

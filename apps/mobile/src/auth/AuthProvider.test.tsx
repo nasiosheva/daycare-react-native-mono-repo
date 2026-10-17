@@ -38,8 +38,8 @@ const mocks = vi.hoisted(() => {
     saveLocalSession: vi.fn(),
     clearLocalSession: vi.fn(),
     cancelOperationalCloseReminderSchedules: vi.fn(),
-    markNetworkOffline: vi.fn(),
-    markNetworkOnline: vi.fn(),
+    markApiUnavailable: vi.fn(),
+    markApiAvailable: vi.fn(),
     locale: "id",
     t: (key: string) => key,
     platformOS: "web",
@@ -64,14 +64,14 @@ vi.mock("./localSessionStorage", () => ({
   clearLocalSession: mocks.clearLocalSession,
 }));
 vi.mock("@/reminders/operationalCloseReminderScheduler", () => ({ cancelOperationalCloseReminderSchedules: mocks.cancelOperationalCloseReminderSchedules }));
-vi.mock("@/offline/networkSignal", () => ({ markNetworkOffline: mocks.markNetworkOffline, markNetworkOnline: mocks.markNetworkOnline }));
+vi.mock("@/offline/networkSignal", () => ({ markApiUnavailable: mocks.markApiUnavailable, markApiAvailable: mocks.markApiAvailable }));
 
 type Profile = {
   id: string;
   displayName: string;
   gender: "UNSPECIFIED";
   isPlatformAdmin: boolean;
-  memberships: Array<{
+  memberships: {
     organizationId: string;
     organizationName: string;
     role: "STAFF" | "PARENT";
@@ -80,7 +80,7 @@ type Profile = {
     canManageDevelopmentCategories: boolean;
     institutionTypes: [];
     capabilities: [];
-  }>;
+  }[];
 };
 
 function makeProfile(organizationIds: string[] = ["tenant-1"]): Profile {
