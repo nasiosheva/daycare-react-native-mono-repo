@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { BackButton, PinEntryScreen } from "@daycare/ui";
@@ -34,7 +33,8 @@ export default function AdminPinScreen() {
     }
     try {
       await api.changePlatformAdminPin(pin);
-      Alert.alert(t("pin.changed"), t("pin.changedDescription"), [{ text: t("common.ok"), onPress: () => router.replace("/profile") }]);
+      notify(t("pin.changed"), t("pin.changedDescription"), "success");
+      router.replace("/profile");
     } catch (error) {
       setConfirmation("");
       notify(t("pin.failed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger");

@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import type { ChildProgramTemplate, ChildProgramTemplateStepInput } from "@daycare/api-client";
-import { AppText, BackButton, BottomSheet, Button, EmptyState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, Banner, BottomSheet, Button, EmptyState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -28,6 +28,7 @@ export default function ChildProgramTemplatesScreen() {
   const [stepTitle, setStepTitle] = useState("");
   const [stepDescription, setStepDescription] = useState("");
   const [stepHomeGuidance, setStepHomeGuidance] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<ChildProgramTemplate | null>(null);
 
   if (!profile) return null;
   if (!canManage) return <Redirect href="/home" />;
@@ -57,12 +58,7 @@ export default function ChildProgramTemplatesScreen() {
       close();
     } catch (error) { notify(t("children.programFailed"), errorMessage(error)); }
   };
-  const remove = (templateId: string) => {
-    Alert.alert(t("children.removeTemplate"), t("children.removeTemplateConfirm"), [
-      { text: t("common.cancel"), style: "cancel" },
-      { text: t("children.remove"), style: "destructive", onPress: () => void removeTemplate.mutateAsync(templateId).catch((error: unknown) => notify(t("children.programFailed"), errorMessage(error))) },
-    ]);
-  };
+  const confirmRemove = () => { if (!deleteTarget) return; void removeTemplate.mutateAsync(deleteTarget.id).then(() => setDeleteTarget(null)).catch((error: unknown) => { setDeleteTarget(null); notify(t("children.programFailed"), errorMessage(error)); }); };
 
   return <AppScreen showBottomNavigation={false} title={t("children.programTemplates")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={<FloatingActionButton icon="add" accessibilityLabel={t("children.addTemplate")} onPress={openCreate}>{t("children.addTemplate")}</FloatingActionButton>}>
     <AppText tone="muted">{t("children.programTemplatesSubtitle")}</AppText>
@@ -76,7 +72,7 @@ export default function ChildProgramTemplatesScreen() {
       </View>
       <View style={styles.actions}>
         <Button variant="secondary" onPress={() => openEdit(template)}>{t("common.edit")}</Button>
-        <Button variant="danger" loading={removeTemplate.isPending} onPress={() => remove(template.id)}>{t("children.remove")}</Button>
+        <Button variant="danger" onPress={() => setDeleteTarget(template)}>{t("children.remove")}</Button>
       </View>
     </View>)}
     {!templates.isFetching && templates.data?.length === 0 && <EmptyState compact title={t("children.noTemplates")} />}
@@ -93,6 +89,9 @@ export default function ChildProgramTemplatesScreen() {
       <TextField label={t("children.stepDescription")} value={stepDescription} onChangeText={setStepDescription} multiline />
       <TextField label={t("children.homeGuidance")} value={stepHomeGuidance} onChangeText={setStepHomeGuidance} multiline />
       <Button variant="secondary" disabled={!stepTitle.trim()} onPress={addStep}>{t("children.addTemplateStep")}</Button>
+    </BottomSheet>
+    <BottomSheet visible={deleteTarget !== null} onClose={() => setDeleteTarget(null)} closeAccessibilityLabel={t("common.close")} title={t("children.removeTemplate")} negativeAction={{ label: t("common.cancel"), onPress: () => setDeleteTarget(null) }} positiveAction={{ label: t("children.remove"), variant: "danger", loading: removeTemplate.isPending, onPress: confirmRemove }}>
+      <Banner tone="warning" title={t("children.removeTemplateConfirm")} />
     </BottomSheet>
   </AppScreen>;
 }

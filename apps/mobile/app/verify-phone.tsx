@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { AppText, BackButton, Button, Screen, spacing, TextField } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
+import { notify } from "@/notify/notify";
 
 export default function VerifyPhoneScreen() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export default function VerifyPhoneScreen() {
       await sendPhoneCode(phoneNumber.trim());
       setCodeSent(true);
     } catch (error) {
-      Alert.alert(t("auth.otpUnavailable"), error instanceof Error ? error.message : t("auth.useEmail"));
+      notify(t("auth.otpUnavailable"), error instanceof Error ? error.message : t("auth.useEmail"), "danger");
     } finally {
       setSending(false);
     }
@@ -31,7 +32,7 @@ export default function VerifyPhoneScreen() {
       const { needsRegistration } = await verifyPhoneCode(code);
       router.replace(needsRegistration ? "/sign-up" : "/");
     }
-    catch (error) { Alert.alert(t("auth.invalidCode"), error instanceof Error ? error.message : t("auth.tryAgain")); }
+    catch (error) { notify(t("auth.invalidCode"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }
     finally { setLoading(false); }
   };
   return <Screen title={t("auth.verifyCode")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}><View style={styles.container}>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Platform, StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -33,6 +33,7 @@ export default function StaffRemindersScreen() {
   const remove = useMutation({ mutationFn: api.deleteStaffReminder.bind(api), onSuccess: refresh });
 
   const [editorOpen, setEditorOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<StaffReminder | null>(null);
   const [editingReminder, setEditingReminder] = useState<StaffReminder | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -69,7 +70,7 @@ export default function StaffRemindersScreen() {
     void saveReminder.mutateAsync().catch((error: unknown) => notify(t("reminders.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"));
   };
   const toggle = (reminder: StaffReminder) => void setActive.mutateAsync({ reminderId: reminder.id, active: !reminder.active }).catch((error: unknown) => notify(t("reminders.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"));
-  const deleteReminder = (reminder: StaffReminder) => Alert.alert(t("reminders.deleteTitle"), t("reminders.deleteDescription"), [{ text: t("common.cancel"), style: "cancel" }, { text: t("reminders.delete"), style: "destructive", onPress: () => void remove.mutateAsync(reminder.id).catch((error: unknown) => notify(t("reminders.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger")) }]);
+  const confirmDelete = () => { if (!deleteTarget) return; void remove.mutateAsync(deleteTarget.id).then(() => setDeleteTarget(null)).catch((error: unknown) => { setDeleteTarget(null); notify(t("reminders.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"); }); };
 
   return <AppScreen showBottomNavigation={false} title={t("reminders.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton icon="add" accessibilityLabel={t("reminders.add")} onPress={openCreate}>{t("reminders.add")}</FloatingActionButton> : undefined}>
     <AppText tone="muted">{t("reminders.subtitle")}</AppText>
@@ -80,7 +81,7 @@ export default function StaffRemindersScreen() {
       <AppText>{reminder.description}</AppText>
       <View style={styles.target}><Ionicons name="navigate-outline" size={14} color={colors.muted} /><AppText variant="caption" tone="muted">{t(reminderTargetKey(reminder.target))}</AppText></View>
       {canManage && <ToggleSwitch label={t(reminder.active ? "reminders.active" : "reminders.inactive")} accessibilityLabel={t(reminder.active ? "reminders.pause" : "reminders.activate")} value={reminder.active} disabled={setActive.isPending} onValueChange={() => toggle(reminder)} />}
-      {canManage && <View style={styles.actions}><Button style={styles.grow} variant="secondary" leadingIcon={<Ionicons name="create-outline" size={18} color={colors.primary} />} onPress={() => openEdit(reminder)}>{t("common.edit")}</Button><Button style={styles.grow} variant="ghost" loading={remove.isPending} onPress={() => deleteReminder(reminder)}><AppText variant="label" tone="danger">{t("reminders.delete")}</AppText></Button></View>}
+      {canManage && <View style={styles.actions}><Button style={styles.grow} variant="secondary" leadingIcon={<Ionicons name="create-outline" size={18} color={colors.primary} />} onPress={() => openEdit(reminder)}>{t("common.edit")}</Button><Button style={styles.grow} variant="ghost" loading={remove.isPending} onPress={() => setDeleteTarget(reminder)}><AppText variant="label" tone="danger">{t("reminders.delete")}</AppText></Button></View>}
     </Card>)}
     {!reminders.isFetching && !reminders.isError && reminders.data?.length === 0 && <EmptyState icon="alarm-outline" title={t("reminders.empty")} action={canManage ? { label: t("reminders.add"), onPress: openCreate } : undefined} />}
 
@@ -98,6 +99,9 @@ export default function StaffRemindersScreen() {
       <View style={styles.field}><AppText variant="label">{t("reminders.time")}</AppText><DatePicker mode="time" value={time} onChange={setTime} placeholder={t("reminders.time")} /></View>
       <View style={styles.field}><AppText variant="label">{t("reminders.repeat")}</AppText><ChipGroup accessibilityLabel={t("reminders.repeat")}>{weekdays.map((day) => <Chip key={day} label={t(weekdayKeys[day - 1])} selected={selectedWeekdays.includes(day)} onPress={() => toggleWeekday(day)} />)}</ChipGroup></View>
       <View style={styles.field}><AppText variant="label">{t("reminders.destination")}</AppText><ChipGroup accessibilityLabel={t("reminders.destination")}>{targets.map((item) => <Chip key={item} label={t(reminderTargetKey(item))} selected={target === item} onPress={() => setTarget(item)} />)}</ChipGroup></View>
+    </BottomSheet>
+    <BottomSheet visible={deleteTarget !== null} onClose={() => setDeleteTarget(null)} closeAccessibilityLabel={t("common.close")} title={t("reminders.deleteTitle")} negativeAction={{ label: t("common.cancel"), onPress: () => setDeleteTarget(null) }} positiveAction={{ label: t("reminders.delete"), variant: "danger", loading: remove.isPending, onPress: confirmDelete }}>
+      <Banner tone="warning" title={t("reminders.deleteDescription")} />
     </BottomSheet>
   </AppScreen>;
 }

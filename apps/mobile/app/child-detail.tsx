@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
@@ -61,7 +61,7 @@ export default function ChildDetailScreen() {
   const [classroomId, setClassroomId] = useState<string | null>(null);
   const [placementStart, setPlacementStart] = useState("");
   const [guardianIdentifier, setGuardianIdentifier] = useState("");
-  const [sheet, setSheet] = useState<"edit" | "placement" | "program" | "staff" | "guardian" | null>(null);
+  const [sheet, setSheet] = useState<"edit" | "placement" | "program" | "staff" | "guardian" | "deactivate" | null>(null);
   const [placementsOpen, setPlacementsOpen] = useState(false);
   const [programsOpen, setProgramsOpen] = useState(false);
   const [staffListOpen, setStaffListOpen] = useState(false);
@@ -145,13 +145,7 @@ export default function ChildDetailScreen() {
       if (placement.ageGuidanceWarning) notify(t("learning.ageGuidance"), undefined, "warning");
     } catch (error) { notify(t("learning.saveFailed"), errorMessage(error), "danger"); }
   };
-  const deactivate = () => {
-    if (!childId) return;
-    Alert.alert(t("children.deactivate"), t("children.deactivateDescription"), [
-      { text: t("common.cancel"), style: "cancel" },
-      { text: t("children.deactivate"), style: "destructive", onPress: () => void deactivateChild.mutateAsync().then(() => router.replace("/children")).catch((error: unknown) => notify(t("children.deactivateFailed"), errorMessage(error), "danger")) },
-    ]);
-  };
+  const confirmDeactivate = () => void deactivateChild.mutateAsync().then(() => router.replace("/children")).catch((error: unknown) => { setSheet(null); notify(t("children.deactivateFailed"), errorMessage(error), "danger"); });
 
   return <AppScreen showBottomNavigation={false} title={t("children.detailTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {childProfile.isLoading ? <ShimmerList variant="tile" /> : childProfile.isError ? <ErrorState title={t("auth.profileLoadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void childProfile.refetch()} /> : childProfile.data && <View style={styles.hero}>
@@ -162,7 +156,7 @@ export default function ChildDetailScreen() {
           <AppText tone="muted">{childProfile.data.child.gender === "MALE" ? t("children.genderMale") : childProfile.data.child.gender === "FEMALE" ? t("children.genderFemale") : t("children.genderUnspecified")} · {childProfile.data.child.dateOfBirth}</AppText>
         </View>
       </View>
-      {canManage && <View style={styles.options}><Button variant="secondary" leadingIcon={<Ionicons name="create-outline" size={18} color={colors.primary} />} onPress={() => setSheet("edit")}>{t("children.edit")}</Button><Button variant="ghost" loading={deactivateChild.isPending} leadingIcon={<Ionicons name="archive-outline" size={18} color={colors.danger} />} onPress={deactivate}><AppText variant="label" tone="danger">{t("children.deactivate")}</AppText></Button></View>}
+      {canManage && <View style={styles.options}><Button variant="secondary" leadingIcon={<Ionicons name="create-outline" size={18} color={colors.primary} />} onPress={() => setSheet("edit")}>{t("children.edit")}</Button><Button variant="ghost" loading={deactivateChild.isPending} leadingIcon={<Ionicons name="archive-outline" size={18} color={colors.danger} />} onPress={() => setSheet("deactivate")}><AppText variant="label" tone="danger">{t("children.deactivate")}</AppText></Button></View>}
     </View>}
     {childId && childProfile.data && <>
       {membership?.active === false && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
@@ -258,6 +252,9 @@ export default function ChildDetailScreen() {
       <ChipGroup accessibilityLabel={t("children.selectStaff")}>{assignableStaff.map((user) => <Chip key={user.id} label={user.displayName ?? user.email ?? t("children.selectStaff")} selected={staffUserId === user.userId} onPress={() => setStaffUserId(user.userId)} />)}</ChipGroup>
       <AppText variant="label">{t("children.assignmentRole")}</AppText>
       <ChipGroup accessibilityLabel={t("children.assignmentRole")}>{assignmentRoles.map((role) => <Chip key={role} label={assignmentRoleLabel(role)} selected={assignmentRole === role} onPress={() => setAssignmentRole(role)} />)}</ChipGroup>
+    </BottomSheet>
+    <BottomSheet visible={sheet === "deactivate"} onClose={() => setSheet(null)} closeAccessibilityLabel={t("common.close")} title={t("children.deactivate")} negativeAction={{ label: t("common.cancel"), onPress: () => setSheet(null) }} positiveAction={{ label: t("children.deactivate"), variant: "danger", loading: deactivateChild.isPending, onPress: confirmDeactivate }}>
+      <Banner tone="warning" title={t("children.deactivateDescription")} />
     </BottomSheet>
   </AppScreen>;
 }
