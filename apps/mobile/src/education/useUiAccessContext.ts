@@ -1,8 +1,7 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { hasInstitutionCapability, type InstitutionCapability } from "@daycare/core";
 import { useAuth } from "@/auth/AuthProvider";
-import { hasBranchOfferingCapability } from "./offeringCapabilities";
-
 export { hasBranchOfferingCapability } from "./offeringCapabilities";
 
 export function useUiAccessContext(enabled = true, organizationId?: string) {
@@ -15,7 +14,7 @@ export function useUiAccessContext(enabled = true, organizationId?: string) {
 // (per-action tenant resolution, docs/business-rules.md §1). Each membership's ui-access-context
 // query shares its cache key with useUiAccessContext(enabled, organizationId), so a tenant already
 // checked elsewhere isn't refetched here. An unknown or failed tenant reports no capability.
-export function useOfferingCapabilitiesByTenant(memberships: readonly { organizationId: string }[], enabled: boolean) {
+export function useOfferingCapabilitiesByTenant(memberships: readonly { organizationId: string; organizationName?: string }[], enabled: boolean) {
   const { api } = useAuth();
   const queries = useQueries({
     queries: memberships.map((membership) => ({
@@ -25,9 +24,12 @@ export function useOfferingCapabilitiesByTenant(memberships: readonly { organiza
     })),
   });
   const contextByTenant = new Map(memberships.map((membership, index) => [membership.organizationId, queries[index]?.data]));
+  const failedTenants = memberships.filter((_, index) => queries[index]?.isError);
   return {
     hasCapability: (organizationId: string, capability: InstitutionCapability) => hasOfferingCapability(contextByTenant.get(organizationId), capability),
     isLoading: enabled && queries.some((query) => query.isLoading),
+    failedTenants,
+    retryFailed: () => Promise.all(queries.filter((query) => query.isError).map((query) => query.refetch())),
   };
 }
 

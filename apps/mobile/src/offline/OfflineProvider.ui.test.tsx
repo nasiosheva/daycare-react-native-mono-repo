@@ -3,7 +3,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { AppState } from "react-native";
 import { ApiError, ApiNetworkError } from "@daycare/api-client";
-import { markNetworkOnline } from "./networkSignal";
+import { markApiAvailable } from "./networkSignal";
 import { OfflineProvider, cacheDescriptor, sanitizeParentProfile, useOffline } from "./OfflineProvider";
 
 jest.mock("./OfflineStatusBanner", () => ({ OfflineStatusBanner: () => null }));
@@ -15,6 +15,11 @@ const mockSetQueryData = jest.fn();
 // stable client) would make them re-fire on every render instead of only when the scope changes.
 const mockQueryClient = { invalidateQueries: mockInvalidateQueries, getQueryCache: () => ({ subscribe: () => () => {} }), setQueryData: mockSetQueryData };
 jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => mockQueryClient }));
+jest.mock("expo-network", () => ({
+  NetworkStateType: { NONE: "NONE", UNKNOWN: "UNKNOWN" },
+  addNetworkStateListener: () => ({ remove: jest.fn() }),
+  getNetworkStateAsync: () => Promise.resolve({ type: "WIFI", isConnected: true }),
+}));
 
 const mockCreateChildCareLog = jest.fn();
 let mockAuthValue: { api: { createChildCareLog: typeof mockCreateChildCareLog }; profile: { id: string; memberships: { organizationId: string; role: string }[] }; organizationId: string };
@@ -100,7 +105,7 @@ describe("OfflineProvider enqueueChildCareLog", () => {
     expect(result.current.pendingCount).toBe(0);
   });
 
-  it("keeps the task queued and flips offline on a network error, then recovers once back online", async () => {
+  it("keeps the task queued and reports API unavailability after a network error, then recovers", async () => {
     mockCreateChildCareLog.mockRejectedValueOnce(new ApiNetworkError()).mockResolvedValueOnce({ id: "log-1" });
     const { result } = renderHook(() => useOffline(), { wrapper: OfflineProvider });
     await waitFor(() => expect(mockLoadOutbox).toHaveBeenCalled()); // let the mount-time outbox restoration settle first
@@ -109,10 +114,11 @@ describe("OfflineProvider enqueueChildCareLog", () => {
     await act(async () => { outcome = await result.current.enqueueChildCareLog("child-1", payload); });
 
     expect(outcome?.synced).toBe(false);
-    await waitFor(() => expect(result.current.status).toBe("OFFLINE"));
+    await waitFor(() => expect(result.current.status).toBe("API_UNAVAILABLE"));
+    expect(result.current.isOffline).toBe(false);
     expect(result.current.pendingCount).toBe(1);
 
-    await act(async () => { markNetworkOnline(); });
+    await act(async () => { markApiAvailable(); });
 
     await waitFor(() => expect(result.current.pendingCount).toBe(0));
     expect(mockCreateChildCareLog).toHaveBeenCalledTimes(2);

@@ -132,8 +132,10 @@ Daftar **Anak** Staff Admin menghitung status wali dari relasi yang sudah berada
 - Riwayat booking Parent selalu dibatasi pada anak yang sedang dipilih di layar Booking. Jumlah pada kartu, daftar, dan keadaan kosong memakai scope anak yang sama; membuka riwayat meminta data terbaru, sedangkan realtime dan mutasi booking tetap menginvalidasi data yang sama.
 - Staff dalam scope anaknya dapat menyetujui atau menolak booking biasa. Persetujuan enrollment tetap khusus Staff Admin. Kegagalan keputusan harus ditampilkan inline pada konteks persetujuan yang sedang terbuka; error tidak boleh hanya bergantung pada dialog sistem, terutama di web.
 - Pada tenant dengan capability `DAYCARE_OPERATIONS`, kehadiran memerlukan booking yang telah dikonfirmasi. PAUD dan TK tetap dapat memakai kehadiran sebagai shared core tanpa prasyarat booking Daycare.
-- Check-in/out dapat dilakukan manual atau melalui QR Parent. Payload QR diverifikasi terhadap child ID dan nama yang ditandatangani server; nama tampilan saja tidak dipercaya.
-- Check-in/out manual meminta konfirmasi eksplisit sebelum disimpan dan boleh menyertakan jam kejadian pilihan Staff (bukan hanya waktu saat submit). Server memvalidasi tiga batasan pada jam tersebut: tidak boleh berada di masa depan, harus jatuh pada hari operasional cabang anak yang sama (dihitung memakai zona waktu cabang, bukan zona waktu server), dan jam check-out tidak boleh lebih awal dari jam check-in yang sudah tercatat.
+- Check-in/out hanya dapat dicatat oleh Staff aktif, secara manual atau melalui pemindai QR Parent. Staff Admin dapat mengunduh rekap dan meninjau approval pengecualian pickup Daycare, tetapi tidak mencatat atau memindai kehadiran. Payload QR diverifikasi terhadap child ID dan nama yang ditandatangani server; nama tampilan saja tidak dipercaya.
+- Pada check-out Daycare, jika tidak ada `PickupAuthorization` yang aktif, Staff dapat mengirim permintaan pengecualian satu kali berisi nama penjemput, hubungan, dan alasan. Permintaan hanya untuk anak yang sedang check-in, satu permintaan `PENDING` per anak, kedaluwarsa dalam 15 menit, dan tidak langsung memberi hak check-out. Staff Admin aktif meninjau permintaan di halaman khusus, wajib mencatat metode verifikasi dan catatan verifikasi terhadap instruksi wali, lalu menyetujui atau menolak dengan alasan. Persetujuan terikat pada tenant/cabang/anak, hanya dapat dipakai sekali oleh Staff, kedaluwarsa dalam 5 menit, dan dikonsumsi atomik bersama record check-out. Server menolak pemakaian jika otorisasi pickup aktif tersedia saat request/approval/checkout; persetujuan tidak dapat dipakai lintas anak, cabang, atau tenant. Staff Admin hanya menyetujui/menolak, tidak melakukan mutasi attendance. Seluruh perubahan status diaudit; status kedaluwarsa dinormalisasi dan diaudit saat dibaca/ditinjau. Staff dalam scope anak yang sama dapat melihat status permintaan rekan agar tidak membuat request ganda. Jika tidak ada otorisasi maupun approval valid, check-out tetap ditolak dan keselamatan anak tidak dilewati.
+- UI daftar kehadiran hanya menawarkan aksi berikutnya yang sesuai status anak: check-in untuk anak yang belum hadir, check-out untuk anak yang sedang hadir, dan tidak menawarkan mutasi setelah anak pulang. Check-in/out manual tetap meminta konfirmasi eksplisit sebelum disimpan. Waktu saat ini menjadi nilai awal; pengubahan waktu kejadian tersedia melalui aksi sekunder agar tidak menjadi langkah wajib.
+- Check-in/out manual boleh menyertakan jam kejadian pilihan Staff (bukan hanya waktu saat submit). Server memvalidasi tiga batasan pada jam tersebut: tidak boleh berada di masa depan, harus jatuh pada hari operasional cabang anak yang sama (dihitung memakai zona waktu cabang, bukan zona waktu server), dan jam check-out tidak boleh lebih awal dari jam check-in yang sudah tercatat.
 - Job terjadwal memeriksa setiap menit anak yang masih check-in (belum check-out) pada cabang yang jam operasionalnya untuk hari itu sudah lewat. Bila cabang tersebut juga memiliki minimal satu blok tarif overtime aktif, setiap wali anak menerima satu notifikasi (inbox, realtime, dan push bila tersedia) yang memberitahukan anak masih tercatat hadir dan berpotensi dikenakan biaya tambahan; notifikasi ini dikirim tepat sekali per hari operasional per anak, bukan diulang setiap menit job berjalan. Bila cabang mengaktifkan penagihan overtime otomatis sesuai §13.6.2, job yang sama membuat satu invoice overtime `PENDING` setelah masa toleransi berakhir; jika tidak aktif, notifikasi ini tetap murni peringatan dan charge dibuat manual oleh Staff Admin. Cabang tanpa blok tarif overtime tidak menerima notifikasi ini atau charge otomatis karena anak yang telat dijemput di sana tidak akan pernah dikenakan biaya tambahan.
 - Layar QR Parent menampilkan QR anak secara langsung tanpa langkah pilih anak lebih dulu ketika Parent hanya memiliki tepat satu anak yang terlihat pada layar tersebut (baik karena Parent hanya punya satu anak, maupun karena layar dibuka dengan `childId` tertentu). Ketika anak yang terlihat lebih dari satu, Parent tetap memilih anak dari daftar terlebih dahulu sebelum QR ditampilkan pada BottomSheet, seperti semula.
 - Staff Admin dapat mengunduh rekap kehadiran anak per cabang untuk rentang tanggal inklusif dalam PDF atau XLSX dari menu Kelola. Rekap hanya mencakup anak aktif dengan enrollment aktif pada cabang yang dipilih dan memuat total check-in, total check-out, serta check-in yang belum check-out untuk setiap anak. Anak tanpa record kehadiran tetap ditampilkan dengan total nol; total nol tidak boleh diberi label atau diartikan sebagai ketidakhadiran karena bisa tidak ada booking atau hari operasional pada periode tersebut. Staff dan Parent tidak menerima akses ekspor ini. Cabang wajib milik tenant dan rentang tanggal harus valid; Staff Admin yang tidak aktif tetap hanya-baca sesuai aturan tenant.
@@ -1006,10 +1008,16 @@ role, capability, membership, assignment, atau lifecycle server.
   atau `DISCARDED`. Hanya response kanonis server yang boleh mengubahnya ke
   `SYNCED`. UI menampilkan waktu sinkronisasi terakhir, jumlah draft belum
   terkirim, dan konflik; kegagalan jaringan tidak boleh ditampilkan sebagai
-  empty state atau success.
+  empty state atau success. Status koneksi perangkat harus berasal dari
+  monitor konektivitas sistem operasi (tipe jaringan `NONE`); kegagalan
+  menjangkau API saat perangkat masih terhubung harus ditampilkan terpisah
+  sebagai `API_UNAVAILABLE`, bukan sebagai perangkat offline. Nilai koneksi
+  yang belum diketahui tidak boleh dianggap offline.
 - **Sinkronisasi:** sinkronisasi hanya dimulai setelah pengguna authenticated
   dan context server terbaru berhasil dimuat. Mutasi dikirim satu per satu
-  dengan `Idempotency-Key` dan `expectedRevision` sesuai §13.2. Server kembali
+  dengan `Idempotency-Key` dan `expectedRevision` sesuai §13.2. Trigger
+  pemulihan yang bertumpuk (koneksi perangkat, API, dan app resume) wajib
+  digabung agar satu draft tidak dikirim bersamaan lebih dari sekali. Server kembali
   memeriksa scope, capability, assignment, status, timezone cabang, kapasitas,
   dan lifecycle. Retry otomatis hanya boleh untuk request idempoten yang belum
   mendapat outcome; bila outcome mutasi tidak diketahui, UI berhenti dan
@@ -1027,9 +1035,12 @@ role, capability, membership, assignment, atau lifecycle server.
   `NOT_AUTHORIZED` menghapus cache dan draft untuk scope terkait sebelum data
   scope baru dirender. Bila perangkat offline ketika authority dicabut,
   pembersihan wajib terjadi segera setelah context online berhasil dimuat.
-- **UI dan deep link:** banner offline harus membedakan `ONLINE`, `OFFLINE`,
-  `SYNCING`, `CONFLICT`, dan `STALE`; banner tidak boleh menawarkan action
-  yang server sudah tidak mengizinkan. Deep link, push action, dan screen
+- **UI dan deep link:** banner harus membedakan `ONLINE`, `OFFLINE`,
+  `API_UNAVAILABLE`, `SYNCING`, `CONFLICT`, dan `STALE`; `OFFLINE` berarti
+  perangkat tidak memiliki koneksi jaringan, sedangkan `API_UNAVAILABLE`
+  berarti koneksi perangkat tersedia tetapi server API tidak dapat dijangkau.
+  Banner tidak boleh menawarkan action yang server sudah tidak mengizinkan.
+  Deep link, push action, dan screen
   restore tetap menjalankan guard live saat online; cache lama tidak boleh
   membuka route sensitif atau melewati tenant/child scope.
 - **Verifikasi implementasi:** modul offline wajib memiliki unit test untuk
@@ -1542,9 +1553,12 @@ bukan digabung sebagian.
 **Implementasi Daycare saat ini:** roster Staff dan Staff Admin menerima
 `AttendanceContext` dari server. Untuk context Daycare, `attendancePolicy`
 adalah `DAYCARE_BOOKING_REQUIRED`, memuat tanggal operasional serta zona waktu
-cabang, dan `allowedActions` hanya berisi `CHECK_IN` atau `CHECK_OUT` setelah
-server mengevaluasi record hari ini serta entitlement/booking. Tanpa capability
-Daycare, policy menjadi `NONE` dan tidak ada action. Mobile memakai
+cabang. Hanya Staff yang dapat menerima `allowedActions` `CHECK_IN` atau
+`CHECK_OUT`, setelah server mengevaluasi record hari ini serta
+entitlement/booking; Staff Admin menerima konteks baca-saja dengan
+`allowedActions` kosong dan mengakses rekap serta antrean approval pickup melalui
+menu khusus. Approval tidak menambah attendance action kepada Staff Admin. Tanpa
+capability Daycare, policy menjadi `NONE` dan tidak ada action. Mobile memakai
 `allowedActions` untuk tombol manual dan menampilkan alasan penolakan dari
 server; ia tidak menyimpulkan kelayakan dari timestamp lokal. Validasi final
 tetap terjadi kembali pada mutasi check-in/out agar context yang stale tidak
@@ -2141,10 +2155,16 @@ masa berlaku, status, pembuat, verifier/revoker, serta audit immutable. Parent
 yang sudah terhubung dapat mengajukan dan mencabut pengajuannya sendiri;
 Staff Admin mengaktifkan atau mencabutnya. Staff dalam child scope tidak dapat
 mengaktifkan/mencabut, tetapi dapat memilih authorization yang `ACTIVE` pada
-check-out. Check-out Daycare menyimpan snapshot authorization, nama penjemput,
-metode, operator, dan alasan exception bila dipakai. Tanpa authorization aktif,
-check-out ditolak kecuali dilakukan oleh Staff Admin aktif dengan alasan wajib.
-QR attendance bukan kredensial penjemput dan batas finansial tidak dipakai untuk
+check-out. Check-out Daycare menyimpan snapshot authorization atau pengecualian
+sekali-pakai, nama penjemput, metode, operator, dan alasan bila pengecualian
+dipakai. Jika tidak ada authorization aktif, Staff mengirim permintaan
+pengecualian satu kali; Staff Admin aktif memverifikasi instruksi wali dan
+menyetujui/menolak, tetapi tidak mencatat check-out. Permintaan berlaku 15 menit;
+approval terikat tenant/cabang/anak, berlaku 5 menit, hanya dapat dikonsumsi satu
+kali oleh Staff, dan dicatat sebagai referensi pada attendance. Approval tidak
+boleh digunakan jika authorization aktif tersedia saat checkout. Tanpa
+authorization aktif atau approval yang masih valid, check-out ditolak. QR
+attendance bukan kredensial penjemput dan batas finansial tidak dipakai untuk
 menolak check-out.
 
 **Availability rule implemented:** kartu, halaman, deep link, dan seluruh
@@ -2190,20 +2210,29 @@ tidak boleh diperluas ke child lain atau tenant lain.
   tetap dapat memverifikasi authorization yang **sudah aktif** saat check-out.
   Pencabutan berlaku segera untuk check-out baru.
 - Check-out Daycare adalah transaksi atomik. Server memvalidasi attendance
-  masih open, branch dan tanggal operasional, operator memiliki
-  `PICKUP_VERIFY`, authorization aktif pada timestamp cabang, dan metode
-  verifikasi. Request check-in maupun check-out wajib membawa
+  masih open, branch dan tanggal operasional, operator adalah Staff aktif,
+  authorization aktif pada timestamp cabang atau grant pengecualian valid, dan
+  metode verifikasi. Grant pengecualian hanya dibuat dari permintaan Staff
+  untuk anak yang sedang check-in dan tidak memiliki authorization aktif;
+  Staff Admin aktif wajib mencatat metode serta catatan verifikasi instruksi
+  wali sebelum approve/reject. Request pending kedaluwarsa setelah 15 menit;
+  approval terikat organization/branch/child, berlaku 5 menit, single-use, dan
+  dikonsumsi atomik pada transaksi check-out. Server menolak approval bila
+  authorization aktif muncul sebelum konsumsi. Status dan keputusan diaudit;
+  Staff Admin tidak dapat mengubah attendance langsung. Request check-in maupun check-out wajib membawa
   `idempotencyKey`: retry dengan key yang sama mengembalikan hasil semula
   tanpa efek samping ganda (audit/notifikasi tidak dobel), sedangkan
   check-out kedua pada attendance yang sama dengan key berbeda ditolak
-  sebagai double check-out. Record menyimpan snapshot `authorizationId`,
-  identitas terverifikasi secukupnya, metode, operator, waktu, dan cabang;
+  sebagai double check-out. Record menyimpan snapshot `authorizationId` atau
+  referensi `pickupExceptionRequestId`, identitas terverifikasi secukupnya,
+  metode, operator, waktu, dan cabang;
   correlation ID formal masih target.
 - QR attendance Parent bukan pickup credential. Pickup QR, bila kelak
   diaktifkan, harus one-time, signed, bound ke child + authorization + expiry,
-  dan single-use. Pengecualian check-out hanya Staff Admin aktif dengan reason
-  wajib serta witness/second approver bila policy offering memintanya; UI
-  mengirim notifikasi keselamatan sesudah transaksi berhasil.
+  dan single-use. UI menampilkan status permintaan dan approval, serta tidak
+  mengizinkan submit saat data authorization/approval gagal dimuat. Witness atau
+  second approver sesuai policy offering masih merupakan target, belum menjadi
+  syarat V1. UI tidak menggantikan verifikasi wali oleh Staff Admin.
 - Invoice, overdue, overtime, atau restriction finansial tidak boleh menahan
   check-out anak. Koreksi check-out adalah addendum/void teraudit, bukan
   overwrite waktu atau pihak penjemput lama.

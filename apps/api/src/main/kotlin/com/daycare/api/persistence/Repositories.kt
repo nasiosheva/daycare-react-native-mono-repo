@@ -4,6 +4,7 @@ import com.daycare.api.domain.ChildProgramStatus
 import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.ScreeningCatalogResourceType
 import com.daycare.api.domain.ScreeningTemplateStatus
+import com.daycare.api.domain.PickupExceptionStatus
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
@@ -250,6 +251,14 @@ interface AttendanceRepository : JpaRepository<AttendanceRecord, UUID> {
 }
 interface PickupAuthorizationRepository : JpaRepository<PickupAuthorization, UUID> {
     fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<PickupAuthorization>
+}
+interface PickupExceptionRequestRepository : JpaRepository<PickupExceptionRequest, UUID> {
+    fun findAllByOrganizationIdAndStatusOrderByRequestedAtAsc(organizationId: UUID, status: PickupExceptionStatus): List<PickupExceptionRequest>
+    fun findAllByOrganizationIdAndChildIdOrderByRequestedAtDesc(organizationId: UUID, childId: UUID): List<PickupExceptionRequest>
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select request from PickupExceptionRequest request where request.id = :id")
+    fun findByIdForUpdate(@Param("id") id: UUID): java.util.Optional<PickupExceptionRequest>
 }
 interface EmergencyContactRepository : JpaRepository<EmergencyContact, UUID> { fun findAllByOrganizationIdAndChildIdOrderByCreatedAtDesc(organizationId: UUID, childId: UUID): List<EmergencyContact> }
 interface ConsentDefinitionRepository : JpaRepository<ConsentDefinition, UUID> { fun findAllByOrganizationIdAndActiveTrueOrderByCreatedAtDesc(organizationId: UUID): List<ConsentDefinition>; fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<ConsentDefinition> }

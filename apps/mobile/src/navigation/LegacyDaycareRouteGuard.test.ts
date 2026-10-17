@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { describe, expect, it } from "vitest";
 import type { CurrentUser } from "@daycare/core";
 import { hasLegacyDaycareRouteAccess, legacyDaycareRoutePolicies } from "./legacyDaycareRouteAccess";
@@ -20,6 +21,30 @@ const parentProfile: CurrentUser = {
 };
 
 describe("hasLegacyDaycareRouteAccess", () => {
+  it("limits the attendance roster to Staff while keeping Staff Admin operations separate", () => {
+    const staffProfile: CurrentUser = {
+      ...parentProfile,
+      memberships: parentProfile.memberships.map((membership) => ({ ...membership, role: "STAFF" as const })),
+    };
+    const staffAdminProfile: CurrentUser = {
+      ...parentProfile,
+      memberships: parentProfile.memberships.map((membership) => ({ ...membership, role: "STAFF_ADMIN" as const })),
+    };
+
+    expect(hasLegacyDaycareRouteAccess(staffProfile, "tenant-daycare", legacyDaycareRoutePolicies.attendance, false)).toBe(true);
+    expect(hasLegacyDaycareRouteAccess(staffAdminProfile, "tenant-daycare", legacyDaycareRoutePolicies.attendance, false)).toBe(false);
+    expect(hasLegacyDaycareRouteAccess(staffProfile, "tenant-daycare", legacyDaycareRoutePolicies.attendanceScan, true)).toBe(true);
+    expect(hasLegacyDaycareRouteAccess(staffAdminProfile, "tenant-daycare", legacyDaycareRoutePolicies.attendanceScan, true)).toBe(false);
+  });
+
+  it("limits pickup exception approvals to an active Staff Admin with Daycare access", () => {
+    const staffProfile: CurrentUser = { ...parentProfile, memberships: parentProfile.memberships.map((membership) => ({ ...membership, role: "STAFF" as const })) };
+    const staffAdminProfile: CurrentUser = { ...parentProfile, memberships: parentProfile.memberships.map((membership) => ({ ...membership, role: "STAFF_ADMIN" as const })) };
+    expect(hasLegacyDaycareRouteAccess(staffAdminProfile, "tenant-daycare", legacyDaycareRoutePolicies.pickupExceptionApprovals, true)).toBe(true);
+    expect(hasLegacyDaycareRouteAccess(staffProfile, "tenant-daycare", legacyDaycareRoutePolicies.pickupExceptionApprovals, true)).toBe(false);
+    expect(hasLegacyDaycareRouteAccess(staffAdminProfile, "tenant-daycare", legacyDaycareRoutePolicies.pickupExceptionApprovals, false)).toBe(false);
+  });
+
   it("requires an active parent membership and a published Daycare offering for booking and QR", () => {
     expect(hasLegacyDaycareRouteAccess(parentProfile, "tenant-daycare", legacyDaycareRoutePolicies.parentBooking, true)).toBe(true);
     expect(hasLegacyDaycareRouteAccess(parentProfile, "tenant-daycare", legacyDaycareRoutePolicies.parentQr, true)).toBe(true);

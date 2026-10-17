@@ -15,6 +15,8 @@ export interface NativeDeviceRegistrar {
   }): Promise<void>;
 }
 
+const pendingRegistrations = new WeakMap<NativeDeviceRegistrar, Map<string, Promise<boolean>>>();
+
 export function nativeNotificationPlatform(): NativeNotificationPlatform | null {
   return Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : null;
 }
@@ -56,12 +58,28 @@ export async function registerNativePushDevice(
     console.warn("[notifications] EXPO_PUBLIC_EXPO_PROJECT_ID is not configured; skipping native Expo push registration.");
     return false;
   }
-  await ensureDefaultNotificationChannel();
-  const [token, installationId] = await Promise.all([
-    Notifications.getExpoPushTokenAsync({ projectId: env.expoProjectId }),
-    getDeviceInstallationId(),
-  ]);
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  await api.registerDevice({ token: token.data, platform, installationId, timeZone });
-  return true;
+  const installationId = await getDeviceInstallationId();
+  const key = `${platform}:${installationId}`;
+  let apiRegistrations = pendingRegistrations.get(api);
+  if (!apiRegistrations) {
+    apiRegistrations = new Map();
+    pendingRegistrations.set(api, apiRegistrations);
+  }
+  const pendingRegistration = apiRegistrations.get(key);
+  if (pendingRegistration) return pendingRegistration;
+
+  const registration = (async () => {
+    await ensureDefaultNotificationChannel();
+    const token = await Notifications.getExpoPushTokenAsync({ projectId: env.expoProjectId });
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    await api.registerDevice({ token: token.data, platform, installationId, timeZone });
+    return true;
+  })();
+  apiRegistrations.set(key, registration);
+  try {
+    return await registration;
+  } finally {
+    if (apiRegistrations.get(key) === registration) apiRegistrations.delete(key);
+    if (apiRegistrations.size === 0) pendingRegistrations.delete(api);
+  }
 }

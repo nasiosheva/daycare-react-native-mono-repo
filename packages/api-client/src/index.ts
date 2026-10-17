@@ -103,11 +103,18 @@ export type Attendance = {
   checkedInAt?: string;
   checkedOutAt?: string;
   method: AttendanceMethod;
+  pickupExceptionRequestId?: string | null;
 };
 export type PickupAuthorizationStatus = "PENDING_VERIFICATION" | "ACTIVE" | "SUSPENDED" | "EXPIRED" | "REVOKED";
 export type PickupVerificationMethod = "PHOTO_ID" | "KNOWN_TO_GUARDIAN" | "OTHER";
 export type PickupAuthorization = { id: string; childId: string; pickupPersonName: string; relationship: string; verificationMethod: PickupVerificationMethod; status: PickupAuthorizationStatus; effectiveFrom: string; effectiveUntil?: string | null; createdAt: string; canRevoke: boolean };
 export type CreatePickupAuthorizationInput = { pickupPersonName: string; relationship: string; verificationMethod: PickupVerificationMethod; effectiveFrom?: string; effectiveUntil?: string };
+export type PickupExceptionStatus = "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "CONSUMED";
+export type PickupExceptionVerificationMethod = "CALL_REGISTERED_GUARDIAN" | "VERIFIED_WRITTEN_INSTRUCTION" | "IN_PERSON_GUARDIAN" | "OTHER";
+export type PickupExceptionRequest = { id: string; childId: string; childName: string; branchId: string; requestedByUserId: string; pickupPersonName: string; relationship: string; reason: string; requestedAt: string; requestExpiresAt: string; status: PickupExceptionStatus; reviewedByUserId?: string | null; reviewedAt?: string | null; verificationMethod?: PickupExceptionVerificationMethod | null; verificationNote?: string | null; approvalExpiresAt?: string | null; rejectionReason?: string | null };
+export type CreatePickupExceptionRequestInput = { pickupPersonName: string; relationship: string; reason: string };
+export type ApprovePickupExceptionRequestInput = { verificationMethod: PickupExceptionVerificationMethod; verificationNote: string };
+export type RejectPickupExceptionRequestInput = { reason: string };
 export type EmergencyContactStatus = "ACTIVE" | "EXPIRED" | "REVOKED";
 export type EmergencyContact = { id: string; childId: string; name: string; relationship: string; phoneNumber: string; status: EmergencyContactStatus; effectiveUntil?: string | null; canRemove: boolean; canRevoke: boolean };
 export type CreateEmergencyContactInput = { name: string; relationship: string; phoneNumber: string; effectiveUntil?: string };
@@ -632,7 +639,7 @@ export class ApiClient {
   async bindChildGuardian(childId: string, identifier: string): Promise<ChildGuardian> { return this.request(`/children/${childId}/guardians`, { method: "POST", body: JSON.stringify({ identifier }) }); }
   async unbindChildGuardian(childId: string, userId: string): Promise<void> { await this.request<void>(`/children/${childId}/guardians/${userId}`, { method: "DELETE" }); }
 
-  async recordAttendance(childId: string, command: { action: AttendanceAction; method: AttendanceMethod; idempotencyKey: string; qrToken?: string; note?: string; at?: string; pickupAuthorizationId?: string; pickupExceptionReason?: string }): Promise<Attendance> {
+  async recordAttendance(childId: string, command: { action: AttendanceAction; method: AttendanceMethod; idempotencyKey: string; qrToken?: string; note?: string; at?: string; pickupAuthorizationId?: string; pickupExceptionRequestId?: string }): Promise<Attendance> {
     return this.request(`/children/${childId}/attendance`, { method: "POST", body: JSON.stringify(command) });
   }
 
@@ -640,6 +647,11 @@ export class ApiClient {
   async createPickupAuthorization(childId: string, input: CreatePickupAuthorizationInput, organizationId?: string): Promise<PickupAuthorization> { return this.request(`/children/${childId}/pickup-authorizations`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
   async activatePickupAuthorization(childId: string, authorizationId: string, organizationId?: string): Promise<PickupAuthorization> { return this.request(`/children/${childId}/pickup-authorizations/${authorizationId}/activate`, { method: "POST", ...this.orgOverride(organizationId) }); }
   async revokePickupAuthorization(childId: string, authorizationId: string, reason: string, organizationId?: string): Promise<PickupAuthorization> { return this.request(`/children/${childId}/pickup-authorizations/${authorizationId}/revoke`, { method: "POST", body: JSON.stringify({ reason }), ...this.orgOverride(organizationId) }); }
+  async pickupExceptionRequests(childId: string, organizationId?: string): Promise<PickupExceptionRequest[]> { return this.request(`/children/${childId}/pickup-exception-requests`, this.orgOverride(organizationId)); }
+  async createPickupExceptionRequest(childId: string, input: CreatePickupExceptionRequestInput, organizationId?: string): Promise<PickupExceptionRequest> { return this.request(`/children/${childId}/pickup-exception-requests`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async pendingPickupExceptionRequests(organizationId?: string): Promise<PickupExceptionRequest[]> { return this.request("/pickup-exception-requests/pending", this.orgOverride(organizationId)); }
+  async approvePickupExceptionRequest(requestId: string, input: ApprovePickupExceptionRequestInput, organizationId?: string): Promise<PickupExceptionRequest> { return this.request(`/pickup-exception-requests/${requestId}/approve`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
+  async rejectPickupExceptionRequest(requestId: string, input: RejectPickupExceptionRequestInput, organizationId?: string): Promise<PickupExceptionRequest> { return this.request(`/pickup-exception-requests/${requestId}/reject`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
   async emergencyContacts(childId: string, organizationId?: string): Promise<EmergencyContact[]> { return this.request(`/children/${childId}/emergency-contacts`, this.orgOverride(organizationId)); }
   async createEmergencyContact(childId: string, input: CreateEmergencyContactInput, organizationId?: string): Promise<EmergencyContact> { return this.request(`/children/${childId}/emergency-contacts`, { method: "POST", body: JSON.stringify(input), ...this.orgOverride(organizationId) }); }
   async removeEmergencyContact(childId: string, contactId: string, organizationId?: string): Promise<void> { await this.request<void>(`/children/${childId}/emergency-contacts/${contactId}`, { method: "DELETE", ...this.orgOverride(organizationId) }); }
@@ -813,7 +825,7 @@ export class ApiClient {
   async deleteServicePlanTemplate(templateId: string): Promise<void> { await this.request<void>(`/service-plan-templates/${templateId}`, { method: "DELETE" }); }
   async purchaseService(input: PurchaseServiceInput, idempotencyKey: string, organizationId?: string): Promise<{ entitlement: ServiceEntitlement; invoice: Invoice; bookings: Booking[] }> { return this.request("/service-purchases", { method: "POST", headers: { ...(organizationId ? { "X-Organization-Id": organizationId } : {}), "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) }); }
   async entitlements(filter: BranchListFilter = {}, organizationId?: string): Promise<ServiceEntitlement[]> { return this.request(withBranchFilter("/service-entitlements", filter), this.orgOverride(organizationId)); }
-  async bookEntitlement(entitlementId: string, bookingDates: string[], organizationId?: string): Promise<Booking[]> { return this.request(`/service-entitlements/${entitlementId}/bookings`, { method: "POST", body: JSON.stringify({ bookingDates }), ...this.orgOverride(organizationId) }); }
+  async bookEntitlement(entitlementId: string, bookingDates: string[], idempotencyKey: string, organizationId?: string): Promise<Booking[]> { return this.request(`/service-entitlements/${entitlementId}/bookings`, { method: "POST", headers: { ...(organizationId ? { "X-Organization-Id": organizationId } : {}), "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ bookingDates }) }); }
   async bookings(filter: BranchListFilter = {}, organizationId?: string): Promise<Booking[]> { return this.request(withBranchFilter("/bookings", filter), this.orgOverride(organizationId)); }
   async pendingBookings(filter: BranchListFilter = {}, search?: string): Promise<Booking[]> { return this.request(withBranchAndSearchFilter("/bookings/pending-approval", filter, search)); }
   async approveBooking(bookingId: string, approved: boolean): Promise<Booking> { return this.request(`/bookings/${bookingId}/approval`, { method: "POST", body: JSON.stringify({ approved }) }); }

@@ -6,6 +6,11 @@ Usia Emas adalah platform multi-tenant untuk Daycare, PAUD, TK, dan layanan
 pendukungnya. Monorepo ini berisi aplikasi Expo (Android, iOS, web), API Kotlin
 Spring Boot, PostgreSQL/Flyway, serta package TypeScript bersama.
 
+Staff mencatat check-in/out anak dari daftar kehadiran atau pemindai QR. Untuk
+check-out Daycare tanpa otorisasi penjemput aktif, Staff dapat meminta approval
+satu kali yang diverifikasi Staff Admin; hanya Staff yang mencatat kehadiran.
+Staff Admin tetap mengakses rekap dan antrean approval, bukan aksi attendance.
+
 > Baca [Business rules](docs/business-rules.md) sebelum mengubah alur bisnis,
 > API, data, otorisasi, atau arsitektur. Jika implementasi berbeda dari aturan,
 > catat gap-nya; jangan mengubah aturan secara diam-diam.
@@ -38,6 +43,7 @@ Spring Boot, PostgreSQL/Flyway, serta package TypeScript bersama.
 Aturan role, institution type, tenant scope, consent, billing, kelas, screening,
 chat, dan keamanan hanya didefinisikan di [docs/business-rules.md](docs/business-rules.md).
 Flow khusus tersedia di [docs/](docs/).
+Proposal dan perubahan teknis baru mengikuti workflow OpenSpec di `openspec/`; aturan bisnis tetap bersumber dari `docs/business-rules.md`.
 
 Pengelolaan langganan SaaS tenant dipisahkan dari billing Parent. Aturan, status,
 akses, dan tahap implementasi ada di [business rules](docs/business-rules.md#1313-langganan-saas-tenant)
@@ -45,7 +51,9 @@ dan [plan langganan tenant](docs/plans/tenant-subscription-management.md). Renew
 Daftar Platform Admin mendukung pencarian, filter status/jenis lembaga, ringkasan jumlah per status, dan pagination melalui `GET /api/v1/platform/tenants/page`.
 Staff Admin memiliki self-service subscription melalui `/tenant-subscription`, termasuk renewal idempoten, bukti pembayaran privat maksimal 2 MB, dan pengajuan koreksi. Platform Admin meninjau bukti/koreksi dan melihat reminder H-7/H-3/H-1; upload dan koreksi tetap nonaktif sampai gate kebijakan/keuangan disetujui. Lihat [plan](docs/plans/tenant-subscription-management.md) untuk gap dan syarat rilis.
 
-Billing Parent mengirim `Idempotency-Key` stabil untuk pembelian paket dan upload bukti; retry aman mengembalikan invoice yang sama, sedangkan key dengan payload berbeda ditolak. Paket bulanan yang sama untuk anak yang sama tidak dapat dibeli lagi selama periode layanannya bertumpang tindih; retry atas invoice bulanan yang masih menunggu dengan intent identik memakai invoice yang sama. Semantik invoice Parent tetap terpisah dari langganan SaaS tenant.
+Billing Parent mengirim `Idempotency-Key` stabil untuk pembelian paket, booking dari sisa kredit, dan upload bukti; retry aman mengembalikan hasil aksi yang sama, sedangkan key dengan payload berbeda ditolak. Paket bulanan yang sama untuk anak yang sama tidak dapat dibeli lagi selama periode layanannya bertumpang tindih; retry atas invoice bulanan yang masih menunggu dengan intent identik memakai invoice yang sama. Semantik invoice Parent tetap terpisah dari langganan SaaS tenant. Pemesanan layanan hanya menampilkan anak dari tenant yang memublikasikan capability Daycare; kegagalan memuat paket, sisa layanan, tagihan, atau riwayat menyediakan aksi coba lagi.
+
+Indikator koneksi membedakan perangkat yang benar-benar terputus dari server API yang tidak dapat dijangkau. Kegagalan request API saat perangkat masih terhubung ditampilkan sebagai `API_UNAVAILABLE`, bukan status offline.
 
 Setiap branch yang membuka PR/MR wajib menyertakan checklist branch tersendiri dari [template checklist MR](docs/checklists/branch-mr-checklist-template.md), lengkap dengan bukti test/CI dan blocker. Deskripsi PR/MR juga harus memuat tabel ringkasan status sepuluh area review beserta gap/blocker dan tautan bukti checklist branch. Perubahan kode mengikuti test-first: test ditulis dan dibuktikan gagal sebelum implementasi, lalu dijalankan kembali sampai lulus. Sebelum commit, buat/perbarui salinan [checklist kesiapan commit](docs/checklists/pre-commit-readiness-template.md) per branch berdasarkan sepuluh area di checklist code review lokal; tinjau diff, perbaiki semua temuan, dan commit hanya jika checklist menyatakan READY tanpa temuan terbuka.
 

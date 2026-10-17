@@ -1,5 +1,7 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 export type AttendanceStatus = "NOT_YET" | "PRESENT" | "LEFT";
 export type AttendanceStatusFilter = "ALL" | AttendanceStatus;
+export type AttendanceActionForStatus = "CHECK_IN" | "CHECK_OUT" | null;
 
 type RosterChild = { fullName: string; todayCheckedInAt?: string | null; todayCheckedOutAt?: string | null };
 
@@ -7,6 +9,12 @@ export function attendanceStatus(child: RosterChild): AttendanceStatus {
   if (child.todayCheckedOutAt) return "LEFT";
   if (child.todayCheckedInAt) return "PRESENT";
   return "NOT_YET";
+}
+
+export function attendanceAction(status: AttendanceStatus): AttendanceActionForStatus {
+  if (status === "NOT_YET") return "CHECK_IN";
+  if (status === "PRESENT") return "CHECK_OUT";
+  return null;
 }
 
 /** Case- and accent-insensitive "contains" match used by the local search boxes. */

@@ -41,7 +41,7 @@ class SecurityConfig {
         val configuration = CorsConfiguration().apply {
             this.allowedOrigins = allowedOrigins.split(",").map { it.trim() }.filter { it.isNotBlank() }
             allowedMethods = listOf("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS")
-            allowedHeaders = listOf("Authorization", "Content-Type", "X-Organization-Id", "Accept-Language")
+            allowedHeaders = listOf("Authorization", "Content-Type", "X-Organization-Id", "Accept-Language", "Idempotency-Key")
         }
         return UrlBasedCorsConfigurationSource().apply { registerCorsConfiguration("/**", configuration) }
     }

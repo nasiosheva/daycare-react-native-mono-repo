@@ -3,7 +3,7 @@
 import { render } from "@testing-library/react-native";
 import { OfflineStatusBanner } from "./OfflineStatusBanner";
 
-let mockOfflineValue: { status: "ONLINE" | "OFFLINE" | "SYNCING" | "CONFLICT" | "STALE"; pendingCount: number; lastSyncAt: string | null };
+let mockOfflineValue: { status: "ONLINE" | "OFFLINE" | "API_UNAVAILABLE" | "SYNCING" | "CONFLICT" | "STALE"; pendingCount: number; lastSyncAt: string | null };
 jest.mock("@expo/vector-icons", () => ({ Ionicons: "Ionicons" }));
 jest.mock("./OfflineProvider", () => ({ useOffline: () => mockOfflineValue }));
 jest.mock("@/i18n/I18nProvider", () => ({ useI18n: () => ({ t: (key: string, params?: Record<string, unknown>) => params ? `${key}:${JSON.stringify(params)}` : key }) }));
@@ -23,6 +23,15 @@ describe("OfflineStatusBanner", () => {
     const { getByText } = render(<OfflineStatusBanner />);
 
     expect(getByText(/offline\.offlineDescription/)).toBeTruthy();
+  });
+
+  it("distinguishes an unreachable API from a disconnected device", () => {
+    mockOfflineValue = { status: "API_UNAVAILABLE", pendingCount: 1, lastSyncAt: null };
+
+    const { getByText } = render(<OfflineStatusBanner />);
+
+    expect(getByText("offline.apiUnavailableTitle")).toBeTruthy();
+    expect(getByText(/offline\.apiUnavailableDescription/)).toBeTruthy();
   });
 
   it("shows the last-sync time appended to the message once a sync has completed", () => {

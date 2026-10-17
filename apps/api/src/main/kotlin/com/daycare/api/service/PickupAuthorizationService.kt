@@ -41,7 +41,7 @@ data class PickupAuthorizationResponse(
     val createdAt: Instant,
     val canRevoke: Boolean,
 )
-data class PickupCheckoutVerification(val authorizationId: UUID?, val pickupPersonName: String?, val verificationMethod: PickupVerificationMethod?, val exceptionReason: String?)
+data class PickupCheckoutVerification(val authorizationId: UUID?, val pickupPersonName: String?, val verificationMethod: PickupVerificationMethod?, val exceptionReason: String?, val exceptionRequestId: UUID? = null)
 
 @Service
 class PickupAuthorizationService(
@@ -113,13 +113,11 @@ class PickupAuthorizationService(
         return response(authorization, false)
     }
 
-    fun verifyCheckout(scope: AccessScope, child: Child, authorizationId: UUID?, exceptionReason: String?): PickupCheckoutVerification {
+    fun verifyCheckout(scope: AccessScope, child: Child, authorizationId: UUID?): PickupCheckoutVerification {
         requireDaycareOffering(child)
         if (authorizationId == null) {
-            if (scope.membership.role != Role.STAFF_ADMIN || exceptionReason.isNullOrBlank()) throw AccessDeniedException("Check-out memerlukan otorisasi penjemput aktif")
-            return PickupCheckoutVerification(null, null, null, exceptionReason.trim())
+            throw AccessDeniedException("Check-out memerlukan otorisasi penjemput aktif atau persetujuan pengecualian")
         }
-        if (!exceptionReason.isNullOrBlank()) throw IllegalArgumentException("Alasan pengecualian hanya dipakai tanpa otorisasi penjemput")
         val authorization = requireAuthorization(child.organizationId, child.id, authorizationId)
         val now = Instant.now()
         val active = authorization.status == PickupAuthorizationStatus.ACTIVE && !now.isBefore(authorization.effectiveFrom) && (authorization.effectiveUntil == null || now.isBefore(authorization.effectiveUntil))

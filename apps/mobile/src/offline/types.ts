@@ -2,7 +2,7 @@
 
 import type { CreateChildCareLogInput } from "@daycare/api-client";
 
-export type OfflineStatus = "ONLINE" | "OFFLINE" | "SYNCING" | "CONFLICT" | "STALE";
+export type OfflineStatus = "ONLINE" | "OFFLINE" | "API_UNAVAILABLE" | "SYNCING" | "CONFLICT" | "STALE";
 export type OfflineRole = "STAFF" | "STAFF_ADMIN" | "PARENT";
 
 export type OfflineScope = {

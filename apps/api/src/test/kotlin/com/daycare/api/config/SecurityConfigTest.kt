@@ -35,6 +35,7 @@ class SecurityConfigTest {
         val source = config.corsConfigurationSource(" http://localhost:8081, ,https://example.test ")
         val cors = source.getCorsConfiguration(org.springframework.mock.web.MockHttpServletRequest("GET", "/api"))
         assertEquals(listOf("http://localhost:8081", "https://example.test"), cors?.allowedOrigins)
+        assertTrue(cors?.allowedHeaders?.contains("Idempotency-Key") == true)
     }
 
     @Test

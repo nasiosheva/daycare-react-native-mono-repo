@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import type { CurrentUser, Role } from "@daycare/core";
 
 type NotificationRoutePolicy = {
@@ -18,7 +19,7 @@ const notificationRoutePolicies: Record<string, NotificationRoutePolicy> = {
   "/payment-proof": { requiresParentRegistration: true, passesOrganizationId: true },
   "/booking": { roles: ["PARENT"], requireActiveMembership: true, requireDaycareCapability: true, resolvesTenantInScreen: true },
   "/parent-qr": { roles: ["PARENT"], requireActiveMembership: true, requireDaycareCapability: true, resolvesTenantInScreen: true },
-  "/attendance-scan": { roles: ["STAFF_ADMIN", "STAFF"], requireActiveMembership: true, requireDaycareCapability: true },
+  "/attendance-scan": { roles: ["STAFF"], requireActiveMembership: true, requireDaycareCapability: true },
   "/attendance": { roles: ["STAFF"], requireActiveMembership: true },
   "/booking-approvals": { roles: ["STAFF_ADMIN", "STAFF"], requireActiveMembership: true, requireDaycareCapability: true },
   "/parent-payments": { roles: ["STAFF_ADMIN"], requireActiveMembership: true },

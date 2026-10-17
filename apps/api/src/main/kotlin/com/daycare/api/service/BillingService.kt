@@ -292,13 +292,24 @@ class BillingService(
     }
 
     @Transactional
-    fun createBookingsFromEntitlement(jwt: Jwt, organizationId: UUID, entitlementId: UUID, request: CreateEntitlementBookingsRequest): List<BookingResponse> {
+    fun createBookingsFromEntitlement(jwt: Jwt, organizationId: UUID, entitlementId: UUID, idempotencyKey: UUID, request: CreateEntitlementBookingsRequest): List<BookingResponse> {
         val scope = access.require(jwt, organizationId, setOf(Role.PARENT), InstitutionCapability.DAYCARE_OPERATIONS)
         reconcileExpiredInvoices(organizationId)
         val entitlement = entitlements.findById(entitlementId).orElseThrow { IllegalArgumentException("Service entitlement was not found") }
         require(entitlement.organizationId == organizationId && entitlement.ownerUserId == scope.user.id) { "Service entitlement is not available" }
         val child = childScopes.requireParentLinkedChild(scope, entitlement.childId, organizationId)
-        return createBookingsForEntitlement(organizationId, entitlement, child, request.bookingDates, if (entitlement.bookingRequiresApproval) BookingStatus.PENDING_APPROVAL else BookingStatus.CONFIRMED)
+        val dates = request.bookingDates.distinct().sorted()
+        val payloadHash = billingIdempotency.payloadHash(entitlement.id.toString(), dates.joinToString(","))
+        val replayEntitlementId = billingIdempotency.replayResourceId(organizationId, scope.user.id, PARENT_ENTITLEMENT_BOOKING, idempotencyKey, payloadHash)
+        if (replayEntitlementId != null) {
+            require(replayEntitlementId == entitlement.id) { "Service entitlement is not available" }
+            val replayedBookings = bookings.findAllByOrganizationIdAndEntitlementIdAndBookingDateInOrderByBookingDateAsc(organizationId, entitlement.id, dates)
+            require(replayedBookings.map { it.bookingDate } == dates) { "Booking is not available" }
+            return replayedBookings.map { bookingResponse(it, child.fullName()) }
+        }
+        val result = createBookingsForEntitlement(organizationId, entitlement, child, dates, if (entitlement.bookingRequiresApproval) BookingStatus.PENDING_APPROVAL else BookingStatus.CONFIRMED)
+        billingIdempotency.record(organizationId, scope.user.id, PARENT_ENTITLEMENT_BOOKING, idempotencyKey, payloadHash, BOOKING_BATCH_RESOURCE, entitlement.id)
+        return result
     }
 
     @Transactional
@@ -633,7 +644,9 @@ class BillingService(
     private companion object {
         const val PARENT_SERVICE_PURCHASE = "PARENT_SERVICE_PURCHASE"
         const val PARENT_PAYMENT_PROOF_SUBMISSION = "PARENT_PAYMENT_PROOF_SUBMISSION"
+        const val PARENT_ENTITLEMENT_BOOKING = "PARENT_ENTITLEMENT_BOOKING"
         const val INVOICE_RESOURCE = "INVOICE"
+        const val BOOKING_BATCH_RESOURCE = "BOOKING_BATCH"
         val systemTemplates = listOf(
             ServicePlanTemplateResponse("SYSTEM_DAILY", "SYSTEM", "Paket Harian", ServicePlanType.DAILY, null, 1, null, null, true, null),
             ServicePlanTemplateResponse("SYSTEM_WEEKLY", "SYSTEM", "Paket Mingguan 5 Hari", ServicePlanType.WEEKLY, null, 5, UnusedCreditPolicy.EXPIRE, null, true, null),

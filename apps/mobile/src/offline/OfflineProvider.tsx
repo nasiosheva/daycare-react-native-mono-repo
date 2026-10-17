@@ -1,14 +1,15 @@
 // Mories Deo Hutapea,S.E.,S.Kom
 
-import { AppState, Platform } from "react-native";
+import { AppState } from "react-native";
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
-import { ApiError, isApiNetworkError, isApiTimeoutError, type ChildCareLog, type CreateChildCareLogInput, type ParentChildProfile } from "@daycare/api-client";
+import { ApiError, isApiNetworkError, isApiTimeoutError, type CreateChildCareLogInput, type ParentChildProfile } from "@daycare/api-client";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
 import { useAuth } from "@/auth/AuthProvider";
-import { markNetworkOnline, subscribeNetworkSignal } from "./networkSignal";
+import { subscribeDeviceConnectivity } from "./deviceConnectivity";
+import { subscribeApiReachability } from "./networkSignal";
 import { createChildCareLogTask, isRetryableOutboxError, pendingOutboxCount } from "./outbox";
 import { loadOutbox, loadSnapshot, offlineScopeKey, purgeOfflineScope, saveOutbox, saveSnapshot } from "./store";
-import type { ChildCareLogOutboxTask, OfflineRole, OfflineScope, OfflineSnapshot, OfflineStatus } from "./types";
+import type { ChildCareLogOutboxTask, OfflineRole, OfflineScope, OfflineStatus } from "./types";
 import { OfflineStatusBanner } from "./OfflineStatusBanner";
 
 type SnapshotBundle = Record<string, { queryKey: QueryKey; data: unknown; savedAt: string; expiresAt: string }>;
@@ -31,6 +32,7 @@ export function OfflineProvider({ children }: PropsWithChildren) {
   const scope = useMemo<OfflineScope | null>(() => profile?.id && organizationId && role ? { userId: profile.id, organizationId, role } : null, [organizationId, profile?.id, role]);
   const scopeKey = scope ? offlineScopeKey(scope) : null;
   const [online, setOnline] = useState(true);
+  const [apiAvailable, setApiAvailable] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [tasks, setTasks] = useState<ChildCareLogOutboxTask[]>([]);
@@ -58,7 +60,7 @@ export function OfflineProvider({ children }: PropsWithChildren) {
 
   const flush = useCallback(async () => {
     // Refs, not the online/syncing state variables: this can run synchronously right after
-    // setOnline()/markNetworkOnline() in the same event, before React has re-rendered and
+    // setOnline()/setApiAvailable() in the same event, before React has re-rendered and
     // rebuilt this closure with the new value, which would otherwise make the guard below act on
     // a stale "offline"/"syncing" snapshot and silently skip the retry.
     const currentScope = scopeRef.current;
@@ -84,8 +86,7 @@ export function OfflineProvider({ children }: PropsWithChildren) {
           if (isApiNetworkError(error) || isApiTimeoutError(error) || isRetryableOutboxError(status)) {
             remaining = remaining.map((item) => item.id === task.id ? { ...item, status: "READY_TO_SYNC", lastError: error instanceof Error ? error.message : "network" } : item);
             await persistTasks(remaining);
-            onlineRef.current = false;
-            setOnline(false);
+            setApiAvailable(false);
             break;
           }
           remaining = remaining.map((item) => item.id === task.id ? { ...item, status: status === 409 ? "CONFLICT" : "REJECTED", lastError: error instanceof Error ? error.message : "sync_failed" } : item);
@@ -113,26 +114,19 @@ export function OfflineProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     // flushRef (not flush itself) so this subscribes once instead of re-subscribing every time
     // flush's identity changes, which happens mid-flush as `syncing`/`online` toggle.
-    const unsubscribe = subscribeNetworkSignal((nextOnline) => {
-      onlineRef.current = nextOnline;
-      setOnline(nextOnline);
-      if (nextOnline) void flushRef.current();
+    const unsubscribeApi = subscribeApiReachability((available) => {
+      setApiAvailable(available);
+      if (available) void flushRef.current();
     });
-    if (Platform.OS === "web") {
-      const handleOffline = () => { onlineRef.current = false; setOnline(false); };
-      globalThis.addEventListener?.("online", markNetworkOnline);
-      globalThis.addEventListener?.("offline", handleOffline);
-      const appState = AppState.addEventListener("change", (state) => { if (state === "active") void flushRef.current(); });
-      return () => {
-        unsubscribe();
-        globalThis.removeEventListener?.("online", markNetworkOnline);
-        globalThis.removeEventListener?.("offline", handleOffline);
-        appState.remove();
-      };
-    }
+    const unsubscribeDevice = subscribeDeviceConnectivity((connected) => {
+      onlineRef.current = connected;
+      setOnline(connected);
+      if (connected) void flushRef.current();
+    });
     const appState = AppState.addEventListener("change", (state) => { if (state === "active") void flushRef.current(); });
     return () => {
-      unsubscribe();
+      unsubscribeApi();
+      unsubscribeDevice();
       appState.remove();
     };
   }, []);
@@ -184,7 +178,7 @@ export function OfflineProvider({ children }: PropsWithChildren) {
     return unsubscribe;
   }, [queryClient, scope]);
 
-  const status: OfflineStatus = conflict ? "CONFLICT" : syncing ? "SYNCING" : !online ? "OFFLINE" : tasks.some((task) => task.status === "REJECTED") ? "STALE" : "ONLINE";
+  const status: OfflineStatus = conflict ? "CONFLICT" : syncing ? "SYNCING" : !online ? "OFFLINE" : !apiAvailable ? "API_UNAVAILABLE" : tasks.some((task) => task.status === "REJECTED") ? "STALE" : "ONLINE";
   const value = useMemo<OfflineContextValue>(() => ({ status, isOffline: status === "OFFLINE", pendingCount: pendingOutboxCount(tasks), lastSyncAt, enqueueChildCareLog, flush }), [enqueueChildCareLog, flush, lastSyncAt, status, tasks]);
   return <OfflineContext.Provider value={value}><OfflineStatusBanner />{children}</OfflineContext.Provider>;
 }

@@ -1,18 +1,19 @@
 // Mories Deo Hutapea,S.E.,S.Kom
 
-type Listener = (online: boolean) => void;
+// API reachability is intentionally separate from the device's network connection state.
+type Listener = (available: boolean) => void;
 const listeners = new Set<Listener>();
 
-export function subscribeNetworkSignal(listener: Listener): () => void {
+export function subscribeApiReachability(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
-export function markNetworkOffline(): void {
+export function markApiUnavailable(): void {
   listeners.forEach((listener) => listener(false));
 }
 
-export function markNetworkOnline(): void {
+export function markApiAvailable(): void {
   listeners.forEach((listener) => listener(true));
 }
 

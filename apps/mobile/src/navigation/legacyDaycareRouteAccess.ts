@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import type { CurrentUser, Role } from "@daycare/core";
 
 export type LegacyDaycareRoutePolicy = {
@@ -11,6 +12,11 @@ export type LegacyDaycareRoutePolicy = {
 };
 
 export const legacyDaycareRoutePolicies = {
+  attendance: {
+    roles: ["STAFF"],
+    requireActiveMembership: false,
+    requireDaycareCapability: false,
+  },
   parentBooking: {
     roles: ["PARENT"],
     requireActiveMembership: true,
@@ -24,7 +30,12 @@ export const legacyDaycareRoutePolicies = {
     crossTenant: true,
   },
   attendanceScan: {
-    roles: ["STAFF_ADMIN", "STAFF"],
+    roles: ["STAFF"],
+    requireActiveMembership: true,
+    requireDaycareCapability: true,
+  },
+  pickupExceptionApprovals: {
+    roles: ["STAFF_ADMIN"],
     requireActiveMembership: true,
     requireDaycareCapability: true,
   },

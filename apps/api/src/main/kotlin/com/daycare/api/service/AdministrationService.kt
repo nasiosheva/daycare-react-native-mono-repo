@@ -193,7 +193,14 @@ class AdministrationService(
         val scope = access.require(jwt, organizationId, Role.entries.toSet())
         access.requireWritable(scope)
         require(request.token.isNotBlank() && request.platform in setOf("ios", "android")) { "A valid native device token is required" }
-        val device = deviceTokens.findByInstallationId(request.installationId) ?: deviceTokens.findByToken(request.token) ?: DeviceToken(token = request.token)
+        val installationDevice = deviceTokens.findByInstallationId(request.installationId)
+        val tokenDevice = deviceTokens.findByToken(request.token)
+        val device = tokenDevice ?: installationDevice ?: DeviceToken(token = request.token)
+        if (tokenDevice != null && installationDevice != null && tokenDevice.id != installationDevice.id) {
+            tokenDevice.pushMutedUntil = installationDevice.pushMutedUntil
+            deviceTokens.delete(installationDevice)
+            deviceTokens.flush()
+        }
         device.organizationId = organizationId
         device.userId = scope.user.id
         device.token = request.token
