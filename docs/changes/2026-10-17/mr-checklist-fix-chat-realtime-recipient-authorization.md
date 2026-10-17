@@ -8,7 +8,7 @@
 | --- | --- |
 | Branch sumber | `fix/chat-realtime-recipient-authorization` |
 | Target branch | `production` |
-| PR | `Akan diisi setelah PR dibuat` |
+| PR | https://github.com/nasiosheva/daycare-react-native-mono-repo/pull/88 |
 | Work item / tujuan | Refresh thread chat ketika reconnect/focus dan amankan event chat lintas tenant menurut membership aktif. |
 | Tanggal checklist | `2026-10-17` |
 
@@ -57,7 +57,7 @@ Temuan terbuka/blocker: tidak ada temuan kode; CI PR masih menunggu.
 - [x] Test terkait: publisher/session registry/ChildMessageService; realtime invalidation, mute preference, serta hook focus/foreground.
 - [x] `pnpm verify` lulus untuk seluruh workspace TypeScript: lint, typecheck, dan test (60 file/242 test mobile; packages/core 10 test, packages/ui 30 test, packages/api-client 67 test).
 - [x] `GRADLE_USER_HOME=.gradle-local ./apps/api/gradlew -p apps/api test --no-daemon --max-workers=1 --rerun-tasks` lulus (`BUILD SUCCESSFUL`).
-- [ ] CI untuk head PR saat ini: menunggu workflow berjalan setelah PR dibuat.
+- [ ] CI untuk head PR saat ini: workflow `Mobile unit tests` sedang berjalan pada PR #88; tunggu hasil untuk head terbaru sebelum merge.
 - [x] `git diff --cached --check` lulus. Coverage backend: 88% line / 87% branch dari `apps/api/build/reports/jacoco/test/html/index.html`; coverage frontend tidak dihitung pada verifikasi ini.
 - [x] Verifikasi lokal dibedakan dari CI/device/browser/live service; tidak ada klaim untuk yang belum dijalankan.
 
@@ -77,7 +77,7 @@ Temuan terbuka/blocker: tidak ada temuan kode; CI PR masih menunggu.
 | --- | --- | --- |
 | Test frontend | `pnpm verify` — PASS | 242 mobile test, 10 core, 30 UI, 67 API-client. Full lint memiliki warning non-blocking; 0 error. |
 | Test backend | `GRADLE_USER_HOME=.gradle-local ./apps/api/gradlew -p apps/api test --no-daemon --max-workers=1 --rerun-tasks` — PASS | BUILD SUCCESSFUL; JaCoCo 88% line / 87% branch. Ada warning compiler deprecation/type yang tidak menyebabkan kegagalan. |
-| CI head PR | PENDING | Akan diperiksa setelah PR dibuat. |
+| CI head PR | IN_PROGRESS | PR #88; workflow `Mobile unit tests` sedang berjalan. Hasil harus diverifikasi lagi setelah commit checklist ini di-push. |
 | Coverage line/branch | Backend 88% / 87% | `apps/api/build/reports/jacoco/test/html/index.html`; coverage frontend tidak dihitung. |
 | DB/migration | N/A | Tidak ada schema atau migration yang berubah. |
 | Browser/device/live service | Tidak dilakukan | Fokus perubahan pada lifecycle/realtime; automated tests lulus. |
