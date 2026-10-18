@@ -74,7 +74,7 @@ Temuan lokal terbuka: tidak ada. Blocker verifikasi: PR-head CI pending; V37 per
 | --- | --- | --- |
 | Test frontend | `pnpm verify` PASS; mobile 72 files/284 tests. UI `pnpm --filter @daycare/app test:ui` PASS, 14 suites/65 tests. | Ada warning React `act(...)`/`react-test-renderer`; seluruh test lulus. |
 | Test backend | `./apps/api/gradlew -p apps/api test --no-daemon --console=plain` PASS. | `jacocoTestReport` juga PASS. |
-| CI head PR | PENDING | [Mobile unit tests](https://github.com/nasiosheva/daycare-react-native-mono-repo/actions/runs/39105659448/job/117610824309) sedang berjalan untuk head PR #89. |
+| CI head PR | PENDING | [Status checks PR #89](https://github.com/nasiosheva/daycare-react-native-mono-repo/pull/89/checks) masih berjalan untuk head branch terbaru. |
 | Coverage line/branch | Backend aggregate JaCoCo: line 93.84%, branch 87.43%. Selected new helpers: line/function 100%, branch 98.36%. | Source: `apps/api/build/reports/jacoco/test/jacocoTestReport.xml` dan Vitest targeted coverage output. |
 | DB/migration | V36/V37 included; V37 not run on persistent local/prod DB. | Tidak menjalankan migration persistent karena instruksi pengguna sebelumnya. |
 | Browser/device/live service | Expo web export PASS; Android debug build PASS. | Manual iOS/Android device and live-service checks not performed. |
