@@ -1,6 +1,6 @@
 // Mories Deo Hutapea,S.E.,S.Kom
 import { useEffect, useMemo, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { AppText, Badge, Banner, BottomSheet, Button, Card, Chip, ChipGroup, EmptyState, ErrorState, MenuItem, NavigationCard, SectionHeader, ShimmerList, colors, radius, spacing } from "@daycare/ui";
@@ -26,6 +26,8 @@ export default function BookingScreen() {
 }
 
 function BookingScreenContent() {
+  const { width } = useWindowDimensions();
+  const useSingleColumnTiles = width < 600;
   const router = useRouter();
   const { profile } = useAuth();
   // A Parent's children can belong to different tenants; the child picked below decides which
@@ -101,20 +103,20 @@ function BookingScreenContent() {
     {!childEligibilityLoading && offeringCapabilities.failedTenants.length === 0 && !children.allFailed && children.data.length > 0 && eligibleChildren.length === 0 && <EmptyState compact icon="calendar-outline" title={t("booking.noDaycareChildren")} />}
     {selectedChildRestricted && <Banner tone="warning" title={t("tenantReadiness.issueSubscription")} />}
     <Button leadingIcon={<Ionicons name="add-circle-outline" size={18} color={colors.onPrimary} />} disabled={!selectedChild || selectedChildRestricted} onPress={() => setListSheet("plan")}>{t("booking.bookNow")}</Button>
-    <View style={styles.grid}>
-      <NavigationCard accessibilityLabel={t("booking.plan")} onPress={() => setListSheet("plan")} style={styles.tile} leading={<TileIcon name="pricetags-outline" />}>
+    <View style={[styles.grid, useSingleColumnTiles && styles.gridSingleColumn]}>
+      <NavigationCard accessibilityLabel={t("booking.plan")} onPress={() => setListSheet("plan")} style={[styles.tile, useSingleColumnTiles && styles.tileSingleColumn]} leading={<TileIcon name="pricetags-outline" />}>
         <AppText variant="label">{t("booking.plan")}</AppText>
         <AppText tone={activeEntitlement ? "default" : "muted"}>{activeEntitlement ? t("booking.activePlanSummary", { name: activeEntitlement.planName }) : t("booking.noActivePlan")}</AppText>
       </NavigationCard>
-      <NavigationCard accessibilityLabel={t("booking.remaining")} onPress={() => setListSheet("remaining")} style={styles.tile} leading={<TileIcon name="ticket-outline" />}>
+      <NavigationCard accessibilityLabel={t("booking.remaining")} onPress={() => setListSheet("remaining")} style={[styles.tile, useSingleColumnTiles && styles.tileSingleColumn]} leading={<TileIcon name="ticket-outline" />}>
         <AppText variant="label">{t("booking.remaining")}</AppText>
         <AppText tone={activeEntitlement ? "default" : "muted"}>{activeEntitlement ? (activeEntitlement.remainingCredits == null ? t("booking.monthlyActive") : t("booking.remainingDays", { count: activeEntitlement.remainingCredits })) : t("booking.noActivePlan")}</AppText>
       </NavigationCard>
-      <NavigationCard accessibilityLabel={t("booking.invoices")} onPress={() => setListSheet("invoices")} style={[styles.tile, pendingChildInvoices.length > 0 && styles.tileAttention]} leading={<TileIcon name="receipt-outline" attention={pendingChildInvoices.length > 0} />}>
+      <NavigationCard accessibilityLabel={t("booking.invoices")} onPress={() => setListSheet("invoices")} style={[styles.tile, useSingleColumnTiles && styles.tileSingleColumn, pendingChildInvoices.length > 0 && styles.tileAttention]} leading={<TileIcon name="receipt-outline" attention={pendingChildInvoices.length > 0} />}>
         <AppText variant="label">{t("booking.invoices")}</AppText>
         <AppText tone={pendingChildInvoices.length > 0 ? "danger" : "muted"}>{pendingChildInvoices.length > 0 ? t("booking.pendingInvoicesSummary", { count: pendingChildInvoices.length, amount: formatCurrency(pendingChildInvoicesTotal) }) : t("booking.noPendingInvoices")}</AppText>
       </NavigationCard>
-      <NavigationCard accessibilityLabel={t("booking.history")} onPress={() => { setListSheet("history"); void bookings.refetch(); }} style={styles.tile} leading={<TileIcon name="time-outline" />}>
+      <NavigationCard accessibilityLabel={t("booking.history")} onPress={() => { setListSheet("history"); void bookings.refetch(); }} style={[styles.tile, useSingleColumnTiles && styles.tileSingleColumn]} leading={<TileIcon name="time-outline" />}>
         <AppText variant="label">{t("booking.history")}</AppText>
         <AppText tone="muted">{childBookings.length > 0 ? t("booking.historySummary", { count: childBookings.length }) : t("booking.noBookingsYet")}</AppText>
       </NavigationCard>
@@ -171,6 +173,8 @@ function TileIcon({ name, attention = false }: { name: keyof typeof Ionicons.gly
 const styles = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   tile: { flexGrow: 1, flexBasis: "47%" },
+  gridSingleColumn: { flexDirection: "column", flexWrap: "nowrap" },
+  tileSingleColumn: { width: "100%", flexBasis: "auto", flexGrow: 0 },
   tileAttention: { borderColor: colors.danger },
   tileIcon: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderRadius: radius.sm, backgroundColor: colors.surfaceTint },
   tileIconAttention: { backgroundColor: colors.dangerSoft },

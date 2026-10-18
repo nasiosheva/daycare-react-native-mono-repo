@@ -1,5 +1,6 @@
 import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
+import { Dimensions, StyleSheet, View } from "react-native";
 import BookingScreen from "../../app/booking";
 
 // Mories Deo Hutapea,S.E.,S.Kom
@@ -80,6 +81,7 @@ jest.mock("@daycare/ui", () => {
 
 describe("Parent service booking flow", () => {
   beforeEach(() => {
+    Dimensions.set({ window: { width: 360, height: 800, scale: 2, fontScale: 1 }, screen: { width: 360, height: 800, scale: 2, fontScale: 1 } });
     mockState.failedCapabilityTenants = [];
     mockState.retryCapability.mockClear();
     for (const query of [mockState.plans, mockState.entitlements, mockState.invoices, mockState.bookings]) {
@@ -95,6 +97,23 @@ describe("Parent service booking flow", () => {
 
     expect(screen.getByText("Anak Daycare (Daycare)")).toBeTruthy();
     expect(screen.queryByText("Anak Sekolah (Sekolah)")).toBeNull();
+  });
+
+  it("uses a single-column summary-card layout on narrow phone screens", () => {
+    const screen = render(<BookingScreen />);
+    const summaryGrid = screen.UNSAFE_getAllByType(View).find((node) => StyleSheet.flatten(node.props.style)?.flexWrap !== undefined);
+
+    expect(summaryGrid).toBeTruthy();
+    expect(StyleSheet.flatten(summaryGrid?.props.style)).toMatchObject({ flexDirection: "column" });
+  });
+
+  it("keeps a two-column summary-card layout on wider screens", () => {
+    Dimensions.set({ window: { width: 900, height: 800, scale: 1, fontScale: 1 }, screen: { width: 900, height: 800, scale: 1, fontScale: 1 } });
+    const screen = render(<BookingScreen />);
+    const summaryGrid = screen.UNSAFE_getAllByType(View).find((node) => StyleSheet.flatten(node.props.style)?.flexWrap !== undefined);
+
+    expect(summaryGrid).toBeTruthy();
+    expect(StyleSheet.flatten(summaryGrid?.props.style)).toMatchObject({ flexDirection: "row", flexWrap: "wrap" });
   });
 
   it("names and retries a tenant whose daycare capability could not be checked", () => {
