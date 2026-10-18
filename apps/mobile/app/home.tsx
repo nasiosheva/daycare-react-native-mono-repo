@@ -449,9 +449,9 @@ function PlatformAdminHome() {
       <AppText variant="h5">{t("platformParents.menu")}</AppText>
       <AppText variant="bodySmall" tone="muted">{t("platformParents.menuDescription")}</AppText>
     </NavigationCard>
-    <NavigationCard accessibilityLabel={t("platformBanners.contentHub")} onPress={() => router.push("/parent-home-content" as never)}>
-      <AppText variant="h5">{t("platformBanners.contentHub")}</AppText>
-      <AppText variant="bodySmall" tone="muted">{t("platformBanners.contentHubDescription")}</AppText>
+    <NavigationCard accessibilityLabel={t("platformBanners.menu")} onPress={() => router.push("/platform-banners" as never)}>
+      <AppText variant="h5">{t("platformBanners.menu")}</AppText>
+      <AppText variant="bodySmall" tone="muted">{t("platformBanners.menuDescription")}</AppText>
     </NavigationCard>
     <NavigationCard accessibilityLabel={t("tenantSubscriptionReview.homeTitle")} onPress={() => router.push("/tenant-subscription-review")}>
       <AppText variant="h5">{t("tenantSubscriptionReview.homeTitle")}</AppText>
