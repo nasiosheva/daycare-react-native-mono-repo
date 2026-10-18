@@ -1,5 +1,5 @@
 // Mories Deo Hutapea,S.E.,S.Kom
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Linking, Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -7,18 +7,21 @@ import { AppText, Button, colors, radius, spacing } from "@daycare/ui";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { ParentAnnouncementSlide } from "@/home/parentHomeSummary";
 import { parentActionRoute } from "@/announcements/actionDestination";
-import { isValidHttpsUrl } from "@/media/imageUrl";
+import { isValidHttpsImageUrl, isValidHttpsUrl } from "@/media/imageUrl";
 import { notify } from "@/notify/notify";
 import { FallbackImage } from "@/media/FallbackImage";
+import { useAutoAdvanceCarousel } from "./useAutoAdvanceCarousel";
 
 export function ParentAnnouncementPopup({ announcements, onAcknowledge }: { announcements: readonly ParentAnnouncementSlide[]; onAcknowledge: (slide: ParentAnnouncementSlide) => void | Promise<unknown> }) {
   const router = useRouter();
   const { t } = useI18n();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const scrollRef = useRef<ScrollView>(null);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => new Set());
-  const [activeIndex, setActiveIndex] = useState(0);
   const [acknowledging, setAcknowledging] = useState(false);
-  const visibleSlides = useMemo(() => announcements.filter(({ announcement, organizationId }) => !dismissedIds.has(`${organizationId}:${announcement.id}`)), [announcements, dismissedIds]);
+  const imageSlides = useMemo(() => announcements.filter(({ announcement }) => Boolean(announcement.imageUrl && isValidHttpsImageUrl(announcement.imageUrl))), [announcements]);
+  const visibleSlides = useMemo(() => imageSlides.filter(({ announcement, organizationId }) => !dismissedIds.has(`${organizationId}:${announcement.id}`)), [imageSlides, dismissedIds]);
+  const { activeIndex, setActiveIndex } = useAutoAdvanceCarousel(visibleSlides.length);
   const slideSignature = announcements.map(({ announcement, organizationId }) => `${organizationId}:${announcement.id}`).join("|");
   const activeSlide = visibleSlides[Math.min(activeIndex, Math.max(0, visibleSlides.length - 1))];
   const cardWidth = Math.min(windowWidth - spacing.lg * 2, 560);
@@ -31,12 +34,12 @@ export function ParentAnnouncementPopup({ announcements, onAcknowledge }: { anno
     setDismissedIds((current) => new Set(current).add(`${activeSlide.organizationId}:${activeSlide.announcement.id}`));
     setActiveIndex(0);
   };
-  const actionType = activeSlide?.announcement.actionType ?? "NONE";
-  const actionTarget = activeSlide?.announcement.actionTarget;
-  const appRoute = actionType === "OPEN_APP_PAGE" ? parentActionRoute(actionTarget) : null;
-  const hasAction = actionType === "OPEN_BROWSER" ? Boolean(actionTarget && isValidHttpsUrl(actionTarget)) : Boolean(appRoute);
-  const openAction = async () => {
-    if (!activeSlide || !hasAction) return;
+  const openAction = async (slide: ParentAnnouncementSlide) => {
+    const actionType = slide.announcement.actionType ?? "NONE";
+    const actionTarget = slide.announcement.actionTarget;
+    const appRoute = actionType === "OPEN_APP_PAGE" ? parentActionRoute(actionTarget) : null;
+    const hasAction = actionType === "OPEN_BROWSER" ? Boolean(actionTarget && isValidHttpsUrl(actionTarget)) : Boolean(appRoute);
+    if (!hasAction) return;
     if (actionType === "OPEN_BROWSER" && actionTarget) {
       try {
         await Linking.openURL(actionTarget);
@@ -48,7 +51,7 @@ export function ParentAnnouncementPopup({ announcements, onAcknowledge }: { anno
     }
     if (appRoute) {
       dismiss();
-      router.push((appRoute.tenantScoped ? { pathname: appRoute.pathname, params: { organizationId: activeSlide.organizationId } } : appRoute.pathname) as never);
+      router.push((appRoute.tenantScoped ? { pathname: appRoute.pathname, params: { organizationId: slide.organizationId } } : appRoute.pathname) as never);
     }
   };
   const acknowledgeActive = async () => {
@@ -63,7 +66,10 @@ export function ParentAnnouncementPopup({ announcements, onAcknowledge }: { anno
       setAcknowledging(false);
     }
   };
-  useEffect(() => setActiveIndex(0), [slideSignature]);
+  useEffect(() => setActiveIndex(0), [slideSignature, setActiveIndex]);
+  useEffect(() => {
+    if (visibleSlides.length > 1) scrollRef.current?.scrollTo({ x: activeIndex * cardWidth, animated: true });
+  }, [activeIndex, cardWidth, visibleSlides.length]);
   const onMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (cardWidth > 0) setActiveIndex(Math.max(0, Math.min(visibleSlides.length - 1, Math.round(event.nativeEvent.contentOffset.x / cardWidth))));
   };
@@ -79,22 +85,27 @@ export function ParentAnnouncementPopup({ announcements, onAcknowledge }: { anno
             <Ionicons name="close" size={22} color={colors.text} />
           </Pressable>
         </View>
-        <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} onMomentumScrollEnd={onMomentumScrollEnd} style={styles.slider} contentContainerStyle={styles.slides}>
-          {visibleSlides.map(({ announcement: item, organizationId: tenantId, organizationName: tenantName }) => <View key={`${tenantId}:${item.id}`} style={[styles.slide, { width: cardWidth }]}>
-            {item.imageUrl ? <FallbackImage key={`${item.id}:${item.imageUrl}`} accessibilityLabel={item.title} fallbackLabel={t("operations.imageUnavailable")} uri={item.imageUrl} style={styles.image} /> : null}
-            <View style={styles.copy}>
-              <AppText variant="caption" tone="muted">{tenantName}</AppText>
-              <AppText variant="h4">{item.title}</AppText>
-              <AppText>{item.body}</AppText>
-            </View>
-          </View>)}
+        <ScrollView ref={scrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false} onMomentumScrollEnd={onMomentumScrollEnd} style={styles.slider} contentContainerStyle={styles.slides}>
+          {visibleSlides.map(({ announcement: item, organizationId: tenantId, organizationName: tenantName }) => {
+            const itemActionType = item.actionType ?? "NONE";
+            const itemActionTarget = item.actionTarget;
+            const itemRoute = itemActionType === "OPEN_APP_PAGE" ? parentActionRoute(itemActionTarget) : null;
+            const itemHasAction = itemActionType === "OPEN_BROWSER"
+              ? Boolean(itemActionTarget && isValidHttpsUrl(itemActionTarget))
+              : Boolean(itemRoute);
+            const image = <FallbackImage key={`${item.id}:${item.imageUrl}`} accessibilityLabel={`${tenantName}: ${item.title}`} fallbackLabel={t("operations.imageUnavailable")} uri={item.imageUrl!} style={styles.image} />;
+            return <View key={`${tenantId}:${item.id}`} style={[styles.slide, { width: cardWidth }]}>
+              {itemHasAction
+                ? <Pressable accessibilityRole="button" accessibilityLabel={item.title} onPress={() => void openAction({ announcement: item, organizationId: tenantId, organizationName: tenantName })}>{image}</Pressable>
+                : image}
+            </View>;
+          })}
         </ScrollView>
         {visibleSlides.length > 1 && <View style={styles.indicators} accessibilityLiveRegion="polite">
-          {visibleSlides.map(({ announcement: item, organizationId: tenantId }, index) => <View key={`${tenantId}:${item.id}`} style={[styles.indicator, index === activeIndex && styles.indicatorActive]} />)}
+          {visibleSlides.map(({ announcement: item, organizationId: tenantId }, index) => <View key={`${tenantId}:${item.id}`} accessible accessibilityRole="text" accessibilityLabel={`${index === activeIndex ? "●" : "○"} ${index + 1}/${visibleSlides.length}`} style={[styles.indicator, index === activeIndex && styles.indicatorActive]} />)}
         </View>}
         <View style={styles.actions}>
           {announcement.requiresAcknowledgement && !announcement.acknowledgedByMe && <Button loading={acknowledging} onPress={() => void acknowledgeActive()}>{t("operations.acknowledge")}</Button>}
-          {hasAction && <Button variant="secondary" onPress={() => void openAction()}>{t("operations.openAction")}</Button>}
         </View>
       </View>
     </View>
@@ -109,9 +120,8 @@ const styles = StyleSheet.create({
   close: { width: 40, height: 40, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceTint },
   slider: { flexGrow: 0 },
   slides: { alignItems: "stretch" },
-  slide: { gap: spacing.md },
+  slide: { justifyContent: "center" },
   image: { width: "100%", aspectRatio: 16 / 9, backgroundColor: colors.surfaceTint },
-  copy: { gap: spacing.sm, paddingHorizontal: spacing.md, paddingBottom: spacing.md },
   indicators: { flexDirection: "row", alignSelf: "center", alignItems: "center", gap: spacing.xs, paddingBottom: spacing.sm },
   indicator: { width: 7, height: 7, borderRadius: radius.pill, backgroundColor: colors.border },
   indicatorActive: { width: 18, backgroundColor: colors.primary },

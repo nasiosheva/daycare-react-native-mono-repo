@@ -31,9 +31,9 @@ data class UpsertTenantAnnouncementRequest(
     @field:NotNull val audience: TenantAnnouncementAudience,
     val branchId: UUID? = null,
     @field:NotBlank @field:Size(max = 160) val title: String,
-    @field:NotBlank @field:Size(max = 4_000) val body: String,
+    @field:Size(max = 4_000) val body: String = "",
     val requiresAcknowledgement: Boolean = false,
-    @field:Size(max = 2_048) val imageUrl: String? = null,
+    @field:NotBlank @field:Size(max = 2_048) val imageUrl: String? = null,
     val actionType: ParentActionType = ParentActionType.NONE,
     @field:Size(max = 2_048) val actionTarget: String? = null,
 )
@@ -74,7 +74,7 @@ class TenantAnnouncementService(
         val scope = access.require(jwt, organizationId, setOf(Role.STAFF_ADMIN))
         access.requireWritable(scope)
         validateScope(organizationId, request)
-        val announcement = announcements.save(TenantAnnouncement(organizationId = organizationId, createdByUserId = scope.user.id, audience = request.audience, branchId = request.branchId, title = request.title.trim(), body = request.body.trim(), imageUrl = requireHttpsImageUrl(request.imageUrl), actionType = request.actionType, actionTarget = validateParentAction(request.actionType, request.actionTarget), requiresAcknowledgement = request.requiresAcknowledgement))
+        val announcement = announcements.save(TenantAnnouncement(organizationId = organizationId, createdByUserId = scope.user.id, audience = request.audience, branchId = request.branchId, title = request.title.trim(), body = request.body.trim(), imageUrl = requireAnnouncementImageUrl(request.imageUrl), actionType = request.actionType, actionTarget = validateParentAction(request.actionType, request.actionTarget), requiresAcknowledgement = request.requiresAcknowledgement))
         audits.save(AuditLog(organizationId = organizationId, actorUserId = scope.user.id, entityType = "TENANT_ANNOUNCEMENT", entityId = announcement.id, action = "CREATED", source = "TENANT_COMMUNICATION"))
         notifyManagers(organizationId)
         return response(announcement, scope.user.id)
@@ -91,7 +91,7 @@ class TenantAnnouncementService(
         announcement.branchId = request.branchId
         announcement.title = request.title.trim()
         announcement.body = request.body.trim()
-        announcement.imageUrl = requireHttpsImageUrl(request.imageUrl)
+        announcement.imageUrl = requireAnnouncementImageUrl(request.imageUrl)
         announcement.actionType = request.actionType
         announcement.actionTarget = validateParentAction(request.actionType, request.actionTarget)
         announcement.requiresAcknowledgement = request.requiresAcknowledgement
@@ -159,7 +159,7 @@ class TenantAnnouncementService(
         val recipientIds = audienceRecipients(announcement)
         recipientIds.forEach { userId ->
             recipients.save(TenantAnnouncementRecipient(announcementId = announcement.id, recipientUserId = userId))
-            notifications.notify(announcement.organizationId, userId, announcement.title, announcement.body, "/announcements", setOf(RealtimeFlag.TENANT_ANNOUNCEMENTS))
+            notifications.notify(announcement.organizationId, userId, announcement.title, announcement.body.ifBlank { announcement.title }, "/announcements", setOf(RealtimeFlag.TENANT_ANNOUNCEMENTS))
         }
         notifyManagers(announcement.organizationId)
     }
@@ -184,6 +184,9 @@ class TenantAnnouncementService(
             require(branch.organizationId == organizationId && branch.active) { DaycareOperationError.UNAVAILABLE }
         }
     }
+
+    private fun requireAnnouncementImageUrl(value: String?): String =
+        requireHttpsImageUrl(value) ?: throw IllegalArgumentException(DaycareOperationError.INVALID)
 
     private fun requireAnnouncement(organizationId: UUID, announcementId: UUID) = announcements.findById(announcementId).orElseThrow { IllegalArgumentException(DaycareOperationError.UNAVAILABLE) }
         .also { require(it.organizationId == organizationId) { DaycareOperationError.UNAVAILABLE } }
