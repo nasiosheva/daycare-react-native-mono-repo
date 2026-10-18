@@ -172,8 +172,10 @@ export type TenantAnnouncementStatus = "DRAFT" | "SCHEDULED" | "PUBLISHED" | "CL
 export type TenantAnnouncement = { id: string; audience: TenantAnnouncementAudience; branchId?: string | null; title: string; body: string; imageUrl?: string | null; actionType?: ParentActionType; actionTarget?: string | null; requiresAcknowledgement: boolean; status: TenantAnnouncementStatus; scheduledAt?: string | null; publishedAt?: string | null; closedAt?: string | null; acknowledgedByMe: boolean; recipientCount: number; createdAt: string };
 export type UpsertTenantAnnouncementInput = { audience: TenantAnnouncementAudience; branchId?: string; title: string; body?: string; requiresAcknowledgement?: boolean; imageUrl: string; actionType?: ParentActionType; actionTarget?: string | null };
 export type PlatformBannerStatus = "DRAFT" | "SCHEDULED" | "PUBLISHED" | "CLOSED";
-export type PlatformBanner = { id: string; title: string; body: string; imageUrl: string; actionType?: ParentActionType; actionTarget?: string | null; status: PlatformBannerStatus; scheduledAt?: string | null; publishedAt?: string | null; expiresAt?: string | null; closedAt?: string | null; createdAt: string; updatedAt: string };
-export type UpsertPlatformBannerInput = { title: string; body: string; imageUrl: string; actionType?: ParentActionType; actionTarget?: string | null; expiresAt?: string | null };
+export type PlatformBannerAudience = "PARENT_GLOBAL" | "STAFF_ADMIN_GLOBAL" | "TENANT_STAFF_ADMIN";
+export type StaffAdminBannerActionPage = "TENANT_CHILDREN" | "TENANT_SUBSCRIPTION" | "TENANT_USERS" | "TENANT_BRANCHES";
+export type PlatformBanner = { id: string; title: string; body: string; imageUrl: string; actionType?: ParentActionType; actionTarget?: string | null; audience?: PlatformBannerAudience; targetOrganizationId?: string | null; targetOrganizationName?: string | null; status: PlatformBannerStatus; scheduledAt?: string | null; publishedAt?: string | null; expiresAt?: string | null; closedAt?: string | null; createdAt: string; updatedAt: string };
+export type UpsertPlatformBannerInput = { title: string; body?: string; imageUrl: string; actionType?: ParentActionType; actionTarget?: string | null; expiresAt?: string | null; audience?: PlatformBannerAudience; targetOrganizationId?: string | null };
 export type ServiceExpiryReminderSettings = { leadDays: number[] };
 export type ChildMessageReply = { id: string; senderName: string; body: string; createdAt: string; hasPhoto: boolean };
 export type ChildMessagePhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
@@ -217,6 +219,7 @@ export type TenantPaymentProofContent = { id: string; fileName: string; contentT
 export type TenantPaymentCorrectionCategory = "AMOUNT_MISMATCH" | "WRONG_REFERENCE" | "WRONG_PROOF_OR_INVOICE" | "DUPLICATE_OR_OVERPAYMENT";
 export type TenantPaymentCorrection = { id: string; organizationId: string; organizationName: string; paymentId: string; invoiceNumber: string; paymentAmount: number; paymentStatus: TenantPaymentStatus; category: TenantPaymentCorrectionCategory; description: string; proposedAmount: number | null; proposedReference: string | null; status: "PENDING" | "APPROVED" | "REJECTED"; createdAt: string; reviewReason: string | null; adjustmentKind: "UNDERPAYMENT" | "EXCESS_CREDIT" | "REVIEWED_NO_AMOUNT_CHANGE" | null; adjustmentAmount: number | null };
 export type TenantSubscriptionReviewPage<T> = { items: T[]; page: number; size: number; hasNext: boolean };
+export type TenantSubscriptionReviewSummary = { paymentProofs: number; corrections: number };
 export type PlatformTenantSubscriptionReminder = { id: string; organizationId: string; organizationName: string; eventType: "TRIAL_END" | "PERIOD_END" | "PAYMENT_DUE"; eventDate: string; leadDays: number; createdAt: string };
 export type PlatformTenantSubscriptionReminderPage = { items: PlatformTenantSubscriptionReminder[]; page: number; size: number; totalElements: number; hasNext: boolean };
 export type TenantSubscriptionFeatureStatus = { paymentProofEnabled: boolean; correctionEnabled: boolean };
@@ -481,6 +484,7 @@ export class ApiClient {
   async ownTenantPaymentProofs(paymentId: string): Promise<TenantPaymentProof[]> { return this.request(`/tenant-subscription/self/payments/${paymentId}/proofs`); }
   async tenantPaymentProofContent(proofId: string): Promise<TenantPaymentProofContent> { return this.request(`/tenant-subscription/proofs/${proofId}/content`); }
   async platformTenantSubscriptionFeatures(): Promise<TenantSubscriptionFeatureStatus> { return this.request("/platform/tenant-subscription/features"); }
+  async platformTenantSubscriptionReviewSummary(): Promise<TenantSubscriptionReviewSummary> { return this.request("/platform/tenant-subscription/review-summary"); }
   async platformTenantSubscriptionReminders(page = 0, size = 20): Promise<PlatformTenantSubscriptionReminderPage> { return this.request(`/platform/tenant-subscription/reminders?${new URLSearchParams({ page: String(page), size: String(size) })}`); }
   async platformTenantPaymentProofQueue(page = 0, size = 20): Promise<TenantSubscriptionReviewPage<TenantPaymentProof>> { return this.request(`/platform/tenant-subscription/proofs?${new URLSearchParams({ page: String(page), size: String(size) })}`); }
   async reviewTenantPaymentProof(proofId: string, approved: boolean, reason: string, idempotencyKey: string): Promise<TenantPaymentProof> { return this.request(`/platform/tenant-subscription/proofs/${proofId}/review`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ approved, reason }) }); }
@@ -554,6 +558,7 @@ export class ApiClient {
   async acknowledgeAnnouncement(announcementId: string, organizationId?: string): Promise<TenantAnnouncement> { return this.request(`/announcements/${announcementId}/acknowledge`, { method: "POST", ...this.orgOverride(organizationId) }); }
   async platformBanners(): Promise<PlatformBanner[]> { return this.requestWithoutOrganization("/platform/banners"); }
   async parentPlatformBanners(): Promise<PlatformBanner[]> { return this.requestWithoutOrganization("/parent/platform-banners"); }
+  async staffAdminPlatformBanners(organizationId?: string): Promise<PlatformBanner[]> { return this.request("/staff-admin/platform-banners", this.orgOverride(organizationId)); }
   async createPlatformBanner(input: UpsertPlatformBannerInput): Promise<PlatformBanner> { return this.requestWithoutOrganization("/platform/banners", { method: "POST", body: JSON.stringify(input) }); }
   async updatePlatformBanner(bannerId: string, input: UpsertPlatformBannerInput): Promise<PlatformBanner> { return this.requestWithoutOrganization(`/platform/banners/${bannerId}`, { method: "PUT", body: JSON.stringify(input) }); }
   async publishPlatformBanner(bannerId: string, scheduledAt?: string): Promise<PlatformBanner> { return this.requestWithoutOrganization(`/platform/banners/${bannerId}/publish`, { method: "POST", body: JSON.stringify({ scheduledAt }) }); }

@@ -259,6 +259,16 @@ class TenantSubscriptionCorrectionServiceTest {
     }
 
     @Test
+    fun `pending review count is platform admin only and respects the feature flag`() {
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile())
+        `when`(corrections.countByStatus("PENDING")).thenReturn(2L)
+
+        assertEquals(2L, service().pendingReviewCount(jwt))
+        assertEquals(0L, service(enabled = false).pendingReviewCount(jwt))
+        verify(corrections).countByStatus("PENDING")
+    }
+
+    @Test
     fun `approving an underpaid correction records an UNDERPAYMENT adjustment and notifies the requester`() {
         val actorId = UUID.randomUUID()
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(UserProfile(id = actorId))

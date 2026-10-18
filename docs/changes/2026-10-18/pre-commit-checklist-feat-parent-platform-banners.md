@@ -7,27 +7,27 @@
 | Field | Nilai |
 | --- | --- |
 | Branch | `feat/parent-platform-banners` |
-| Tujuan perubahan | Scope commit ini: menyelesaikan ukuran/indikator carousel dan menjeda auto-slide saat Parent swipe; perubahan katalog dan scope lain tidak termasuk |
+| Tujuan perubahan | Sisa scope pada branch: audience banner Staff Admin, hub konten berdasarkan role, ringkasan antrean review langganan, TextField clearable/galeri komponen, dan forwarding proses launcher Web; dipisah ke commit per scope |
 | Tanggal diperbarui | 2026-10-18 |
-| Status kesiapan | READY untuk scope fitur dan dokumentasi yang tercantum; tanpa push/PR |
+| Status kesiapan | READY; scope sudah dipisahkan dan disquash sebelum push ulang |
 | Item wajib tertunda | 0 |
 | Temuan review terbuka | 0 |
-| Blocker | Uji visual device/browser belum dilakukan; dicatat sebagai batas verifikasi, bukan blocker untuk commit |
+| Blocker | Tidak ada. Batas verifikasi: uji visual device/browser belum dilakukan; migration V37 belum diterapkan sesuai instruksi pengguna dan tidak diklaim teruji di database. |
 
 ## Status per area review
 
 | Area dari checklist review sumber | Status | Bukti, nomor butir sumber, gap/follow-up |
 | --- | --- | --- |
-| 1. Scope dan konsistensi perubahan | `DONE` | Checklist sumber §1: diff dipisah menjadi dua feature scope; perubahan `.gitignore`, `docs/changes/2026-10-17/openspec-adoption.md`, `run-logs/`, dan file lokal lain tidak termasuk commit. |
-| 2. Konsistensi dokumentasi | `DONE` | Checklist sumber §2: README, `docs/business-rules.md`, dua catatan harian, OpenSpec proposal, dan checklist branch diperbarui; V36 dijelaskan sebagai teruji pada PostgreSQL scratch, bukan DB persisten/production. |
-| 3. Test dan coverage | `DONE` | Checklist sumber §3: test-first merah/hijau untuk jadwal lampau dan close banner terjadwal; `corepack pnpm verify` lulus (lint, typecheck, semua Vitest: 63 file/250 test); UI Jest 12 suite/48 test lulus; backend `./apps/api/gradlew -p apps/api test --no-daemon --rerun-tasks` lulus; API client 68 test lulus. Tidak ada klaim target coverage numerik. |
-| 4. Arsitektur dan maintainability | `DONE` | Checklist sumber §4: pemisahan service/action validation/media validation mengikuti pola backend; typed API-client/core contracts; filter katalog dipisah ke helper teruji; tidak ada refactor lintas fitur. |
-| 5. Business rule, role, dan security | `DONE` | Checklist sumber §5: endpoint global hanya untuk Parent terautentikasi; CRUD promosi dibatasi Platform Admin; pengumuman tenant mengikuti Staff Admin/tenant scope; CTA dibatasi HTTPS browser atau route allowlist; URL gambar wajib HTTPS. |
-| 6. Database dan API contract | `DONE` | Checklist sumber §6: migration V36 fresh-install diuji pada PostgreSQL scratch; Flyway mengonfirmasi versi 36. API wrappers dan payload tests lulus. DB lokal persisten/production tidak disentuh. |
-| 7. UI/UX dan accessibility | `DONE` | Checklist sumber §7: dua sumber carousel gambar terpisah, auto-slide + dot; popup tanpa field pesan dan hanya menampilkan gambar, X, serta acknowledgement bila diwajibkan; preview tanpa navigasi; klik image memakai aksi slide terkait; placeholder gambar gagal muat; empty filter clear-all. Component UI tests lulus. Uji visual manual device/browser belum dilakukan dan menjadi follow-up. |
-| 8. Performance dan reliability | `DONE` | Checklist sumber §8: feed menyaring expiry, scheduler menutup item expired/terjadwal, jadwal lampau ditolak, penutupan membersihkan `scheduledAt`, dan fallback image tersedia. |
-| 9. Verification dan release readiness | `DONE` | Checklist sumber §9: `git diff --check` lulus; root verification, UI Jest, API client, dan backend suite penuh lulus; migrasi scratch fresh-install lulus. Belum ada deploy atau live DB/device test yang diklaim. |
-| 10. Keputusan akhir reviewer | `DONE` | Checklist sumber §10: review ulang setelah memperbaiki validasi jadwal lampau dan constraint close; tidak ada finding terbuka pada scope commit ini. Staged diff akan diperiksa terpisah untuk setiap commit. |
+| 1. Scope dan konsistensi perubahan | `DONE` | Checklist sumber §1: commit yang direncanakan dipisah untuk (a) audience banner/hub konten, (b) antrean review langganan, (c) clearable TextField dan galeri, (d) process forwarding Web, (e) dokumentasi/config. `.agents/`, `.claude/`, `run-logs/`, dan file lokal lain tidak distage; `run-logs/` tetap utuh. |
+| 2. Konsistensi dokumentasi | `DONE` | Checklist sumber §2: README dan `docs/business-rules.md` mencatat audience/hub dan review langganan; daily note banner serta launcher mencatat behavior dan hasil verifikasi; OpenSpec adoption dan `.gitignore` disinkronkan untuk adapter lokal. Checklist ini diperbarui untuk hasil final. |
+| 3. Test dan coverage | `DONE` | Checklist sumber §3: `corepack pnpm verify` lulus: lint/typecheck dan Vitest 64 file/252 test; UI Jest 13 suite/58 test; `./apps/api/gradlew -p apps/api test --no-daemon --rerun-tasks` BUILD SUCCESSFUL. Shell syntax dan `git diff --check` lulus. Warning React `act(...)` dan 3 warning Kotlin deprecation/type-mismatch dicatat; tidak ada test gagal. |
+| 4. Arsitektur dan maintainability | `DONE` | Checklist sumber §4: business logic audience dan validasi aksi tetap di backend service/helper; route allowlist typed di core dan mobile; data akses lewat API client; content hub reusable terpisah dari screen; TextField memperluas komponen dasar; launcher hanya mengganti wrapper dengan `exec`. |
+| 5. Business rule, role, dan security | `DONE` | Checklist sumber §5: audience PARENT/STAFF_ADMIN/tenant STAFF_ADMIN di-enforce service dan feed; membership aktif/tenant aktif divalidasi backend; CTA route dibatasi menurut role dan browser HTTPS; hub membatasi aksi menurut role; review-summary tetap Platform Admin-only. |
+| 6. Database dan API contract | `DONE` | Checklist sumber §6: entity, repository, service, controller, API client, shared enums dan migration V37 cocok; default menjaga record lama sebagai `PARENT_GLOBAL`; constraint mewajibkan tenant target hanya untuk audience tenant; V37 belum dijalankan sesuai instruksi pengguna. Migration dan DB lokal/production tidak diklaim telah diterapkan. |
+| 7. UI/UX dan accessibility | `DONE` | Checklist sumber §7: form audience menampilkan pemilih tenant hanya untuk audience tenant, route create hub dibersihkan setelah dipakai, aksi per role diterjemahkan, clearable TextField memakai label aksesibilitas, carousel tetap swipeable dan image-only. UI Jest lulus; uji visual device/browser belum dilakukan. |
+| 8. Performance dan reliability | `DONE` | Checklist sumber §8: feed tenant memakai query scoped dan indeks partial; summary memakai repository count, bukan mengambil seluruh halaman; launcher `exec` meneruskan sinyal ke proses Expo. |
+| 9. Verification dan release readiness | `DONE` | Checklist sumber §9: workspace lint/typecheck/test, UI Jest, backend full rerun, shell syntax, serta `git diff --check` lulus. Tidak ada klaim migrasi persistent, production, atau device/browser. |
+| 10. Keputusan akhir reviewer | `DONE` | Checklist sumber §10: peninjauan diff mengonfirmasi scope, role authorization, tenant target constraint, route allowlist, hook create form, i18n, clear action, serta launcher forwarding. Tidak ditemukan finding blocking; setiap staged diff akan dicek lagi sebelum commit. |
 
 ## Temuan review dan perbaikannya
 
@@ -56,13 +56,15 @@
 - [x] UI Jest penuh: 12 suite/48 test lulus. Backend rerun penuh: BUILD SUCCESSFUL; ada 3 warning deprecation/type mismatch pada test yang sudah ada dan tidak terkait perubahan ini.
 - [x] `git diff --check` lulus; belum ada uji visual manual device/browser.
 
-## Review tambahan sebelum commit carousel
+## Batas dan pemisahan commit
 
-- Scope commit dibatasi pada komponen, hook timer, test UI, dan dokumentasi carousel Parent. Perubahan backend/audience hub, subscription review, launcher, OpenSpec, `run-logs/`, dan scope lain tetap di worktree serta tidak akan distage.
-- Test-first: test pause/resume pada hook dan kedua carousel ditambahkan sebelum implementasi; ketiganya gagal pada handler/API pause yang belum ada, lalu lulus sesudah patch.
-- Verifikasi terbaru: UI Jest 3 suite/21 test lulus; `corepack pnpm --filter @daycare/app typecheck` lulus; `git diff --check` lulus.
-- Review kode: timer dibersihkan saat pause melalui cleanup effect, lalu interval penuh dimulai saat resume; swipe end dan momentum end sama-sama memulihkan timer, sementara hook tetap tidak membuat timer untuk 0/1 slide.
-- Batas bukti: uji visual browser/device tidak dilakukan; tool browser lokal tidak tersedia. Tidak ada migration/API/role/security behavior pada scope commit ini.
-- Staged diff: hanya file/hunk carousel yang tercantum pada commit ini; tidak ada log, secret, atau file lokal-only. Commit belum dibuat saat checklist ini ditulis.
+- Carousel swipe pause pada commit sebelumnya tetap menjadi commit tersendiri. Perubahan sesudahnya disusun dalam tiga scope: fitur konten platform/home beserta dokumentasinya; perbaikan launcher Web beserta dokumentasinya; konfigurasi adapter lokal beserta panduan OpenSpec.
+- Test-first dan red/green untuk perubahan awal banner, hub, review summary, dan TextField dicatat pada test terkait/daily notes; validasi akhir dijalankan ulang sebelum commit.
+- Migration V37 hanya disiapkan dan ditinjau statis. Tidak dijalankan pada database persistent maupun production karena pengguna meminta migrasi tidak dijalankan tanpa instruksi.
+- `run-logs/` tidak distage, tidak dihapus, dan tetap lokal. Tidak ada secret, credentials, atau `docs/personal-docs/` di commit.
+- Batas bukti: belum ada uji visual device/browser; UI tests menghasilkan warning React `act(...)` dari ikon/asynchronous provider tetapi seluruh assertions lulus.
+- Commit terbaru dikelompokkan ulang per scope agar implementasi dan dokumentasi scope yang sama berada dalam satu commit. History push sebelumnya akan diperbarui menggunakan `--force-with-lease` setelah verifikasi head remote.
+- Verifikasi ulang source setelah pengelompokan tidak diperlukan karena tidak ada perubahan kode sejak test penuh lulus; `git diff --check` dan staged-diff review tetap dilakukan untuk setiap scope.
+- `.gitignore` mengecualikan adapter/config Codex/Claude lokal, disinkronkan dengan panduan OpenSpec. `run-logs/` tetap tidak disentuh dan tidak distage.
 
 <!-- Mories Deo Hutapea,S.E.,S.Kom -->

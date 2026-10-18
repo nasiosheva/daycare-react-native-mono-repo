@@ -151,6 +151,7 @@ interface TenantPaymentProofRepository : JpaRepository<TenantPaymentProof, UUID>
     fun findAllByPaymentIdOrderByVersionNumberDesc(paymentId: UUID): List<TenantPaymentProof>
     fun findFirstByPaymentIdOrderByVersionNumberDesc(paymentId: UUID): TenantPaymentProof?
     fun findAllByStatusOrderBySubmittedAtAsc(status: String, pageable: Pageable): Page<TenantPaymentProof>
+    fun countByStatus(status: String): Long
     fun findAllByPaymentIdInOrderByPaymentIdAscVersionNumberDesc(paymentIds: Collection<UUID>): List<TenantPaymentProof>
     fun findByOrganizationIdAndUploadedByUserIdAndUploadIdempotencyKey(organizationId: UUID, uploadedByUserId: UUID, uploadIdempotencyKey: UUID): TenantPaymentProof?
     fun findByReviewedByUserIdAndReviewIdempotencyKey(reviewedByUserId: UUID, reviewIdempotencyKey: UUID): TenantPaymentProof?
@@ -161,6 +162,7 @@ interface TenantPaymentCorrectionRequestRepository : JpaRepository<TenantPayment
     fun findAllByOrganizationIdAndPaymentIdAndRequestedByUserIdOrderByCreatedAtDesc(organizationId: UUID, paymentId: UUID, requestedByUserId: UUID): List<TenantPaymentCorrectionRequest>
     fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID, pageable: Pageable): Page<TenantPaymentCorrectionRequest>
     fun findAllByStatusOrderByCreatedAtAsc(status: String, pageable: Pageable): Page<TenantPaymentCorrectionRequest>
+    fun countByStatus(status: String): Long
     fun findFirstByOrganizationIdAndPaymentIdAndStatus(organizationId: UUID, paymentId: UUID, status: String): TenantPaymentCorrectionRequest?
     fun findByReviewedByUserIdAndReviewIdempotencyKey(reviewedByUserId: UUID, reviewIdempotencyKey: UUID): TenantPaymentCorrectionRequest?
     fun findByOrganizationIdAndRequestedByUserIdAndRequestIdempotencyKey(organizationId: UUID, requestedByUserId: UUID, requestIdempotencyKey: UUID): TenantPaymentCorrectionRequest?
@@ -295,6 +297,8 @@ interface TenantAnnouncementRepository : JpaRepository<TenantAnnouncement, UUID>
 interface PlatformBannerRepository : JpaRepository<PlatformBanner, UUID> {
     fun findAllByOrderByCreatedAtDesc(): List<PlatformBanner>
     fun findAllByStatusOrderByCreatedAtDesc(status: com.daycare.api.domain.PlatformBannerStatus): List<PlatformBanner>
+    fun findAllByStatusAndAudienceOrderByPublishedAtDesc(status: com.daycare.api.domain.PlatformBannerStatus, audience: com.daycare.api.domain.PlatformBannerAudience): List<PlatformBanner>
+    fun findAllByStatusAndAudienceAndTargetOrganizationIdOrderByPublishedAtDesc(status: com.daycare.api.domain.PlatformBannerStatus, audience: com.daycare.api.domain.PlatformBannerAudience, targetOrganizationId: UUID): List<PlatformBanner>
     fun findAllByStatusAndScheduledAtLessThanEqual(status: com.daycare.api.domain.PlatformBannerStatus, scheduledAt: Instant): List<PlatformBanner>
     fun findAllByStatusInAndExpiresAtLessThanEqual(statuses: Set<com.daycare.api.domain.PlatformBannerStatus>, expiresAt: Instant): List<PlatformBanner>
 }

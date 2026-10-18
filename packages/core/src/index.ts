@@ -8,6 +8,10 @@ export const parentActionTypes = ["NONE", "OPEN_BROWSER", "OPEN_APP_PAGE"] as co
 export type ParentActionType = (typeof parentActionTypes)[number];
 export const parentActionPages = ["TENANT_ANNOUNCEMENTS", "BOOKING", "PARENT_SCREENING", "PARENT_ENROLLMENT", "PRIVATE_TUTORING"] as const;
 export type ParentActionPage = (typeof parentActionPages)[number];
+export const platformBannerAudiences = ["PARENT_GLOBAL", "STAFF_ADMIN_GLOBAL", "TENANT_STAFF_ADMIN"] as const;
+export type PlatformBannerAudience = (typeof platformBannerAudiences)[number];
+export const staffAdminBannerActionPages = ["TENANT_CHILDREN", "TENANT_SUBSCRIPTION", "TENANT_USERS", "TENANT_BRANCHES"] as const;
+export type StaffAdminBannerActionPage = (typeof staffAdminBannerActionPages)[number];
 
 export const attendanceMethods = ["MANUAL", "QR"] as const;
 export type AttendanceMethod = (typeof attendanceMethods)[number];

@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
 import { AppText, colors, radius, spacing } from "@daycare/ui";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { PlatformBanner } from "@daycare/api-client";
-import { parentActionRoute } from "@/announcements/actionDestination";
+import { platformBannerActionRoute } from "@/announcements/actionDestination";
 import { isValidHttpsUrl } from "@/media/imageUrl";
 import { notify } from "@/notify/notify";
 import { FallbackImage } from "@/media/FallbackImage";
@@ -43,7 +43,7 @@ export function ParentPromotionSlider({ banners, organizationId, interactive = t
       }
       return;
     }
-    const appRoute = actionType === "OPEN_APP_PAGE" ? parentActionRoute(target) : null;
+    const appRoute = actionType === "OPEN_APP_PAGE" ? platformBannerActionRoute(banner.audience, target) : null;
     if (!appRoute || (appRoute.tenantScoped && !organizationId)) return;
     router.push((appRoute.tenantScoped ? { pathname: appRoute.pathname, params: { organizationId } } : appRoute.pathname) as never);
   };
@@ -53,7 +53,7 @@ export function ParentPromotionSlider({ banners, organizationId, interactive = t
     <View style={styles.carouselFrame}>
       <ScrollView ref={scrollRef} style={styles.carousel} onLayout={(event) => setCarouselWidth(event.nativeEvent.layout.width)} horizontal showsHorizontalScrollIndicator={false} snapToInterval={cardWidth + spacing.sm} decelerationRate="fast" onScrollBeginDrag={pauseAutoAdvance} onScrollEndDrag={onMomentumScrollEnd} onMomentumScrollEnd={onMomentumScrollEnd} contentContainerStyle={styles.slides} accessibilityLabel={sectionTitle ?? t("platformBanners.parentTitle")}>
         {banners.map((banner) => {
-          const appRoute = banner.actionType === "OPEN_APP_PAGE" ? parentActionRoute(banner.actionTarget) : null;
+          const appRoute = banner.actionType === "OPEN_APP_PAGE" ? platformBannerActionRoute(banner.audience, banner.actionTarget) : null;
           const actionable = interactive && (banner.actionType === "OPEN_BROWSER"
             ? Boolean(banner.actionTarget && isValidHttpsUrl(banner.actionTarget))
             : Boolean(appRoute && (!appRoute.tenantScoped || organizationId)));

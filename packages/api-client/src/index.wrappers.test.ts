@@ -30,11 +30,12 @@ function requests(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>) {
 }
 
 describe("ApiClient API wrappers", () => {
-  it("maps global Platform banner management and Parent feed without tenant scope", async () => {
+  it("maps Platform banner management and audience feeds with role-appropriate tenant scope", async () => {
     const { client, fetchMock } = createHarness();
-    const banner = { title: "Update", body: "Informasi platform", imageUrl: "https://cdn.example/promotion.jpg", actionType: "OPEN_BROWSER" as const, actionTarget: "https://example.com/promo", expiresAt: "2026-10-25T10:00:00Z" };
+    const banner = { title: "Update", body: "Informasi platform", imageUrl: "https://cdn.example/promotion.jpg", actionType: "OPEN_BROWSER" as const, actionTarget: "https://example.com/promo", expiresAt: "2026-10-25T10:00:00Z", audience: "TENANT_STAFF_ADMIN" as const, targetOrganizationId: "tenant-1" };
     await client.platformBanners();
     await client.parentPlatformBanners();
+    await client.staffAdminPlatformBanners("tenant-1");
     await client.createPlatformBanner(banner);
     await client.updatePlatformBanner("banner-1", banner);
     await client.publishPlatformBanner("banner-1", "2026-10-20T09:00:00Z");
@@ -44,13 +45,16 @@ describe("ApiClient API wrappers", () => {
     expect(calls.map(({ url, method }) => [url.replace("https://api.example.test/api/v1", ""), method])).toEqual([
       ["/platform/banners", "GET"],
       ["/parent/platform-banners", "GET"],
+      ["/staff-admin/platform-banners", "GET"],
       ["/platform/banners", "POST"],
       ["/platform/banners/banner-1", "PUT"],
       ["/platform/banners/banner-1/publish", "POST"],
       ["/platform/banners/banner-1/close", "POST"],
     ]);
-    expect(calls.every(({ headers }) => headers.get("X-Organization-Id") === null)).toBe(true);
-    expect(calls[2]?.body).toBe(JSON.stringify(banner));
+    expect(calls[0]?.headers.get("X-Organization-Id")).toBeNull();
+    expect(calls[1]?.headers.get("X-Organization-Id")).toBeNull();
+    expect(calls[2]?.headers.get("X-Organization-Id")).toBe("tenant-1");
+    expect(calls[3]?.body).toBe(JSON.stringify(banner));
   });
 
   it("maps staff pickup exception requests and Staff Admin decisions with tenant scope", async () => {
@@ -81,6 +85,7 @@ describe("ApiClient API wrappers", () => {
   it("maps tenant subscription payment evidence and correction review APIs", async () => {
     const { client, fetchMock } = createHarness();
     await client.platformTenantSubscriptionFeatures();
+    await client.platformTenantSubscriptionReviewSummary();
     await client.platformTenantSubscriptionReminders(1, 10);
     await client.platformTenantPaymentProofQueue(1, 10);
     await client.reviewTenantPaymentProof("proof-1", false, "Bukti tidak sesuai", "proof-review-key");
@@ -95,6 +100,7 @@ describe("ApiClient API wrappers", () => {
     const calls = requests(fetchMock);
     expect(calls.map(({ url, method }) => [url.replace("https://api.example.test/api/v1", ""), method])).toEqual([
       ["/platform/tenant-subscription/features", "GET"],
+      ["/platform/tenant-subscription/review-summary", "GET"],
       ["/platform/tenant-subscription/reminders?page=1&size=10", "GET"],
       ["/platform/tenant-subscription/proofs?page=1&size=10", "GET"],
       ["/platform/tenant-subscription/proofs/proof-1/review", "POST"],
@@ -106,11 +112,11 @@ describe("ApiClient API wrappers", () => {
       ["/tenant-subscription/self/payments/payment-1/corrections", "POST"],
       ["/tenant-subscription/self/payments/payment-1/corrections", "GET"],
     ]);
-    expect(calls[3]?.headers.get("Idempotency-Key")).toBe("proof-review-key");
-    expect(calls[6]?.headers.get("Idempotency-Key")).toBe("correction-review-key");
-    expect(calls[7]?.headers.get("Idempotency-Key")).toBe("proof-upload-key");
-    expect(calls[9]?.headers.get("Idempotency-Key")).toBe("correction-request-key");
-    expect(calls[7]?.headers.get("X-Organization-Id")).toBe("active-tenant");
+    expect(calls[4]?.headers.get("Idempotency-Key")).toBe("proof-review-key");
+    expect(calls[7]?.headers.get("Idempotency-Key")).toBe("correction-review-key");
+    expect(calls[8]?.headers.get("Idempotency-Key")).toBe("proof-upload-key");
+    expect(calls[10]?.headers.get("Idempotency-Key")).toBe("correction-request-key");
+    expect(calls[8]?.headers.get("X-Organization-Id")).toBe("active-tenant");
   });
 
   it("sends stable idempotency keys for Parent purchases and payment proofs", async () => {

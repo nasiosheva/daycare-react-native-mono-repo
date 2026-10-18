@@ -125,6 +125,12 @@ class TenantSubscriptionCorrectionService(
         return TenantSubscriptionReviewPage(result.content.map(::response), result.number, result.size, result.hasNext())
     }
 
+    @Transactional(readOnly = true)
+    fun pendingReviewCount(jwt: Jwt): Long {
+        platformAccess.requirePlatformAdmin(jwt)
+        return if (enabled) corrections.countByStatus(PENDING) else 0L
+    }
+
     @Transactional
     fun review(jwt: Jwt, correctionId: UUID, idempotencyKey: UUID, request: ReviewTenantPaymentCorrectionRequest): TenantPaymentCorrectionResponse {
         requireEnabled()

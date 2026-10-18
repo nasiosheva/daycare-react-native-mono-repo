@@ -1,5 +1,5 @@
 // Mories Deo Hutapea,S.E.,S.Kom
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ import { isValidHttpsImageUrl, isValidHttpsUrl } from "@/media/imageUrl";
 import { FallbackImage } from "@/media/FallbackImage";
 import { parentActionPages, type ParentActionType, type ParentActionPage } from "@daycare/core";
 import type { TranslationKey } from "@/i18n/translations";
+import { shouldOpenCreateForm } from "@/content-management/openCreateFromRouteParam";
 
 type FormState = { id?: string; audience: TenantAnnouncementAudience; branchId: string | null; title: string; imageUrl: string; actionType: ParentActionType; actionTarget: string; requiresAcknowledgement: boolean };
 const newForm = (): FormState => ({ audience: "TENANT", branchId: null, title: "", imageUrl: "", actionType: "NONE", actionTarget: "", requiresAcknowledgement: false });
@@ -24,7 +25,7 @@ const hasValidAction = (form: FormState | null): boolean => !form || form.action
 export default function TenantAnnouncementsScreen() {
   const router = useRouter();
   const { api, profile, organizationId: activeOrganizationId } = useAuth();
-  const params = useLocalSearchParams<{ organizationId?: string | string[] }>();
+  const params = useLocalSearchParams<{ organizationId?: string | string[]; create?: string | string[] }>();
   const requestedOrganizationId = Array.isArray(params.organizationId) ? params.organizationId[0] : params.organizationId;
   const { t, formatDateTime } = useI18n();
   const queryClient = useQueryClient();
@@ -41,6 +42,11 @@ export default function TenantAnnouncementsScreen() {
   const [scheduleTarget, setScheduleTarget] = useState<TenantAnnouncement | null>(null);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
+  useEffect(() => {
+    if (!shouldOpenCreateForm(params.create, canManage)) return;
+    setForm(newForm());
+    router.setParams({ create: undefined });
+  }, [canManage, params.create, router]);
   const saveAnnouncement = useMutation({ mutationFn: (input: FormState) => {
     const payload = { audience: input.audience, branchId: input.audience === "BRANCH" ? input.branchId ?? undefined : undefined, title: input.title.trim(), body: "", imageUrl: input.imageUrl.trim(), actionType: input.actionType, actionTarget: input.actionType === "NONE" ? undefined : input.actionTarget.trim(), requiresAcknowledgement: input.requiresAcknowledgement };
     return input.id ? api.updateAnnouncement(input.id, payload) : api.createAnnouncement(payload);

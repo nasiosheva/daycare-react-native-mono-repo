@@ -1,11 +1,11 @@
 // Mories Deo Hutapea,S.E.,S.Kom
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PlatformBanner, PlatformBannerStatus } from "@daycare/api-client";
-import { AppText, BackButton, Badge, BottomSheet, Button, Card, Chip, ChipGroup, EmptyState, ErrorState, FloatingActionButton, ShimmerList, TextField, ToggleSwitch, colors, radius, spacing, type Tone } from "@daycare/ui";
+import { AppText, BackButton, Badge, BottomSheet, Button, Card, Chip, ChipGroup, EmptyState, ErrorState, FloatingActionButton, SearchField, ShimmerList, TextField, ToggleSwitch, colors, radius, spacing, type Tone } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
@@ -14,12 +14,13 @@ import { notify } from "@/notify/notify";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate } from "@/date-picker/date";
 import { isValidHttpsImageUrl, isValidHttpsUrl } from "@/media/imageUrl";
-import { parentActionPages, type ParentActionType, type ParentActionPage } from "@daycare/core";
+import { parentActionPages, staffAdminBannerActionPages, type ParentActionType, type ParentActionPage, type PlatformBannerAudience } from "@daycare/core";
 import type { TranslationKey } from "@/i18n/translations";
 import { FallbackImage } from "@/media/FallbackImage";
 import { ParentPromotionSlider } from "@/home/ParentPromotionSlider";
+import { shouldOpenCreateForm } from "@/content-management/openCreateFromRouteParam";
 
-type FormState = { id?: string; title: string; body: string; imageUrl: string; actionType: ParentActionType; actionTarget: string; expiresDate: string; expiresTime: string };
+type FormState = { id?: string; title: string; imageUrl: string; actionType: ParentActionType; actionTarget: string; expiresDate: string; expiresTime: string; audience: PlatformBannerAudience; targetOrganizationId: string };
 const JAKARTA_OFFSET = "+07:00";
 const JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1_000;
 const expiryInstant = (date: string, time: string): Date | null | undefined => {
@@ -28,12 +29,12 @@ const expiryInstant = (date: string, time: string): Date | null | undefined => {
   const result = new Date(`${date}T${time}:00${JAKARTA_OFFSET}`);
   return Number.isNaN(result.getTime()) ? undefined : result;
 };
-const emptyForm = (): FormState => ({ title: "", body: "", imageUrl: "", actionType: "NONE", actionTarget: "", expiresDate: "", expiresTime: "" });
+const emptyForm = (): FormState => ({ title: "", imageUrl: "", actionType: "NONE", actionTarget: "", expiresDate: "", expiresTime: "", audience: "PARENT_GLOBAL", targetOrganizationId: "" });
 const formFromBanner = (banner: PlatformBanner): FormState => {
   const localWib = banner.expiresAt ? new Date(new Date(banner.expiresAt).getTime() + JAKARTA_OFFSET_MS).toISOString() : "";
-  return { id: banner.id, title: banner.title, body: banner.body, imageUrl: banner.imageUrl, actionType: banner.actionType ?? "NONE", actionTarget: banner.actionTarget ?? "", expiresDate: localWib.slice(0, 10), expiresTime: localWib.slice(11, 16) };
+  return { id: banner.id, title: banner.title, imageUrl: banner.imageUrl, actionType: banner.actionType ?? "NONE", actionTarget: banner.actionTarget ?? "", expiresDate: localWib.slice(0, 10), expiresTime: localWib.slice(11, 16), audience: banner.audience ?? "PARENT_GLOBAL", targetOrganizationId: banner.targetOrganizationId ?? "" };
 };
-const hasValidAction = (form: FormState | null): boolean => !form || form.actionType === "NONE" || (form.actionType === "OPEN_BROWSER" ? isValidHttpsUrl(form.actionTarget) : parentActionPages.includes(form.actionTarget as ParentActionPage));
+const hasValidAction = (form: FormState | null): boolean => !form || form.actionType === "NONE" || (form.actionType === "OPEN_BROWSER" ? isValidHttpsUrl(form.actionTarget) : form.audience === "PARENT_GLOBAL" ? parentActionPages.includes(form.actionTarget as ParentActionPage) : staffAdminBannerActionPages.includes(form.actionTarget as (typeof staffAdminBannerActionPages)[number]));
 const hasValidExpiry = (form: FormState | null): boolean => {
   if (!form) return true;
   const expiry = expiryInstant(form.expiresDate, form.expiresTime);
@@ -42,27 +43,35 @@ const hasValidExpiry = (form: FormState | null): boolean => {
 
 export default function PlatformBannersScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ create?: string | string[] }>();
   const { api, profile } = useAuth();
   const { t, formatDateTime } = useI18n();
   const queryClient = useQueryClient();
   const canManage = Boolean(profile?.isPlatformAdmin);
   const canRead = profile?.registrationRole === "PARENT";
+  const [form, setForm] = useState<FormState | null>(null);
+  const [tenantSearch, setTenantSearch] = useState("");
+  const tenantOptions = useQuery({ queryKey: ["platform-banner-tenant-options", tenantSearch], queryFn: () => api.tenants(tenantSearch || undefined), enabled: canManage && form?.audience === "TENANT_STAFF_ADMIN" });
   const banners = useQuery({
     queryKey: [canManage ? "platform-banners" : "parent-platform-banners"],
     queryFn: () => canManage ? api.platformBanners() : api.parentPlatformBanners(),
     enabled: canManage || canRead,
   });
-  const [form, setForm] = useState<FormState | null>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [scheduleTarget, setScheduleTarget] = useState<PlatformBanner | null>(null);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
+  useEffect(() => {
+    if (!shouldOpenCreateForm(params.create, canManage)) return;
+    setForm(emptyForm());
+    router.setParams({ create: undefined });
+  }, [canManage, params.create, router]);
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["platform-banners"] });
     void queryClient.invalidateQueries({ queryKey: ["parent-platform-banners"] });
   };
   const save = useMutation({ mutationFn: (input: FormState) => {
-    const payload = { title: input.title.trim(), body: input.body.trim(), imageUrl: input.imageUrl.trim(), actionType: input.actionType, actionTarget: input.actionType === "NONE" ? undefined : input.actionTarget.trim(), expiresAt: expiryInstant(input.expiresDate, input.expiresTime)?.toISOString() ?? null };
+    const payload = { title: input.title.trim(), imageUrl: input.imageUrl.trim(), actionType: input.actionType, actionTarget: input.actionType === "NONE" ? undefined : input.actionTarget.trim(), expiresAt: expiryInstant(input.expiresDate, input.expiresTime)?.toISOString() ?? null, audience: input.audience, targetOrganizationId: input.audience === "TENANT_STAFF_ADMIN" ? input.targetOrganizationId : null };
     return input.id ? api.updatePlatformBanner(input.id, payload) : api.createPlatformBanner(payload);
   },
     onSuccess: () => { refresh(); setForm(null); notify(t("platformBanners.saved"), undefined, "success"); },
@@ -76,7 +85,7 @@ export default function PlatformBannersScreen() {
   const statusLabel = (status: PlatformBannerStatus) => t(status === "DRAFT" ? "operations.draft" : status === "SCHEDULED" ? "operations.scheduled" : status === "PUBLISHED" ? "operations.published" : "operations.closed");
   const statusTone = (status: PlatformBannerStatus): Tone => status === "PUBLISHED" ? "success" : status === "DRAFT" ? "neutral" : status === "SCHEDULED" ? "info" : "warning";
   const submitForm = () => {
-    if (!form?.title.trim() || !form.body.trim() || !isValidHttpsImageUrl(form.imageUrl) || !hasValidAction(form) || !hasValidExpiry(form)) return;
+    if (!form?.title.trim() || !isValidHttpsImageUrl(form.imageUrl) || !hasValidAction(form) || !hasValidExpiry(form) || (form.audience === "TENANT_STAFF_ADMIN" && !form.targetOrganizationId)) return;
     void save.mutateAsync(form).catch((error: unknown) => notify(t("platformBanners.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"));
   };
   const submitSchedule = () => {
@@ -88,10 +97,12 @@ export default function PlatformBannersScreen() {
   const previewBanner: PlatformBanner | null = form && isValidHttpsImageUrl(form.imageUrl) ? {
     id: "platform-banner-preview",
     title: form.title.trim() || t("platformBanners.previewTitle"),
-    body: form.body.trim() || t("platformBanners.previewBody"),
+    body: "",
     imageUrl: form.imageUrl.trim(),
     actionType: form.actionType,
     actionTarget: form.actionTarget || null,
+    audience: form.audience,
+    targetOrganizationId: form.targetOrganizationId || null,
     status: "PUBLISHED",
     publishedAt: new Date().toISOString(),
     expiresAt: expiryInstant(form.expiresDate, form.expiresTime)?.toISOString() ?? null,
@@ -99,13 +110,13 @@ export default function PlatformBannersScreen() {
     updatedAt: new Date().toISOString(),
   } : null;
 
-  return <AppScreen showBottomNavigation={false} title={t(canManage ? "platformBanners.title" : "platformBanners.parentTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton icon="add" accessibilityLabel={t("platformBanners.create")} onPress={() => setForm(emptyForm())}>{t("platformBanners.create")}</FloatingActionButton> : undefined}>
+  return <AppScreen showBottomNavigation={false} title={t(canManage ? "platformBanners.adminTitle" as TranslationKey : "platformBanners.parentTitle")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />} floatingAction={canManage ? <FloatingActionButton icon="add" accessibilityLabel={t("platformBanners.create")} onPress={() => { setTenantSearch(""); setForm(emptyForm()); }}>{t("platformBanners.create")}</FloatingActionButton> : undefined}>
     <AppText tone="muted">{t(canManage ? "platformBanners.description" : "platformBanners.parentDescription")}</AppText>
     {banners.isLoading && <ShimmerList />}
     {banners.isError && !banners.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void banners.refetch()} />}
     {!banners.isLoading && !banners.isError && banners.data?.map((banner) => <Card key={banner.id} icon="images-outline" title={banner.title} subtitle={formatDateTime(banner.publishedAt ?? banner.scheduledAt ?? banner.createdAt)} trailing={canManage ? <Badge tone={statusTone(banner.status)} label={statusLabel(banner.status)} /> : undefined}>
+      {canManage && <AppText variant="caption" tone="muted">{t(banner.audience === "PARENT_GLOBAL" ? "platformBanners.audienceParent" as TranslationKey : banner.audience === "STAFF_ADMIN_GLOBAL" ? "platformBanners.audienceAllStaffAdmins" as TranslationKey : "platformBanners.audienceTenantStaffAdmin" as TranslationKey)}{banner.targetOrganizationName ? ` · ${banner.targetOrganizationName}` : ""}</AppText>}
       <FallbackImage key={`${banner.id}:${banner.imageUrl}`} accessibilityLabel={banner.title} fallbackLabel={t("operations.imageUnavailable")} uri={banner.imageUrl} style={styles.bannerImage} />
-      <AppText>{banner.body}</AppText>
       {canManage && banner.expiresAt && <AppText variant="caption" tone="muted">{t("platformBanners.expiresAt", { date: formatDateTime(banner.expiresAt) })}</AppText>}
       {canManage && <View style={styles.actions}>
         {banner.status === "DRAFT" && <><Button style={styles.action} variant="secondary" onPress={() => setForm(formFromBanner(banner))}>{t("common.edit")}</Button><Button style={styles.action} variant="secondary" onPress={() => { setScheduleTarget(banner); setScheduledDate(formatIsoDate(new Date())); setScheduledTime(""); }}>{t("operations.schedule")}</Button><Button style={styles.action} loading={publish.isPending} onPress={() => void publish.mutateAsync(banner.id).catch((error: unknown) => notify(t("platformBanners.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))}>{t("operations.publish")}</Button></>}
@@ -113,10 +124,28 @@ export default function PlatformBannersScreen() {
       </View>}
     </Card>)}
     {!banners.isLoading && !banners.isError && banners.data?.length === 0 && <EmptyState icon="megaphone-outline" title={t("platformBanners.empty")} action={canManage ? { label: t("platformBanners.create"), onPress: () => setForm(emptyForm()) } : undefined} />}
-    <BottomSheet visible={form !== null} onClose={() => { setForm(null); setPreviewVisible(false); }} closeAccessibilityLabel={t("common.close")} title={t(form?.id ? "platformBanners.edit" : "platformBanners.create")} negativeAction={{ label: t("common.cancel"), onPress: () => { setForm(null); setPreviewVisible(false); } }} positiveAction={{ label: t("common.save"), disabled: !form?.title.trim() || !form.body.trim() || !isValidHttpsImageUrl(form.imageUrl) || !hasValidAction(form) || !hasValidExpiry(form), loading: save.isPending, onPress: submitForm }}>
+    <BottomSheet visible={form !== null} onClose={() => { setForm(null); setPreviewVisible(false); }} closeAccessibilityLabel={t("common.close")} title={t(form?.id ? "platformBanners.edit" : "platformBanners.create")} negativeAction={{ label: t("common.cancel"), onPress: () => { setForm(null); setPreviewVisible(false); } }} positiveAction={{ label: t("common.save"), disabled: !form?.title.trim() || !isValidHttpsImageUrl(form.imageUrl) || !hasValidAction(form) || !hasValidExpiry(form) || (form.audience === "TENANT_STAFF_ADMIN" && !form.targetOrganizationId), loading: save.isPending, onPress: submitForm }}>
+      <View style={styles.field}>
+        <AppText variant="label">{t("platformBanners.audience" as TranslationKey)}</AppText>
+        <ChipGroup accessibilityLabel={t("platformBanners.audience" as TranslationKey)}>
+          <Chip label={t("platformBanners.audienceParent" as TranslationKey)} selected={form?.audience === "PARENT_GLOBAL"} onPress={() => setForm((current) => current ? { ...current, audience: "PARENT_GLOBAL", targetOrganizationId: "", actionType: "NONE", actionTarget: "" } : current)} />
+          <Chip label={t("platformBanners.audienceAllStaffAdmins" as TranslationKey)} selected={form?.audience === "STAFF_ADMIN_GLOBAL"} onPress={() => setForm((current) => current ? { ...current, audience: "STAFF_ADMIN_GLOBAL", targetOrganizationId: "", actionType: "NONE", actionTarget: "" } : current)} />
+          <Chip label={t("platformBanners.audienceTenantStaffAdmin" as TranslationKey)} selected={form?.audience === "TENANT_STAFF_ADMIN"} onPress={() => setForm((current) => current ? { ...current, audience: "TENANT_STAFF_ADMIN", targetOrganizationId: "", actionType: "NONE", actionTarget: "" } : current)} />
+        </ChipGroup>
+        {form?.audience === "PARENT_GLOBAL" && <AppText variant="caption" tone="muted">{t("platformBanners.audienceParentHint" as TranslationKey)}</AppText>}
+        {form?.audience === "STAFF_ADMIN_GLOBAL" && <AppText variant="caption" tone="muted">{t("platformBanners.audienceStaffAdminHint" as TranslationKey)}</AppText>}
+        {form?.audience === "TENANT_STAFF_ADMIN" && <>
+          <AppText variant="caption" tone="muted">{t("platformBanners.audienceTenantHint" as TranslationKey)}</AppText>
+          <SearchField accessibilityLabel={t("platformBanners.searchTenant" as TranslationKey)} clearAccessibilityLabel={t("common.clearSearch")} placeholder={t("platformBanners.searchTenant" as TranslationKey)} value={tenantSearch} onChangeText={setTenantSearch} />
+          {tenantOptions.isFetching && <ShimmerList variant="tile" />}
+          {tenantOptions.isError && !tenantOptions.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void tenantOptions.refetch()} />}
+          {tenantOptions.data?.map((tenant) => <Pressable key={tenant.id} accessibilityRole="button" accessibilityState={{ selected: form.targetOrganizationId === tenant.id }} onPress={() => setForm((current) => current ? { ...current, targetOrganizationId: tenant.id } : current)} style={({ pressed }) => [styles.tenantOption, form.targetOrganizationId === tenant.id && styles.tenantOptionSelected, pressed && styles.tenantOptionPressed]}><AppText variant="label">{tenant.name}</AppText><AppText variant="caption" tone="muted">{tenant.branchName ?? tenant.id}</AppText></Pressable>)}
+          {tenantOptions.data?.length === 0 && <AppText tone="muted">{t("platformBanners.noTenantMatches" as TranslationKey)}</AppText>}
+        </>}
+      </View>
       <Button variant="secondary" disabled={!previewBanner} onPress={() => setPreviewVisible(true)}>{t("platformBanners.preview")}</Button>
-      <TextField label={t("operations.announcementTitle")} required value={form?.title ?? ""} onChangeText={(title) => setForm((current) => current ? { ...current, title } : current)} maxLength={160} />
-      <TextField label={t("platformBanners.imageUrl")} required value={form?.imageUrl ?? ""} onChangeText={(imageUrl) => setForm((current) => current ? { ...current, imageUrl } : current)} maxLength={2_048} autoCapitalize="none" keyboardType="url" />
+      <TextField label={t("operations.announcementTitle")} required value={form?.title ?? ""} onChangeText={(title) => setForm((current) => current ? { ...current, title } : current)} clearable clearAccessibilityLabel={t("common.clearText")} maxLength={160} />
+      <TextField label={t("platformBanners.imageUrl")} required value={form?.imageUrl ?? ""} onChangeText={(imageUrl) => setForm((current) => current ? { ...current, imageUrl } : current)} clearable clearAccessibilityLabel={t("common.clearText")} maxLength={2_048} autoCapitalize="none" keyboardType="url" />
       {form?.imageUrl && isValidHttpsImageUrl(form.imageUrl) && <FallbackImage key={form.imageUrl.trim()} accessibilityLabel={form.title || t("platformBanners.imageUrl")} fallbackLabel={t("operations.imageUnavailable")} uri={form.imageUrl.trim()} style={styles.formImagePreview} />}
       <ToggleSwitch label={t("platformBanners.clickable")} accessibilityLabel={t("platformBanners.clickable")} value={form?.actionType !== undefined && form.actionType !== "NONE"} onValueChange={(enabled) => setForm((current) => current ? { ...current, actionType: enabled ? "OPEN_BROWSER" : "NONE", actionTarget: "" } : current)} />
       {form && form.actionType !== "NONE" && <View style={styles.field}>
@@ -125,9 +154,8 @@ export default function PlatformBannersScreen() {
           <Chip label={t("operations.openBrowser")} selected={form.actionType === "OPEN_BROWSER"} onPress={() => setForm((current) => current ? { ...current, actionType: "OPEN_BROWSER", actionTarget: "" } : current)} />
           <Chip label={t("operations.openAppPage")} selected={form.actionType === "OPEN_APP_PAGE"} onPress={() => setForm((current) => current ? { ...current, actionType: "OPEN_APP_PAGE", actionTarget: "" } : current)} />
         </ChipGroup>
-        {form.actionType === "OPEN_BROWSER" ? <TextField label={t("operations.actionUrl")} required value={form.actionTarget} onChangeText={(actionTarget) => setForm((current) => current ? { ...current, actionTarget } : current)} maxLength={2_048} autoCapitalize="none" keyboardType="url" /> : <><AppText variant="label">{t("operations.actionPage")}</AppText><ChipGroup accessibilityLabel={t("operations.actionPage")}>{parentActionPages.map((page) => <Chip key={page} label={t(`operations.actionPage.${page}` as TranslationKey)} selected={form.actionTarget === page} onPress={() => setForm((current) => current ? { ...current, actionTarget: page } : current)} />)}</ChipGroup></>}
+        {form.actionType === "OPEN_BROWSER" ? <TextField label={t("operations.actionUrl")} required value={form.actionTarget} onChangeText={(actionTarget) => setForm((current) => current ? { ...current, actionTarget } : current)} clearable clearAccessibilityLabel={t("common.clearText")} maxLength={2_048} autoCapitalize="none" keyboardType="url" /> : <><AppText variant="label">{form.audience === "PARENT_GLOBAL" ? t("operations.actionPage") : t("platformBanners.staffAdminActionPage" as TranslationKey)}</AppText><ChipGroup accessibilityLabel={form.audience === "PARENT_GLOBAL" ? t("operations.actionPage") : t("platformBanners.staffAdminActionPage" as TranslationKey)}>{(form.audience === "PARENT_GLOBAL" ? parentActionPages : staffAdminBannerActionPages).map((page) => <Chip key={page} label={t(form.audience === "PARENT_GLOBAL" ? `operations.actionPage.${page}` as TranslationKey : `platformBanners.actionPage.${page}` as TranslationKey)} selected={form.actionTarget === page} onPress={() => setForm((current) => current ? { ...current, actionTarget: page } : current)} />)}</ChipGroup></>}
       </View>}
-      <TextField label={t("operations.message")} required value={form?.body ?? ""} onChangeText={(body) => setForm((current) => current ? { ...current, body } : current)} multiline maxLength={4_000} />
       <View style={styles.field}>
         <AppText variant="label">{t("platformBanners.expiry")}</AppText>
         <AppText variant="caption" tone="muted">{t("platformBanners.expiryHint")}</AppText>
@@ -148,7 +176,7 @@ export default function PlatformBannersScreen() {
         <View style={styles.previewDialog} accessibilityViewIsModal>
           <View style={styles.previewHeader}><AppText variant="h5" style={styles.previewTitle}>{t("platformBanners.preview")}</AppText><Pressable accessibilityRole="button" accessibilityLabel={t("common.close")} hitSlop={spacing.sm} onPress={() => setPreviewVisible(false)} style={styles.previewClose}><Ionicons name="close" size={22} color={colors.text} /></Pressable></View>
           <AppText tone="muted">{t("platformBanners.previewHint")}</AppText>
-          {previewBanner && <ParentPromotionSlider banners={[previewBanner]} interactive={false} />}
+          {previewBanner && <ParentPromotionSlider banners={[previewBanner]} interactive={false} sectionTitle={t(form?.audience === "PARENT_GLOBAL" ? "platformBanners.parentTitle" : "platformBanners.staffAdminTitle" as TranslationKey)} />}
           <AppText variant="caption" tone="muted">{form?.actionType !== "NONE" && hasValidAction(form) ? t("platformBanners.previewActionEnabled") : t("platformBanners.previewActionDisabled")}</AppText>
           <Button onPress={() => setPreviewVisible(false)}>{t("common.close")}</Button>
         </View>
@@ -157,4 +185,4 @@ export default function PlatformBannersScreen() {
   </AppScreen>;
 }
 
-const styles = StyleSheet.create({ actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, action: { flexGrow: 1, flexBasis: "30%" }, field: { gap: spacing.sm }, bannerImage: { width: "100%", height: 180, borderRadius: radius.md }, formImagePreview: { width: "100%", aspectRatio: 16 / 9, borderRadius: radius.md }, scheduleRow: { flexDirection: "row", gap: spacing.sm }, scheduleField: { flex: 1 }, previewBackdrop: { flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.md, backgroundColor: colors.overlay }, previewDialog: { width: "100%", maxWidth: 720, gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, previewHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }, previewTitle: { flex: 1 }, previewClose: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: colors.surfaceTint } });
+const styles = StyleSheet.create({ actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, action: { flexGrow: 1, flexBasis: "30%" }, field: { gap: spacing.sm }, tenantOption: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, tenantOptionSelected: { borderColor: colors.primary, backgroundColor: colors.infoSoft }, tenantOptionPressed: { opacity: 0.75 }, bannerImage: { width: "100%", height: 180, borderRadius: radius.md }, formImagePreview: { width: "100%", aspectRatio: 16 / 9, borderRadius: radius.md }, scheduleRow: { flexDirection: "row", gap: spacing.sm }, scheduleField: { flex: 1 }, previewBackdrop: { flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.md, backgroundColor: colors.overlay }, previewDialog: { width: "100%", maxWidth: 720, gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, previewHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }, previewTitle: { flex: 1 }, previewClose: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: colors.surfaceTint } });

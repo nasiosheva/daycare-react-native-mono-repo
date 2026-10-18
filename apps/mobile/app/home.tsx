@@ -315,6 +315,7 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, s
   const router = useRouter();
   const { api, organizationId } = useAuth();
   const { t } = useI18n();
+  const platformBanners = useQuery({ queryKey: ["staff-admin-platform-banners", organizationId], queryFn: () => api.staffAdminPlatformBanners(organizationId ?? undefined), enabled: Boolean(organizationId) });
   const children = useChildren(subscriptionActive);
   const users = useQuery({ queryKey: ["tenant-users", organizationId], queryFn: () => api.tenantUsers(), enabled: Boolean(organizationId && subscriptionActive) });
   const pendingBookings = useBookings(true, hasDaycareOperations && subscriptionActive);
@@ -344,7 +345,7 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, s
   const operationalUnavailable = children.isFetching || users.isFetching || children.isError || users.isError;
   const financialUnavailable = pendingBookings.isFetching || invoices.isFetching || entitlements.isFetching || pendingBookings.isError || invoices.isError || entitlements.isError;
   const approvalsUnavailable = hasDaycareOperations && (pendingBookings.isFetching || pendingEnrollments.isFetching || pendingBookings.isError || pendingEnrollments.isError);
-  const homeRefresh = useHomeRefresh([["ui-access-context", organizationId], ["children", organizationId], ["tenant-users", organizationId], ["bookings", organizationId], ["parent-enrollments", organizationId], ["invoices", organizationId], ["entitlements", organizationId], ["tenant-branches", organizationId], ["branch-capacities", organizationId], ["organization-readiness", organizationId], ["notifications", organizationId], ["child-profile", organizationId]]);
+  const homeRefresh = useHomeRefresh([["ui-access-context", organizationId], ["staff-admin-platform-banners", organizationId], ["children", organizationId], ["tenant-users", organizationId], ["bookings", organizationId], ["parent-enrollments", organizationId], ["invoices", organizationId], ["entitlements", organizationId], ["tenant-branches", organizationId], ["branch-capacities", organizationId], ["organization-readiness", organizationId], ["notifications", organizationId], ["child-profile", organizationId]]);
 
   return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
     <View style={styles.staffAdminToolbar}>
@@ -358,6 +359,9 @@ function StaffAdminHome({ displayName, organizationName, hasDaycareOperations, s
         <Ionicons name="person-circle-outline" size={32} color={colors.primary} />
       </Pressable>
     </View>
+    {platformBanners.isFetching && <Shimmer width="100%" height={160} />}
+    {platformBanners.isError && !platformBanners.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void platformBanners.refetch()} />}
+    {platformBanners.data && <ParentPromotionSlider banners={platformBanners.data} organizationId={organizationId ?? undefined} sectionTitle={t("platformBanners.staffAdminTitle")} />}
     {readiness.data?.status === "NEEDS_ATTENTION" && <NavigationCard accessibilityLabel={t("home.setupAttentionOpen")} onPress={() => router.push("/staff-admin")} style={styles.attentionCard} leading={<Ionicons name="alert-circle" size={28} color={colors.danger} />}>
       <AppText variant="h5" tone="danger">{t("home.setupAttentionTitle")}</AppText>
       <AppText variant="bodySmall" tone="muted">{t("home.setupAttentionDescription")}</AppText>
@@ -426,9 +430,10 @@ function PlatformAdminHome() {
   const { t, formatCurrency } = useI18n();
   const tenants = useQuery({ queryKey: ["platform-tenants"], queryFn: () => api.tenants() });
   const readiness = useQuery({ queryKey: ["platform-tenant-readiness"], queryFn: () => api.tenantReadiness() });
+  const subscriptionReviews = useQuery({ queryKey: ["platform-tenant-subscription-review-summary"], queryFn: () => api.platformTenantSubscriptionReviewSummary() });
   const activeTenants = tenants.data?.filter((tenant) => tenant.subscriptionStatus === "ACTIVE") ?? [];
   const pendingTenants = tenants.data?.filter((tenant) => tenant.subscriptionStatus === "PENDING_PAYMENT") ?? [];
-  const homeRefresh = useHomeRefresh([["platform-tenants"], ["platform-tenant-readiness"]]);
+  const homeRefresh = useHomeRefresh([["platform-tenants"], ["platform-tenant-readiness"], ["platform-tenant-subscription-review-summary"]]);
 
   return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()} floatingAction={<FloatingActionButton icon="add" accessibilityLabel={t("home.addTenant")} onPress={() => router.push("/add-tenant")}>{t("home.addTenant")}</FloatingActionButton>}><View style={styles.content}>
     <View style={styles.staffAdminToolbar}>
@@ -444,9 +449,17 @@ function PlatformAdminHome() {
       <AppText variant="h5">{t("platformParents.menu")}</AppText>
       <AppText variant="bodySmall" tone="muted">{t("platformParents.menuDescription")}</AppText>
     </NavigationCard>
-    <NavigationCard accessibilityLabel={t("platformBanners.open")} onPress={() => router.push("/platform-banners")}>
-      <AppText variant="h5">{t("platformBanners.menu")}</AppText>
-      <AppText variant="bodySmall" tone="muted">{t("platformBanners.menuDescription")}</AppText>
+    <NavigationCard accessibilityLabel={t("platformBanners.contentHub")} onPress={() => router.push("/parent-home-content" as never)}>
+      <AppText variant="h5">{t("platformBanners.contentHub")}</AppText>
+      <AppText variant="bodySmall" tone="muted">{t("platformBanners.contentHubDescription")}</AppText>
+    </NavigationCard>
+    <NavigationCard accessibilityLabel={t("tenantSubscriptionReview.homeTitle")} onPress={() => router.push("/tenant-subscription-review")}>
+      <AppText variant="h5">{t("tenantSubscriptionReview.homeTitle")}</AppText>
+      {subscriptionReviews.isFetching && <Shimmer width="58%" height={14} />}
+      {subscriptionReviews.isError && !subscriptionReviews.isFetching && <AppText variant="caption" tone="danger">{t("tenantSubscriptionReview.loadFailed")}</AppText>}
+      {subscriptionReviews.data && <AppText variant="bodySmall" tone={subscriptionReviews.data.paymentProofs + subscriptionReviews.data.corrections > 0 ? "danger" : "muted"}>{subscriptionReviews.data.paymentProofs + subscriptionReviews.data.corrections > 0
+        ? t("tenantSubscriptionReview.homeDescription", { proofs: subscriptionReviews.data.paymentProofs, corrections: subscriptionReviews.data.corrections })
+        : t("tenantSubscriptionReview.homeEmpty")}</AppText>}
     </NavigationCard>
     {tenants.isFetching && <ShimmerList />}
     {tenants.isError && !tenants.isFetching && <ErrorState compact title={t("home.tenantsError")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void tenants.refetch()} />}

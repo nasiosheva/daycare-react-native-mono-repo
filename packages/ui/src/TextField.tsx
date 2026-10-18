@@ -1,3 +1,4 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { forwardRef, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,14 +18,19 @@ export type TextFieldProps = Omit<TextInputProps, "style"> & {
   leadingIcon?: IoniconName;
   /** Short text shown before the value, e.g. a currency such as "Rp". */
   prefix?: string;
+  /** Shows an X action while a non-empty value is present. */
+  clearable?: boolean;
+  /** Accessible label for the clear action. */
+  clearAccessibilityLabel?: string;
   trailing?: ReactNode;
   containerStyle?: StyleProp<ViewStyle>;
 };
 
-export const TextField = forwardRef<TextInput, TextFieldProps>(function TextField({ label, hint, error, required = false, leadingIcon, prefix, trailing, containerStyle, multiline, editable = true, onFocus, onBlur, accessibilityLabel, ...props }, ref) {
+export const TextField = forwardRef<TextInput, TextFieldProps>(function TextField({ label, hint, error, required = false, leadingIcon, prefix, clearable = false, clearAccessibilityLabel = "Clear text", trailing, containerStyle, multiline, editable = true, onFocus, onBlur, accessibilityLabel, ...props }, ref) {
   const [focused, setFocused] = useState(false);
   const hasError = Boolean(error);
   const iconColor = hasError ? colors.danger : focused ? colors.primary : colors.muted;
+  const showClearAction = clearable && editable && typeof props.value === "string" && props.value.length > 0;
   return <View style={[styles.container, containerStyle]}>
     {label && <View style={styles.labelRow}>
       <AppText variant="label">{label}</AppText>
@@ -46,6 +52,9 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
         onBlur={(event) => { setFocused(false); onBlur?.(event); }}
         style={[styles.input, multiline && styles.inputMultiline]}
       />
+      {showClearAction && <Pressable accessibilityRole="button" accessibilityLabel={clearAccessibilityLabel} hitSlop={spacing.sm} onPress={() => props.onChangeText?.("")} style={({ pressed }) => [styles.clear, pressed && styles.clearPressed]}>
+        <Ionicons name="close-circle" size={20} color={colors.muted} />
+      </Pressable>}
       {trailing}
     </View>
     {hasError
@@ -54,7 +63,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
   </View>;
 });
 
-type SearchFieldProps = Omit<TextFieldProps, "leadingIcon" | "trailing" | "onChangeText" | "value"> & {
+type SearchFieldProps = Omit<TextFieldProps, "leadingIcon" | "trailing" | "onChangeText" | "value" | "clearable"> & {
   value: string;
   onChangeText: (value: string) => void;
   clearAccessibilityLabel?: string;

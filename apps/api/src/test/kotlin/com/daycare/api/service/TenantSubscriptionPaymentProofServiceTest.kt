@@ -293,6 +293,19 @@ class TenantSubscriptionPaymentProofServiceTest {
     }
 
     @Test
+    fun `pending review count is platform admin only and respects the feature flag`() {
+        val service = createService(enabled = true)
+        `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(com.daycare.api.persistence.UserProfile())
+        `when`(proofs.countByStatus("SUBMITTED")).thenReturn(3L)
+
+        assertEquals(3L, service.pendingReviewCount(jwt))
+
+        val disabled = createService(enabled = false)
+        assertEquals(0L, disabled.pendingReviewCount(jwt))
+        verify(proofs).countByStatus("SUBMITTED")
+    }
+
+    @Test
     fun `reviewQueue rejects an invalid page or size`() {
         val service = createService(enabled = true)
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(com.daycare.api.persistence.UserProfile())

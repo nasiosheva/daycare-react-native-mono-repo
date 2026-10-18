@@ -1041,6 +1041,8 @@ class PlatformBanner(
     @Column(name = "image_url", nullable = false, length = 2_048) var imageUrl: String = "",
     @Enumerated(EnumType.STRING) @Column(name = "action_type", nullable = false) var actionType: com.daycare.api.domain.ParentActionType = com.daycare.api.domain.ParentActionType.NONE,
     @Column(name = "action_target", length = 2_048) var actionTarget: String? = null,
+    @Enumerated(EnumType.STRING) @Column(name = "audience_type", nullable = false) var audience: com.daycare.api.domain.PlatformBannerAudience = com.daycare.api.domain.PlatformBannerAudience.PARENT_GLOBAL,
+    @Column(name = "target_organization_id") var targetOrganizationId: UUID? = null,
     @Enumerated(EnumType.STRING) @Column(nullable = false) var status: com.daycare.api.domain.PlatformBannerStatus = com.daycare.api.domain.PlatformBannerStatus.DRAFT,
     @Column(name = "scheduled_at") var scheduledAt: Instant? = null,
     @Column(name = "published_at") var publishedAt: Instant? = null,

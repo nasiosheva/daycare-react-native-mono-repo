@@ -5,6 +5,11 @@ package com.daycare.api.service
 import com.daycare.api.domain.PlatformBannerStatus
 import com.daycare.api.domain.RegistrationRole
 import com.daycare.api.domain.ParentActionType
+import com.daycare.api.domain.PlatformBannerAudience
+import com.daycare.api.domain.Role
+import com.daycare.api.persistence.Membership
+import com.daycare.api.persistence.Organization
+import com.daycare.api.persistence.OrganizationRepository
 import com.daycare.api.persistence.PlatformBanner
 import com.daycare.api.persistence.PlatformBannerRepository
 import com.daycare.api.persistence.UserProfile
@@ -25,6 +30,18 @@ import java.util.UUID
 
 class PlatformBannerServiceTest {
     @Test
+    fun `platform banner can be created without a message body`() {
+        val f = fixture()
+
+        val created = f.service.create(f.jwt, UpsertPlatformBannerRequest(
+            title = "Promo gambar",
+            imageUrl = "https://cdn.example/promo.jpg",
+        ))
+
+        assertEquals("", created.body)
+    }
+
+    @Test
     fun `platform admin can create update publish and close banner`() {
         val f = fixture()
         val imageUrl = "https://cdn.example/promo.jpg"
@@ -44,10 +61,10 @@ class PlatformBannerServiceTest {
         assertEquals("BOOKING", updated.actionTarget)
         val published = f.service.publish(f.jwt, created.id, SchedulePlatformBannerRequest())
         assertEquals(PlatformBannerStatus.PUBLISHED, published.status)
-        `when`(f.banners.findAllByStatusOrderByCreatedAtDesc(PlatformBannerStatus.PUBLISHED)).thenReturn(listOf(entity))
+        `when`(f.banners.findAllByStatusAndAudienceOrderByPublishedAtDesc(PlatformBannerStatus.PUBLISHED, PlatformBannerAudience.PARENT_GLOBAL)).thenReturn(listOf(entity))
         assertEquals(1, f.service.listForParent(f.parentJwt).size)
         assertEquals(PlatformBannerStatus.CLOSED, f.service.close(f.jwt, created.id).status)
-        `when`(f.banners.findAllByStatusOrderByCreatedAtDesc(PlatformBannerStatus.PUBLISHED)).thenReturn(emptyList())
+        `when`(f.banners.findAllByStatusAndAudienceOrderByPublishedAtDesc(PlatformBannerStatus.PUBLISHED, PlatformBannerAudience.PARENT_GLOBAL)).thenReturn(emptyList())
         assertEquals(0, f.service.listForParent(f.parentJwt).size)
     }
 
@@ -76,12 +93,66 @@ class PlatformBannerServiceTest {
     @Test
     fun `parent feed requires registered parent and scheduled banners stay hidden until publication`() {
         val f = fixture()
-        `when`(f.banners.findAllByStatusOrderByCreatedAtDesc(PlatformBannerStatus.PUBLISHED)).thenReturn(emptyList())
+        `when`(f.banners.findAllByStatusAndAudienceOrderByPublishedAtDesc(PlatformBannerStatus.PUBLISHED, PlatformBannerAudience.PARENT_GLOBAL)).thenReturn(emptyList())
         assertEquals(emptyList<PlatformBannerResponse>(), f.service.listForParent(f.parentJwt))
-        verify(f.banners).findAllByStatusOrderByCreatedAtDesc(PlatformBannerStatus.PUBLISHED)
+        verify(f.banners).findAllByStatusAndAudienceOrderByPublishedAtDesc(PlatformBannerStatus.PUBLISHED, PlatformBannerAudience.PARENT_GLOBAL)
         assertThrows(org.springframework.security.access.AccessDeniedException::class.java) {
             f.service.listForParent(f.nonParentJwt)
         }
+    }
+
+    @Test
+    fun `platform admin can target a selected tenant Staff Admin and action pages are role scoped`() {
+        val f = fixture()
+        val organizationId = UUID.randomUUID()
+        `when`(f.organizations.findById(organizationId)).thenReturn(Optional.of(Organization(id = organizationId, name = "Tenant")))
+
+        val created = f.service.create(f.jwt, UpsertPlatformBannerRequest(
+            title = "Tenant admin notice", body = "Metadata", imageUrl = "https://cdn.example/promo.jpg",
+            actionType = ParentActionType.OPEN_APP_PAGE, actionTarget = "TENANT_SUBSCRIPTION",
+            audience = PlatformBannerAudience.TENANT_STAFF_ADMIN, targetOrganizationId = organizationId,
+        ))
+
+        assertEquals(PlatformBannerAudience.TENANT_STAFF_ADMIN, created.audience)
+        assertEquals(organizationId, created.targetOrganizationId)
+        assertEquals("TENANT_SUBSCRIPTION", created.actionTarget)
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.create(f.jwt, UpsertPlatformBannerRequest(
+                "Bad role link", "Metadata", "https://cdn.example/promo.jpg",
+                ParentActionType.OPEN_APP_PAGE, "PARENT_SCREENING",
+                audience = PlatformBannerAudience.STAFF_ADMIN_GLOBAL,
+            ))
+        }
+    }
+
+    @Test
+    fun `tenant audience requires a real tenant and a target only for tenant scope`() {
+        val f = fixture()
+        val organizationId = UUID.randomUUID()
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.create(f.jwt, UpsertPlatformBannerRequest("Missing tenant", "Metadata", "https://cdn.example/promo.jpg", audience = PlatformBannerAudience.TENANT_STAFF_ADMIN))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            f.service.create(f.jwt, UpsertPlatformBannerRequest("Unexpected tenant", "Metadata", "https://cdn.example/promo.jpg", targetOrganizationId = organizationId))
+        }
+    }
+
+    @Test
+    fun `Staff Admin feed combines global and matching tenant banners only`() {
+        val f = fixture()
+        val organizationId = UUID.randomUUID()
+        val user = UserProfile(id = UUID.randomUUID())
+        `when`(f.access.require(f.staffJwt, organizationId, setOf(Role.STAFF_ADMIN), null, false, setOf(Role.STAFF_ADMIN), emptySet(), emptySet()))
+            .thenReturn(AccessScope(user, Membership(userId = user.id, organizationId = organizationId, active = true), emptySet(), emptySet()))
+        val global = PlatformBanner(audience = PlatformBannerAudience.STAFF_ADMIN_GLOBAL, status = PlatformBannerStatus.PUBLISHED, publishedAt = Instant.now().minusSeconds(2))
+        val matching = PlatformBanner(audience = PlatformBannerAudience.TENANT_STAFF_ADMIN, targetOrganizationId = organizationId, status = PlatformBannerStatus.PUBLISHED, publishedAt = Instant.now().minusSeconds(1))
+        val otherTenant = PlatformBanner(audience = PlatformBannerAudience.TENANT_STAFF_ADMIN, targetOrganizationId = UUID.randomUUID(), status = PlatformBannerStatus.PUBLISHED)
+        `when`(f.banners.findAllByStatusAndAudienceOrderByPublishedAtDesc(PlatformBannerStatus.PUBLISHED, PlatformBannerAudience.STAFF_ADMIN_GLOBAL)).thenReturn(listOf(global))
+        `when`(f.banners.findAllByStatusAndAudienceAndTargetOrganizationIdOrderByPublishedAtDesc(PlatformBannerStatus.PUBLISHED, PlatformBannerAudience.TENANT_STAFF_ADMIN, organizationId)).thenReturn(listOf(matching, otherTenant))
+
+        val result = f.service.listForStaffAdmin(f.staffJwt, organizationId)
+
+        assertEquals(listOf(matching.id, global.id), result.map { it.id })
     }
 
     @Test
@@ -99,7 +170,7 @@ class PlatformBannerServiceTest {
         val f = fixture()
         val expiredPublished = PlatformBanner(status = PlatformBannerStatus.PUBLISHED, publishedAt = Instant.now().minusSeconds(3_600), expiresAt = Instant.now().minusSeconds(60))
         val expiredScheduled = PlatformBanner(status = PlatformBannerStatus.SCHEDULED, scheduledAt = Instant.now().minusSeconds(3_600), expiresAt = Instant.now().minusSeconds(60))
-        `when`(f.banners.findAllByStatusOrderByCreatedAtDesc(PlatformBannerStatus.PUBLISHED)).thenReturn(listOf(expiredPublished))
+        `when`(f.banners.findAllByStatusAndAudienceOrderByPublishedAtDesc(PlatformBannerStatus.PUBLISHED, PlatformBannerAudience.PARENT_GLOBAL)).thenReturn(listOf(expiredPublished))
         `when`(f.banners.findAllByStatusInAndExpiresAtLessThanEqual(eq(setOf(PlatformBannerStatus.SCHEDULED, PlatformBannerStatus.PUBLISHED)) ?: emptySet(), any(Instant::class.java) ?: Instant.EPOCH)).thenReturn(listOf(expiredPublished, expiredScheduled))
 
         assertEquals(emptyList<PlatformBannerResponse>(), f.service.listForParent(f.parentJwt))
@@ -153,18 +224,21 @@ class PlatformBannerServiceTest {
         val jwt = mock(Jwt::class.java)
         val parentJwt = mock(Jwt::class.java)
         val nonParentJwt = mock(Jwt::class.java)
+        val staffJwt = mock(Jwt::class.java)
         val admin = UserProfile(id = UUID.randomUUID(), registrationRole = RegistrationRole.PARENT)
         val parent = UserProfile(id = UUID.randomUUID(), registrationRole = RegistrationRole.PARENT)
         val nonParent = UserProfile(id = UUID.randomUUID())
         val platformAccess = mock(PlatformAccessService::class.java)
         val identity = mock(IdentityService::class.java)
         val banners = mock(PlatformBannerRepository::class.java)
+        val access = mock(AccessService::class.java)
+        val organizations = mock(OrganizationRepository::class.java)
         `when`(platformAccess.requirePlatformAdmin(jwt)).thenReturn(admin)
         `when`(identity.sync(parentJwt)).thenReturn(parent)
         `when`(identity.sync(nonParentJwt)).thenReturn(nonParent)
         `when`(banners.save(any(PlatformBanner::class.java))).thenAnswer { it.arguments[0] }
-        return Fixture(PlatformBannerService(platformAccess, identity, banners), jwt, parentJwt, nonParentJwt, admin, banners)
+        return Fixture(PlatformBannerService(platformAccess, identity, banners, access, organizations), jwt, parentJwt, nonParentJwt, staffJwt, admin, banners, access, organizations)
     }
 
-    private data class Fixture(val service: PlatformBannerService, val jwt: Jwt, val parentJwt: Jwt, val nonParentJwt: Jwt, val admin: UserProfile, val banners: PlatformBannerRepository)
+    private data class Fixture(val service: PlatformBannerService, val jwt: Jwt, val parentJwt: Jwt, val nonParentJwt: Jwt, val staffJwt: Jwt, val admin: UserProfile, val banners: PlatformBannerRepository, val access: AccessService, val organizations: OrganizationRepository)
 }
