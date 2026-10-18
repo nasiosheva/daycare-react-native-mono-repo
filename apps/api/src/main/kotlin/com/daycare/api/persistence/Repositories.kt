@@ -1,5 +1,7 @@
 package com.daycare.api.persistence
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 import com.daycare.api.domain.ChildProgramStatus
 import com.daycare.api.domain.InvitationStatus
 import com.daycare.api.domain.ScreeningCatalogResourceType
@@ -289,6 +291,12 @@ interface StaffHandoverRepository : JpaRepository<StaffHandover, UUID> {
 interface TenantAnnouncementRepository : JpaRepository<TenantAnnouncement, UUID> {
     fun findAllByOrganizationIdOrderByCreatedAtDesc(organizationId: UUID): List<TenantAnnouncement>
     fun findAllByOrganizationIdAndStatus(organizationId: UUID, status: com.daycare.api.domain.TenantAnnouncementStatus): List<TenantAnnouncement>
+}
+interface PlatformBannerRepository : JpaRepository<PlatformBanner, UUID> {
+    fun findAllByOrderByCreatedAtDesc(): List<PlatformBanner>
+    fun findAllByStatusOrderByCreatedAtDesc(status: com.daycare.api.domain.PlatformBannerStatus): List<PlatformBanner>
+    fun findAllByStatusAndScheduledAtLessThanEqual(status: com.daycare.api.domain.PlatformBannerStatus, scheduledAt: Instant): List<PlatformBanner>
+    fun findAllByStatusInAndExpiresAtLessThanEqual(statuses: Set<com.daycare.api.domain.PlatformBannerStatus>, expiresAt: Instant): List<PlatformBanner>
 }
 interface TenantAnnouncementRecipientRepository : JpaRepository<TenantAnnouncementRecipient, UUID> {
     fun findAllByRecipientUserId(recipientUserId: UUID): List<TenantAnnouncementRecipient>

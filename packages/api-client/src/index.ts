@@ -1,5 +1,5 @@
 // Mories Deo Hutapea,S.E.,S.Kom
-import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildAbsencePurpose, ChildAbsenceRequestStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, EducationEnrollmentMode, EducationOfferingStatus, GoalDomain, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, ParentFamilyProfileInput, ParentIncomeRange, ParentOccupation, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffLeaveRequestStatus, StaffLeaveRequestType, StaffReminderTarget, TenantFeedbackCategory, TenantFeedbackStatus, TenantPaymentStatus, TenantSubscriptionAttentionGroup, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
+import type { AttendanceAction, AttendanceMethod, BookingStatus, ChildAbsencePurpose, ChildAbsenceRequestStatus, ChildGender, ChildGoalOutcome, ChildInput, CurrentUser, DevelopmentEntryInput, EducationEnrollmentMode, EducationOfferingStatus, GoalDomain, GoalCheckInOutcome, InstitutionCapability, InstitutionType, InvoiceStatus, ParentActionType, ParentFamilyProfileInput, ParentIncomeRange, ParentOccupation, PurchaseServiceInput, Role, ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, StaffLeaveRequestStatus, StaffLeaveRequestType, StaffReminderTarget, TenantFeedbackCategory, TenantFeedbackStatus, TenantPaymentStatus, TenantSubscriptionAttentionGroup, TenantSubscriptionPlan, TenantSubscriptionStatus, UnusedCreditPolicy } from "@daycare/core";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -169,8 +169,11 @@ export type StaffHandoverRecipient = { userId: string; displayName: string };
 export type CreateStaffHandoverInput = { recipientUserId: string; summary: string };
 export type TenantAnnouncementAudience = "TENANT" | "BRANCH";
 export type TenantAnnouncementStatus = "DRAFT" | "SCHEDULED" | "PUBLISHED" | "CLOSED";
-export type TenantAnnouncement = { id: string; audience: TenantAnnouncementAudience; branchId?: string | null; title: string; body: string; requiresAcknowledgement: boolean; status: TenantAnnouncementStatus; scheduledAt?: string | null; publishedAt?: string | null; closedAt?: string | null; acknowledgedByMe: boolean; recipientCount: number; createdAt: string };
-export type UpsertTenantAnnouncementInput = { audience: TenantAnnouncementAudience; branchId?: string; title: string; body: string; requiresAcknowledgement?: boolean };
+export type TenantAnnouncement = { id: string; audience: TenantAnnouncementAudience; branchId?: string | null; title: string; body: string; imageUrl?: string | null; actionType?: ParentActionType; actionTarget?: string | null; requiresAcknowledgement: boolean; status: TenantAnnouncementStatus; scheduledAt?: string | null; publishedAt?: string | null; closedAt?: string | null; acknowledgedByMe: boolean; recipientCount: number; createdAt: string };
+export type UpsertTenantAnnouncementInput = { audience: TenantAnnouncementAudience; branchId?: string; title: string; body: string; requiresAcknowledgement?: boolean; imageUrl?: string | null; actionType?: ParentActionType; actionTarget?: string | null };
+export type PlatformBannerStatus = "DRAFT" | "SCHEDULED" | "PUBLISHED" | "CLOSED";
+export type PlatformBanner = { id: string; title: string; body: string; imageUrl: string; actionType?: ParentActionType; actionTarget?: string | null; status: PlatformBannerStatus; scheduledAt?: string | null; publishedAt?: string | null; expiresAt?: string | null; closedAt?: string | null; createdAt: string; updatedAt: string };
+export type UpsertPlatformBannerInput = { title: string; body: string; imageUrl: string; actionType?: ParentActionType; actionTarget?: string | null; expiresAt?: string | null };
 export type ServiceExpiryReminderSettings = { leadDays: number[] };
 export type ChildMessageReply = { id: string; senderName: string; body: string; createdAt: string; hasPhoto: boolean };
 export type ChildMessagePhotoInput = { contentType: "image/jpeg" | "image/png"; dataBase64: string };
@@ -549,6 +552,12 @@ export class ApiClient {
   async publishAnnouncement(announcementId: string, scheduledAt?: string): Promise<TenantAnnouncement> { return this.request(`/announcements/${announcementId}/publish`, { method: "POST", body: JSON.stringify({ scheduledAt }) }); }
   async closeAnnouncement(announcementId: string): Promise<TenantAnnouncement> { return this.request(`/announcements/${announcementId}/close`, { method: "POST" }); }
   async acknowledgeAnnouncement(announcementId: string, organizationId?: string): Promise<TenantAnnouncement> { return this.request(`/announcements/${announcementId}/acknowledge`, { method: "POST", ...this.orgOverride(organizationId) }); }
+  async platformBanners(): Promise<PlatformBanner[]> { return this.requestWithoutOrganization("/platform/banners"); }
+  async parentPlatformBanners(): Promise<PlatformBanner[]> { return this.requestWithoutOrganization("/parent/platform-banners"); }
+  async createPlatformBanner(input: UpsertPlatformBannerInput): Promise<PlatformBanner> { return this.requestWithoutOrganization("/platform/banners", { method: "POST", body: JSON.stringify(input) }); }
+  async updatePlatformBanner(bannerId: string, input: UpsertPlatformBannerInput): Promise<PlatformBanner> { return this.requestWithoutOrganization(`/platform/banners/${bannerId}`, { method: "PUT", body: JSON.stringify(input) }); }
+  async publishPlatformBanner(bannerId: string, scheduledAt?: string): Promise<PlatformBanner> { return this.requestWithoutOrganization(`/platform/banners/${bannerId}/publish`, { method: "POST", body: JSON.stringify({ scheduledAt }) }); }
+  async closePlatformBanner(bannerId: string): Promise<PlatformBanner> { return this.requestWithoutOrganization(`/platform/banners/${bannerId}/close`, { method: "POST" }); }
   async staffLeaveRequestEvidence(requestId: string): Promise<StaffLeaveEvidence> { return this.request(`/staff-leave-requests/${requestId}/evidence`); }
   async academicYears(): Promise<AcademicYear[]> { return this.request("/academic-years"); }
   async createAcademicYear(input: CreateAcademicYearInput): Promise<AcademicYear> { return this.request("/academic-years", { method: "POST", body: JSON.stringify(input) }); }
@@ -844,8 +853,12 @@ export class ApiClient {
     return organizationId ? { headers: { "X-Organization-Id": organizationId } } : {};
   }
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const response = await this.authorizedFetch(path, init);
+  private requestWithoutOrganization<T>(path: string, init: RequestInit = {}): Promise<T> {
+    return this.request(path, init, false);
+  }
+
+  private async request<T>(path: string, init: RequestInit = {}, includeAmbientOrganization = true): Promise<T> {
+    const response = await this.authorizedFetch(path, init, includeAmbientOrganization);
     if (!response.ok) throw await this.responseError(response);
     if (response.status === 204) return undefined as T;
     try {
@@ -868,7 +881,7 @@ export class ApiClient {
     return { fileName, contentType, dataBase64: arrayBufferToBase64(await response.arrayBuffer()) };
   }
 
-  private async authorizedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  private async authorizedFetch(path: string, init: RequestInit = {}, includeAmbientOrganization = true): Promise<Response> {
     const token = await this.options.getToken();
     const organizationId = this.options.getOrganizationId();
     const method = init.method ?? "GET";
@@ -883,7 +896,7 @@ export class ApiClient {
           "Accept-Language": this.options.getLanguage(),
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...(organizationId ? { "X-Organization-Id": organizationId } : {}),
+          ...(includeAmbientOrganization && organizationId ? { "X-Organization-Id": organizationId } : {}),
           ...init.headers,
         },
       });

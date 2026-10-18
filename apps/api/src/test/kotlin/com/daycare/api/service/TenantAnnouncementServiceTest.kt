@@ -1,6 +1,7 @@
 package com.daycare.api.service
 
 import com.daycare.api.domain.Role
+import com.daycare.api.domain.ParentActionType
 import com.daycare.api.domain.TenantAnnouncementAudience
 import com.daycare.api.domain.TenantAnnouncementStatus
 import com.daycare.api.persistence.AuditLog
@@ -46,8 +47,11 @@ class TenantAnnouncementServiceTest {
         `when`(fixture.children.findAllByOrganizationId(fixture.organizationId)).thenReturn(listOf(child))
         `when`(fixture.guardians.findAllByChildIdIn(setOf(child.id))).thenReturn(listOf(GuardianLink(childId = child.id, userId = parentId)))
         `when`(fixture.announcements.save(any(TenantAnnouncement::class.java))).thenAnswer { it.arguments[0] }
-        val created = fixture.service.create(fixture.jwt, fixture.organizationId, UpsertTenantAnnouncementRequest(TenantAnnouncementAudience.TENANT, title = "Info", body = "Libur"))
+        val created = fixture.service.create(fixture.jwt, fixture.organizationId, UpsertTenantAnnouncementRequest(TenantAnnouncementAudience.TENANT, title = "Info", body = "Libur", imageUrl = "https://cdn.example/notice.jpg", actionType = ParentActionType.OPEN_BROWSER, actionTarget = "https://example.org/info"))
         assertEquals(TenantAnnouncementStatus.DRAFT, created.status)
+        assertEquals("https://cdn.example/notice.jpg", created.imageUrl)
+        assertEquals(ParentActionType.OPEN_BROWSER, created.actionType)
+        assertEquals("https://example.org/info", created.actionTarget)
 
         `when`(fixture.announcements.findById(created.id)).thenReturn(Optional.of(TenantAnnouncement(id = created.id, organizationId = fixture.organizationId, createdByUserId = staffId, title = "Info", body = "Libur")))
         val published = fixture.service.publish(fixture.jwt, fixture.organizationId, created.id, ScheduleTenantAnnouncementRequest())
@@ -96,6 +100,18 @@ class TenantAnnouncementServiceTest {
     }
 
     @Test
+    fun `past scheduled announcement is rejected instead of publishing immediately`() {
+        val fixture = fixture()
+        val announcement = TenantAnnouncement(organizationId = fixture.organizationId, createdByUserId = fixture.staff.id)
+        `when`(fixture.announcements.findById(announcement.id)).thenReturn(Optional.of(announcement))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            fixture.service.publish(fixture.jwt, fixture.organizationId, announcement.id, ScheduleTenantAnnouncementRequest(Instant.now().minusSeconds(1)))
+        }
+        assertEquals(TenantAnnouncementStatus.DRAFT, announcement.status)
+    }
+
+    @Test
     fun `scheduled announcement publishes only matching branch recipients`() {
         val fixture = fixture()
         val branchId = UUID.randomUUID()
@@ -130,6 +146,7 @@ class TenantAnnouncementServiceTest {
         assertThrows(IllegalArgumentException::class.java) { fixture.service.create(fixture.jwt, fixture.organizationId, UpsertTenantAnnouncementRequest(TenantAnnouncementAudience.BRANCH, branchId, "T", "B")) }
         `when`(fixture.branches.findById(branchId)).thenReturn(Optional.of(Branch(id = branchId, organizationId = fixture.organizationId, name = "Inactive", active = false)))
         assertThrows(IllegalArgumentException::class.java) { fixture.service.create(fixture.jwt, fixture.organizationId, UpsertTenantAnnouncementRequest(TenantAnnouncementAudience.BRANCH, branchId, "T", "B")) }
+        assertThrows(IllegalArgumentException::class.java) { fixture.service.create(fixture.jwt, fixture.organizationId, UpsertTenantAnnouncementRequest(TenantAnnouncementAudience.TENANT, title = "T", body = "B", imageUrl = "http://cdn.example/notice.jpg")) }
     }
 
     @Test

@@ -73,6 +73,9 @@ import com.daycare.api.service.CreateCurriculumActivityAssessmentRequest
 import com.daycare.api.service.ChangePlatformAdminPinRequest
 import com.daycare.api.service.PlatformAdminPinService
 import com.daycare.api.service.PlatformAdministrationService
+import com.daycare.api.service.PlatformBannerService
+import com.daycare.api.service.UpsertPlatformBannerRequest
+import com.daycare.api.service.SchedulePlatformBannerRequest
 import com.daycare.api.service.ParentFamilyProfileService
 import com.daycare.api.service.UpdateParentFamilyProfileRequest
 import com.daycare.api.service.TenantReadinessService
@@ -1125,6 +1128,34 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PutMapping("/staff-reminders/local-schedules") @ResponseStatus(HttpStatus.NO_CONTENT)
     fun syncStaffReminderSchedules(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: SyncStaffReminderSchedulesRequest) = staffReminders.syncLocalSchedules(jwt, organizationId, request)
+}
+
+@RestController
+@RequestMapping("/v1/platform/banners")
+@SecurityRequirement(name = "bearerAuth")
+class PlatformBannerController(private val banners: PlatformBannerService) {
+    @GetMapping
+    fun list(@AuthenticationPrincipal jwt: Jwt) = banners.listManaged(jwt)
+
+    @PostMapping @ResponseStatus(HttpStatus.CREATED)
+    fun create(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: UpsertPlatformBannerRequest) = banners.create(jwt, request)
+
+    @PutMapping("/{bannerId}")
+    fun update(@AuthenticationPrincipal jwt: Jwt, @PathVariable bannerId: UUID, @Valid @RequestBody request: UpsertPlatformBannerRequest) = banners.update(jwt, bannerId, request)
+
+    @PostMapping("/{bannerId}/publish")
+    fun publish(@AuthenticationPrincipal jwt: Jwt, @PathVariable bannerId: UUID, @RequestBody request: SchedulePlatformBannerRequest) = banners.publish(jwt, bannerId, request)
+
+    @PostMapping("/{bannerId}/close")
+    fun close(@AuthenticationPrincipal jwt: Jwt, @PathVariable bannerId: UUID) = banners.close(jwt, bannerId)
+}
+
+@RestController
+@RequestMapping("/v1/parent/platform-banners")
+@SecurityRequirement(name = "bearerAuth")
+class ParentPlatformBannerController(private val banners: PlatformBannerService) {
+    @GetMapping
+    fun list(@AuthenticationPrincipal jwt: Jwt) = banners.listForParent(jwt)
 }
 
 @RestController

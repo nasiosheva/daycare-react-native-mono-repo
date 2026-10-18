@@ -30,6 +30,29 @@ function requests(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>) {
 }
 
 describe("ApiClient API wrappers", () => {
+  it("maps global Platform banner management and Parent feed without tenant scope", async () => {
+    const { client, fetchMock } = createHarness();
+    const banner = { title: "Update", body: "Informasi platform", imageUrl: "https://cdn.example/promotion.jpg", actionType: "OPEN_BROWSER" as const, actionTarget: "https://example.com/promo", expiresAt: "2026-10-25T10:00:00Z" };
+    await client.platformBanners();
+    await client.parentPlatformBanners();
+    await client.createPlatformBanner(banner);
+    await client.updatePlatformBanner("banner-1", banner);
+    await client.publishPlatformBanner("banner-1", "2026-10-20T09:00:00Z");
+    await client.closePlatformBanner("banner-1");
+
+    const calls = requests(fetchMock);
+    expect(calls.map(({ url, method }) => [url.replace("https://api.example.test/api/v1", ""), method])).toEqual([
+      ["/platform/banners", "GET"],
+      ["/parent/platform-banners", "GET"],
+      ["/platform/banners", "POST"],
+      ["/platform/banners/banner-1", "PUT"],
+      ["/platform/banners/banner-1/publish", "POST"],
+      ["/platform/banners/banner-1/close", "POST"],
+    ]);
+    expect(calls.every(({ headers }) => headers.get("X-Organization-Id") === null)).toBe(true);
+    expect(calls[2]?.body).toBe(JSON.stringify(banner));
+  });
+
   it("maps staff pickup exception requests and Staff Admin decisions with tenant scope", async () => {
     const { client, fetchMock } = createHarness();
     const organizationId = "tenant-1";
@@ -548,7 +571,7 @@ describe("ApiClient API wrappers", () => {
     const message = { body: "Mohon kabari perkembangan hari ini" };
     const reminder = { title: "Periksa kelas", target: "ALL_STAFF", active: true };
     const leave = { startsOn: "2026-10-20", endsOn: "2026-10-20", type: "PERSONAL" };
-    const announcement = { audience: "TENANT", title: "Info", body: "Informasi lembaga" };
+    const announcement = { audience: "TENANT", title: "Info", body: "Informasi lembaga", imageUrl: "https://cdn.example/announcement.jpg", actionType: "OPEN_BROWSER", actionTarget: "https://example.org/info" };
 
     await client.childMessages("child-1", "tenant-1");
     await client.childMessageSummary("child-1", "tenant-1");
@@ -603,6 +626,7 @@ describe("ApiClient API wrappers", () => {
       ["/announcements/announcement-1/publish", "POST"],
     ]));
     expect(calls).toHaveLength(38);
+    expect(calls.find(({ url, method }) => url.endsWith("/announcements") && method === "POST")?.body).toBe(JSON.stringify(announcement));
     expect(calls.every(({ headers }) => ["tenant-1", "active-tenant"].includes(headers.get("X-Organization-Id") ?? ""))).toBe(true);
   });
 

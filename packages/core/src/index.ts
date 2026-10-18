@@ -4,6 +4,10 @@ export const roleValues = ["ADMIN", "STAFF_ADMIN", "STAFF", "PARENT"] as const;
 export type Role = (typeof roleValues)[number];
 export const registrationRoleValues = ["PARENT"] as const;
 export type RegistrationRole = (typeof registrationRoleValues)[number];
+export const parentActionTypes = ["NONE", "OPEN_BROWSER", "OPEN_APP_PAGE"] as const;
+export type ParentActionType = (typeof parentActionTypes)[number];
+export const parentActionPages = ["TENANT_ANNOUNCEMENTS", "BOOKING", "PARENT_SCREENING", "PARENT_ENROLLMENT", "PRIVATE_TUTORING"] as const;
+export type ParentActionPage = (typeof parentActionPages)[number];
 
 export const attendanceMethods = ["MANUAL", "QR"] as const;
 export type AttendanceMethod = (typeof attendanceMethods)[number];

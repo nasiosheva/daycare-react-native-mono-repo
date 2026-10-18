@@ -1,9 +1,10 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { Pressable, StyleSheet, View } from "react-native";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { useQueries, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { AppText, Badge, Button, EmptyState, ErrorState, FloatingActionButton, MenuItem, MenuSection, NavigationCard, SearchField, SectionHeader, Shimmer, ShimmerList, colors, radius, shadows, spacing } from "@daycare/ui";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChildren, useParentChildrenAcrossTenants } from "@/attendance/useAttendance";
@@ -15,7 +16,9 @@ import { AppScreen } from "@/navigation/AppScreen";
 import { useI18n } from "@/i18n/I18nProvider";
 import { invoiceSourceKey, roleKey, tenantPaymentStatusKey, tenantReadinessIssueKey, tenantSubscriptionPlanKey } from "@/i18n/translations";
 import { useStaffDailyTasks } from "@/home/useStaffDailyTasks";
-import { combineProgramSummaries, createParentHomeSummary } from "@/home/parentHomeSummary";
+import { combineParentAnnouncements, combineParentPromotions, combineProgramSummaries, createParentHomeSummary } from "@/home/parentHomeSummary";
+import { ParentAnnouncementPopup } from "@/home/ParentAnnouncementPopup";
+import { ParentPromotionSlider } from "@/home/ParentPromotionSlider";
 import { authErrorMessage } from "@/auth/authErrorMessage";
 import { unreadNotificationBadge } from "@/notifications/unreadBadge";
 import { ChatUnreadBadge } from "@/chat/ChatFloatingAction";
@@ -26,6 +29,7 @@ import { isInactiveStaffMembership } from "@/navigation/inactiveStaffRouteAccess
 import { hasOfferingCapability, useOfferingCapabilitiesByTenant, useUiAccessContext } from "@/education/useUiAccessContext";
 import { hasOperationalTenantSubscription } from "@/auth/tenantSubscription";
 import { StaffChatFloatingAction } from "@/chat/StaffChatFloatingAction";
+import { notify } from "@/notify/notify";
 
 export default function HomeScreen() {
   const { user, profile, organizationId, loading, profileError, requiresOrganizationSelection } = useAuth();
@@ -127,14 +131,29 @@ function ParentHome({ displayName, organizationName, subscriptionActive }: { dis
   const router = useRouter();
   const { api, organizationId, profile } = useAuth();
   const { t, formatCurrency, formatDate } = useI18n();
+  const queryClient = useQueryClient();
   // Every section aggregates the Parent's tenants and acts in each child's or invoice's own tenant
   // (per-action tenant resolution, docs/business-rules.md §1); only pull-to-refresh stays on the
   // active tenant (§1 Home rule). A Parent's own children list stays visible even once a tenant's
   // subscription lapses (§13.12 TENANT_SUBSCRIPTION_RESTRICTED); every other per-tenant query skips
   // such tenants, and each capability gate uses the published offerings of that child's tenant.
   const allParentMemberships = (profile?.memberships ?? []).filter((membership) => membership.role === "PARENT");
+  const platformBanners = useQuery({ queryKey: ["parent-platform-banners"], queryFn: () => api.parentPlatformBanners(), enabled: true });
   const parentMemberships = allParentMemberships.filter((membership) => membership.active);
   const operationalMemberships = parentMemberships.filter((membership) => hasOperationalTenantSubscription(membership.subscriptionStatus));
+  const announcements = useAcrossTenants({
+    tenants: operationalMemberships,
+    queryKey: (membership) => ["announcements", membership.organizationId],
+    queryFn: (membership) => api.announcements(membership.organizationId),
+    enabled: true,
+  });
+  const announcementSlides = combineParentAnnouncements(announcements.results);
+  const promotionBanners = combineParentPromotions(platformBanners.data ?? []);
+  const acknowledgeAnnouncement = useMutation({
+    mutationFn: ({ announcementId, tenantId }: { announcementId: string; tenantId: string }) => api.acknowledgeAnnouncement(announcementId, tenantId),
+    onSuccess: (_result, variables) => queryClient.invalidateQueries({ queryKey: ["announcements", variables.tenantId] }),
+    onError: (error: unknown) => notify(t("operations.announcementSaveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"),
+  });
   const showsTenantLabel = allParentMemberships.length > 1;
   const children = useParentChildrenAcrossTenants(parentMemberships, true);
   const offerings = useOfferingCapabilitiesByTenant(operationalMemberships, true);
@@ -167,11 +186,17 @@ function ParentHome({ displayName, organizationName, subscriptionActive }: { dis
   const summary = createParentHomeSummary(children.data, entitlements.data, invoices.data);
   const childrenUnavailable = children.isFetching || children.allFailed;
   const paymentsUnavailable = invoices.isFetching || invoices.allFailed;
-  const homeRefresh = useHomeRefresh([["ui-access-context", organizationId], ["children", organizationId], ["entitlements", organizationId], ["invoices", organizationId], ["private-tutoring-services", organizationId], ["parent-child-profile", organizationId]]);
+  const homeRefresh = useHomeRefresh([["ui-access-context", organizationId], ["children", organizationId], ["entitlements", organizationId], ["invoices", organizationId], ["private-tutoring-services", organizationId], ["parent-child-profile", organizationId], ["announcements"], ["parent-platform-banners"]]);
 
   return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
     <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{organizationName} · {t("role.PARENT")}</AppText></View><NotificationBellButton /><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
     {!subscriptionActive && <AppText tone="danger">{t("tenantReadiness.issueSubscription")}</AppText>}
+    {announcements.allFailed && !announcements.isFetching
+      ? <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={announcements.retryFailed} />
+      : announcements.failedTenants.length > 0 && <TenantLoadFailureBanner failedTenants={announcements.failedTenants} onRetry={announcements.retryFailed} />}
+    {platformBanners.isError && !platformBanners.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void platformBanners.refetch()} />}
+    <ParentPromotionSlider banners={promotionBanners} organizationId={organizationId} />
+    <ParentAnnouncementPopup announcements={announcementSlides} onAcknowledge={(slide) => acknowledgeAnnouncement.mutateAsync({ announcementId: slide.announcement.id, tenantId: slide.organizationId })} />
     <SummarySection title={t("home.parentChildren")}>
       {children.isFetching && <ShimmerList style={styles.summaryShimmer} />}
       {children.allFailed && !children.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={children.retryFailed} />}
@@ -262,10 +287,14 @@ function ParentOnboardingHome({ displayName }: { displayName: string }) {
   const { api, user } = useAuth();
   const { t, formatCurrency } = useI18n();
   const enrollments = useQuery({ queryKey: parentEnrollmentQueryKey(user?.uid), queryFn: () => api.parentEnrollments(), enabled: Boolean(user) });
+  const platformBanners = useQuery({ queryKey: ["parent-platform-banners"], queryFn: () => api.parentPlatformBanners(), enabled: Boolean(user) });
+  const promotionBanners = combineParentPromotions(platformBanners.data ?? []);
   const next = enrollments.data?.find((item) => item.status === "APPROVED" && item.invoiceStatus === "PENDING") ?? enrollments.data?.find((item) => item.status === "PENDING_APPROVAL");
-  const homeRefresh = useHomeRefresh([parentEnrollmentQueryKey(user?.uid)]);
+  const homeRefresh = useHomeRefresh([parentEnrollmentQueryKey(user?.uid), ["parent-platform-banners"]]);
   return <AppScreen refreshing={homeRefresh.refreshing} onRefresh={() => void homeRefresh.onRefresh()}><View style={styles.content}>
     <View style={styles.parentToolbar}><View style={styles.staffHeading}><AppText variant="title">{t("home.greeting", { name: displayName })}</AppText><AppText tone="muted">{t("parentEnrollment.onboardingSubtitle")}</AppText></View><ProfileToolbarButton onPress={() => router.push("/profile")} label={t("nav.profile")} /></View>
+    {platformBanners.isError && !platformBanners.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void platformBanners.refetch()} />}
+    <ParentPromotionSlider banners={promotionBanners} />
     {enrollments.isFetching ? <ShimmerList count={1} /> : <>
       {next?.status === "PENDING_APPROVAL" && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText tone="muted">{t("parentEnrollment.pendingApproval")}</AppText><Button variant="secondary" onPress={() => router.push("/parent-enrollment")}>{t("parentEnrollment.viewApplication")}</Button></View>}
       {next?.invoiceStatus === "PENDING" && next.invoiceId && <View style={styles.parentCard}><AppText variant="heading">{next.childName}</AppText><AppText>{next.planName} · {formatCurrency(next.totalAmount)}</AppText><AppText tone="muted">{t("parentEnrollment.approvedPayment")}</AppText><Button onPress={() => router.push({ pathname: "/parent-payment", params: { invoiceId: next.invoiceId!, organizationId: next.organizationId } })}>{t("parentEnrollment.pay")}</Button></View>}
@@ -414,6 +443,10 @@ function PlatformAdminHome() {
     <NavigationCard accessibilityLabel={t("platformParents.open")} onPress={() => router.push("/platform-parents")}>
       <AppText variant="h5">{t("platformParents.menu")}</AppText>
       <AppText variant="bodySmall" tone="muted">{t("platformParents.menuDescription")}</AppText>
+    </NavigationCard>
+    <NavigationCard accessibilityLabel={t("platformBanners.open")} onPress={() => router.push("/platform-banners")}>
+      <AppText variant="h5">{t("platformBanners.menu")}</AppText>
+      <AppText variant="bodySmall" tone="muted">{t("platformBanners.menuDescription")}</AppText>
     </NavigationCard>
     {tenants.isFetching && <ShimmerList />}
     {tenants.isError && !tenants.isFetching && <ErrorState compact title={t("home.tenantsError")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void tenants.refetch()} />}
