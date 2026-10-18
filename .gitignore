@@ -59,4 +59,7 @@ postgres-data/
 .codex/project-memory.md
 AGENTS.md
 CLAUDE.md
+.agents/
+.claude/
+.claude/settings.local.json
 docs/personal-docs/

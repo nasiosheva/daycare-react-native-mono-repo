@@ -67,6 +67,7 @@
 - Verifikasi ulang source setelah pengelompokan tidak diperlukan karena tidak ada perubahan kode sejak test penuh lulus; `git diff --check` dan staged-diff review tetap dilakukan untuk setiap scope.
 - `.gitignore` mengecualikan adapter/config Codex/Claude lokal, disinkronkan dengan panduan OpenSpec. `run-logs/` tetap tidak disentuh dan tidak distage.
 - Scope platform/home telah disquash menjadi satu commit berisi implementasi, test, migrasi, aturan bisnis, README, daily note, dan checklist; staged diff lulus `git diff --cached --check`.
-- Scope berikutnya adalah launcher Web (`scripts/run-mobile.sh` dengan `docs/changes/2026-10-18/web-reload-process-forwarding.md`); shell syntax sudah lulus.
+- Scope launcher Web telah disquash menjadi satu commit berisi script, daily note, dan checklist; shell syntax serta staged `git diff --cached --check` lulus.
+- Scope terakhir adalah konfigurasi adapter lokal: `.gitignore` bersama pembaruan panduan OpenSpec supaya `.agents/` dan `.claude/` tetap lokal.
 
 <!-- Mories Deo Hutapea,S.E.,S.Kom -->
