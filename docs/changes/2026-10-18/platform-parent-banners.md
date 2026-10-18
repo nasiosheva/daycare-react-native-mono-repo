@@ -6,15 +6,15 @@
 - Menambahkan `PlatformBanner` dan migrasi Flyway `V36`; data global dipisahkan dari pengumuman tenant.
 - V36 menjadi satu migrasi untuk tabel promosi platform beserta target aksi `action_type`/`action_target`, kolom gambar dan aksi pengumuman tenant. Migrasi diuji pada cluster PostgreSQL scratch terisolasi untuk fresh install; database lokal persisten dan production tidak diubah.
 - Platform Admin dapat menyimpan draf, mengubah draf, menerbitkan langsung, menjadwalkan waktu WIB, dan menutup promosi. Setiap promosi wajib menggunakan URL gambar HTTPS; riwayat tidak dihapus.
-- Pengumuman tenant mendukung URL gambar HTTPS opsional agar pengumuman teks lama tetap kompatibel.
-- Staff Admin dapat menonaktifkan CTA (default) atau mengonfigurasi satu CTA untuk browser HTTPS atau halaman aplikasi dari allowlist. Target route arbitrer/parameter bebas ditolak; CTA ditampilkan sebagai tombol eksplisit dan bukan membuat seluruh popup dapat diklik.
+- Pengumuman tenant baru wajib memiliki URL gambar HTTPS dan tidak meminta pesan pada form; judul/label dipakai untuk administrasi dan aksesibilitas. Kolom `body` tetap kompatibel untuk data lama, boleh kosong, dan notifikasi memakai label gambar sebagai fallback jika body kosong.
+- Staff Admin dapat menonaktifkan aksi (default) atau mengonfigurasi satu aksi browser HTTPS/halaman aplikasi allowlist. Target route arbitrer/parameter bebas ditolak; aksi aktif menjadikan gambar terkait sebagai target klik.
 - Platform Admin dapat menonaktifkan aksi banner (default) atau mengatur klik banner untuk membuka browser HTTPS atau halaman aplikasi dari allowlist. Tanpa aksi yang valid, slide promosi tidak dapat diklik.
 - Platform Admin dapat meninjau preview slider yang sama dengan Parent sebelum menyimpan; aksi navigasi pada preview selalu nonaktif.
 - Expiry banner opsional menggunakan waktu WIB. Banner tidak dapat dijadwalkan setelah expiry, feed Parent segera menyembunyikan banner expired, dan scheduler menutup banner terjadwal/terbit tiap menit. Tanpa expiry, banner tetap tayang sampai ditutup manual.
 - Review menemukan jadwal publikasi lampau sebelumnya berubah diam-diam menjadi publikasi langsung; API banner dan pengumuman kini menolak timestamp jadwal lampau agar tidak salah terbit.
 - Review juga menemukan penutupan banner terjadwal menyisakan `scheduledAt`, yang melanggar constraint V36. Penutupan manual/otomatis kini mengosongkan timestamp jadwal.
 - Parent terautentikasi dapat melihat promosi terbit melalui endpoint global, termasuk Parent yang belum memiliki tenant atau anak terhubung.
-- Home Parent menampilkan promosi sebagai slider gambar tersendiri dan pengumuman tenant sebagai popup slider terpisah. Gambar yang gagal dimuat menampilkan placeholder aksesibel; tombol X popup menutup seluruh slide untuk kunjungan Home saat ini tanpa acknowledgement.
+- Home Parent menampilkan promosi dan pengumuman sebagai dua carousel gambar terpisah dengan auto-slide dan dot indikator. Popup pengumuman hanya menampilkan gambar, memiliki tombol X untuk menutup seluruh slide pada kunjungan Home saat ini, serta acknowledgement terpisah hanya jika diwajibkan record. Gambar gagal dimuat menampilkan placeholder aksesibel; data lama tanpa gambar tidak dimasukkan ke popup.
 - Empty state tanpa hasil pada katalog program perkembangan menyediakan aksi untuk menghapus pencarian dan seluruh filter aktif.
 - Menambahkan aturan bisnis, ringkasan README, dan proposal OpenSpec.
 
@@ -36,3 +36,11 @@
 
 - Migrasi belum dijalankan terhadap database lokal persisten/production; verifikasi scratch hanya membuktikan migrasi fresh-install pada cluster sementara.
 - Belum dilakukan uji visual di device/browser; verifikasi UI dilakukan melalui test komponen.
+
+## Klarifikasi UI dan follow-up review
+
+- Promosi platform dan pengumuman tenant adalah dua sumber data/fitur berbeda; keduanya tampil sebagai carousel URL gambar yang auto-slide dan memiliki indikator dot. Tidak ada judul/isi pesan yang dirender sebagai caption.
+- Form pengumuman tenant tidak meminta pesan. Field judul/label tetap metadata admin dan aksesibilitas; API/DB mempertahankan `body` lama untuk kompatibilitas, mengizinkan nilai kosong, dan memakai judul sebagai fallback notifikasi.
+- Item popup hanya menampilkan gambar sebagai konten, kontrol X untuk menutup, dan kontrol acknowledgement hanya bila kebijakan record mewajibkannya. Record lama tanpa gambar tersimpan namun tidak ditampilkan di popup.
+- Aksi klik dihitung per gambar agar menekan slide tertentu tidak menjalankan tujuan aksi dari slide lain. Auto-slide memakai hook bersama dan aman ketika daftar kosong berubah menjadi berisi.
+- Test regresi mencakup carousel, auto-advance, popup tanpa gambar legacy, konten image-only, serta aksi pada slide yang benar.

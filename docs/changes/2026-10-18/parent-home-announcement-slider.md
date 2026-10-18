@@ -21,3 +21,4 @@
 ## Follow-up
 
 - No backend or database change was needed; existing API returns only published announcements addressed to the current Parent.
+- Clarification: the Home promotion carousel and tenant-announcement popup are distinct image-only carousels with separate data sources. Both auto-advance and show dots; the popup has a close X (and acknowledgement control only when a record requires it). New tenant announcements do not collect a message field; legacy `body` remains API/DB-compatible.

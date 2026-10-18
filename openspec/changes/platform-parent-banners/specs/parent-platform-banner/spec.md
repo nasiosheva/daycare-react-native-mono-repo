@@ -5,9 +5,9 @@
 
 ### Requirement: Platform Admin manages global Parent banners
 
-The system MUST allow only a Platform Admin to create and edit draft banners, publish immediately, schedule publication, and close a scheduled or published banner. A published or scheduled banner MUST NOT be editable, and banners MUST NOT be physically deleted. Each promotion MUST include an HTTPS image URL (maximum 2,048 characters), a title, and body. Parent Home MUST render published promotions in a dedicated image slider, separate from tenant announcements. Admins MUST be able to preview the Parent slider before saving, and preview actions MUST be non-interactive. A banner MAY have an optional expiry instant; when configured, it MUST be later than the actual or scheduled publication instant.
+The system MUST allow only a Platform Admin to create and edit draft banners, publish immediately, schedule publication, and close a scheduled or published banner. A published or scheduled banner MUST NOT be editable, and banners MUST NOT be physically deleted. Each promotion MUST include an HTTPS image URL (maximum 2,048 characters); title/body are administrative metadata and MUST NOT be rendered as image-slide captions. Parent Home MUST render published promotions in a dedicated automatically advancing image carousel with dot indicators, separate from tenant announcements. Admins MUST be able to preview the Parent carousel before saving, and preview actions MUST be non-interactive. A banner MAY have an optional expiry instant; when configured, it MUST be later than the actual or scheduled publication instant.
 
-Platform Admin MAY enable one Parent action per banner; it MUST be disabled by default. When enabled, the action MUST open either an HTTPS URL in the browser or an application page from the supported allowlist (`TENANT_ANNOUNCEMENTS`, `BOOKING`, `PARENT_SCREENING`, `PARENT_ENROLLMENT`, `PRIVATE_TUTORING`). Only a banner with a valid configured action is clickable; otherwise it MUST be rendered as static content. Arbitrary routes, route parameters, and non-HTTPS browser targets MUST be rejected. Opening tenant announcements MUST use the Parent's active tenant context and MUST NOT work when no such context exists.
+Platform Admin MAY enable one Parent action per banner; it MUST be disabled by default. When enabled, tapping the image MUST open either an HTTPS URL in the browser or an application page from the supported allowlist (`TENANT_ANNOUNCEMENTS`, `BOOKING`, `PARENT_SCREENING`, `PARENT_ENROLLMENT`, `PRIVATE_TUTORING`). Only a banner with a valid configured action is clickable; otherwise it MUST be rendered as static content. Arbitrary routes, route parameters, and non-HTTPS browser targets MUST be rejected. Opening tenant announcements MUST use the Parent's active tenant context and MUST NOT work when no such context exists.
 
 #### Scenario: Banner action is disabled
 
@@ -70,7 +70,7 @@ The system MUST allow an authenticated registered Parent to read published globa
 
 ### Requirement: Tenant announcements use a recipient-scoped popup slider
 
-Parent Home MUST present published tenant announcements addressed to that Parent in a dismissible popup slider, separate from global promotions. Each announcement MAY include an HTTPS image URL (maximum 2,048 characters); existing text-only announcements MUST remain renderable. The popup MUST use only authorized recipient data and preserve tenant context for acknowledgement or navigation. A remote image load failure MUST render an accessible fallback. The popup MUST provide an accessible close-all control; dismissing MUST NOT update server-side acknowledgement state.
+New tenant announcements MUST require an HTTPS image URL (maximum 2,048 characters) and MUST NOT require a message/body field in the creation UI. Legacy announcement body data remains backward-compatible; body may be empty, and legacy text-only announcements MUST NOT appear in the image popup. Parent Home MUST present published image announcements addressed to that Parent in an automatically advancing popup carousel with dot indicators, separate from global promotions. The popup MUST render only the image (with an accessible label), use authorized recipient data, and preserve tenant context for acknowledgement or navigation. A remote image load failure MUST render an accessible fallback. The popup MUST provide an accessible close-all X control; dismissing MUST NOT update server-side acknowledgement state.
 
 #### Scenario: Parent dismisses the popup
 
@@ -84,12 +84,12 @@ Parent Home MUST present published tenant announcements addressed to that Parent
 
 ### Requirement: Tenant announcements may have an optional safe action
 
-Staff Admin MUST be able to leave the Parent action disabled (the default), or configure one explicit action: open an HTTPS URL in the browser, or open an application page from the supported allowlist (`TENANT_ANNOUNCEMENTS`, `BOOKING`, `PARENT_SCREENING`, `PARENT_ENROLLMENT`, `PRIVATE_TUTORING`). The popup MUST render an explicit CTA only when an action is configured; tapping the image or message itself MUST NOT navigate. Arbitrary route strings, route parameters, and non-HTTPS browser targets MUST be rejected. Required acknowledgement remains an independent action.
+Staff Admin MUST be able to leave the Parent action disabled (the default), or configure one explicit action: open an HTTPS URL in the browser, or open an application page from the supported allowlist (`TENANT_ANNOUNCEMENTS`, `BOOKING`, `PARENT_SCREENING`, `PARENT_ENROLLMENT`, `PRIVATE_TUTORING`). When enabled, tapping the image MUST open the configured safe destination; otherwise the image MUST be non-clickable. Arbitrary route strings, route parameters, and non-HTTPS browser targets MUST be rejected. Required acknowledgement remains an independent action.
 
 #### Scenario: Announcement has no configured action
 
 - **WHEN** a Parent sees an announcement whose action type is `NONE`
-- **THEN** no navigation CTA is shown and dismiss/acknowledgement behavior remains available
+- **THEN** the image is not clickable and dismiss/acknowledgement behavior remains available
 
 #### Scenario: Announcement opens an application page
 
