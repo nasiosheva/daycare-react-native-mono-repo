@@ -8,7 +8,7 @@
 | --- | --- |
 | Branch sumber | `feat/parent-platform-banners` |
 | Target branch | `production` |
-| PR | Pending creation |
+| PR | [#89](https://github.com/nasiosheva/daycare-react-native-mono-repo/pull/89) |
 | Work item / tujuan | Platform banners and tenant announcements, parent carousel actions, secure in-app browser, and local launcher improvements. |
 | Tanggal checklist | `2026-10-18` |
 
@@ -24,7 +24,7 @@
 | 6. Database dan API contract | `PARTIAL` | Backend tests pass and contracts/migrations are included. V37 was not run against a persistent local database per prior instruction; CI and deployment migration execution remain unverified. |
 | 7. UI/UX dan accessibility | `PARTIAL` | UI tests cover changed interactions and labels. Manual visual verification on Android/iOS devices was not performed. |
 | 8. Performance dan reliability | `PASS` | Filtering uses loaded data; local launcher concurrency regression tests pass; native cache cleanup and secure URL checks are covered. |
-| 9. Verification dan release readiness | `PARTIAL` | Full local frontend/backend tests, web export, and Android debug build pass. PR-head CI is pending until this PR is created; no live-service or device verification is claimed. |
+| 9. Verification dan release readiness | `PARTIAL` | Full local frontend/backend tests, web export, and Android debug build pass. PR-head Mobile unit tests are currently in progress; no live-service or device verification is claimed. |
 | 10. Keputusan akhir reviewer | `DEFER` | No open local code-review findings. Reassess after PR-head CI completes and required review is recorded. |
 
 Checklist branch lengkap: `docs/changes/2026-10-18/mr-checklist-feat-parent-platform-banners.md`
@@ -74,7 +74,7 @@ Temuan lokal terbuka: tidak ada. Blocker verifikasi: PR-head CI pending; V37 per
 | --- | --- | --- |
 | Test frontend | `pnpm verify` PASS; mobile 72 files/284 tests. UI `pnpm --filter @daycare/app test:ui` PASS, 14 suites/65 tests. | Ada warning React `act(...)`/`react-test-renderer`; seluruh test lulus. |
 | Test backend | `./apps/api/gradlew -p apps/api test --no-daemon --console=plain` PASS. | `jacocoTestReport` juga PASS. |
-| CI head PR | PENDING | PR belum dibuat saat checklist ini disiapkan. |
+| CI head PR | PENDING | [Mobile unit tests](https://github.com/nasiosheva/daycare-react-native-mono-repo/actions/runs/39105659448/job/117610824309) sedang berjalan untuk head PR #89. |
 | Coverage line/branch | Backend aggregate JaCoCo: line 93.84%, branch 87.43%. Selected new helpers: line/function 100%, branch 98.36%. | Source: `apps/api/build/reports/jacoco/test/jacocoTestReport.xml` dan Vitest targeted coverage output. |
 | DB/migration | V36/V37 included; V37 not run on persistent local/prod DB. | Tidak menjalankan migration persistent karena instruksi pengguna sebelumnya. |
 | Browser/device/live service | Expo web export PASS; Android debug build PASS. | Manual iOS/Android device and live-service checks not performed. |
