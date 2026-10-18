@@ -18,4 +18,20 @@ describe("useAutoAdvanceCarousel", () => {
     act(() => jest.advanceTimersByTime(3_000));
     expect(result.current.activeIndex).toBe(0);
   });
+
+  it("pauses during interaction and starts a fresh interval after resuming", () => {
+    jest.useFakeTimers();
+    const { result } = renderHook(() => useAutoAdvanceCarousel(2, 1_000));
+
+    act(() => jest.advanceTimersByTime(900));
+    act(() => result.current.pauseAutoAdvance());
+    act(() => jest.advanceTimersByTime(2_000));
+    expect(result.current.activeIndex).toBe(0);
+
+    act(() => result.current.resumeAutoAdvance());
+    act(() => jest.advanceTimersByTime(999));
+    expect(result.current.activeIndex).toBe(0);
+    act(() => jest.advanceTimersByTime(1));
+    expect(result.current.activeIndex).toBe(1);
+  });
 });

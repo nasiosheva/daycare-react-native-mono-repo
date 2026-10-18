@@ -7,7 +7,7 @@
 | Field | Nilai |
 | --- | --- |
 | Branch | `feat/parent-platform-banners` |
-| Tujuan perubahan | Promosi global Parent, aksi pengumuman tenant, serta pencarian/filter program perkembangan global |
+| Tujuan perubahan | Scope commit ini: menyelesaikan ukuran/indikator carousel dan menjeda auto-slide saat Parent swipe; perubahan katalog dan scope lain tidak termasuk |
 | Tanggal diperbarui | 2026-10-18 |
 | Status kesiapan | READY untuk scope fitur dan dokumentasi yang tercantum; tanpa push/PR |
 | Item wajib tertunda | 0 |
@@ -55,5 +55,14 @@
 - [x] `corepack pnpm verify`: lint/typecheck lulus dan Vitest 63 file/250 test lulus.
 - [x] UI Jest penuh: 12 suite/48 test lulus. Backend rerun penuh: BUILD SUCCESSFUL; ada 3 warning deprecation/type mismatch pada test yang sudah ada dan tidak terkait perubahan ini.
 - [x] `git diff --check` lulus; belum ada uji visual manual device/browser.
+
+## Review tambahan sebelum commit carousel
+
+- Scope commit dibatasi pada komponen, hook timer, test UI, dan dokumentasi carousel Parent. Perubahan backend/audience hub, subscription review, launcher, OpenSpec, `run-logs/`, dan scope lain tetap di worktree serta tidak akan distage.
+- Test-first: test pause/resume pada hook dan kedua carousel ditambahkan sebelum implementasi; ketiganya gagal pada handler/API pause yang belum ada, lalu lulus sesudah patch.
+- Verifikasi terbaru: UI Jest 3 suite/21 test lulus; `corepack pnpm --filter @daycare/app typecheck` lulus; `git diff --check` lulus.
+- Review kode: timer dibersihkan saat pause melalui cleanup effect, lalu interval penuh dimulai saat resume; swipe end dan momentum end sama-sama memulihkan timer, sementara hook tetap tidak membuat timer untuk 0/1 slide.
+- Batas bukti: uji visual browser/device tidak dilakukan; tool browser lokal tidak tersedia. Tidak ada migration/API/role/security behavior pada scope commit ini.
+- Staged diff: hanya file/hunk carousel yang tercantum pada commit ini; tidak ada log, secret, atau file lokal-only. Commit belum dibuat saat checklist ini ditulis.
 
 <!-- Mories Deo Hutapea,S.E.,S.Kom -->

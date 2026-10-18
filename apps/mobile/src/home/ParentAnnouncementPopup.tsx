@@ -21,7 +21,7 @@ export function ParentAnnouncementPopup({ announcements, onAcknowledge }: { anno
   const [acknowledging, setAcknowledging] = useState(false);
   const imageSlides = useMemo(() => announcements.filter(({ announcement }) => Boolean(announcement.imageUrl && isValidHttpsImageUrl(announcement.imageUrl))), [announcements]);
   const visibleSlides = useMemo(() => imageSlides.filter(({ announcement, organizationId }) => !dismissedIds.has(`${organizationId}:${announcement.id}`)), [imageSlides, dismissedIds]);
-  const { activeIndex, setActiveIndex } = useAutoAdvanceCarousel(visibleSlides.length);
+  const { activeIndex, setActiveIndex, pauseAutoAdvance, resumeAutoAdvance } = useAutoAdvanceCarousel(visibleSlides.length);
   const slideSignature = announcements.map(({ announcement, organizationId }) => `${organizationId}:${announcement.id}`).join("|");
   const activeSlide = visibleSlides[Math.min(activeIndex, Math.max(0, visibleSlides.length - 1))];
   const cardWidth = Math.min(windowWidth - spacing.lg * 2, 560);
@@ -72,6 +72,7 @@ export function ParentAnnouncementPopup({ announcements, onAcknowledge }: { anno
   }, [activeIndex, cardWidth, visibleSlides.length]);
   const onMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (cardWidth > 0) setActiveIndex(Math.max(0, Math.min(visibleSlides.length - 1, Math.round(event.nativeEvent.contentOffset.x / cardWidth))));
+    resumeAutoAdvance();
   };
 
   if (!activeSlide) return null;
@@ -85,7 +86,7 @@ export function ParentAnnouncementPopup({ announcements, onAcknowledge }: { anno
             <Ionicons name="close" size={22} color={colors.text} />
           </Pressable>
         </View>
-        <ScrollView ref={scrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false} onMomentumScrollEnd={onMomentumScrollEnd} style={styles.slider} contentContainerStyle={styles.slides}>
+        <ScrollView ref={scrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false} onScrollBeginDrag={pauseAutoAdvance} onScrollEndDrag={onMomentumScrollEnd} onMomentumScrollEnd={onMomentumScrollEnd} style={styles.slider} contentContainerStyle={styles.slides}>
           {visibleSlides.map(({ announcement: item, organizationId: tenantId, organizationName: tenantName }) => {
             const itemActionType = item.actionType ?? "NONE";
             const itemActionTarget = item.actionTarget;

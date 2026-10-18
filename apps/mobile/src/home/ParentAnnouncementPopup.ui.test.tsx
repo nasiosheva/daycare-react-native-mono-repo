@@ -1,6 +1,6 @@
 // Mories Deo Hutapea,S.E.,S.Kom
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
-import { Linking } from "react-native";
+import { Linking, ScrollView } from "react-native";
 import { ParentAnnouncementPopup } from "./ParentAnnouncementPopup";
 
 const mockPush = jest.fn();
@@ -8,6 +8,8 @@ jest.mock("expo-router", () => ({ useRouter: () => ({ push: mockPush }) }));
 jest.mock("@/i18n/I18nProvider", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 
 describe("ParentAnnouncementPopup", () => {
+  afterEach(() => jest.useRealTimers());
+
   it("does not show a popup when there are no recipient announcements", () => {
     const { toJSON } = render(<ParentAnnouncementPopup announcements={[]} onAcknowledge={jest.fn()} />);
     expect(toJSON()).toBeNull();
@@ -31,6 +33,27 @@ describe("ParentAnnouncementPopup", () => {
     expect(screen.queryByRole("button", { name: "operations.openAction" })).toBeNull();
     fireEvent.press(screen.getByRole("button", { name: "operations.dismissAllAnnouncements" }));
     expect(screen.queryByText("Libur")).toBeNull();
+  });
+
+  it("pauses automatic changes while the announcement carousel is dragged", () => {
+    jest.useFakeTimers();
+    render(<ParentAnnouncementPopup announcements={[
+      { announcement: { id: "notice-1", title: "Satu", body: "", imageUrl: "https://cdn.example/one.jpg", requiresAcknowledgement: false, acknowledgedByMe: false }, organizationId: "tenant-1", organizationName: "Nasio Care" },
+      { announcement: { id: "notice-2", title: "Dua", body: "", imageUrl: "https://cdn.example/two.jpg", requiresAcknowledgement: false, acknowledgedByMe: false }, organizationId: "tenant-1", organizationName: "Nasio Care" },
+    ]} onAcknowledge={jest.fn()} />);
+    const carousel = screen.UNSAFE_getByType(ScrollView);
+
+    act(() => jest.advanceTimersByTime(4_000));
+    act(() => carousel.props.onScrollBeginDrag());
+    act(() => jest.advanceTimersByTime(2_000));
+    expect(screen.getByLabelText("● 1/2")).toBeTruthy();
+
+    act(() => carousel.props.onScrollEndDrag({ nativeEvent: { contentOffset: { x: 0 } } }));
+    act(() => jest.advanceTimersByTime(4_999));
+    expect(screen.getByLabelText("● 1/2")).toBeTruthy();
+    act(() => jest.advanceTimersByTime(1));
+    expect(screen.getByLabelText("● 2/2")).toBeTruthy();
+    jest.useRealTimers();
   });
 
   it("navigates only when an allowlisted app-page CTA is configured", () => {
