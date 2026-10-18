@@ -1,5 +1,7 @@
 package com.daycare.api.domain
 
+// Mories Deo Hutapea,S.E.,S.Kom
+
 enum class Role { ADMIN, STAFF_ADMIN, STAFF, PARENT }
 enum class RegistrationRole { PARENT }
 enum class ChildEnrollmentStatus { PENDING, ACTIVE, TRANSFERRED }
@@ -40,6 +42,12 @@ enum class ChildToiletType { WET, SOILED, TOILET_ATTEMPT }
 enum class StaffHandoverStatus { OPEN, ACKNOWLEDGED }
 enum class TenantAnnouncementAudience { TENANT, BRANCH }
 enum class TenantAnnouncementStatus { DRAFT, SCHEDULED, PUBLISHED, CLOSED }
+enum class ParentActionType { NONE, OPEN_BROWSER, OPEN_APP_PAGE }
+enum class ParentActionPage { TENANT_ANNOUNCEMENTS, BOOKING, PARENT_SCREENING, PARENT_ENROLLMENT, PRIVATE_TUTORING }
+enum class PlatformBannerParentActionPage { TENANT_ANNOUNCEMENTS, BOOKING, PARENT_SCREENING, PARENT_ENROLLMENT, PRIVATE_TUTORING, PROFILE }
+enum class PlatformBannerAudience { PARENT_GLOBAL, STAFF_ADMIN_GLOBAL, TENANT_STAFF_ADMIN }
+enum class StaffAdminBannerActionPage { TENANT_CHILDREN, TENANT_SUBSCRIPTION, TENANT_USERS, TENANT_BRANCHES, PROFILE }
+enum class PlatformBannerStatus { DRAFT, SCHEDULED, PUBLISHED, CLOSED }
 enum class DevelopmentMediaKind { PHOTO, AUDIO }
 enum class DevelopmentCategory { ACTIVITY, MEAL, NAP, OBSERVATION }
 enum class GoalDomain { KEMANDIRIAN, BAHASA_KOMUNIKASI, KOGNITIF, MOTORIK_HALUS, MOTORIK_KASAR, SOSIAL_EMOSI }

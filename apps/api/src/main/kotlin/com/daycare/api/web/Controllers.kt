@@ -73,6 +73,9 @@ import com.daycare.api.service.CreateCurriculumActivityAssessmentRequest
 import com.daycare.api.service.ChangePlatformAdminPinRequest
 import com.daycare.api.service.PlatformAdminPinService
 import com.daycare.api.service.PlatformAdministrationService
+import com.daycare.api.service.PlatformBannerService
+import com.daycare.api.service.UpsertPlatformBannerRequest
+import com.daycare.api.service.SchedulePlatformBannerRequest
 import com.daycare.api.service.ParentFamilyProfileService
 import com.daycare.api.service.UpdateParentFamilyProfileRequest
 import com.daycare.api.service.TenantReadinessService
@@ -108,6 +111,7 @@ import com.daycare.api.service.ParentEnrollmentRetryRequest
 import com.daycare.api.service.TenantPaymentInstructionService
 import com.daycare.api.service.StaffTenantSubscriptionService
 import com.daycare.api.service.TenantSubscriptionPaymentProofService
+import com.daycare.api.service.TenantSubscriptionReviewSummary
 import com.daycare.api.service.SubmitTenantPaymentProofRequest
 import com.daycare.api.service.ReviewTenantPaymentProofRequest
 import com.daycare.api.service.TenantSubscriptionCorrectionService
@@ -384,6 +388,12 @@ class StaffTenantSubscriptionController(private val subscriptions: StaffTenantSu
 class PlatformTenantSubscriptionController(private val subscriptions: TenantSubscriptionPaymentProofService, private val corrections: TenantSubscriptionCorrectionService, private val reminders: TenantSubscriptionReminderService) {
     @GetMapping("/features")
     fun subscriptionFeatures(@AuthenticationPrincipal jwt: Jwt) = subscriptions.featureStatus(jwt)
+
+    @GetMapping("/review-summary")
+    fun subscriptionReviewSummary(@AuthenticationPrincipal jwt: Jwt) = TenantSubscriptionReviewSummary(
+        paymentProofs = subscriptions.pendingReviewCount(jwt),
+        corrections = corrections.pendingReviewCount(jwt),
+    )
 
     @GetMapping("/reminders")
     fun subscriptionReminders(@AuthenticationPrincipal jwt: Jwt, @RequestParam(defaultValue = "0") page: Int, @RequestParam(defaultValue = "20") size: Int) = reminders.platformReminderPage(jwt, page, size)
@@ -1125,6 +1135,42 @@ class InstitutionController(private val attendance: AttendanceService, private v
 
     @PutMapping("/staff-reminders/local-schedules") @ResponseStatus(HttpStatus.NO_CONTENT)
     fun syncStaffReminderSchedules(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID, @Valid @RequestBody request: SyncStaffReminderSchedulesRequest) = staffReminders.syncLocalSchedules(jwt, organizationId, request)
+}
+
+@RestController
+@RequestMapping("/v1/platform/banners")
+@SecurityRequirement(name = "bearerAuth")
+class PlatformBannerController(private val banners: PlatformBannerService) {
+    @GetMapping
+    fun list(@AuthenticationPrincipal jwt: Jwt) = banners.listManaged(jwt)
+
+    @PostMapping @ResponseStatus(HttpStatus.CREATED)
+    fun create(@AuthenticationPrincipal jwt: Jwt, @Valid @RequestBody request: UpsertPlatformBannerRequest) = banners.create(jwt, request)
+
+    @PutMapping("/{bannerId}")
+    fun update(@AuthenticationPrincipal jwt: Jwt, @PathVariable bannerId: UUID, @Valid @RequestBody request: UpsertPlatformBannerRequest) = banners.update(jwt, bannerId, request)
+
+    @PostMapping("/{bannerId}/publish")
+    fun publish(@AuthenticationPrincipal jwt: Jwt, @PathVariable bannerId: UUID, @RequestBody request: SchedulePlatformBannerRequest) = banners.publish(jwt, bannerId, request)
+
+    @PostMapping("/{bannerId}/close")
+    fun close(@AuthenticationPrincipal jwt: Jwt, @PathVariable bannerId: UUID) = banners.close(jwt, bannerId)
+}
+
+@RestController
+@RequestMapping("/v1/parent/platform-banners")
+@SecurityRequirement(name = "bearerAuth")
+class ParentPlatformBannerController(private val banners: PlatformBannerService) {
+    @GetMapping
+    fun list(@AuthenticationPrincipal jwt: Jwt) = banners.listForParent(jwt)
+}
+
+@RestController
+@RequestMapping("/v1/staff-admin/platform-banners")
+@SecurityRequirement(name = "bearerAuth")
+class StaffAdminPlatformBannerController(private val banners: PlatformBannerService) {
+    @GetMapping
+    fun list(@AuthenticationPrincipal jwt: Jwt, @RequestHeader("X-Organization-Id") organizationId: UUID) = banners.listForStaffAdmin(jwt, organizationId)
 }
 
 @RestController

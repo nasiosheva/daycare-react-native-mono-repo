@@ -1,4 +1,25 @@
-import type { Child, ChildProgramSummary, Invoice, ServiceEntitlement } from "@daycare/api-client";
+import type { Child, ChildProgramSummary, Invoice, PlatformBanner, ServiceEntitlement, TenantAnnouncement } from "@daycare/api-client";
+
+// Mories Deo Hutapea,S.E.,S.Kom
+
+type ParentAnnouncementCardItem = Pick<TenantAnnouncement, "id" | "title" | "body" | "imageUrl" | "actionType" | "actionTarget" | "publishedAt" | "requiresAcknowledgement" | "acknowledgedByMe">;
+
+export type ParentAnnouncementSlide = { announcement: ParentAnnouncementCardItem; organizationId: string; organizationName: string };
+
+export function combineParentAnnouncements<TAnnouncement extends ParentAnnouncementCardItem>(results: readonly {
+  tenant: { organizationId: string; organizationName: string };
+  data: readonly TAnnouncement[] | undefined;
+}[]): ParentAnnouncementSlide[] {
+  return results.flatMap(({ tenant, data }) => (data ?? []).map((announcement) => ({
+    announcement,
+    organizationId: tenant.organizationId,
+    organizationName: tenant.organizationName,
+  }))).sort((left, right) => (right.announcement.publishedAt ?? "").localeCompare(left.announcement.publishedAt ?? ""));
+}
+
+export function combineParentPromotions(platformBanners: readonly PlatformBanner[]): PlatformBanner[] {
+  return [...platformBanners].sort((left, right) => (right.publishedAt ?? "").localeCompare(left.publishedAt ?? ""));
+}
 
 // The Home "Programs" shortcut sums every tenant's active programs and opens the first child that
 // has one, together with that child's own tenant (per-action tenant resolution).

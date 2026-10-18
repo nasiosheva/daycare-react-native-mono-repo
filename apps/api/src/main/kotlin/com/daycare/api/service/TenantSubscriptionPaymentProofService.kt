@@ -54,6 +54,7 @@ data class TenantPaymentProofContentResponse(
 
 data class ReviewTenantPaymentProofRequest(val approved: Boolean, val reason: String)
 data class TenantSubscriptionFeatureStatus(val paymentProofEnabled: Boolean, val correctionEnabled: Boolean)
+data class TenantSubscriptionReviewSummary(val paymentProofs: Long, val corrections: Long)
 data class TenantSubscriptionReviewPage<T>(val items: List<T>, val page: Int, val size: Int, val hasNext: Boolean)
 
 @Service
@@ -124,6 +125,12 @@ class TenantSubscriptionPaymentProofService(
             payments.findById(proof.paymentId).orElse(null)?.let { response(proof, it) }
         }
         return TenantSubscriptionReviewPage(items, result.number, result.size, result.hasNext())
+    }
+
+    @Transactional(readOnly = true)
+    fun pendingReviewCount(jwt: Jwt): Long {
+        platformAccess.requirePlatformAdmin(jwt)
+        return if (enabled) proofs.countByStatus(SUBMITTED) else 0L
     }
 
     fun featureStatus(jwt: Jwt): TenantSubscriptionFeatureStatus {

@@ -35,6 +35,13 @@
         }
       ],
       [
+        "expo-media-library",
+        {
+          "photosPermission": false,
+          "savePhotosPermission": "Izinkan Usia Emas menyimpan gambar pengumuman ke galeri."
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "Izinkan Usia Emas mengakses lokasi untuk mendapatkan posisi Anda saat ini."

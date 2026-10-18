@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# Mories Deo Hutapea,S.E.,S.Kom
 
 set -eu
 
@@ -11,6 +12,12 @@ fi
 platform=$1
 environment=$2
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$repository_root/scripts/lib/metro-ports.sh"
+case "$platform" in
+  android) metro_port=$ANDROID_METRO_PORT ;;
+  web) metro_port=$WEB_METRO_PORT ;;
+  *) metro_port=$WEB_METRO_PORT ;;
+esac
 started_android_log_pid=""
 started_metro_pid=""
 android_local_uses_reverse=false
@@ -425,7 +432,7 @@ configure_android_local_reverse() {
     return
   fi
 
-  if adb reverse tcp:8080 tcp:8080 >/dev/null 2>&1 && adb reverse tcp:8081 tcp:8081 >/dev/null 2>&1; then
+  if adb reverse tcp:8080 tcp:8080 >/dev/null 2>&1 && adb reverse "tcp:$metro_port" "tcp:$metro_port" >/dev/null 2>&1; then
     android_local_uses_reverse=true
     echo "Using ADB reverse for local API and Metro."
   else
@@ -434,7 +441,7 @@ configure_android_local_reverse() {
 }
 
 local_metro_ready() {
-  /usr/bin/curl -fsS http://localhost:8081/status 2>/dev/null | grep -q "packager-status:running"
+  /usr/bin/curl -fsS "http://localhost:$metro_port/status" 2>/dev/null | grep -q "packager-status:running"
 }
 
 hold_android_local_session() {
@@ -451,24 +458,22 @@ run_android_local_client_through_adb() {
   # The API server is mounted at /api and all mobile routes are versioned under /v1.
   export EXPO_PUBLIC_API_URL="http://localhost:8080/api/v1"
 
-  # Reuse a healthy Metro instance when another launcher already owns port
-  # 8081. Starting a second Expo process only produces an interactive
-  # "Use port 8082 instead?" prompt; in non-interactive launcher mode Expo
-  # skips the dev server and leaves the session with ambiguous bundle state.
+  # Reuse a healthy Android Metro instance on its dedicated port. Web uses a
+  # separate port, so starting one client cannot replace the other's bundle.
   if local_metro_ready; then
-    echo "Reusing the Metro server already running on localhost:8081."
-    adb shell am start -W -a android.intent.action.VIEW -d "exp+children-platform://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081" >/dev/null
+    echo "Reusing the Android Metro server already running on localhost:$metro_port."
+    adb shell am start -W -a android.intent.action.VIEW -d "exp+children-platform://expo-development-client/?url=http%3A%2F%2Flocalhost%3A$metro_port" >/dev/null
     hold_android_local_session
     return
   fi
 
-  corepack pnpm --filter @daycare/app exec expo start --dev-client --clear --localhost &
+  corepack pnpm --filter @daycare/app exec expo start --dev-client --clear --localhost --port "$metro_port" &
   started_metro_pid=$!
 
   attempts=0
   while [ "$attempts" -lt 60 ]; do
     if local_metro_ready; then
-      adb shell am start -W -a android.intent.action.VIEW -d "exp+children-platform://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081" >/dev/null
+      adb shell am start -W -a android.intent.action.VIEW -d "exp+children-platform://expo-development-client/?url=http%3A%2F%2Flocalhost%3A$metro_port" >/dev/null
       wait "$started_metro_pid"
       return
     fi
@@ -482,24 +487,23 @@ run_android_local_client_through_adb() {
     sleep 1
   done
 
-  echo "Timed out waiting for Metro on localhost:8081." >&2
+  echo "Timed out waiting for Metro on localhost:$metro_port." >&2
   exit 1
 }
 
 stop_stale_project_metro() {
   # A Metro left over from a previous session (crashed terminal, forced quit,
-  # etc.) still holds port 8081. Starting a second Expo process only produces
-  # an interactive "Use port 8082 instead?" prompt that this non-interactive
-  # launcher mode cannot answer, so Expo silently skips the dev server.
+  # etc.) still holds this platform's port. Starting another Expo process only
+  # produces an interactive port-selection prompt that this launcher cannot answer.
   # Scoped to this project's own apps/mobile directory (via the holder's cwd)
-  # so an unrelated process on 8081 is left untouched.
-  metro_pids=$(lsof -t -iTCP:8081 -sTCP:LISTEN 2>/dev/null || true)
+  # so unrelated processes and the other platform's Metro remain untouched.
+  metro_pids=$(lsof -t -iTCP:"$metro_port" -sTCP:LISTEN 2>/dev/null || true)
   stopped_stale_metro=false
   for metro_pid in $metro_pids; do
     metro_cwd=$(lsof -a -p "$metro_pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' || true)
     case "$metro_cwd" in
       "$repository_root/apps/mobile"|"$repository_root/apps/mobile"/*)
-        echo "Stopping a stale Metro instance on localhost:8081 (PID $metro_pid)." >&2
+        echo "Stopping a stale Metro instance on localhost:$metro_port (PID $metro_pid)." >&2
         kill "$metro_pid" >/dev/null 2>&1 || true
         stopped_stale_metro=true
         ;;
@@ -508,7 +512,7 @@ stop_stale_project_metro() {
 
   if [ "$stopped_stale_metro" = "true" ]; then
     release_attempts=0
-    while [ "$release_attempts" -lt 5 ] && [ -n "$(lsof -t -iTCP:8081 -sTCP:LISTEN 2>/dev/null || true)" ]; do
+    while [ "$release_attempts" -lt 5 ] && [ -n "$(lsof -t -iTCP:"$metro_port" -sTCP:LISTEN 2>/dev/null || true)" ]; do
       sleep 1
       release_attempts=$((release_attempts + 1))
     done
@@ -518,7 +522,10 @@ stop_stale_project_metro() {
 run_web_local_client() {
   export EXPO_PUBLIC_API_URL="http://localhost:8080/api/v1"
   stop_stale_project_metro
-  corepack pnpm --filter @daycare/app exec expo start --web --clear
+  # Replace this wrapper with Expo so run-web.sh can stop the actual Metro
+  # process when the user presses r or s. Keeping Expo as a child leaves an
+  # orphaned Metro process listening on the Web port after the wrapper exits.
+  exec corepack pnpm --filter @daycare/app exec expo start --web --clear
 }
 
 run_client() {
@@ -528,10 +535,10 @@ run_client() {
         if [ "$android_local_uses_reverse" = "true" ]; then
           run_android_local_client_through_adb
         else
-          corepack pnpm --filter @daycare/app exec expo start --dev-client --android --clear
+          corepack pnpm --filter @daycare/app exec expo start --dev-client --android --clear --port "$metro_port"
         fi
       else
-        corepack pnpm --filter @daycare/app exec expo start --dev-client --android
+        corepack pnpm --filter @daycare/app exec expo start --dev-client --android --port "$metro_port"
       fi
       ;;
     ios)
@@ -547,9 +554,11 @@ run_client() {
       if [ "$environment" = "local" ]; then
         run_web_local_client
       elif [ "${DAYCARE_WEB_CLEAR_CACHE:-false}" = "true" ]; then
-        corepack pnpm --filter @daycare/app exec expo start --web --clear
+        # See run_web_local_client: the launcher must signal Expo directly so
+        # reload does not leave the previous Metro process behind.
+        exec corepack pnpm --filter @daycare/app exec expo start --web --clear
       else
-        corepack pnpm --filter @daycare/app exec expo start --web
+        exec corepack pnpm --filter @daycare/app exec expo start --web
       fi
       ;;
     *)

@@ -1,5 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { combineProgramSummaries, createParentHomeSummary } from "./parentHomeSummary";
+import { combineProgramSummaries, combineParentAnnouncements, combineParentPromotions, createParentHomeSummary } from "./parentHomeSummary";
+
+// Mories Deo Hutapea,S.E.,S.Kom
+
+describe("combineParentAnnouncements", () => {
+  it("merges announcements across tenants from newest to oldest and preserves tenant context", () => {
+    const announcements = combineParentAnnouncements([
+      { tenant: { organizationId: "tenant-a", organizationName: "Nasio Care" }, data: [
+        { id: "older", title: "Older", body: "Body", publishedAt: "2026-10-16T10:00:00Z", requiresAcknowledgement: false, acknowledgedByMe: false },
+      ] },
+      { tenant: { organizationId: "tenant-b", organizationName: "Nama Baru" }, data: [
+        { id: "newer", title: "Newer", body: "Body", publishedAt: "2026-10-17T10:00:00Z", requiresAcknowledgement: false, acknowledgedByMe: false },
+      ] },
+    ]);
+
+    expect(announcements.map(({ announcement, organizationId, organizationName }) => [announcement.id, organizationId, organizationName])).toEqual([
+      ["newer", "tenant-b", "Nama Baru"],
+      ["older", "tenant-a", "Nasio Care"],
+    ]);
+    expect(combineParentAnnouncements([{ tenant: { organizationId: "tenant-a", organizationName: "Nasio Care" }, data: [] }])).toEqual([]);
+  });
+
+  it("keeps platform promotions separate from tenant announcements and sorts promotions newest-first", () => {
+    const items = combineParentPromotions([
+      { id: "older", title: "Older", body: "Image promotion", imageUrl: "https://cdn.example/older.jpg", status: "PUBLISHED", publishedAt: "2026-10-17T10:00:00Z", createdAt: "2026-10-17T09:00:00Z", updatedAt: "2026-10-17T10:00:00Z" },
+      { id: "newer", title: "Newer", body: "Image promotion", imageUrl: "https://cdn.example/newer.jpg", status: "PUBLISHED", publishedAt: "2026-10-18T10:00:00Z", createdAt: "2026-10-18T09:00:00Z", updatedAt: "2026-10-18T10:00:00Z" },
+    ]);
+
+    expect(combineParentAnnouncements([])).toEqual([]);
+    expect(items.map(({ id }) => id)).toEqual(["newer", "older"]);
+  });
+});
 
 describe("combineProgramSummaries", () => {
   it("sums active programs across tenants and opens the first child that has one in its own tenant", () => {

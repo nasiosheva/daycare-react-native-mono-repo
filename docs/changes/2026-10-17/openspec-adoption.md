@@ -19,17 +19,21 @@ Perubahan baru mengikuti urutan:
 - `openspec/changes/`: perubahan aktif yang sedang direncanakan atau dikerjakan.
 - `openspec/specs/`: spesifikasi utama yang sudah diarsipkan dan menjadi sumber perilaku sistem.
 - `openspec/changes/archive/`: riwayat perubahan yang sudah selesai.
+- `.agents/skills/`: adapter OpenSpec lokal untuk Codex; tidak dibagikan melalui Git.
+- `.claude/skills/`: adapter OpenSpec lokal untuk Claude Code; tidak dibagikan melalui Git.
+- `.claude/settings.local.json`: izin lokal Claude Code; tidak dibagikan melalui Git.
 
-Skill OpenSpec Codex di `.agents/skills/` adalah tooling lokal developer dan tidak menjadi bagian source repo. Karena repo ini dikelola satu developer, instruksi skill tersebut tidak perlu didistribusikan melalui Git. Konfigurasi dan artefak OpenSpec tetap disimpan di repo.
+Adapter tersebut hanya menyediakan entry point sesuai tool masing-masing; semua proposal, desain, task, dan spesifikasi tetap satu di bawah `openspec/`. Setiap developer atau agent menjalankan `openspec init` lokal untuk membuat adapter yang diperlukan.
 
 `docs/business-rules.md` tetap menjadi sumber aturan bisnis aplikasi. Spesifikasi OpenSpec tidak boleh bertentangan dengan dokumen tersebut; bila aturan bisnis berubah, keduanya harus diperbarui secara konsisten. `docs/changes/` tetap digunakan untuk catatan implementasi harian dan bukti verifikasi repo.
 
 ## Perintah awal
 
-Untuk memulai perubahan baru dari Codex:
+Untuk memulai perubahan baru:
 
 ```text
-$openspec-propose "jelaskan perubahan yang ingin dibuat"
+Codex:  $openspec-propose "jelaskan perubahan yang ingin dibuat"
+Claude: /openspec-propose "jelaskan perubahan yang ingin dibuat"
 ```
 
 Jangan langsung mengubah kode sebelum proposal, spesifikasi, desain, dan task ditinjau.

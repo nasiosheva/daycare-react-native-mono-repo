@@ -33,6 +33,17 @@ import {
   ToggleSwitch,
   publishInlineFeedback,
 } from "@daycare/ui";
+import { ParentPromotionSlider } from "@/home/ParentPromotionSlider";
+
+const previewPromotionBanners = [1, 2, 3].map((slide) => ({
+  id: `preview-banner-${slide}`,
+  title: `Preview slide ${slide}`,
+  body: "",
+  imageUrl: "https://picsum.photos/seed/picsum/200/300",
+  status: "PUBLISHED" as const,
+  createdAt: "2026-10-18T09:00:00Z",
+  updatedAt: "2026-10-18T09:00:00Z",
+}));
 
 const palette = {
   canvas: "#F5F6F3",
@@ -60,6 +71,7 @@ export function ComponentDesignPreview() {
   const [audioStatus, setAudioStatus] = useState<"playing" | "paused">("paused");
   const [audioPosition, setAudioPosition] = useState(42000);
   const [search, setSearch] = useState("Nadia");
+  const [clearableText, setClearableText] = useState("");
   const [chipSelected, setChipSelected] = useState("Hadir");
 
   if (showPinPreview) {
@@ -155,6 +167,7 @@ export function ComponentDesignPreview() {
         <Banner title="Perlu diperiksa" message="Lengkapi data sebelum melanjutkan." tone="warning" />
         <Banner title="Terjadi kesalahan" message="Coba lagi beberapa saat." tone="danger" />
       </View>
+      <ParentPromotionSlider banners={previewPromotionBanners} interactive={false} sectionTitle="Slider banner preview · 3 slide" />
     </View>
 
     <View style={styles.section} testID="component-BottomSheet">
@@ -308,7 +321,7 @@ export function ComponentDesignPreview() {
     <View style={styles.section} testID="component-TextField">
       <Text style={styles.sectionTitle}>TextField dan SearchField</Text>
       <Card title="Form dasar">
-        <TextField label="Nama anak" placeholder="Masukkan nama" required hint="Gunakan nama sesuai dokumen." />
+        <TextField label="Nama anak" placeholder="Masukkan nama" value={clearableText} onChangeText={setClearableText} clearable clearAccessibilityLabel="Hapus teks" required hint="Gunakan nama sesuai dokumen." />
         <TextField label="Catatan" placeholder="Tulis catatan" multiline />
         <TextField label="Email" value="alamat tidak valid" editable={false} error="Periksa kembali alamat email." />
         <SearchField label="Cari anak" placeholder="Nama anak" value={search} onChangeText={setSearch} clearAccessibilityLabel="Hapus pencarian" />

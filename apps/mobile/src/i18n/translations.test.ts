@@ -54,7 +54,22 @@ describe("translations", () => {
   });
 
   it("includes the grouped menu, empty-state and search labels in every supported locale", () => {
-    const keys: TranslationKey[] = ["menu.groupDaily", "menu.groupLearning", "menu.groupFinance", "menu.groupInstitution", "menu.groupOther", "common.clearSearch", "common.loadFailed", "common.loadFailedDescription", "home.quickActions", "learning.capacityHint", "parentEnrollment.payStepTransfer", "parentEnrollment.payStepUpload", "parentEnrollment.payStepVerify", "parentEnrollment.needsPayment", "paymentInstruction.transferHint", "qr.instruction", "children.safetySection", "auth.haveAccountSignIn", "attendance.searchChild", "attendance.scanInstruction", "children.dailyRecords", "development.recordShort", "profile.workSection", "parentEnrollment.cancelPendingConfirm", "parentEnrollment.cancelPendingDone", "parentEnrollment.cancelPendingFailed", "booking.noInvoicesForChild", "consent.withdrawConfirm", "goals.deleteTemplate", "goals.deleteTemplateConfirm", "goals.templateDeleted", "goals.deleteTemplateFailed", "globalLearningLevels.menu", "globalLearningLevels.deleteLevelConfirm", "childMessage.menuTitle", "childMessage.subtitle", "childMessage.sendFailed", "learning.archiveActivityConfirmation"];
+    const keys: TranslationKey[] = ["menu.groupDaily", "menu.groupLearning", "menu.groupFinance", "menu.groupInstitution", "menu.groupOther", "common.clearSearch", "common.clearText", "common.loadFailed", "common.loadFailedDescription", "home.quickActions", "learning.capacityHint", "parentEnrollment.payStepTransfer", "parentEnrollment.payStepUpload", "parentEnrollment.payStepVerify", "parentEnrollment.needsPayment", "paymentInstruction.transferHint", "qr.instruction", "children.safetySection", "auth.haveAccountSignIn", "attendance.searchChild", "attendance.scanInstruction", "children.dailyRecords", "development.recordShort", "profile.workSection", "parentEnrollment.cancelPendingConfirm", "parentEnrollment.cancelPendingDone", "parentEnrollment.cancelPendingFailed", "booking.noInvoicesForChild", "consent.withdrawConfirm", "goals.deleteTemplate", "goals.deleteTemplateConfirm", "goals.templateDeleted", "goals.deleteTemplateFailed", "globalLearningLevels.menu", "globalLearningLevels.deleteLevelConfirm", "childMessage.menuTitle", "childMessage.subtitle", "childMessage.sendFailed", "learning.archiveActivityConfirmation"];
+    for (const locale of supportedLocales) for (const key of keys) expect(translate(locale, key)).not.toBe(key);
+  });
+
+  it("includes tenant-announcement search and filter labels in every supported locale", () => {
+    const keys: TranslationKey[] = ["operations.searchAnnouncements", "operations.filterAnnouncementStatus", "operations.allAnnouncementStatuses", "operations.filterAnnouncementAudience", "operations.allAnnouncementAudiences", "operations.clearAnnouncementFilters", "operations.noAnnouncementMatches", "operations.announcementBranchUnavailable"];
+    for (const locale of supportedLocales) for (const key of keys) expect(translate(locale, key)).not.toBe(key);
+  });
+
+  it("includes announcement image download labels in every supported locale", () => {
+    const keys: TranslationKey[] = ["operations.downloadImage", "operations.imageDownloadFailed", "operations.imageDownloadSaved", "operations.imageDownloadPermissionDenied", "operations.shareImage", "operations.imageShareFailed", "operations.imageShareLinkCopied"];
+    for (const locale of supportedLocales) for (const key of keys) expect(translate(locale, key)).not.toBe(key);
+  });
+
+  it("includes the in-app browser controls and states in every supported locale", () => {
+    const keys: TranslationKey[] = ["browser.title", "browser.address", "browser.urlPlaceholder", "browser.go", "browser.back", "browser.forward", "browser.reload", "browser.invalidUrl", "browser.loadFailed"];
     for (const locale of supportedLocales) for (const key of keys) expect(translate(locale, key)).not.toBe(key);
   });
 

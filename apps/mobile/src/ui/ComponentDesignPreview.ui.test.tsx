@@ -2,6 +2,9 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { ComponentDesignPreview } from "./ComponentDesignPreview";
 
+jest.mock("@/i18n/I18nProvider", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
+jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
+
 describe("ComponentDesignPreview", () => {
   it("shows the alternative component styles and responds to selection", () => {
     render(<ComponentDesignPreview />);
@@ -21,6 +24,25 @@ describe("ComponentDesignPreview", () => {
     expect(control.props.accessibilityState.checked).toBe(true);
     fireEvent.press(control);
     expect(screen.getAllByRole("switch", { name: "Pengingat aktif" })[0].props.accessibilityState.checked).toBe(false);
+  });
+
+  it("clears a clearable text field through its accessible X action", () => {
+    render(<ComponentDesignPreview />);
+    const input = screen.getByPlaceholderText("Masukkan nama");
+
+    fireEvent.changeText(input, "Nama percobaan");
+    expect(input.props.value).toBe("Nama percobaan");
+    fireEvent.press(screen.getByRole("button", { name: "Hapus teks" }));
+    expect(input.props.value).toBe("");
+  });
+
+  it("shows exactly three preview promotion slides", () => {
+    render(<ComponentDesignPreview />);
+
+    expect(screen.getByLabelText("Preview slide 1")).toBeTruthy();
+    expect(screen.getByLabelText("Preview slide 2")).toBeTruthy();
+    expect(screen.getByLabelText("Preview slide 3")).toBeTruthy();
+    expect(screen.queryByLabelText("Preview slide 4")).toBeNull();
   });
 
   it("previews every shared UI component category", () => {
