@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# Mories Deo Hutapea,S.E.,S.Kom
 # Interactive Android launcher, replacing the old run-android-dev.sh /
 # run-android-local.sh / run-android-prod.sh trio. Beyond delegating to
 # run-mobile.sh, this script:
@@ -35,6 +36,9 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 . "$script_dir/lib/session-log.sh"
 . "$script_dir/lib/interactive-menu.sh"
+. "$script_dir/lib/local-api.sh"
+. "$script_dir/lib/metro-ports.sh"
+backend_launcher="$script_dir/run-backend-local.sh"
 environment_file="$repository_root/.env"
 run_mobile_pid=""
 backend_pid=""
@@ -252,25 +256,10 @@ sync_local_api_url() {
   mv "$tmp_env_file" "$environment_file"
 }
 
-local_api_ready() {
-  curl --silent --fail --max-time 2 http://localhost:8080/api/v3/api-docs >/dev/null 2>&1
-}
-
 ensure_local_backend() {
-  if ! command -v curl >/dev/null 2>&1; then
-    return
-  fi
-
-  if local_api_ready; then
-    echo "Reusing the local API already running at http://localhost:8080/api." >&2
-    return
-  fi
-
-  echo "No local API detected at http://localhost:8080/api; starting it in the background." >&2
   backend_log_file="$repository_root/daycare-api-local.log"
-  nohup "$script_dir/run-backend-local.sh" >"$backend_log_file" 2>&1 &
-  backend_pid=$!
-  echo "Started local API in the background (PID $backend_pid, log: $backend_log_file). Waiting for it to become ready is handled by run-mobile.sh next." >&2
+  ensure_local_api "$repository_root" "$backend_launcher" "$backend_log_file"
+  backend_pid=$local_api_started_pid
 }
 
 prompt_uninstall_choice() {
@@ -353,7 +342,8 @@ reload_frontend() {
 }
 
 stop_project_metro() {
-  metro_pids=$(lsof -t -iTCP:8081 -sTCP:LISTEN 2>/dev/null || true)
+  metro_port=$1
+  metro_pids=$(lsof -t -iTCP:"$metro_port" -sTCP:LISTEN 2>/dev/null || true)
   for metro_pid in $metro_pids; do
     metro_cwd=$(lsof -a -p "$metro_pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' || true)
     case "$metro_cwd" in
@@ -371,15 +361,10 @@ reload_backend() {
   fi
 
   echo "Reloading the local backend..." >&2
-  if [ -n "$backend_pid" ] && kill -0 "$backend_pid" >/dev/null 2>&1; then
-    kill "$backend_pid" >/dev/null 2>&1 || true
-    wait "$backend_pid" >/dev/null 2>&1 || true
-  fi
-
+  "$script_dir/stop-backend-local.sh"
   backend_log_file="$repository_root/daycare-api-local.log"
-  nohup "$script_dir/run-backend-local.sh" >"$backend_log_file" 2>&1 &
-  backend_pid=$!
-  echo "Started the local backend again (PID $backend_pid, log: $backend_log_file)." >&2
+  ensure_local_api "$repository_root" "$backend_launcher" "$backend_log_file"
+  backend_pid=$local_api_started_pid
 }
 
 run_hotkey_session() {
@@ -423,7 +408,7 @@ start_debug_mobile_session() {
   # so new public configuration (for example EXPO_PUBLIC_EXPO_PROJECT_ID) is
   # actually present in the bundle sent to the device. Processes belonging to
   # another checkout are left untouched by stop_project_metro().
-  stop_project_metro
+  stop_project_metro "$ANDROID_METRO_PORT"
   "$script_dir/run-mobile.sh" android "$selected_environment" </dev/null &
   run_mobile_pid=$!
 }
