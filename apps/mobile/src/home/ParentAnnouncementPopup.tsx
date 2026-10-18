@@ -26,7 +26,7 @@ export function ParentAnnouncementPopup({ announcements, onAcknowledge }: { anno
   const { activeIndex, setActiveIndex, pauseAutoAdvance, resumeAutoAdvance } = useAutoAdvanceCarousel(visibleSlides.length);
   const slideSignature = announcements.map(({ announcement, organizationId }) => `${organizationId}:${announcement.id}`).join("|");
   const activeSlide = visibleSlides[Math.min(activeIndex, Math.max(0, visibleSlides.length - 1))];
-  const cardWidth = Math.min(windowWidth - spacing.lg * 2, 560);
+  const cardWidth = Math.min(windowWidth - spacing.md * 2, 560);
   const dismiss = () => {
     setDismissedIds((current) => new Set([...current, ...visibleSlides.map(({ announcement, organizationId }) => `${organizationId}:${announcement.id}`)]));
     setActiveIndex(0);
@@ -141,7 +141,7 @@ export function ParentAnnouncementPopup({ announcements, onAcknowledge }: { anno
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.md, backgroundColor: colors.overlay },
-  dialog: { width: "100%", maxWidth: 600, alignItems: "center", backgroundColor: "transparent" },
+  dialog: { width: "100%", maxWidth: 560, alignItems: "center", backgroundColor: "transparent" },
   close: { position: "absolute", top: spacing.sm, right: spacing.sm, zIndex: 2, width: 40, height: 40, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
   closeIcon: { textShadowColor: "rgba(0, 0, 0, 0.8)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   slider: { flexGrow: 0, width: "100%" },

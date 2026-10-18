@@ -1,8 +1,8 @@
 // Mories Deo Hutapea,S.E.,S.Kom
 import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
-import { ScrollView } from "react-native";
+import { Dimensions, ScrollView, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "@daycare/ui";
+import { colors, spacing } from "@daycare/ui";
 import { ParentAnnouncementPopup } from "./ParentAnnouncementPopup";
 
 const mockPush = jest.fn();
@@ -49,7 +49,9 @@ describe("ParentAnnouncementPopup", () => {
     ]} onAcknowledge={jest.fn()} />);
 
     const imageFrame = screen.getByTestId("announcement-image-frame");
+    const slideWidth = StyleSheet.flatten(imageFrame.props.style).width;
     const closeButton = within(imageFrame).getByRole("button", { name: "operations.dismissAllAnnouncements" });
+    expect(slideWidth).toBe(Math.min(Dimensions.get("window").width - spacing.md * 2, 560));
     expect(closeButton.props.style).toMatchObject({ position: "absolute", top: expect.any(Number), right: expect.any(Number), backgroundColor: "transparent" });
     expect(closeButton.props.style.elevation).toBeUndefined();
     expect(closeButton.props.style.backgroundColor).toBe("transparent");
