@@ -2667,6 +2667,72 @@ const platformBannersTranslations = {
   ru: { "platformBanners.contentHub": "Контент для родителей", "platformBanners.contentHubDescription": "Управляйте глобальными баннерами и окнами объявлений учреждения в соответствии с вашей ролью.", "platformBanners.bannerSection": "Глобальные баннеры для родителей", "platformBanners.popupSection": "Окна объявлений для родителей", "platformBanners.manage": "Управлять", "platformBanners.open": "Управление баннерами для родителей", "platformBanners.menu": "Баннеры для родителей", "platformBanners.menuDescription": "Создавайте общую информацию для главных экранов всех родителей.", "platformBanners.title": "Баннеры для родителей", "platformBanners.parentTitle": "Новости Usia Emas", "platformBanners.description": "Опубликованные изображения рекламных предложений видны на главном экране всех родителей, даже без привязки к учреждению.", "platformBanners.parentDescription": "Общая информация от Usia Emas.", "platformBanners.parentAudience": "Новость Usia Emas", "platformBanners.create": "Создать баннер", "platformBanners.edit": "Изменить баннер", "platformBanners.imageUrl": "URL изображения (HTTPS)", "platformBanners.empty": "Баннеров пока нет.", "platformBanners.saved": "Баннер сохранён.", "platformBanners.saveFailed": "Не удалось сохранить баннер.", "operations.dismissAnnouncements": "Закрыть объявления", "operations.openAnnouncement": "Открыть объявление", "operations.announcementImageUrl": "URL изображения объявления (HTTPS, обязательно)" },
 } as const;
 
+const platformBannerFilterTranslations = {
+  id: {
+    "platformBanners.searchBanners": "Cari banner",
+    "platformBanners.filterStatus": "Status",
+    "platformBanners.allStatuses": "Semua status",
+    "platformBanners.filterAudience": "Penerima",
+    "platformBanners.allAudiences": "Semua penerima",
+    "platformBanners.clearFilters": "Hapus filter",
+    "platformBanners.noMatches": "Tidak ada banner yang cocok dengan filter.",
+  },
+  en: {
+    "platformBanners.searchBanners": "Search banners",
+    "platformBanners.filterStatus": "Status",
+    "platformBanners.allStatuses": "All statuses",
+    "platformBanners.filterAudience": "Audience",
+    "platformBanners.allAudiences": "All audiences",
+    "platformBanners.clearFilters": "Clear filters",
+    "platformBanners.noMatches": "No banners match these filters.",
+  },
+  zh: {
+    "platformBanners.searchBanners": "搜索横幅",
+    "platformBanners.filterStatus": "状态",
+    "platformBanners.allStatuses": "所有状态",
+    "platformBanners.filterAudience": "接收对象",
+    "platformBanners.allAudiences": "所有接收对象",
+    "platformBanners.clearFilters": "清除筛选",
+    "platformBanners.noMatches": "没有符合这些筛选条件的横幅。",
+  },
+  fr: {
+    "platformBanners.searchBanners": "Rechercher des bannières",
+    "platformBanners.filterStatus": "Statut",
+    "platformBanners.allStatuses": "Tous les statuts",
+    "platformBanners.filterAudience": "Destinataires",
+    "platformBanners.allAudiences": "Tous les destinataires",
+    "platformBanners.clearFilters": "Effacer les filtres",
+    "platformBanners.noMatches": "Aucune bannière ne correspond à ces filtres.",
+  },
+  pt: {
+    "platformBanners.searchBanners": "Pesquisar banners",
+    "platformBanners.filterStatus": "Status",
+    "platformBanners.allStatuses": "Todos os status",
+    "platformBanners.filterAudience": "Público",
+    "platformBanners.allAudiences": "Todos os públicos",
+    "platformBanners.clearFilters": "Limpar filtros",
+    "platformBanners.noMatches": "Nenhum banner corresponde a estes filtros.",
+  },
+  es: {
+    "platformBanners.searchBanners": "Buscar banners",
+    "platformBanners.filterStatus": "Estado",
+    "platformBanners.allStatuses": "Todos los estados",
+    "platformBanners.filterAudience": "Audiencia",
+    "platformBanners.allAudiences": "Todas las audiencias",
+    "platformBanners.clearFilters": "Borrar filtros",
+    "platformBanners.noMatches": "Ningún banner coincide con estos filtros.",
+  },
+  ru: {
+    "platformBanners.searchBanners": "Поиск баннеров",
+    "platformBanners.filterStatus": "Статус",
+    "platformBanners.allStatuses": "Все статусы",
+    "platformBanners.filterAudience": "Аудитория",
+    "platformBanners.allAudiences": "Вся аудитория",
+    "platformBanners.clearFilters": "Сбросить фильтры",
+    "platformBanners.noMatches": "Нет баннеров, соответствующих этим фильтрам.",
+  },
+} as const;
+
 const tenantAnnouncementActionTranslations = {
   id: { "operations.actionEnabled": "Tampilkan tombol aksi (opsional)", "operations.actionType": "Jenis aksi", "operations.openBrowser": "Buka tautan di browser", "operations.openAppPage": "Buka halaman aplikasi", "operations.actionUrl": "URL tujuan (HTTPS)", "operations.actionPage": "Pilih halaman tujuan", "operations.actionPage.TENANT_ANNOUNCEMENTS": "Daftar pengumuman", "operations.actionPage.BOOKING": "Pemesanan layanan", "operations.actionPage.PARENT_SCREENING": "Cek perkembangan anak", "operations.actionPage.PARENT_ENROLLMENT": "Pengajuan pendaftaran", "operations.actionPage.PRIVATE_TUTORING": "Layanan les privat", "operations.openAction": "Buka", "operations.actionOpenFailed": "Tujuan pengumuman tidak dapat dibuka." },
   en: { "operations.actionEnabled": "Show an action button (optional)", "operations.actionType": "Action type", "operations.openBrowser": "Open link in browser", "operations.openAppPage": "Open an app page", "operations.actionUrl": "Destination URL (HTTPS)", "operations.actionPage": "Choose a destination page", "operations.actionPage.TENANT_ANNOUNCEMENTS": "Announcement list", "operations.actionPage.BOOKING": "Service booking", "operations.actionPage.PARENT_SCREENING": "Child development check", "operations.actionPage.PARENT_ENROLLMENT": "Enrollment application", "operations.actionPage.PRIVATE_TUTORING": "Private tutoring", "operations.openAction": "Open", "operations.actionOpenFailed": "Could not open the announcement destination." },
@@ -2939,7 +3005,7 @@ const parentEnrollmentWizardTranslations = {
   },
 } as const;
 
-export type TranslationKey = keyof typeof id | keyof typeof legacyClassroomTranslations.id | keyof typeof institutionPresentationTranslations.id | keyof typeof readinessChecklistTranslations.id | keyof typeof guardianStatusTranslations.id | keyof typeof pickupTranslations.id | keyof typeof pickupActionTranslations.id | keyof typeof pickupExceptionTranslations.id | keyof typeof emergencyContactTranslations.id | keyof typeof consentTranslations.id | keyof typeof consentInformationTranslations.id | keyof typeof automaticOvertimeTranslations.id | keyof typeof profileAppInfoTranslations.id | keyof typeof daycareOperationsTranslations.id | keyof typeof platformBannersTranslations.id | keyof typeof platformBannerAudienceTranslations.id | keyof typeof platformBannerPreviewTranslations.id | keyof typeof tenantAnnouncementActionTranslations.id | keyof typeof platformBannerActionTranslations.id | keyof typeof staffAdminOperationalTaskTranslations.id | keyof typeof tenantCreationWizardTranslations.id | keyof typeof parentEnrollmentWizardTranslations.id | keyof typeof screeningTranslations.id | keyof typeof screeningPreviewTranslations.id | keyof typeof screeningSeedBatchTranslations.id | keyof typeof offlineTranslations.id | keyof typeof tenantSubscriptionTranslations.id | keyof typeof tenantGraceRolloutTranslations.id | keyof typeof tenantSubscriptionAuditTranslations.id | keyof typeof tenantListPaginationTranslations.id | keyof typeof staffTenantSubscriptionTranslations.id | keyof typeof tenantSubscriptionEvidenceTranslations.id | keyof typeof tenantSubscriptionCorrectionStatusTranslations.id | keyof typeof tenantSubscriptionReviewTranslations.id | keyof typeof tenantSubscriptionReminderTranslations.id | keyof typeof qrEligibilityTranslations.id | keyof typeof bookingEligibilityTranslations.id | keyof typeof globalDevelopmentProgramFilterTranslations.id | keyof typeof bannerUxTranslations.id;
+export type TranslationKey = keyof typeof id | keyof typeof legacyClassroomTranslations.id | keyof typeof institutionPresentationTranslations.id | keyof typeof readinessChecklistTranslations.id | keyof typeof guardianStatusTranslations.id | keyof typeof pickupTranslations.id | keyof typeof pickupActionTranslations.id | keyof typeof pickupExceptionTranslations.id | keyof typeof emergencyContactTranslations.id | keyof typeof consentTranslations.id | keyof typeof consentInformationTranslations.id | keyof typeof automaticOvertimeTranslations.id | keyof typeof profileAppInfoTranslations.id | keyof typeof daycareOperationsTranslations.id | keyof typeof platformBannersTranslations.id | keyof typeof platformBannerFilterTranslations.id | keyof typeof platformBannerAudienceTranslations.id | keyof typeof platformBannerPreviewTranslations.id | keyof typeof tenantAnnouncementActionTranslations.id | keyof typeof platformBannerActionTranslations.id | keyof typeof staffAdminOperationalTaskTranslations.id | keyof typeof tenantCreationWizardTranslations.id | keyof typeof parentEnrollmentWizardTranslations.id | keyof typeof screeningTranslations.id | keyof typeof screeningPreviewTranslations.id | keyof typeof screeningSeedBatchTranslations.id | keyof typeof offlineTranslations.id | keyof typeof tenantSubscriptionTranslations.id | keyof typeof tenantGraceRolloutTranslations.id | keyof typeof tenantSubscriptionAuditTranslations.id | keyof typeof tenantListPaginationTranslations.id | keyof typeof staffTenantSubscriptionTranslations.id | keyof typeof tenantSubscriptionEvidenceTranslations.id | keyof typeof tenantSubscriptionCorrectionStatusTranslations.id | keyof typeof tenantSubscriptionReviewTranslations.id | keyof typeof tenantSubscriptionReminderTranslations.id | keyof typeof qrEligibilityTranslations.id | keyof typeof bookingEligibilityTranslations.id | keyof typeof globalDevelopmentProgramFilterTranslations.id | keyof typeof bannerUxTranslations.id;
 export const translations: Record<AppLocale, Record<string, string>> = {
   id: { ...id, ...legacyClassroomTranslations.id, ...institutionPresentationTranslations.id, ...readinessChecklistTranslations.id, ...guardianStatusTranslations.id, ...pickupTranslations.id, ...pickupActionTranslations.id, ...emergencyContactTranslations.id, ...consentTranslations.id, ...consentInformationTranslations.id, ...automaticOvertimeTranslations.id, ...profileAppInfoTranslations.id, ...daycareOperationsTranslations.id, ...staffAdminOperationalTaskTranslations.id, ...tenantCreationWizardTranslations.id, ...parentEnrollmentWizardTranslations.id, ...screeningTranslations.id, ...screeningPreviewTranslations.id, ...screeningSeedBatchTranslations.id, ...offlineTranslations.id, ...tenantSubscriptionTranslations.id, ...tenantGraceRolloutTranslations.id, ...tenantSubscriptionAuditTranslations.id, ...tenantListPaginationTranslations.id, ...staffTenantSubscriptionTranslations.id, ...tenantSubscriptionEvidenceTranslations.id, ...tenantSubscriptionCorrectionStatusTranslations.id, ...tenantSubscriptionReviewTranslations.id, ...tenantSubscriptionReminderTranslations.id },
   en: { ...en, ...legacyClassroomTranslations.en, ...institutionPresentationTranslations.en, ...readinessChecklistTranslations.en, ...guardianStatusTranslations.en, ...pickupTranslations.en, ...pickupActionTranslations.en, ...emergencyContactTranslations.en, ...consentTranslations.en, ...consentInformationTranslations.en, ...automaticOvertimeTranslations.en, ...profileAppInfoTranslations.en, ...daycareOperationsTranslations.en, ...staffAdminOperationalTaskTranslations.en, ...tenantCreationWizardTranslations.en, ...parentEnrollmentWizardTranslations.en, ...screeningTranslations.en, ...screeningPreviewTranslations.en, ...screeningSeedBatchTranslations.en, ...offlineTranslations.en, ...tenantSubscriptionTranslations.en, ...tenantGraceRolloutTranslations.en, ...tenantSubscriptionAuditTranslations.en, ...tenantListPaginationTranslations.en, ...staffTenantSubscriptionTranslations.en, ...tenantSubscriptionEvidenceTranslations.en, ...tenantSubscriptionCorrectionStatusTranslations.en, ...tenantSubscriptionReviewTranslations.en, ...tenantSubscriptionReminderTranslations.en },
@@ -2954,6 +3020,7 @@ for (const locale of ["zh", "fr", "pt", "es", "ru"] as const) Object.assign(tran
 
 for (const locale of supportedLocales) {
   Object.assign(translations[locale], platformBannersTranslations[locale]);
+  Object.assign(translations[locale], platformBannerFilterTranslations[locale]);
   Object.assign(translations[locale], platformBannerAudienceTranslations[locale]);
   Object.assign(translations[locale], platformBannerPreviewTranslations[locale]);
   Object.assign(translations[locale], bannerUxTranslations[locale]);

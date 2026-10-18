@@ -19,8 +19,11 @@ import type { TranslationKey } from "@/i18n/translations";
 import { FallbackImage } from "@/media/FallbackImage";
 import { ParentPromotionSlider } from "@/home/ParentPromotionSlider";
 import { shouldOpenCreateForm } from "@/content-management/openCreateFromRouteParam";
+import { filterPlatformBanners } from "@/content-management/platformBannerFilters";
 
 type FormState = { id?: string; title: string; imageUrl: string; actionType: ParentActionType; actionTarget: string; expiresDate: string; expiresTime: string; audience: PlatformBannerAudience; targetOrganizationId: string };
+const bannerStatuses: readonly PlatformBannerStatus[] = ["DRAFT", "SCHEDULED", "PUBLISHED", "CLOSED"];
+const bannerAudiences: readonly PlatformBannerAudience[] = ["PARENT_GLOBAL", "STAFF_ADMIN_GLOBAL", "TENANT_STAFF_ADMIN"];
 const JAKARTA_OFFSET = "+07:00";
 const JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1_000;
 const expiryInstant = (date: string, time: string): Date | null | undefined => {
@@ -50,6 +53,9 @@ export default function PlatformBannersScreen() {
   const canManage = Boolean(profile?.isPlatformAdmin);
   const canRead = profile?.registrationRole === "PARENT";
   const [form, setForm] = useState<FormState | null>(null);
+  const [bannerSearch, setBannerSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<PlatformBannerStatus | undefined>();
+  const [audienceFilter, setAudienceFilter] = useState<PlatformBannerAudience | undefined>();
   const [tenantSearch, setTenantSearch] = useState("");
   const tenantOptions = useQuery({ queryKey: ["platform-banner-tenant-options", tenantSearch], queryFn: () => api.tenants(tenantSearch || undefined), enabled: canManage && form?.audience === "TENANT_STAFF_ADMIN" });
   const banners = useQuery({
@@ -83,6 +89,10 @@ export default function PlatformBannersScreen() {
   if (!profile) return null;
   if (!canManage && !canRead) return <Redirect href="/home" />;
   const statusLabel = (status: PlatformBannerStatus) => t(status === "DRAFT" ? "operations.draft" : status === "SCHEDULED" ? "operations.scheduled" : status === "PUBLISHED" ? "operations.published" : "operations.closed");
+  const audienceLabel = (audience: PlatformBannerAudience) => t(audience === "PARENT_GLOBAL" ? "platformBanners.audienceParent" as TranslationKey : audience === "STAFF_ADMIN_GLOBAL" ? "platformBanners.audienceAllStaffAdmins" as TranslationKey : "platformBanners.audienceTenantStaffAdmin" as TranslationKey);
+  const visibleBanners = filterPlatformBanners(banners.data ?? [], { search: bannerSearch, status: statusFilter, audience: canManage ? audienceFilter : undefined, audienceLabel });
+  const filtersApplied = Boolean(bannerSearch.trim() || statusFilter || audienceFilter);
+  const clearBannerFilters = () => { setBannerSearch(""); setStatusFilter(undefined); setAudienceFilter(undefined); };
   const statusTone = (status: PlatformBannerStatus): Tone => status === "PUBLISHED" ? "success" : status === "DRAFT" ? "neutral" : status === "SCHEDULED" ? "info" : "warning";
   const submitForm = () => {
     if (!form?.title.trim() || !isValidHttpsImageUrl(form.imageUrl) || !hasValidAction(form) || !hasValidExpiry(form) || (form.audience === "TENANT_STAFF_ADMIN" && !form.targetOrganizationId)) return;
@@ -114,7 +124,27 @@ export default function PlatformBannersScreen() {
     <AppText tone="muted">{t(canManage ? "platformBanners.description" : "platformBanners.parentDescription")}</AppText>
     {banners.isLoading && <ShimmerList />}
     {banners.isError && !banners.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void banners.refetch()} />}
-    {!banners.isLoading && !banners.isError && banners.data?.map((banner) => <Card key={banner.id} icon="images-outline" title={banner.title} subtitle={formatDateTime(banner.publishedAt ?? banner.scheduledAt ?? banner.createdAt)} trailing={canManage ? <Badge tone={statusTone(banner.status)} label={statusLabel(banner.status)} /> : undefined}>
+    {!banners.isLoading && !banners.isError && Boolean(banners.data?.length) && <View style={styles.filters}>
+      <SearchField accessibilityLabel={t("platformBanners.searchBanners" as TranslationKey)} placeholder={t("platformBanners.searchBanners" as TranslationKey)} clearAccessibilityLabel={t("common.clearSearch")} value={bannerSearch} onChangeText={setBannerSearch} />
+      {canManage && <>
+        <View style={styles.filterGroup}>
+          <AppText variant="label">{t("platformBanners.filterStatus" as TranslationKey)}</AppText>
+          <ChipGroup accessibilityLabel={t("platformBanners.filterStatus" as TranslationKey)}>
+            <Chip label={t("platformBanners.allStatuses" as TranslationKey)} selected={!statusFilter} onPress={() => setStatusFilter(undefined)} />
+            {bannerStatuses.map((status) => <Chip key={status} label={statusLabel(status)} selected={statusFilter === status} onPress={() => setStatusFilter((current) => current === status ? undefined : status)} />)}
+          </ChipGroup>
+        </View>
+        <View style={styles.filterGroup}>
+          <AppText variant="label">{t("platformBanners.filterAudience" as TranslationKey)}</AppText>
+          <ChipGroup accessibilityLabel={t("platformBanners.filterAudience" as TranslationKey)}>
+            <Chip label={t("platformBanners.allAudiences" as TranslationKey)} selected={!audienceFilter} onPress={() => setAudienceFilter(undefined)} />
+            {bannerAudiences.map((audience) => <Chip key={audience} label={audienceLabel(audience)} selected={audienceFilter === audience} onPress={() => setAudienceFilter((current) => current === audience ? undefined : audience)} />)}
+          </ChipGroup>
+        </View>
+      </>}
+      {filtersApplied && <Button variant="secondary" onPress={clearBannerFilters}>{t("platformBanners.clearFilters" as TranslationKey)}</Button>}
+    </View>}
+    {!banners.isLoading && !banners.isError && visibleBanners.map((banner) => <Card key={banner.id} icon="images-outline" title={banner.title} subtitle={formatDateTime(banner.publishedAt ?? banner.scheduledAt ?? banner.createdAt)} trailing={canManage ? <Badge tone={statusTone(banner.status)} label={statusLabel(banner.status)} /> : undefined}>
       {canManage && <AppText variant="caption" tone="muted">{t(banner.audience === "PARENT_GLOBAL" ? "platformBanners.audienceParent" as TranslationKey : banner.audience === "STAFF_ADMIN_GLOBAL" ? "platformBanners.audienceAllStaffAdmins" as TranslationKey : "platformBanners.audienceTenantStaffAdmin" as TranslationKey)}{banner.targetOrganizationName ? ` · ${banner.targetOrganizationName}` : ""}</AppText>}
       <FallbackImage key={`${banner.id}:${banner.imageUrl}`} accessibilityLabel={banner.title} fallbackLabel={t("operations.imageUnavailable")} uri={banner.imageUrl} style={styles.bannerImage} />
       {canManage && banner.expiresAt && <AppText variant="caption" tone="muted">{t("platformBanners.expiresAt", { date: formatDateTime(banner.expiresAt) })}</AppText>}
@@ -124,6 +154,7 @@ export default function PlatformBannersScreen() {
       </View>}
     </Card>)}
     {!banners.isLoading && !banners.isError && banners.data?.length === 0 && <EmptyState icon="megaphone-outline" title={t("platformBanners.empty")} action={canManage ? { label: t("platformBanners.create"), onPress: () => setForm(emptyForm()) } : undefined} />}
+    {!banners.isLoading && !banners.isError && Boolean(banners.data?.length) && visibleBanners.length === 0 && <EmptyState compact title={t("platformBanners.noMatches" as TranslationKey)} action={filtersApplied ? { label: t("platformBanners.clearFilters" as TranslationKey), onPress: clearBannerFilters } : undefined} />}
     <BottomSheet visible={form !== null} onClose={() => { setForm(null); setPreviewVisible(false); }} closeAccessibilityLabel={t("common.close")} title={t(form?.id ? "platformBanners.edit" : "platformBanners.create")} negativeAction={{ label: t("common.cancel"), onPress: () => { setForm(null); setPreviewVisible(false); } }} positiveAction={{ label: t("common.save"), disabled: !form?.title.trim() || !isValidHttpsImageUrl(form.imageUrl) || !hasValidAction(form) || !hasValidExpiry(form) || (form.audience === "TENANT_STAFF_ADMIN" && !form.targetOrganizationId), loading: save.isPending, onPress: submitForm }}>
       <View style={styles.field}>
         <AppText variant="label">{t("platformBanners.audience" as TranslationKey)}</AppText>
@@ -185,4 +216,4 @@ export default function PlatformBannersScreen() {
   </AppScreen>;
 }
 
-const styles = StyleSheet.create({ actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, action: { flexGrow: 1, flexBasis: "30%" }, field: { gap: spacing.sm }, tenantOption: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, tenantOptionSelected: { borderColor: colors.primary, backgroundColor: colors.infoSoft }, tenantOptionPressed: { opacity: 0.75 }, bannerImage: { width: "100%", height: 180, borderRadius: radius.md }, formImagePreview: { width: "100%", aspectRatio: 16 / 9, borderRadius: radius.md }, scheduleRow: { flexDirection: "row", gap: spacing.sm }, scheduleField: { flex: 1 }, previewBackdrop: { flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.md, backgroundColor: colors.overlay }, previewDialog: { width: "100%", maxWidth: 720, gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, previewHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }, previewTitle: { flex: 1 }, previewClose: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: colors.surfaceTint } });
+const styles = StyleSheet.create({ filters: { gap: spacing.md }, filterGroup: { gap: spacing.xs }, actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, action: { flexGrow: 1, flexBasis: "30%" }, field: { gap: spacing.sm }, tenantOption: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, tenantOptionSelected: { borderColor: colors.primary, backgroundColor: colors.infoSoft }, tenantOptionPressed: { opacity: 0.75 }, bannerImage: { width: "100%", height: 180, borderRadius: radius.md }, formImagePreview: { width: "100%", aspectRatio: 16 / 9, borderRadius: radius.md }, scheduleRow: { flexDirection: "row", gap: spacing.sm }, scheduleField: { flex: 1 }, previewBackdrop: { flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.md, backgroundColor: colors.overlay }, previewDialog: { width: "100%", maxWidth: 720, gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, previewHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }, previewTitle: { flex: 1 }, previewClose: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: colors.surfaceTint } });

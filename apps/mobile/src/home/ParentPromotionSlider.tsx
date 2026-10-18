@@ -58,7 +58,7 @@ export function ParentPromotionSlider({ banners, organizationId, interactive = t
             ? Boolean(banner.actionTarget && isValidHttpsUrl(banner.actionTarget))
             : Boolean(appRoute && (!appRoute.tenantScoped || organizationId)));
           const cardStyle = [styles.card, { width: cardWidth }];
-          const content = <FallbackImage key={`${banner.id}:${banner.imageUrl}`} accessibilityLabel={banner.title} fallbackLabel={t("operations.imageUnavailable")} uri={banner.imageUrl} style={styles.image} />;
+          const content = <FallbackImage key={`${banner.id}:${banner.imageUrl}`} accessibilityLabel={banner.title} fallbackLabel={t("operations.imageUnavailable")} uri={banner.imageUrl} style={styles.image} resizeMode="cover" />;
           return actionable
             ? <Pressable key={banner.id} accessibilityRole="button" accessibilityLabel={banner.title} onPress={() => void openBannerAction(banner)} style={({ pressed }) => [...cardStyle, pressed && styles.pressed]}>{content}</Pressable>
             : <View key={banner.id} style={cardStyle}>{content}</View>;

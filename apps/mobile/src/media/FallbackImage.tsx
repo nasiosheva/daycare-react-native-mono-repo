@@ -1,10 +1,10 @@
 // Mories Deo Hutapea,S.E.,S.Kom
 import { useState } from "react";
-import { Image, StyleSheet, View, type ImageStyle, type StyleProp } from "react-native";
+import { Image, StyleSheet, View, type ImageResizeMode, type ImageStyle, type StyleProp } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { AppText, colors, radius, spacing } from "@daycare/ui";
 
-export function FallbackImage({ uri, accessibilityLabel, fallbackLabel, style }: { uri: string; accessibilityLabel: string; fallbackLabel: string; style?: StyleProp<ImageStyle> }) {
+export function FallbackImage({ uri, accessibilityLabel, fallbackLabel, style, resizeMode = "cover" }: { uri: string; accessibilityLabel: string; fallbackLabel: string; style?: StyleProp<ImageStyle>; resizeMode?: ImageResizeMode }) {
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const imageFailed = failedUri === uri;
 
@@ -13,7 +13,7 @@ export function FallbackImage({ uri, accessibilityLabel, fallbackLabel, style }:
     <AppText variant="caption" tone="muted">{fallbackLabel}</AppText>
   </View>;
 
-  return <Image accessible accessibilityLabel={accessibilityLabel} source={{ uri }} onError={() => setFailedUri(uri)} style={style} resizeMode="cover" />;
+  return <Image accessible accessibilityLabel={accessibilityLabel} source={{ uri }} onError={() => setFailedUri(uri)} style={style} resizeMode={resizeMode} />;
 }
 
 const styles = StyleSheet.create({

@@ -1,5 +1,6 @@
 // Mories Deo Hutapea,S.E.,S.Kom
 import type { DevelopmentProgram } from "@daycare/api-client";
+import { normalizeSearchText } from "../text/normalizeSearchText";
 
 type GlobalDevelopmentProgramFilterOptions = {
   search?: string;
@@ -8,10 +9,6 @@ type GlobalDevelopmentProgramFilterOptions = {
   active?: boolean;
   domainLabel: (domain: DevelopmentProgram["domain"]) => string;
 };
-
-function normalizeSearchText(value: string): string {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase().trim();
-}
 
 export function filterGlobalDevelopmentPrograms(
   programs: DevelopmentProgram[],

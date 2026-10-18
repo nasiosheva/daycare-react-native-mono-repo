@@ -22,6 +22,7 @@ describe("ParentPromotionSlider", () => {
 
     expect(screen.getByLabelText("Paket baru")).toBeTruthy();
     expect(screen.getByLabelText("Paket baru").props.style).toMatchObject({ aspectRatio: 2.4 });
+    expect(screen.getByLabelText("Paket baru").props.resizeMode).toBe("cover");
     expect(screen.queryByText("Paket baru")).toBeNull();
     expect(screen.queryByText("Lihat penawaran terbaru.")).toBeNull();
     expect(screen.queryByRole("button", { name: /Paket baru/ })).toBeNull();
