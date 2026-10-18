@@ -518,7 +518,10 @@ stop_stale_project_metro() {
 run_web_local_client() {
   export EXPO_PUBLIC_API_URL="http://localhost:8080/api/v1"
   stop_stale_project_metro
-  corepack pnpm --filter @daycare/app exec expo start --web --clear
+  # Replace this wrapper with Expo so run-web.sh can stop the actual Metro
+  # process when the user presses r or s. Keeping Expo as a child leaves an
+  # orphaned Metro process listening on port 8081 after the wrapper exits.
+  exec corepack pnpm --filter @daycare/app exec expo start --web --clear
 }
 
 run_client() {
@@ -547,9 +550,11 @@ run_client() {
       if [ "$environment" = "local" ]; then
         run_web_local_client
       elif [ "${DAYCARE_WEB_CLEAR_CACHE:-false}" = "true" ]; then
-        corepack pnpm --filter @daycare/app exec expo start --web --clear
+        # See run_web_local_client: the launcher must signal Expo directly so
+        # reload does not leave the previous Metro process behind.
+        exec corepack pnpm --filter @daycare/app exec expo start --web --clear
       else
-        corepack pnpm --filter @daycare/app exec expo start --web
+        exec corepack pnpm --filter @daycare/app exec expo start --web
       fi
       ;;
     *)

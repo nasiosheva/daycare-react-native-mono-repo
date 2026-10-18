@@ -66,5 +66,7 @@
 - Commit terbaru dikelompokkan ulang per scope agar implementasi dan dokumentasi scope yang sama berada dalam satu commit. History push sebelumnya akan diperbarui menggunakan `--force-with-lease` setelah verifikasi head remote.
 - Verifikasi ulang source setelah pengelompokan tidak diperlukan karena tidak ada perubahan kode sejak test penuh lulus; `git diff --check` dan staged-diff review tetap dilakukan untuk setiap scope.
 - `.gitignore` mengecualikan adapter/config Codex/Claude lokal, disinkronkan dengan panduan OpenSpec. `run-logs/` tetap tidak disentuh dan tidak distage.
+- Scope platform/home telah disquash menjadi satu commit berisi implementasi, test, migrasi, aturan bisnis, README, daily note, dan checklist; staged diff lulus `git diff --cached --check`.
+- Scope berikutnya adalah launcher Web (`scripts/run-mobile.sh` dengan `docs/changes/2026-10-18/web-reload-process-forwarding.md`); shell syntax sudah lulus.
 
 <!-- Mories Deo Hutapea,S.E.,S.Kom -->
