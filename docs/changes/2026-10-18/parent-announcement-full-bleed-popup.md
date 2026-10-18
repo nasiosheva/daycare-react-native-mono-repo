@@ -30,3 +30,10 @@
 
 - Native memerlukan `expo-media-library` untuk menyimpan file ke galeri; konfigurasi hanya meminta izin tambah/simpan foto, bukan akses baca seluruh galeri.
 - Test UI memastikan aksi Unduh dan Bagikan tampil berdampingan dan Bagikan memakai gambar slide aktif.
+
+## Temuan review: ukuran halaman carousel
+
+- `pagingEnabled` menggunakan lebar viewport ScrollView sebagai jarak antar-halaman, sedangkan komponen sebelumnya menghitung scroll dan indeks aktif dengan lebar slide yang lebih kecil. Pada viewport lebar, auto-advance dapat berhenti di antara halaman dan dot aktif tidak cocok dengan gambar.
+- Test geometri ditambahkan lebih dahulu dan gagal (`Expected: 600, Received: 560`). Lebar dialog dan slide lalu diselaraskan pada maksimum 560 dp serta memakai lebar viewport setelah padding modal.
+- `corepack pnpm --filter @daycare/app exec jest --config jest.ui.config.cjs --runInBand src/home/ParentAnnouncementPopup.ui.test.tsx` — 12/12 lulus setelah perbaikan.
+- Verifikasi ulang setelah perbaikan: `corepack pnpm verify` lulus (72 file/284 test aplikasi), UI Jest penuh 14 suite/66 test lulus, backend suite penuh `BUILD SUCCESSFUL`, dan `git diff --check` lulus.

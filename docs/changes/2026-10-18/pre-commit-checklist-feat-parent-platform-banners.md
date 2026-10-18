@@ -20,13 +20,13 @@
 | --- | --- | --- |
 | 1. Scope dan konsistensi perubahan | `DONE` | Checklist sumber §1: perubahan mencakup filter banner, fitting gambar, entry point role, Metro terpisah dan reuse backend. `.agents/`, `.claude/`, `run-logs/`, credentials, serta file lokal lain tidak distage; `run-logs/` tetap utuh. |
 | 2. Konsistensi dokumentasi | `DONE` | Checklist sumber §2: README, aturan bisnis, OpenSpec, daily note, pre-commit checklist, dan checklist PR menjelaskan audience-scoped Profile/browser target; tenant-announcement allowlist tetap terpisah. |
-| 3. Test dan coverage | `DONE` | Follow-up rerun: `pnpm verify` lulus lint, typecheck, seluruh workspace tests (Core 10, UI 30, API client 68, Mobile 284 tests/72 files); UI Jest target 13/13 dan sebelumnya suite penuh 14/65 lulus. Backend full `./gradlew test --no-daemon` lulus. Targeted helper coverage sebelumnya 100% statements/lines/functions, 98.36% branches. |
+| 3. Test dan coverage | `DONE` | Setelah review fix: `corepack pnpm verify` lulus lint, typecheck, seluruh workspace tests (Core 10, UI 30, API client 68, Mobile 284 tests/72 files); UI Jest penuh 14 suite/66 test lulus; backend full `./apps/api/gradlew -p apps/api test --no-daemon --console=plain` lulus. Coverage helper tidak dihitung ulang pada sesi ini. |
 | 4. Arsitektur dan maintainability | `DONE` | Checklist sumber §4: akses tetap melalui route/screen yang sudah ada; hub perantara dihapus; logic banner filter memakai helper terpisah dan normalisasi pencarian dipakai bersama; launcher memakai helper backend/port tanpa mengganti business logic. |
 | 5. Business rule, role, dan security | `DONE` | Checklist sumber §5: banner Profile dibatasi per audience oleh allowlist dan validator server; browser hanya menerima HTTPS; aksi Profile tidak meluaskan validator pengumuman tenant. |
 | 6. Database dan API contract | `DONE` | Checklist sumber §6: `actionTarget` tetap string allowlisted; tidak ada schema/migration/API DTO change. Backend tests memastikan kedua audience banner menerima PROFILE dan validator pengumuman tenant tetap menolaknya. |
 | 7. UI/UX dan accessibility | `DONE` | Checklist sumber §7: pilihan Profile memakai label terjemahan existing; aksi URL menyebut browser internal. Form memakai BottomSheet/ChipGroup dan URL field existing. UI tests/typecheck lulus; belum ada uji visual manual device/browser. |
 | 8. Performance dan reliability | `DONE` | Checklist sumber §8: filtering dilakukan pada data query yang sudah tersedia; launcher mengunci startup backend bersamaan, mempertahankan backend setelah app stop, dan memisahkan port Web/Android. Test concurrency terisolasi lulus. |
-| 9. Verification dan release readiness | `DONE` | Checklist sumber §9: latest `pnpm verify`, backend full test, UI Jest target, dan `git diff --check` lulus. Tidak ada klaim migrasi, production, uji manual device, atau uji visual browser. |
+| 9. Verification dan release readiness | `DONE` | Checklist sumber §9: latest `pnpm verify`, backend full test, full UI Jest, dan `git diff --check` lulus. Tidak ada klaim migrasi, production, uji manual device, atau uji visual browser. |
 | 10. Keputusan akhir reviewer | `DONE` | Checklist sumber §10: follow-up direview terhadap allowlist/audience, server validation, route helper, i18n, kontrak, dan regresi pengumuman. Tidak ada temuan terbuka; staged diff diperiksa sebelum commit dan run-logs dikecualikan. |
 
 ## Temuan review dan perbaikannya
@@ -36,6 +36,7 @@
 | §6 Database/API; §8 Reliability | Timestamp jadwal lampau sebelumnya dapat berubah diam-diam menjadi publish langsung. Risiko: promosi/pengumuman terbit tanpa waktu yang dimaksud. | Validasi request menolak timestamp jadwal yang tidak berada di masa depan. | Test regresi ditambahkan dahulu, gagal sebelum patch, lulus sesudah patch; backend suite penuh lulus. CLOSED. |
 | §6 Database/API; §8 Reliability | Menutup banner terjadwal membiarkan `scheduledAt` sehingga bertentangan dengan constraint migrasi. Risiko: close gagal saat persist. | Manual/otomatis close membersihkan timestamp jadwal. | Test regresi ditambahkan dahulu, gagal sebelum patch, lulus sesudah patch; backend suite penuh dan Flyway V36 scratch lulus. CLOSED. |
 | §7 UI/UX; §8 Reliability | Klik gambar pengumuman memakai aksi milik slide aktif, bukan slide yang ditekan; daftar banner kosong juga berpotensi mengubah urutan pemanggilan hook saat data datang. | Aksi dihitung per item dan semua hook carousel dijalankan sebelum empty return. | UI Jest penuh mencakup regresi slide/action, carousel timer, empty-list, dan image-only; `pnpm verify` serta backend rerun penuh lulus. CLOSED. |
+| §7 UI/UX; §8 Reliability | `pagingEnabled` bergerak per lebar viewport, tetapi perhitungan auto-scroll dan indeks menggunakan slide yang lebih sempit. Risiko: gambar dan dot aktif dapat tidak sinkron setelah swipe/auto-advance. | Selaraskan lebar dialog dan slide pada viewport yang tersedia (maksimum 560 dp). | Regression UI test gagal sebelum patch (`Expected: 600, Received: 560`), lalu targeted popup Jest lulus 12/12. CLOSED. |
 
 ## Keputusan sebelum commit
 
@@ -54,6 +55,7 @@
 - [x] Popup hanya merender slide gambar; X menutup popup, acknowledgement tetap ada hanya bila diwajibkan oleh record.
 - [x] `corepack pnpm verify`: lint/typecheck lulus dan Vitest 63 file/250 test lulus.
 - [x] UI Jest penuh: 12 suite/48 test lulus. Backend rerun penuh: BUILD SUCCESSFUL; ada 3 warning deprecation/type mismatch pada test yang sudah ada dan tidak terkait perubahan ini.
+- [x] Review fix terakhir: `corepack pnpm verify` lulus (72 file/284 test aplikasi); UI Jest penuh 14 suite/66 test; backend suite penuh `BUILD SUCCESSFUL`.
 - [x] `git diff --check` lulus; belum ada uji visual manual device/browser.
 
 ## Batas dan pemisahan commit
