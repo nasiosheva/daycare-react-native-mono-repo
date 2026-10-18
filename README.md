@@ -55,7 +55,9 @@ Billing Parent mengirim `Idempotency-Key` stabil untuk pembelian paket, booking 
 
 Beranda Parent memiliki dua carousel gambar otomatis dengan indikator dot di atas gambar, navigasi manual dengan swipe kiri/kanan, dan sebagian gambar berikutnya yang terlihat sebagai petunjuk geser. Auto-slide dijeda selama swipe dan hitungannya dimulai ulang setelah dilepas. Gambar memakai rasio lebar 2.4:1 agar banner lebih ringkas. Carousel promosi global Platform Admin dan popup pengumuman tenant memakai data berbeda; popup hanya memuat URL gambar, memiliki tombol X, dan tetap dibatasi recipient tenant. Gambar dapat membuka URL HTTPS atau halaman aplikasi allowlist bila aksi diaktifkan. Promosi global juga terlihat untuk Parent tanpa tenant; siklus hidup dan batas akses ada di [business rules §10.2](docs/business-rules.md#102-operasi-harian-daycare-komunikasi-terarah-dan-tindak-lanjut-keselamatan).
 
-Platform Admin dan Staff Admin membuka pengelolaan banner/popup dari satu hub konten dengan aksi sesuai role. Banner hanya meminta URL gambar dan judul metadata (tanpa pesan); carousel hanya menampilkan gambar. Field judul, URL gambar, dan URL browser dapat dikosongkan langsung dengan ikon X. Platform Admin mengelola banner untuk Parent global, semua Staff Admin, atau Staff Admin pada satu tenant; Staff Admin mengelola popup Parent dalam tenant aktif. Tombol **Buat** pada hub langsung membuka form yang sesuai. Banner tenant hanya terlihat oleh Staff Admin aktif tenant tersebut; rincian audience dan akses ada di [business rules §10.2](docs/business-rules.md#102-operasi-harian-daycare-komunikasi-terarah-dan-tindak-lanjut-keselamatan).
+Platform Admin membuka pengelolaan banner langsung dari menu beranda; Staff Admin membuka pengumuman langsung dari menu operasional. Banner hanya meminta URL gambar dan judul metadata (tanpa pesan); carousel hanya menampilkan gambar. Field judul, URL gambar, dan URL browser dapat dikosongkan langsung dengan ikon X. Platform Admin mengelola banner untuk Parent global, semua Staff Admin, atau Staff Admin pada satu tenant; Staff Admin mengelola popup Parent dalam tenant aktif. Banner tenant hanya terlihat oleh Staff Admin aktif tenant tersebut; rincian audience dan akses ada di [business rules §10.2](docs/business-rules.md#102-operasi-harian-daycare-komunikasi-terarah-dan-tindak-lanjut-keselamatan).
+
+Daftar banner Platform Admin mendukung pencarian judul/nama tenant serta filter status dan penerima; Parent dapat mencari banner yang tersedia baginya.
 
 Katalog program perkembangan global mendukung pencarian dan filter gabungan berdasarkan tingkat belajar, domain, dan status aktif/arsip; hasil kosong menyediakan aksi hapus filter.
 
@@ -142,8 +144,11 @@ device fisik, iOS hanya Simulator. Pilihan uninstall default **Yes** dan timeout
 (khusus environment local). Web mendukung `s` stop dan `r` rebuild.
 
 Untuk local environment, launcher memakai API `localhost:8080`; Android memakai
-`adb reverse`. API yang sudah sehat tidak dihentikan atau diganti. Jalankan API
-sendiri bila diperlukan:
+`adb reverse`. Web memakai Metro `8081` dan Android Debug `8082`, sehingga keduanya
+bisa dijalankan bersamaan. Keduanya memakai satu API lokal; API yang dimulai oleh
+launcher tetap berjalan saat salah satu aplikasi ditutup. Untuk menghentikannya,
+gunakan `./scripts/stop-backend-local.sh`. API yang sudah sehat tidak dihentikan
+atau diganti. Jalankan API sendiri bila diperlukan:
 
 ```sh
 ./scripts/run-backend-local.sh

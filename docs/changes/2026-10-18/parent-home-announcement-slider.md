@@ -22,3 +22,10 @@
 
 - No backend or database change was needed; existing API returns only published announcements addressed to the current Parent.
 - Clarification: the Home promotion carousel and tenant-announcement popup are distinct image-only carousels with separate data sources. Both auto-advance and show dots; the popup has a close X (and acknowledgement control only when a record requires it). New tenant announcements do not collect a message field; legacy `body` remains API/DB-compatible.
+
+## Banner image fitting
+
+- Parent Home promotion images use React Native `cover` fitting so the image fills the banner container edge-to-edge; source edges may be cropped to match the container's aspect ratio. Other `FallbackImage` usages retain their existing behavior.
+- Test-first: focused `ParentPromotionSlider.ui.test.tsx` failed when the test expected `cover` but the component still used `contain`.
+- Green: `corepack pnpm --filter @daycare/app test:ui -- src/home/ParentPromotionSlider.ui.test.tsx --runInBand` passed (12 tests).
+- `git diff --check` passed.

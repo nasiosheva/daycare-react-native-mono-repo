@@ -7,9 +7,9 @@
 | Field | Nilai |
 | --- | --- |
 | Branch | `feat/parent-platform-banners` |
-| Tujuan perubahan | Sisa scope pada branch: audience banner Staff Admin, hub konten berdasarkan role, ringkasan antrean review langganan, TextField clearable/galeri komponen, dan forwarding proses launcher Web; dipisah ke commit per scope |
+| Tujuan perubahan | Sisa scope pada branch: banner platform (audience, filter, image fit), pengumuman tenant, entry point langsung per role, dan launcher Web/Android dengan satu backend lokal serta port Metro terpisah |
 | Tanggal diperbarui | 2026-10-18 |
-| Status kesiapan | READY; scope sudah dipisahkan dan disquash sebelum push ulang |
+| Status kesiapan | READY; tiga scope code dikonsolidasikan per scope dan docs dipisah dalam satu commit, tanpa rewrite commit branch yang sudah dipush |
 | Item wajib tertunda | 0 |
 | Temuan review terbuka | 0 |
 | Blocker | Tidak ada. Batas verifikasi: uji visual device/browser belum dilakukan; migration V37 belum diterapkan sesuai instruksi pengguna dan tidak diklaim teruji di database. |
@@ -18,16 +18,16 @@
 
 | Area dari checklist review sumber | Status | Bukti, nomor butir sumber, gap/follow-up |
 | --- | --- | --- |
-| 1. Scope dan konsistensi perubahan | `DONE` | Checklist sumber §1: commit yang direncanakan dipisah untuk (a) audience banner/hub konten, (b) antrean review langganan, (c) clearable TextField dan galeri, (d) process forwarding Web, (e) dokumentasi/config. `.agents/`, `.claude/`, `run-logs/`, dan file lokal lain tidak distage; `run-logs/` tetap utuh. |
-| 2. Konsistensi dokumentasi | `DONE` | Checklist sumber §2: README dan `docs/business-rules.md` mencatat audience/hub dan review langganan; daily note banner serta launcher mencatat behavior dan hasil verifikasi; OpenSpec adoption dan `.gitignore` disinkronkan untuk adapter lokal. Checklist ini diperbarui untuk hasil final. |
-| 3. Test dan coverage | `DONE` | Checklist sumber §3: `corepack pnpm verify` lulus: lint/typecheck dan Vitest 64 file/252 test; UI Jest 13 suite/58 test; `./apps/api/gradlew -p apps/api test --no-daemon --rerun-tasks` BUILD SUCCESSFUL. Shell syntax dan `git diff --check` lulus. Warning React `act(...)` dan 3 warning Kotlin deprecation/type-mismatch dicatat; tidak ada test gagal. |
-| 4. Arsitektur dan maintainability | `DONE` | Checklist sumber §4: business logic audience dan validasi aksi tetap di backend service/helper; route allowlist typed di core dan mobile; data akses lewat API client; content hub reusable terpisah dari screen; TextField memperluas komponen dasar; launcher hanya mengganti wrapper dengan `exec`. |
-| 5. Business rule, role, dan security | `DONE` | Checklist sumber §5: audience PARENT/STAFF_ADMIN/tenant STAFF_ADMIN di-enforce service dan feed; membership aktif/tenant aktif divalidasi backend; CTA route dibatasi menurut role dan browser HTTPS; hub membatasi aksi menurut role; review-summary tetap Platform Admin-only. |
+| 1. Scope dan konsistensi perubahan | `DONE` | Checklist sumber §1: perubahan mencakup filter banner, fitting gambar, entry point role, Metro terpisah dan reuse backend. `.agents/`, `.claude/`, `run-logs/`, credentials, serta file lokal lain tidak distage; `run-logs/` tetap utuh. |
+| 2. Konsistensi dokumentasi | `DONE` | Checklist sumber §2: README, aturan bisnis, dan daily notes mencatat filter/fitting banner, entry point langsung per role, dan perilaku launcher bersama. |
+| 3. Test dan coverage | `DONE` | Checklist sumber §3: `corepack pnpm verify` lulus lint, typecheck, dan Vitest: Core 10, UI 30, API client 68, Mobile 255 test (65 file). Mobile UI Jest lulus 12 suite/56 test. `sh scripts/tests/launcher-concurrency.test.sh` lulus; syntax shell dan `git diff --check` lulus. Test output memuat warning React `act(...)`/`react-test-renderer` yang tidak menggagalkan assertion. Tidak ada perubahan backend. |
+| 4. Arsitektur dan maintainability | `DONE` | Checklist sumber §4: akses tetap melalui route/screen yang sudah ada; hub perantara dihapus; logic banner filter memakai helper terpisah dan normalisasi pencarian dipakai bersama; launcher memakai helper backend/port tanpa mengganti business logic. |
+| 5. Business rule, role, dan security | `DONE` | Checklist sumber §5: Platform Admin diarahkan ke screen banner yang hanya mengizinkan mutasi Platform Admin; Staff Admin diarahkan ke screen pengumuman yang memvalidasi tenant aktif. Tidak ada perubahan API atau hak akses backend. |
 | 6. Database dan API contract | `DONE` | Checklist sumber §6: entity, repository, service, controller, API client, shared enums dan migration V37 cocok; default menjaga record lama sebagai `PARENT_GLOBAL`; constraint mewajibkan tenant target hanya untuk audience tenant; V37 belum dijalankan sesuai instruksi pengguna. Migration dan DB lokal/production tidak diklaim telah diterapkan. |
-| 7. UI/UX dan accessibility | `DONE` | Checklist sumber §7: form audience menampilkan pemilih tenant hanya untuk audience tenant, route create hub dibersihkan setelah dipakai, aksi per role diterjemahkan, clearable TextField memakai label aksesibilitas, carousel tetap swipeable dan image-only. UI Jest lulus; uji visual device/browser belum dilakukan. |
-| 8. Performance dan reliability | `DONE` | Checklist sumber §8: feed tenant memakai query scoped dan indeks partial; summary memakai repository count, bukan mengambil seluruh halaman; launcher `exec` meneruskan sinyal ke proses Expo. |
-| 9. Verification dan release readiness | `DONE` | Checklist sumber §9: workspace lint/typecheck/test, UI Jest, backend full rerun, shell syntax, serta `git diff --check` lulus. Tidak ada klaim migrasi persistent, production, atau device/browser. |
-| 10. Keputusan akhir reviewer | `DONE` | Checklist sumber §10: peninjauan diff mengonfirmasi scope, role authorization, tenant target constraint, route allowlist, hook create form, i18n, clear action, serta launcher forwarding. Tidak ditemukan finding blocking; setiap staged diff akan dicek lagi sebelum commit. |
+| 7. UI/UX dan accessibility | `DONE` | Checklist sumber §7: filter tersedia hanya sesuai hak baca/tulis; Platform Admin dan Staff Admin masuk langsung ke daftar yang sesuai. Label filter diterjemahkan; UI Jest lulus. Belum ada uji visual manual pada device/browser. |
+| 8. Performance dan reliability | `DONE` | Checklist sumber §8: filtering dilakukan pada data query yang sudah tersedia; launcher mengunci startup backend bersamaan, mempertahankan backend setelah app stop, dan memisahkan port Web/Android. Test concurrency terisolasi lulus. |
+| 9. Verification dan release readiness | `DONE` | Checklist sumber §9: `pnpm verify`, mobile UI tests, test launcher concurrency, shell syntax, dan `git diff --check` lulus. Tidak ada klaim migrasi, production, atau device/browser. |
+| 10. Keputusan akhir reviewer | `DONE` | Checklist sumber §10: diff direview terhadap scope, route/role guard yang ada, audience, i18n, filter, image fit, dan lifecycle launcher. Tidak ada temuan blocking; staged diff diperiksa sebelum commit dan run-logs dikecualikan. |
 
 ## Temuan review dan perbaikannya
 
@@ -66,6 +66,11 @@
 - Commit terbaru dikelompokkan ulang per scope agar implementasi dan dokumentasi scope yang sama berada dalam satu commit. History push sebelumnya akan diperbarui menggunakan `--force-with-lease` setelah verifikasi head remote.
 - Verifikasi ulang source setelah pengelompokan tidak diperlukan karena tidak ada perubahan kode sejak test penuh lulus; `git diff --check` dan staged-diff review tetap dilakukan untuk setiap scope.
 - `.gitignore` mengecualikan adapter/config Codex/Claude lokal, disinkronkan dengan panduan OpenSpec. `run-logs/` tetap tidak disentuh dan tidak distage.
+- Pembaruan entry point mengganti hub konten yang sudah ada: Platform Admin menuju `/platform-banners`, Staff Admin menuju `/tenant-announcements`. Route screens tersebut tetap menjadi boundary otorisasi; perubahan hanya navigasi dan dokumentasinya.
+- Push dilakukan sebagai fast-forward dari `origin/feat/parent-platform-banners`; commit yang sudah berada di remote tidak ditulis ulang. Perubahan code dikonsolidasikan per scope menjadi tiga commit, sedangkan README, business rules, daily notes, dan checklist berada pada satu commit documentation.
+- Commit code banner pertama: `c8ce8c7` (`feat: improve platform banner browsing`); staged diff telah dibatasi pada screen/filter, normalisasi pencarian bersama, terjemahan, dan fitting gambar.
+- Commit code launcher kedua: `4fdf236` (`fix: share local API across mobile launchers`); staged diff hanya berisi launcher, helper lifecycle/port, dan test concurrency shell.
+- Commit code navigasi ketiga: `c0bee3d` (`fix: route content management by role`); Platform Admin diarahkan ke banner, Staff Admin ke pengumuman tenant, dan hub lama dihapus.
 - Scope platform/home telah disquash menjadi satu commit berisi implementasi, test, migrasi, aturan bisnis, README, daily note, dan checklist; staged diff lulus `git diff --cached --check`.
 - Scope launcher Web telah disquash menjadi satu commit berisi script, daily note, dan checklist; shell syntax serta staged `git diff --cached --check` lulus.
 - Scope terakhir adalah konfigurasi adapter lokal: `.gitignore` bersama pembaruan panduan OpenSpec supaya `.agents/` dan `.claude/` tetap lokal.
