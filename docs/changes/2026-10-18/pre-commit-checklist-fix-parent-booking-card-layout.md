@@ -15,13 +15,14 @@
 | Blocker | Tidak ada. |
 | Commit code/test | `ca08288` |
 | Commit daily note dan readiness checklist | `c4aa393` |
+| PR | `#90` — https://github.com/nasiosheva/daycare-react-native-mono-repo/pull/90 |
 
 ## Status per area review
 
 | Area dari checklist review sumber | Status | Bukti, nomor butir sumber, gap/follow-up |
 | --- | --- | --- |
 | 1. Scope dan konsistensi perubahan | `DONE` | Perubahan terbatas pada layout kartu booking, regression test, dan catatan perubahan; branch dibuat dari `production`. Source §1.5–1.8. |
-| 2. Konsistensi dokumentasi | `DONE` | Daily note mencatat behavior, hasil verifikasi, dan batas device check. MR checklist branch ditambahkan sebelum PR. README/business rules tidak berubah karena tidak ada perubahan alur atau aturan. Source §2.1–2.7. |
+| 2. Konsistensi dokumentasi | `DONE` | Daily note mencatat behavior, hasil verifikasi, dan batas device check. MR checklist branch memuat tautan PR #90. README/business rules tidak berubah karena tidak ada perubahan alur atau aturan. Source §2.1–2.7. |
 | 3. Test dan coverage | `DONE` | Test-first regression test gagal pada layout row di viewport 360 dp lalu lulus setelah patch; wide viewport 900 dp juga diuji. Seluruh UI suite lulus (14 suites, 68 tests). Source §3.1, §3.3, §3.8–3.9. Method coverage tidak relevan untuk perubahan presentasi. |
 | 4. Arsitektur dan maintainability | `DONE` | Memakai `useWindowDimensions` dan style responsif di screen yang sama; tidak menambah dependency atau abstraction baru. Source §4.1–4.8. |
 | 5. Business rule, role, dan security | `N/A (presentation-only)` | Tidak mengubah business rule, role, authorization, tenant, data, atau request. Source §5.1–5.12. |

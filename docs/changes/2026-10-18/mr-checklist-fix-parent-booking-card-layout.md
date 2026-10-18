@@ -8,7 +8,7 @@
 | --- | --- |
 | Branch sumber | `fix/parent-booking-card-layout` |
 | Target branch | `production` |
-| PR | Belum dibuat. |
+| PR | [#90](https://github.com/nasiosheva/daycare-react-native-mono-repo/pull/90) |
 | Work item / tujuan | Perbaiki kartu ringkasan booking Parent di layar ponsel agar label dan ringkasan terbaca utuh. |
 | Tanggal checklist | `2026-10-18` |
 
@@ -78,7 +78,7 @@ Temuan terbuka/blocker: Tidak ada blocker. Follow-up non-blocking: verifikasi vi
 | --- | --- | --- |
 | Test frontend | PASS — `corepack pnpm verify`; lint, typecheck, dan workspace tests lulus. Mobile Vitest: 72 suites/284 tests; workspace total: 392 tests. UI Jest: 14 suites/68 tests. | Suite UI mencetak warning React `act(...)` yang telah ada pada test icon/offline lain; semua test lulus. |
 | Test backend | PASS — `./apps/api/gradlew -p apps/api test --no-daemon` (`BUILD SUCCESSFUL`). | Rerun normal sesudah rerun task penuh juga sukses; Gradle menyatakan task up-to-date. |
-| CI head PR | PENDING | Belum dibuat saat checklist ini ditulis. |
+| CI head PR | PENDING | `Mobile unit tests` sedang berjalan saat PR #90 dibuat; dokumentasi checklist diperbarui setelah pembukaan PR sehingga CI akan berjalan untuk head terbaru. |
 | Coverage line/branch | N/A | Tidak menjalankan laporan coverage untuk perubahan presentasi; regression test mengunci kedua layout breakpoint. |
 | DB/migration | N/A | Tidak ada perubahan database atau migration. |
 | Browser/device/live service | Belum dilakukan | UI diuji otomatis; belum menjalankan device Android atau live service. |
