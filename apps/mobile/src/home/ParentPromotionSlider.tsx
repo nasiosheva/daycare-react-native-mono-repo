@@ -1,13 +1,12 @@
 // Mories Deo Hutapea,S.E.,S.Kom
 import { useEffect, useRef, useState } from "react";
-import { Linking, Pressable, ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { useRouter } from "expo-router";
 import { AppText, colors, radius, spacing } from "@daycare/ui";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { PlatformBanner } from "@daycare/api-client";
 import { platformBannerActionRoute } from "@/announcements/actionDestination";
 import { isValidHttpsUrl } from "@/media/imageUrl";
-import { notify } from "@/notify/notify";
 import { FallbackImage } from "@/media/FallbackImage";
 import { useAutoAdvanceCarousel } from "./useAutoAdvanceCarousel";
 
@@ -32,15 +31,11 @@ export function ParentPromotionSlider({ banners, organizationId, interactive = t
     if (interval > 0) setActiveIndex(Math.min(banners.length - 1, Math.round(event.nativeEvent.contentOffset.x / interval)));
     resumeAutoAdvance();
   };
-  const openBannerAction = async (banner: PlatformBanner) => {
+  const openBannerAction = (banner: PlatformBanner) => {
     const actionType = banner.actionType ?? "NONE";
     const target = banner.actionTarget;
     if (actionType === "OPEN_BROWSER" && target && isValidHttpsUrl(target)) {
-      try {
-        await Linking.openURL(target);
-      } catch (error) {
-        notify(t("operations.actionOpenFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger");
-      }
+      router.push({ pathname: "/in-app-browser", params: { url: target } } as never);
       return;
     }
     const appRoute = actionType === "OPEN_APP_PAGE" ? platformBannerActionRoute(banner.audience, target) : null;

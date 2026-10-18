@@ -4,7 +4,7 @@ import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TenantAnnouncement, TenantAnnouncementAudience, TenantAnnouncementStatus } from "@daycare/api-client";
-import { AppText, BackButton, Badge, BottomSheet, Button, Card, Chip, ChipGroup, EmptyState, ErrorState, FloatingActionButton, ShimmerList, TextField, ToggleSwitch, radius, spacing, type Tone } from "@daycare/ui";
+import { AppText, BackButton, Badge, BottomSheet, Button, Card, Chip, ChipGroup, EmptyState, ErrorState, FloatingActionButton, SearchField, ShimmerList, TextField, ToggleSwitch, radius, spacing, type Tone } from "@daycare/ui";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { AppScreen } from "@/navigation/AppScreen";
 import { useAuth } from "@/auth/AuthProvider";
@@ -17,8 +17,12 @@ import { FallbackImage } from "@/media/FallbackImage";
 import { parentActionPages, type ParentActionType, type ParentActionPage } from "@daycare/core";
 import type { TranslationKey } from "@/i18n/translations";
 import { shouldOpenCreateForm } from "@/content-management/openCreateFromRouteParam";
+import { filterTenantAnnouncements } from "@/content-management/tenantAnnouncementFilters";
+import { tenantAnnouncementBranchName } from "@/content-management/tenantAnnouncementBranch";
 
 type FormState = { id?: string; audience: TenantAnnouncementAudience; branchId: string | null; title: string; imageUrl: string; actionType: ParentActionType; actionTarget: string; requiresAcknowledgement: boolean };
+const announcementStatuses: readonly TenantAnnouncementStatus[] = ["DRAFT", "SCHEDULED", "PUBLISHED", "CLOSED"];
+const announcementAudiences: readonly TenantAnnouncementAudience[] = ["TENANT", "BRANCH"];
 const newForm = (): FormState => ({ audience: "TENANT", branchId: null, title: "", imageUrl: "", actionType: "NONE", actionTarget: "", requiresAcknowledgement: false });
 const formFromAnnouncement = (announcement: TenantAnnouncement): FormState => ({ id: announcement.id, audience: announcement.audience, branchId: announcement.branchId ?? null, title: announcement.title, imageUrl: announcement.imageUrl ?? "", actionType: announcement.actionType ?? "NONE", actionTarget: announcement.actionTarget ?? "", requiresAcknowledgement: announcement.requiresAcknowledgement });
 const hasValidAction = (form: FormState | null): boolean => !form || form.actionType === "NONE" || (form.actionType === "OPEN_BROWSER" ? isValidHttpsUrl(form.actionTarget) : parentActionPages.includes(form.actionTarget as ParentActionPage));
@@ -39,6 +43,9 @@ export default function TenantAnnouncementsScreen() {
   const branches = useQuery({ queryKey: ["tenant-branches", organizationId], queryFn: () => api.branches(), enabled: canManage });
   const refresh = () => { void queryClient.invalidateQueries({ queryKey: ["managed-announcements", organizationId] }); void queryClient.invalidateQueries({ queryKey: ["announcements", organizationId] }); };
   const [form, setForm] = useState<FormState | null>(null);
+  const [announcementSearch, setAnnouncementSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<TenantAnnouncementStatus | undefined>();
+  const [audienceFilter, setAudienceFilter] = useState<TenantAnnouncementAudience | undefined>();
   const [scheduleTarget, setScheduleTarget] = useState<TenantAnnouncement | null>(null);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
@@ -61,6 +68,14 @@ export default function TenantAnnouncementsScreen() {
   if (!membership?.active) return <Redirect href="/home" />;
   const audienceLabel = (audience: TenantAnnouncementAudience) => t(audience === "TENANT" ? "operations.tenant" : "operations.branch");
   const statusLabel = (status: TenantAnnouncementStatus) => t(status === "DRAFT" ? "operations.draft" : status === "SCHEDULED" ? "operations.scheduled" : status === "PUBLISHED" ? "operations.published" : "operations.closed");
+  const announcementScopeLabel = (item: TenantAnnouncement) => {
+    const branchName = canManage && item.audience === "BRANCH" ? tenantAnnouncementBranchName(item.branchId, branches.data ?? []) : null;
+    const branchLabel = branchName ?? (canManage && item.audience === "BRANCH" && !branches.isLoading ? t("operations.announcementBranchUnavailable") : null);
+    return [audienceLabel(item.audience), branchLabel, String(item.recipientCount)].filter(Boolean).join(" · ");
+  };
+  const visibleAnnouncements = filterTenantAnnouncements(items.data ?? [], { search: announcementSearch, status: canManage ? statusFilter : undefined, audience: canManage ? audienceFilter : undefined, audienceLabel });
+  const filtersApplied = Boolean(announcementSearch.trim() || statusFilter || audienceFilter);
+  const clearFilters = () => { setAnnouncementSearch(""); setStatusFilter(undefined); setAudienceFilter(undefined); };
   const statusTone = (status: TenantAnnouncementStatus): Tone => status === "PUBLISHED" ? "success" : status === "DRAFT" ? "neutral" : status === "SCHEDULED" ? "info" : "warning";
   const save = () => {
     if (!form || !form.title.trim() || !isValidHttpsImageUrl(form.imageUrl) || !hasValidAction(form) || (form.audience === "BRANCH" && !form.branchId)) return;
@@ -78,7 +93,28 @@ export default function TenantAnnouncementsScreen() {
     <AppText tone="muted">{t("operations.announcementsDescription")}</AppText>
     {items.isLoading && <ShimmerList />}
     {items.isError && !items.isFetching && <ErrorState title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void items.refetch()} />}
-    {!items.isLoading && !items.isError && items.data?.map((item) => <Card key={item.id} icon="megaphone-outline" title={item.title} subtitle={item.publishedAt ? formatDateTime(item.publishedAt) : item.scheduledAt ? formatDateTime(item.scheduledAt) : formatDateTime(item.createdAt)} trailing={<Badge tone={statusTone(item.status)} label={statusLabel(item.status)} />}>{item.imageUrl && <FallbackImage key={`${item.id}:${item.imageUrl}`} accessibilityLabel={item.title} fallbackLabel={t("operations.imageUnavailable")} uri={item.imageUrl} style={styles.announcementImage} />}<AppText>{item.body}</AppText><AppText variant="caption" tone="muted">{audienceLabel(item.audience)} · {item.recipientCount}</AppText>{item.requiresAcknowledgement && item.status === "PUBLISHED" && (item.acknowledgedByMe ? <Badge tone="success" label={t("operations.acknowledged")} /> : <Button loading={acknowledge.isPending} onPress={() => void acknowledge.mutateAsync(item.id).catch((error: unknown) => notify(t("operations.announcementSaveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))}>{t("operations.acknowledge")}</Button>)}{canManage && <View style={styles.actions}>{item.status === "DRAFT" && <><Button style={styles.action} variant="secondary" onPress={() => setForm(formFromAnnouncement(item))}>{t("common.edit")}</Button><Button style={styles.action} variant="secondary" onPress={() => openSchedule(item)}>{t("operations.schedule")}</Button><Button style={styles.action} loading={publish.isPending} onPress={() => void publish.mutateAsync(item.id).catch((error: unknown) => notify(t("operations.announcementSaveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))}>{t("operations.publish")}</Button></>}{(item.status === "PUBLISHED" || item.status === "SCHEDULED") && <Button style={styles.action} variant="secondary" loading={close.isPending} onPress={() => void close.mutateAsync(item.id).catch((error: unknown) => notify(t("operations.announcementSaveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))}>{t("operations.close")}</Button>}</View>}</Card>)}
+    {!items.isLoading && !items.isError && Boolean(items.data?.length) && <View style={styles.filters}>
+      <SearchField accessibilityLabel={t("operations.searchAnnouncements")} placeholder={t("operations.searchAnnouncements")} clearAccessibilityLabel={t("common.clearSearch")} value={announcementSearch} onChangeText={setAnnouncementSearch} />
+      {canManage && <>
+        <View style={styles.filterGroup}>
+          <AppText variant="label">{t("operations.filterAnnouncementStatus")}</AppText>
+          <ChipGroup accessibilityLabel={t("operations.filterAnnouncementStatus")}>
+            <Chip label={t("operations.allAnnouncementStatuses")} selected={!statusFilter} onPress={() => setStatusFilter(undefined)} />
+            {announcementStatuses.map((status) => <Chip key={status} label={statusLabel(status)} selected={statusFilter === status} onPress={() => setStatusFilter((current) => current === status ? undefined : status)} />)}
+          </ChipGroup>
+        </View>
+        <View style={styles.filterGroup}>
+          <AppText variant="label">{t("operations.filterAnnouncementAudience")}</AppText>
+          <ChipGroup accessibilityLabel={t("operations.filterAnnouncementAudience")}>
+            <Chip label={t("operations.allAnnouncementAudiences")} selected={!audienceFilter} onPress={() => setAudienceFilter(undefined)} />
+            {announcementAudiences.map((audience) => <Chip key={audience} label={audienceLabel(audience)} selected={audienceFilter === audience} onPress={() => setAudienceFilter((current) => current === audience ? undefined : audience)} />)}
+          </ChipGroup>
+        </View>
+      </>}
+      {filtersApplied && <Button variant="secondary" onPress={clearFilters}>{t("operations.clearAnnouncementFilters")}</Button>}
+    </View>}
+    {!items.isLoading && !items.isError && visibleAnnouncements.map((item) => <Card key={item.id} icon="megaphone-outline" title={item.title} subtitle={item.publishedAt ? formatDateTime(item.publishedAt) : item.scheduledAt ? formatDateTime(item.scheduledAt) : formatDateTime(item.createdAt)} trailing={<Badge tone={statusTone(item.status)} label={statusLabel(item.status)} />}>{item.imageUrl && <FallbackImage key={`${item.id}:${item.imageUrl}`} accessibilityLabel={item.title} fallbackLabel={t("operations.imageUnavailable")} uri={item.imageUrl} style={styles.announcementImage} />}<AppText>{item.body}</AppText><AppText variant="caption" tone="muted">{announcementScopeLabel(item)}</AppText>{item.requiresAcknowledgement && item.status === "PUBLISHED" && (item.acknowledgedByMe ? <Badge tone="success" label={t("operations.acknowledged")} /> : <Button loading={acknowledge.isPending} onPress={() => void acknowledge.mutateAsync(item.id).catch((error: unknown) => notify(t("operations.announcementSaveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))}>{t("operations.acknowledge")}</Button>)}{canManage && <View style={styles.actions}>{item.status === "DRAFT" && <><Button style={styles.action} variant="secondary" onPress={() => setForm(formFromAnnouncement(item))}>{t("common.edit")}</Button><Button style={styles.action} variant="secondary" onPress={() => openSchedule(item)}>{t("operations.schedule")}</Button><Button style={styles.action} loading={publish.isPending} onPress={() => void publish.mutateAsync(item.id).catch((error: unknown) => notify(t("operations.announcementSaveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))}>{t("operations.publish")}</Button></>}{(item.status === "PUBLISHED" || item.status === "SCHEDULED") && <Button style={styles.action} variant="secondary" loading={close.isPending} onPress={() => void close.mutateAsync(item.id).catch((error: unknown) => notify(t("operations.announcementSaveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))}>{t("operations.close")}</Button>}</View>}</Card>)}
+    {!items.isLoading && !items.isError && Boolean(items.data?.length) && visibleAnnouncements.length === 0 && <EmptyState icon="search-outline" title={t("operations.noAnnouncementMatches")} action={{ label: t("operations.clearAnnouncementFilters"), onPress: clearFilters }} />}
     {!items.isLoading && !items.isError && items.data?.length === 0 && <EmptyState icon="megaphone-outline" title={t("operations.announcementEmpty")} action={canManage ? { label: t("operations.addAnnouncement"), onPress: () => setForm(newForm()) } : undefined} />}
     <BottomSheet visible={form !== null} onClose={() => setForm(null)} closeAccessibilityLabel={t("common.close")} title={t(form?.id ? "operations.editAnnouncement" : "operations.addAnnouncement")} negativeAction={{ label: t("common.cancel"), onPress: () => setForm(null) }} positiveAction={{ label: t("common.save"), disabled: !form?.title.trim() || !isValidHttpsImageUrl(form.imageUrl) || !hasValidAction(form) || (form.audience === "BRANCH" && !form.branchId), loading: saveAnnouncement.isPending, onPress: save }}>
       <View style={styles.field}><AppText variant="label">{t("operations.audience")}</AppText><ChipGroup accessibilityLabel={t("operations.audience")}><Chip label={t("operations.tenant")} selected={form?.audience === "TENANT"} onPress={() => setForm((current) => current ? { ...current, audience: "TENANT", branchId: null } : current)} /><Chip label={t("operations.branch")} selected={form?.audience === "BRANCH"} onPress={() => setForm((current) => current ? { ...current, audience: "BRANCH", branchId: branches.data?.find((branch) => branch.active)?.id ?? null } : current)} /></ChipGroup></View>
@@ -104,4 +140,4 @@ export default function TenantAnnouncementsScreen() {
   </AppScreen>;
 }
 
-const styles = StyleSheet.create({ field: { gap: spacing.xs }, actions: { flexDirection: "row", gap: spacing.sm }, action: { flex: 1 }, scheduleRow: { flexDirection: "row", gap: spacing.sm }, scheduleField: { flex: 1 }, announcementImage: { width: "100%", aspectRatio: 16 / 9, borderRadius: radius.md }, announcementImagePreview: { width: "100%", aspectRatio: 16 / 9, borderRadius: radius.md } });
+const styles = StyleSheet.create({ field: { gap: spacing.xs }, filters: { gap: spacing.md }, filterGroup: { gap: spacing.xs }, actions: { flexDirection: "row", gap: spacing.sm }, action: { flex: 1 }, scheduleRow: { flexDirection: "row", gap: spacing.sm }, scheduleField: { flex: 1 }, announcementImage: { width: "100%", aspectRatio: 16 / 9, borderRadius: radius.md }, announcementImagePreview: { width: "100%", aspectRatio: 16 / 9, borderRadius: radius.md } });

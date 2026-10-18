@@ -1,11 +1,19 @@
 // Mories Deo Hutapea,S.E.,S.Kom
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
-import { Linking, ScrollView } from "react-native";
+import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
+import { ScrollView } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { colors } from "@daycare/ui";
 import { ParentAnnouncementPopup } from "./ParentAnnouncementPopup";
 
 const mockPush = jest.fn();
+const mockDownloadAnnouncementImage = jest.fn();
+const mockShareAnnouncementImage = jest.fn();
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: mockPush }) }));
 jest.mock("@/i18n/I18nProvider", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
+jest.mock("@/announcements/downloadAnnouncementImage", () => ({
+  downloadAnnouncementImage: (...args: unknown[]) => mockDownloadAnnouncementImage(...args),
+  shareAnnouncementImage: (...args: unknown[]) => mockShareAnnouncementImage(...args),
+}));
 
 describe("ParentAnnouncementPopup", () => {
   afterEach(() => jest.useRealTimers());
@@ -33,6 +41,76 @@ describe("ParentAnnouncementPopup", () => {
     expect(screen.queryByRole("button", { name: "operations.openAction" })).toBeNull();
     fireEvent.press(screen.getByRole("button", { name: "operations.dismissAllAnnouncements" }));
     expect(screen.queryByText("Libur")).toBeNull();
+  });
+
+  it("uses a borderless image-first layout with the close action over the image", () => {
+    render(<ParentAnnouncementPopup announcements={[
+      { announcement: { id: "notice-image-layout", title: "Kegiatan", body: "", imageUrl: "https://cdn.example/notice.jpg", requiresAcknowledgement: false, acknowledgedByMe: false }, organizationId: "tenant-1", organizationName: "Nasio Care" },
+    ]} onAcknowledge={jest.fn()} />);
+
+    const imageFrame = screen.getByTestId("announcement-image-frame");
+    const closeButton = within(imageFrame).getByRole("button", { name: "operations.dismissAllAnnouncements" });
+    expect(closeButton.props.style).toMatchObject({ position: "absolute", top: expect.any(Number), right: expect.any(Number), backgroundColor: "transparent" });
+    expect(closeButton.props.style.elevation).toBeUndefined();
+    expect(closeButton.props.style.backgroundColor).toBe("transparent");
+    expect(closeButton.findByType(Ionicons).props.color).toBe(colors.text);
+    expect(within(imageFrame).getByLabelText("Nasio Care: Kegiatan").props.resizeMode).toBe("cover");
+    expect(screen.queryByText("operations.announcements")).toBeNull();
+  });
+
+  it("offers an image download action below the announcement image", () => {
+    render(<ParentAnnouncementPopup announcements={[
+      { announcement: { id: "notice-download", title: "Kegiatan", body: "", imageUrl: "https://cdn.example/kegiatan.png", requiresAcknowledgement: false, acknowledgedByMe: false }, organizationId: "tenant-1", organizationName: "Nasio Care" },
+    ]} onAcknowledge={jest.fn()} />);
+
+    expect(screen.getByRole("button", { name: "operations.downloadImage" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "operations.shareImage" })).toBeTruthy();
+    const actions = within(screen.getByTestId("announcement-image-actions"));
+    expect(actions.getByRole("button", { name: "operations.downloadImage" })).toBeTruthy();
+    expect(actions.getByRole("button", { name: "operations.shareImage" })).toBeTruthy();
+  });
+
+  it("shares the currently selected slide image", async () => {
+    mockShareAnnouncementImage.mockReset().mockResolvedValue(undefined);
+    render(<ParentAnnouncementPopup announcements={[
+      { announcement: { id: "notice-share", title: "Kegiatan", body: "", imageUrl: "https://cdn.example/kegiatan.png", requiresAcknowledgement: false, acknowledgedByMe: false }, organizationId: "tenant-1", organizationName: "Nasio Care" },
+    ]} onAcknowledge={jest.fn()} />);
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "operations.shareImage" }));
+      await Promise.resolve();
+    });
+
+    expect(mockShareAnnouncementImage).toHaveBeenCalledWith("https://cdn.example/kegiatan.png", "Kegiatan", "notice-share");
+  });
+
+  it("downloads the currently selected slide image", async () => {
+    mockDownloadAnnouncementImage.mockReset().mockResolvedValue(undefined);
+    render(<ParentAnnouncementPopup announcements={[
+      { announcement: { id: "notice-download", title: "Kegiatan", body: "", imageUrl: "https://cdn.example/kegiatan.png", requiresAcknowledgement: false, acknowledgedByMe: false }, organizationId: "tenant-1", organizationName: "Nasio Care" },
+    ]} onAcknowledge={jest.fn()} />);
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "operations.downloadImage" }));
+      await Promise.resolve();
+    });
+
+    expect(mockDownloadAnnouncementImage).toHaveBeenCalledWith("https://cdn.example/kegiatan.png", "Kegiatan", "notice-download");
+  });
+
+  it("shows the announcement again after a fresh app mount", () => {
+    const announcements = [
+      { announcement: { id: "notice-launch", title: "Info terbaru", body: "", imageUrl: "https://cdn.example/notice.jpg", requiresAcknowledgement: false, acknowledgedByMe: false }, organizationId: "tenant-1", organizationName: "Nasio Care" },
+    ];
+    const firstLaunch = render(<ParentAnnouncementPopup announcements={announcements} onAcknowledge={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole("button", { name: "operations.dismissAllAnnouncements" }));
+    expect(screen.queryByLabelText("Nasio Care: Info terbaru")).toBeNull();
+
+    firstLaunch.unmount();
+    render(<ParentAnnouncementPopup announcements={announcements} onAcknowledge={jest.fn()} />);
+
+    expect(screen.getByLabelText("Nasio Care: Info terbaru")).toBeTruthy();
   });
 
   it("pauses automatic changes while the announcement carousel is dragged", () => {
@@ -66,8 +144,8 @@ describe("ParentAnnouncementPopup", () => {
     expect(mockPush).toHaveBeenCalledWith("/booking");
   });
 
-  it("opens a configured HTTPS browser CTA", async () => {
-    const openURL = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+  it("opens a configured HTTPS browser CTA in the in-app browser", async () => {
+    mockPush.mockClear();
     render(<ParentAnnouncementPopup announcements={[
       { announcement: { id: "notice-3", title: "Info", body: "Baca selengkapnya.", imageUrl: "https://cdn.example/info.jpg", actionType: "OPEN_BROWSER", actionTarget: "https://example.com/info", requiresAcknowledgement: false, acknowledgedByMe: false }, organizationId: "tenant-1", organizationName: "Nasio Care" },
     ]} onAcknowledge={jest.fn()} />);
@@ -76,12 +154,11 @@ describe("ParentAnnouncementPopup", () => {
       fireEvent.press(screen.getByRole("button", { name: "Info" }));
       await Promise.resolve();
     });
-    expect(openURL).toHaveBeenCalledWith("https://example.com/info");
-    openURL.mockRestore();
+    expect(mockPush).toHaveBeenCalledWith({ pathname: "/in-app-browser", params: { url: "https://example.com/info" } });
   });
 
   it("uses the action configured on the tapped slide, not the currently active slide", async () => {
-    const openURL = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+    mockPush.mockClear();
     render(<ParentAnnouncementPopup announcements={[
       { announcement: { id: "notice-static", title: "Static", body: "", imageUrl: "https://cdn.example/static.jpg", requiresAcknowledgement: false, acknowledgedByMe: false }, organizationId: "tenant-1", organizationName: "Nasio Care" },
       { announcement: { id: "notice-action", title: "Info", body: "", imageUrl: "https://cdn.example/info.jpg", actionType: "OPEN_BROWSER", actionTarget: "https://example.com/info", requiresAcknowledgement: false, acknowledgedByMe: false }, organizationId: "tenant-1", organizationName: "Nasio Care" },
@@ -91,7 +168,6 @@ describe("ParentAnnouncementPopup", () => {
       fireEvent.press(screen.getByRole("button", { name: "Info" }));
       await Promise.resolve();
     });
-    expect(openURL).toHaveBeenCalledWith("https://example.com/info");
-    openURL.mockRestore();
+    expect(mockPush).toHaveBeenCalledWith({ pathname: "/in-app-browser", params: { url: "https://example.com/info" } });
   });
 });

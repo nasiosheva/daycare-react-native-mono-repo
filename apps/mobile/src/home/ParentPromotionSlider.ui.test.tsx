@@ -1,6 +1,6 @@
 // Mories Deo Hutapea,S.E.,S.Kom
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
-import { Linking, ScrollView } from "react-native";
+import { ScrollView } from "react-native";
 import { ParentPromotionSlider } from "./ParentPromotionSlider";
 
 const mockPush = jest.fn();
@@ -84,7 +84,7 @@ describe("ParentPromotionSlider", () => {
     let carousel = screen.UNSAFE_getByType(ScrollView);
     act(() => carousel.props.onLayout({ nativeEvent: { layout: { width: 500 } } }));
     carousel = screen.UNSAFE_getByType(ScrollView);
-    const slides = carousel.props.children as Array<{ props: { style: Array<Record<string, unknown>> } }>;
+    const slides = carousel.props.children as readonly { props: { style: readonly Record<string, unknown>[] } }[];
     const firstSlideWidth = slides[0]?.props.style[1]?.width as number;
 
     expect(carousel.props.style).toMatchObject({ width: "100%" });
@@ -101,8 +101,8 @@ describe("ParentPromotionSlider", () => {
     expect(screen.getByLabelText("platformBanners.parentTitle 1/2").props.style).toMatchObject({ position: "absolute", bottom: expect.any(Number) });
   });
 
-  it("opens a configured browser destination when the banner is tapped", async () => {
-    const openURL = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+  it("opens a configured browser destination in the in-app browser when tapped", async () => {
+    mockPush.mockClear();
     render(<ParentPromotionSlider banners={[
       { id: "promotion-2", title: "Paket baru", body: "Lihat detail.", imageUrl: "https://cdn.example/promo.jpg", actionType: "OPEN_BROWSER", actionTarget: "https://example.com/promo", status: "PUBLISHED", publishedAt: "2026-10-18T10:00:00Z", createdAt: "2026-10-18T09:00:00Z", updatedAt: "2026-10-18T10:00:00Z" },
     ]} />);
@@ -110,8 +110,7 @@ describe("ParentPromotionSlider", () => {
       fireEvent.press(screen.getByRole("button", { name: "Paket baru" }));
       await Promise.resolve();
     });
-    expect(openURL).toHaveBeenCalledWith("https://example.com/promo");
-    openURL.mockRestore();
+    expect(mockPush).toHaveBeenCalledWith({ pathname: "/in-app-browser", params: { url: "https://example.com/promo" } });
   });
 
   it("opens only allowlisted in-app destinations when configured", () => {
