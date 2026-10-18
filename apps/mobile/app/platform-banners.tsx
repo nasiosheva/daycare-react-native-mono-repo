@@ -14,7 +14,7 @@ import { notify } from "@/notify/notify";
 import { DatePicker } from "@/date-picker/DatePicker";
 import { formatIsoDate } from "@/date-picker/date";
 import { isValidHttpsImageUrl, isValidHttpsUrl } from "@/media/imageUrl";
-import { parentActionPages, staffAdminBannerActionPages, type ParentActionType, type ParentActionPage, type PlatformBannerAudience } from "@daycare/core";
+import { platformBannerParentActionPages, staffAdminBannerActionPages, type ParentActionType, type PlatformBannerParentActionPage, type PlatformBannerAudience } from "@daycare/core";
 import type { TranslationKey } from "@/i18n/translations";
 import { FallbackImage } from "@/media/FallbackImage";
 import { ParentPromotionSlider } from "@/home/ParentPromotionSlider";
@@ -37,7 +37,7 @@ const formFromBanner = (banner: PlatformBanner): FormState => {
   const localWib = banner.expiresAt ? new Date(new Date(banner.expiresAt).getTime() + JAKARTA_OFFSET_MS).toISOString() : "";
   return { id: banner.id, title: banner.title, imageUrl: banner.imageUrl, actionType: banner.actionType ?? "NONE", actionTarget: banner.actionTarget ?? "", expiresDate: localWib.slice(0, 10), expiresTime: localWib.slice(11, 16), audience: banner.audience ?? "PARENT_GLOBAL", targetOrganizationId: banner.targetOrganizationId ?? "" };
 };
-const hasValidAction = (form: FormState | null): boolean => !form || form.actionType === "NONE" || (form.actionType === "OPEN_BROWSER" ? isValidHttpsUrl(form.actionTarget) : form.audience === "PARENT_GLOBAL" ? parentActionPages.includes(form.actionTarget as ParentActionPage) : staffAdminBannerActionPages.includes(form.actionTarget as (typeof staffAdminBannerActionPages)[number]));
+const hasValidAction = (form: FormState | null): boolean => !form || form.actionType === "NONE" || (form.actionType === "OPEN_BROWSER" ? isValidHttpsUrl(form.actionTarget) : form.audience === "PARENT_GLOBAL" ? platformBannerParentActionPages.includes(form.actionTarget as PlatformBannerParentActionPage) : staffAdminBannerActionPages.includes(form.actionTarget as (typeof staffAdminBannerActionPages)[number]));
 const hasValidExpiry = (form: FormState | null): boolean => {
   if (!form) return true;
   const expiry = expiryInstant(form.expiresDate, form.expiresTime);
@@ -185,7 +185,7 @@ export default function PlatformBannersScreen() {
           <Chip label={t("operations.openBrowser")} selected={form.actionType === "OPEN_BROWSER"} onPress={() => setForm((current) => current ? { ...current, actionType: "OPEN_BROWSER", actionTarget: "" } : current)} />
           <Chip label={t("operations.openAppPage")} selected={form.actionType === "OPEN_APP_PAGE"} onPress={() => setForm((current) => current ? { ...current, actionType: "OPEN_APP_PAGE", actionTarget: "" } : current)} />
         </ChipGroup>
-        {form.actionType === "OPEN_BROWSER" ? <TextField label={t("operations.actionUrl")} required value={form.actionTarget} onChangeText={(actionTarget) => setForm((current) => current ? { ...current, actionTarget } : current)} clearable clearAccessibilityLabel={t("common.clearText")} maxLength={2_048} autoCapitalize="none" keyboardType="url" /> : <><AppText variant="label">{form.audience === "PARENT_GLOBAL" ? t("operations.actionPage") : t("platformBanners.staffAdminActionPage" as TranslationKey)}</AppText><ChipGroup accessibilityLabel={form.audience === "PARENT_GLOBAL" ? t("operations.actionPage") : t("platformBanners.staffAdminActionPage" as TranslationKey)}>{(form.audience === "PARENT_GLOBAL" ? parentActionPages : staffAdminBannerActionPages).map((page) => <Chip key={page} label={t(form.audience === "PARENT_GLOBAL" ? `operations.actionPage.${page}` as TranslationKey : `platformBanners.actionPage.${page}` as TranslationKey)} selected={form.actionTarget === page} onPress={() => setForm((current) => current ? { ...current, actionTarget: page } : current)} />)}</ChipGroup></>}
+        {form.actionType === "OPEN_BROWSER" ? <TextField label={t("operations.actionUrl")} required value={form.actionTarget} onChangeText={(actionTarget) => setForm((current) => current ? { ...current, actionTarget } : current)} clearable clearAccessibilityLabel={t("common.clearText")} maxLength={2_048} autoCapitalize="none" keyboardType="url" /> : <><AppText variant="label">{form.audience === "PARENT_GLOBAL" ? t("operations.actionPage") : t("platformBanners.staffAdminActionPage" as TranslationKey)}</AppText><ChipGroup accessibilityLabel={form.audience === "PARENT_GLOBAL" ? t("operations.actionPage") : t("platformBanners.staffAdminActionPage" as TranslationKey)}>{(form.audience === "PARENT_GLOBAL" ? platformBannerParentActionPages : staffAdminBannerActionPages).map((page) => <Chip key={page} label={page === "PROFILE" ? t("profile.title") : t(form.audience === "PARENT_GLOBAL" ? `operations.actionPage.${page}` as TranslationKey : `platformBanners.actionPage.${page}` as TranslationKey)} selected={form.actionTarget === page} onPress={() => setForm((current) => current ? { ...current, actionTarget: page } : current)} />)}</ChipGroup></>}
       </View>}
       <View style={styles.field}>
         <AppText variant="label">{t("platformBanners.expiry")}</AppText>

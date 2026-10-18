@@ -9,7 +9,7 @@
 | Branch | `feat/parent-platform-banners` |
 | Tujuan perubahan | Scope branch: banner platform dan pengumuman tenant, carousel Parent, filter/cabang, aksi gambar, browser internal aman, dan launcher lokal bersama |
 | Tanggal diperbarui | 2026-10-18 |
-| Status kesiapan | READY; perubahan baru dibagi menjadi satu commit code dan satu commit docs, tanpa rewrite history branch yang sudah dipush |
+| Status kesiapan | READY; follow-up tujuan banner sudah direview dan seluruh verifikasi relevan lulus |
 | Item wajib tertunda | 0 |
 | Temuan review terbuka | 0 |
 | Blocker | Tidak ada. Batas verifikasi: uji visual device/browser belum dilakukan; migration V37 belum diterapkan sesuai instruksi pengguna dan tidak diklaim teruji di database. |
@@ -19,15 +19,15 @@
 | Area dari checklist review sumber | Status | Bukti, nomor butir sumber, gap/follow-up |
 | --- | --- | --- |
 | 1. Scope dan konsistensi perubahan | `DONE` | Checklist sumber §1: perubahan mencakup filter banner, fitting gambar, entry point role, Metro terpisah dan reuse backend. `.agents/`, `.claude/`, `run-logs/`, credentials, serta file lokal lain tidak distage; `run-logs/` tetap utuh. |
-| 2. Konsistensi dokumentasi | `DONE` | Checklist sumber §2: README, aturan bisnis, dan daily notes mencatat filter/fitting banner, entry point langsung per role, dan perilaku launcher bersama. |
-| 3. Test dan coverage | `DONE` | Final rerun: `pnpm verify` lulus lint, typecheck, seluruh workspace tests (Core 10, UI 30, API client 68, Mobile 284 tests/72 files); mobile UI Jest 14 suites/65 tests lulus. Targeted coverage helper download/browser/filter/branch: statements/lines/functions 100%, branches 98.36%; satu defensive lookup guard tidak dapat dicapai selama ekstensi berasal dari allowlist yang sama. Expo web export dan Android assembleDebug lulus. Test output memiliki warning React `act(...)`/`react-test-renderer` yang tidak menggagalkan assertion. |
+| 2. Konsistensi dokumentasi | `DONE` | Checklist sumber §2: README, aturan bisnis, OpenSpec, daily note, pre-commit checklist, dan checklist PR menjelaskan audience-scoped Profile/browser target; tenant-announcement allowlist tetap terpisah. |
+| 3. Test dan coverage | `DONE` | Follow-up rerun: `pnpm verify` lulus lint, typecheck, seluruh workspace tests (Core 10, UI 30, API client 68, Mobile 284 tests/72 files); UI Jest target 13/13 dan sebelumnya suite penuh 14/65 lulus. Backend full `./gradlew test --no-daemon` lulus. Targeted helper coverage sebelumnya 100% statements/lines/functions, 98.36% branches. |
 | 4. Arsitektur dan maintainability | `DONE` | Checklist sumber §4: akses tetap melalui route/screen yang sudah ada; hub perantara dihapus; logic banner filter memakai helper terpisah dan normalisasi pencarian dipakai bersama; launcher memakai helper backend/port tanpa mengganti business logic. |
-| 5. Business rule, role, dan security | `DONE` | Checklist sumber §5: Platform Admin diarahkan ke screen banner yang hanya mengizinkan mutasi Platform Admin; Staff Admin diarahkan ke screen pengumuman yang memvalidasi tenant aktif. Tidak ada perubahan API atau hak akses backend. |
-| 6. Database dan API contract | `DONE` | Checklist sumber §6: entity, repository, service, controller, API client, shared enums dan migration V37 cocok; default menjaga record lama sebagai `PARENT_GLOBAL`; constraint mewajibkan tenant target hanya untuk audience tenant; V37 belum dijalankan sesuai instruksi pengguna. Migration dan DB lokal/production tidak diklaim telah diterapkan. |
-| 7. UI/UX dan accessibility | `DONE` | Checklist sumber §7: filter tersedia hanya sesuai hak baca/tulis; Platform Admin dan Staff Admin masuk langsung ke daftar yang sesuai. Label filter diterjemahkan; UI Jest lulus. Belum ada uji visual manual pada device/browser. |
+| 5. Business rule, role, dan security | `DONE` | Checklist sumber §5: banner Profile dibatasi per audience oleh allowlist dan validator server; browser hanya menerima HTTPS; aksi Profile tidak meluaskan validator pengumuman tenant. |
+| 6. Database dan API contract | `DONE` | Checklist sumber §6: `actionTarget` tetap string allowlisted; tidak ada schema/migration/API DTO change. Backend tests memastikan kedua audience banner menerima PROFILE dan validator pengumuman tenant tetap menolaknya. |
+| 7. UI/UX dan accessibility | `DONE` | Checklist sumber §7: pilihan Profile memakai label terjemahan existing; aksi URL menyebut browser internal. Form memakai BottomSheet/ChipGroup dan URL field existing. UI tests/typecheck lulus; belum ada uji visual manual device/browser. |
 | 8. Performance dan reliability | `DONE` | Checklist sumber §8: filtering dilakukan pada data query yang sudah tersedia; launcher mengunci startup backend bersamaan, mempertahankan backend setelah app stop, dan memisahkan port Web/Android. Test concurrency terisolasi lulus. |
-| 9. Verification dan release readiness | `DONE` | Checklist sumber §9: `pnpm verify`, mobile UI tests, test launcher concurrency, shell syntax, Expo web export, Android assembleDebug, dan `git diff --check` lulus. Tidak ada klaim migrasi, production, uji manual device, atau uji visual browser. |
-| 10. Keputusan akhir reviewer | `DONE` | Checklist sumber §10: diff direview terhadap scope, route/role guard yang ada, audience, i18n, filter, image fit, dan lifecycle launcher. Tidak ada temuan blocking; staged diff diperiksa sebelum commit dan run-logs dikecualikan. |
+| 9. Verification dan release readiness | `DONE` | Checklist sumber §9: latest `pnpm verify`, backend full test, UI Jest target, dan `git diff --check` lulus. Tidak ada klaim migrasi, production, uji manual device, atau uji visual browser. |
+| 10. Keputusan akhir reviewer | `DONE` | Checklist sumber §10: follow-up direview terhadap allowlist/audience, server validation, route helper, i18n, kontrak, dan regresi pengumuman. Tidak ada temuan terbuka; staged diff diperiksa sebelum commit dan run-logs dikecualikan. |
 
 ## Temuan review dan perbaikannya
 
@@ -83,5 +83,14 @@
 - [x] Daily notes serta README/business rules diperbarui; semua test workspace 72 file/284 tests dan UI suite 14/65 lulus. Targeted coverage 100% statements/lines/functions, 98.36% branches.
 - [x] Web export dan Android assembleDebug lulus. Tidak ada uji manual device/iOS, migrasi baru, atau validasi live service/database pada scope ini.
 - [x] `run-logs/` tetap lokal dan tidak distage.
+
+## Tujuan banner Profile dan browser internal (2026-10-18)
+
+- [x] Opsi tautan banner menyebut browser internal dengan jelas; destination HTTPS tetap dinormalisasi/diotorisasi oleh flow browser yang sudah ada.
+- [x] Tambah tujuan `PROFILE` khusus banner platform untuk audience Parent dan Staff Admin; route pengumuman tenant tetap dibatasi allowlist sebelumnya.
+- [x] Test-first: regression route test dan backend service test gagal sebelum implementasi, lalu lulus setelah implementasi.
+- [x] Validasi targeted: `actionDestination.test.ts` 2/2, `ParentPromotionSlider.ui.test.tsx` 13/13, dan backend `PlatformBannerServiceTest` + `TenantAnnouncementActionValidationTest` lulus. Mobile typecheck lulus.
+- [x] Full verification setelah follow-up: `corepack pnpm verify`, backend `./gradlew test --no-daemon`, serta `git diff --check` lulus.
+- [x] Review lokal checklist §1–10 selesai untuk diff ini; tidak ada temuan terbuka. Migration/schema tidak berubah sehingga migration run tidak diperlukan.
 
 <!-- Mories Deo Hutapea,S.E.,S.Kom -->

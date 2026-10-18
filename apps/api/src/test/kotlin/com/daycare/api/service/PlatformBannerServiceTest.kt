@@ -91,6 +91,24 @@ class PlatformBannerServiceTest {
     }
 
     @Test
+    fun `platform banner allows profile destination without expanding announcement destinations`() {
+        val f = fixture()
+        val parentBanner = f.service.create(f.jwt, UpsertPlatformBannerRequest(
+            "Profil", "", "https://cdn.example/promo.jpg", ParentActionType.OPEN_APP_PAGE, "PROFILE",
+        ))
+        val staffBanner = f.service.create(f.jwt, UpsertPlatformBannerRequest(
+            "Profil Staff", "", "https://cdn.example/promo.jpg", ParentActionType.OPEN_APP_PAGE, "PROFILE",
+            audience = PlatformBannerAudience.STAFF_ADMIN_GLOBAL,
+        ))
+
+        assertEquals("PROFILE", parentBanner.actionTarget)
+        assertEquals("PROFILE", staffBanner.actionTarget)
+        assertThrows(IllegalArgumentException::class.java) {
+            validateParentAction(ParentActionType.OPEN_APP_PAGE, "PROFILE")
+        }
+    }
+
+    @Test
     fun `parent feed requires registered parent and scheduled banners stay hidden until publication`() {
         val f = fixture()
         `when`(f.banners.findAllByStatusAndAudienceOrderByPublishedAtDesc(PlatformBannerStatus.PUBLISHED, PlatformBannerAudience.PARENT_GLOBAL)).thenReturn(emptyList())

@@ -16,15 +16,15 @@
 
 | Area review | Status | Gap / blocker / bukti |
 | --- | --- | --- |
-| 1. Scope dan konsistensi perubahan | `PASS` | Branch contains the reviewed feature, test, migration, launcher, and documentation scopes. No local logs or credentials are included. |
-| 2. Konsistensi dokumentasi | `PASS` | README, `docs/business-rules.md`, OpenSpec artifacts, daily notes, and branch readiness checklist are included and aligned. |
-| 3. Test dan coverage | `PASS` | Frontend `pnpm verify` passed (mobile 72 files/284 tests); UI 14 suites/65 tests passed. Backend test passed. JaCoCo aggregate: line 93.84%, branch 87.43%; selected new helpers: 100% statements/lines/functions, 98.36% branches. |
+| 1. Scope dan konsistensi perubahan | `PASS` | Follow-up adds only audience-scoped banner destinations and their tests/docs; no migration or unrelated scope. No local logs or credentials are included. |
+| 2. Konsistensi dokumentasi | `PASS` | README, business rules, OpenSpec artifacts, daily note, readiness checklist, and this checklist describe the Profile/browser destinations. |
+| 3. Test dan coverage | `PASS` | Latest `pnpm verify` passed (Core 10, UI 30, API client 68, Mobile 72 files/284 tests); targeted UI Jest 13/13 and full backend tests passed. Coverage values below are from the earlier branch report, not recalculated for this follow-up. |
 | 4. Arsitektur dan maintainability | `PASS` | Reuses existing UI, URL validation, search normalization, and role routes; browser adapters and image handling are separated by platform. |
-| 5. Business rule, role, dan security | `PASS` | Audience and management remain role/tenant-scoped; browser destinations are HTTPS-only and web content is sandboxed. |
-| 6. Database dan API contract | `PARTIAL` | Backend tests pass and contracts/migrations are included. V37 was not run against a persistent local database per prior instruction; CI and deployment migration execution remain unverified. |
+| 5. Business rule, role, dan security | `PASS` | Profile is allowlisted by banner audience; browser URLs remain HTTPS-only; tenant-announcement destinations are unchanged. |
+| 6. Database dan API contract | `PARTIAL` | The follow-up uses existing string `actionTarget`; no schema, migration, or API DTO change is needed. V37 persistent DB execution remains unverified from earlier work. |
 | 7. UI/UX dan accessibility | `PARTIAL` | UI tests cover changed interactions and labels. Manual visual verification on Android/iOS devices was not performed. |
 | 8. Performance dan reliability | `PASS` | Filtering uses loaded data; local launcher concurrency regression tests pass; native cache cleanup and secure URL checks are covered. |
-| 9. Verification dan release readiness | `PARTIAL` | Full local frontend/backend tests, web export, and Android debug build pass. PR-head Mobile unit tests are currently in progress; no live-service or device verification is claimed. |
+| 9. Verification dan release readiness | `PARTIAL` | Latest full local frontend/backend tests pass. CI for the new PR head is pending; no live-service or device verification is claimed. |
 | 10. Keputusan akhir reviewer | `DEFER` | No open local code-review findings. Reassess after PR-head CI completes and required review is recorded. |
 
 Checklist branch lengkap: `docs/changes/2026-10-18/mr-checklist-feat-parent-platform-banners.md`
@@ -74,7 +74,7 @@ Temuan lokal terbuka: tidak ada. Blocker verifikasi: PR-head CI pending; V37 per
 | --- | --- | --- |
 | Test frontend | `pnpm verify` PASS; mobile 72 files/284 tests. UI `pnpm --filter @daycare/app test:ui` PASS, 14 suites/65 tests. | Ada warning React `act(...)`/`react-test-renderer`; seluruh test lulus. |
 | Test backend | `./apps/api/gradlew -p apps/api test --no-daemon --console=plain` PASS. | `jacocoTestReport` juga PASS. |
-| CI head PR | PENDING | [Status checks PR #89](https://github.com/nasiosheva/daycare-react-native-mono-repo/pull/89/checks) masih berjalan untuk head branch terbaru. |
+| CI head PR | PENDING | Push follow-up creates a new head; check [PR #89](https://github.com/nasiosheva/daycare-react-native-mono-repo/pull/89/checks) after push. |
 | Coverage line/branch | Backend aggregate JaCoCo: line 93.84%, branch 87.43%. Selected new helpers: line/function 100%, branch 98.36%. | Source: `apps/api/build/reports/jacoco/test/jacocoTestReport.xml` dan Vitest targeted coverage output. |
 | DB/migration | V36/V37 included; V37 not run on persistent local/prod DB. | Tidak menjalankan migration persistent karena instruksi pengguna sebelumnya. |
 | Browser/device/live service | Expo web export PASS; Android debug build PASS. | Manual iOS/Android device and live-service checks not performed. |

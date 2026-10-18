@@ -122,6 +122,15 @@ describe("ParentPromotionSlider", () => {
     expect(mockPush).toHaveBeenCalledWith("/booking");
   });
 
+  it("opens the profile destination configured for a platform banner", () => {
+    mockPush.mockClear();
+    render(<ParentPromotionSlider banners={[
+      { id: "promotion-profile", title: "Profil", body: "", imageUrl: "https://cdn.example/promo.jpg", actionType: "OPEN_APP_PAGE", actionTarget: "PROFILE", audience: "PARENT_GLOBAL", status: "PUBLISHED", createdAt: "2026-10-18T09:00:00Z", updatedAt: "2026-10-18T09:00:00Z" },
+    ]} />);
+    fireEvent.press(screen.getByRole("button", { name: "Profil" }));
+    expect(mockPush).toHaveBeenCalledWith("/profile");
+  });
+
   it("does not make a tenant-scoped destination clickable without an active tenant", () => {
     render(<ParentPromotionSlider banners={[
       { id: "promotion-4", title: "Pengumuman", body: "Baca pengumuman lembaga.", imageUrl: "https://cdn.example/promo.jpg", actionType: "OPEN_APP_PAGE", actionTarget: "TENANT_ANNOUNCEMENTS", status: "PUBLISHED", publishedAt: "2026-10-18T10:00:00Z", createdAt: "2026-10-18T09:00:00Z", updatedAt: "2026-10-18T10:00:00Z" },

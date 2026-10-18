@@ -44,8 +44,9 @@ enum class TenantAnnouncementAudience { TENANT, BRANCH }
 enum class TenantAnnouncementStatus { DRAFT, SCHEDULED, PUBLISHED, CLOSED }
 enum class ParentActionType { NONE, OPEN_BROWSER, OPEN_APP_PAGE }
 enum class ParentActionPage { TENANT_ANNOUNCEMENTS, BOOKING, PARENT_SCREENING, PARENT_ENROLLMENT, PRIVATE_TUTORING }
+enum class PlatformBannerParentActionPage { TENANT_ANNOUNCEMENTS, BOOKING, PARENT_SCREENING, PARENT_ENROLLMENT, PRIVATE_TUTORING, PROFILE }
 enum class PlatformBannerAudience { PARENT_GLOBAL, STAFF_ADMIN_GLOBAL, TENANT_STAFF_ADMIN }
-enum class StaffAdminBannerActionPage { TENANT_CHILDREN, TENANT_SUBSCRIPTION, TENANT_USERS, TENANT_BRANCHES }
+enum class StaffAdminBannerActionPage { TENANT_CHILDREN, TENANT_SUBSCRIPTION, TENANT_USERS, TENANT_BRANCHES, PROFILE }
 enum class PlatformBannerStatus { DRAFT, SCHEDULED, PUBLISHED, CLOSED }
 enum class DevelopmentMediaKind { PHOTO, AUDIO }
 enum class DevelopmentCategory { ACTIVITY, MEAL, NAP, OBSERVATION }

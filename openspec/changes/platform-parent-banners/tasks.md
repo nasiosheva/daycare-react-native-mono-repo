@@ -13,3 +13,4 @@
 - [x] Add accessible image fallback and close-all X semantics.
 - [x] Update business rules, README, and daily change note.
 - [x] Add focused backend URL/service, API-client, aggregation, validation, popup, and promotion-slider tests.
+- [x] Add audience-scoped banner destinations for Profile and the HTTPS in-app browser without expanding tenant-announcement destinations; add regression tests and update business docs.
