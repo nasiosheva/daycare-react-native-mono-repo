@@ -1,16 +1,18 @@
+// Mories Deo Hutapea,S.E.,S.Kom
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DevelopmentProgram, UpsertDevelopmentProgramInput } from "@daycare/api-client";
 import { goalDomains, type GoalDomain } from "@daycare/core";
-import { AppText, BackButton, BottomSheet, Button, Chip, EmptyState, ErrorState, FloatingActionButton, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
+import { AppText, BackButton, BottomSheet, Button, Chip, EmptyState, ErrorState, FloatingActionButton, SearchField, ShimmerList, TextField, colors, radius, spacing } from "@daycare/ui";
 import { notify } from "@/notify/notify";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { goalDomainKey } from "@/i18n/translations";
 import { AppScreen } from "@/navigation/AppScreen";
+import { filterGlobalDevelopmentPrograms } from "@/development/globalDevelopmentProgramFilters";
 
 type Sheet = "form" | "delete" | null;
 
@@ -38,6 +40,25 @@ export default function GlobalDevelopmentProgramsScreen() {
   const [learningLevelId, setLearningLevelId] = useState<string>();
   const [domain, setDomain] = useState<GoalDomain>();
   const [indicatorNames, setIndicatorNames] = useState<string[]>([""]);
+  const [search, setSearch] = useState("");
+  const [learningLevelFilter, setLearningLevelFilter] = useState<string>();
+  const [domainFilter, setDomainFilter] = useState<GoalDomain>();
+  const [activeFilter, setActiveFilter] = useState<boolean>();
+
+  const visiblePrograms = filterGlobalDevelopmentPrograms(programs.data ?? [], {
+    search,
+    learningLevelId: learningLevelFilter,
+    domain: domainFilter,
+    active: activeFilter,
+    domainLabel: (item) => t(goalDomainKey(item)),
+  });
+  const filtersApplied = Boolean(search.trim() || learningLevelFilter || domainFilter || activeFilter !== undefined);
+  const clearFilters = () => {
+    setSearch("");
+    setLearningLevelFilter(undefined);
+    setDomainFilter(undefined);
+    setActiveFilter(undefined);
+  };
 
   if (!profile) return null;
   if (!profile.isPlatformAdmin) return <Redirect href="/home" />;
@@ -119,7 +140,34 @@ export default function GlobalDevelopmentProgramsScreen() {
     {programs.isFetching && <ShimmerList />}
     {programs.isError && !programs.isFetching && <ErrorState compact title={t("common.loadFailed")} description={t("common.loadFailedDescription")} retryLabel={t("common.retry")} onRetry={() => void programs.refetch()} />}
     {!programs.isFetching && !programs.isError && programs.data?.length === 0 && <EmptyState compact title={t("globalDevelopmentPrograms.empty")} />}
-    {!programs.isFetching && programs.data?.map((program) => <View key={program.id} style={styles.card}>
+    {!programs.isFetching && !programs.isError && Boolean(programs.data?.length) && <View style={styles.filters}>
+      <SearchField accessibilityLabel={t("goals.searchTemplates")} placeholder={t("goals.searchTemplates")} clearAccessibilityLabel={t("common.clearSearch")} value={search} onChangeText={setSearch} />
+      <View style={styles.filterGroup}>
+        <AppText variant="label">{t("goals.learningLevel")}</AppText>
+        <View style={styles.options}>
+          <Chip label={t("globalDevelopmentPrograms.allLevels")} selected={!learningLevelFilter} onPress={() => setLearningLevelFilter(undefined)} />
+          {levels.data?.map((level) => <Chip key={level.id} label={level.name} selected={learningLevelFilter === level.id} onPress={() => setLearningLevelFilter((current) => current === level.id ? undefined : level.id)} />)}
+        </View>
+      </View>
+      <View style={styles.filterGroup}>
+        <AppText variant="label">{t("goals.categoryOptional")}</AppText>
+        <View style={styles.options}>
+          <Chip label={t("globalDevelopmentPrograms.allDomains")} selected={!domainFilter} onPress={() => setDomainFilter(undefined)} />
+          {goalDomains.map((item) => <Chip key={item} label={t(goalDomainKey(item))} selected={domainFilter === item} onPress={() => setDomainFilter((current) => current === item ? undefined : item)} />)}
+        </View>
+      </View>
+      <View style={styles.filterGroup}>
+        <AppText variant="label">{t("globalDevelopmentPrograms.status")}</AppText>
+        <View style={styles.options}>
+          <Chip label={t("globalDevelopmentPrograms.allStatuses")} selected={activeFilter === undefined} onPress={() => setActiveFilter(undefined)} />
+          <Chip label={t("status.ACTIVE")} selected={activeFilter === true} onPress={() => setActiveFilter((current) => current === true ? undefined : true)} />
+          <Chip label={t("learning.archived")} selected={activeFilter === false} onPress={() => setActiveFilter((current) => current === false ? undefined : false)} />
+        </View>
+      </View>
+      {filtersApplied && <Button variant="secondary" onPress={clearFilters}>{t("globalDevelopmentPrograms.clearFilters")}</Button>}
+    </View>}
+    {!programs.isFetching && !programs.isError && Boolean(programs.data?.length) && visiblePrograms.length === 0 && <EmptyState compact title={t("globalDevelopmentPrograms.noMatches")} action={filtersApplied ? { label: t("globalDevelopmentPrograms.clearFilters"), onPress: clearFilters } : undefined} />}
+    {!programs.isFetching && visiblePrograms.map((program) => <View key={program.id} style={styles.card}>
       <AppText variant="label">{program.name}</AppText>
       <AppText tone="muted">{t(goalDomainKey(program.domain))}</AppText>
       {program.description ? <AppText tone="muted">{program.description}</AppText> : null}
@@ -173,6 +221,8 @@ export default function GlobalDevelopmentProgramsScreen() {
 }
 
 const styles = StyleSheet.create({
+  filters: { gap: spacing.md },
+  filterGroup: { gap: spacing.xs },
   card: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
