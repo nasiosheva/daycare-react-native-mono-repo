@@ -14,13 +14,14 @@
 | Temuan review terbuka | `0` |
 | Blocker | Tidak ada. |
 | Commit code/test | `ca08288` |
+| Commit daily note dan readiness checklist | `c4aa393` |
 
 ## Status per area review
 
 | Area dari checklist review sumber | Status | Bukti, nomor butir sumber, gap/follow-up |
 | --- | --- | --- |
 | 1. Scope dan konsistensi perubahan | `DONE` | Perubahan terbatas pada layout kartu booking, regression test, dan catatan perubahan; branch dibuat dari `production`. Source §1.5–1.8. |
-| 2. Konsistensi dokumentasi | `DONE` | Daily note mencatat behavior, hasil verifikasi, dan batas device check. README/business rules tidak berubah karena tidak ada perubahan alur atau aturan. Source §2.1–2.7. |
+| 2. Konsistensi dokumentasi | `DONE` | Daily note mencatat behavior, hasil verifikasi, dan batas device check. MR checklist branch ditambahkan sebelum PR. README/business rules tidak berubah karena tidak ada perubahan alur atau aturan. Source §2.1–2.7. |
 | 3. Test dan coverage | `DONE` | Test-first regression test gagal pada layout row di viewport 360 dp lalu lulus setelah patch; wide viewport 900 dp juga diuji. Seluruh UI suite lulus (14 suites, 68 tests). Source §3.1, §3.3, §3.8–3.9. Method coverage tidak relevan untuk perubahan presentasi. |
 | 4. Arsitektur dan maintainability | `DONE` | Memakai `useWindowDimensions` dan style responsif di screen yang sama; tidak menambah dependency atau abstraction baru. Source §4.1–4.8. |
 | 5. Business rule, role, dan security | `N/A (presentation-only)` | Tidak mengubah business rule, role, authorization, tenant, data, atau request. Source §5.1–5.12. |
@@ -42,6 +43,6 @@
 - [x] Semua area berstatus `DONE` atau `N/A` dengan alasan yang valid.
 - [x] Item `PENDING` = 0; semua temuan dan blocker telah diselesaikan.
 - [x] Test/verifikasi terkait temuan yang diperbaiki dijalankan ulang.
-- [x] `git diff --check` lulus; staged diff code/test diperiksa sebelum commit pertama dan staged diff dokumentasi akan diperiksa sebelum commit berikutnya.
+- [x] `git diff --check` lulus; staged diff code/test dan daily documentation diperiksa sebelum commit masing-masing. MR checklist akan ditinjau sebagai staged diff sebelum commit dokumentasi berikutnya.
 - [x] Tidak ada secret, data pribadi, `run-logs/`, `docs/personal-docs/`, `CLAUDE.md`, atau artefak lokal-only dalam scope.
 - [x] Status kesiapan adalah `READY`.
