@@ -53,6 +53,10 @@ Staff Admin memiliki self-service subscription melalui `/tenant-subscription`, t
 
 Billing Parent mengirim `Idempotency-Key` stabil untuk pembelian paket, booking dari sisa kredit, dan upload bukti; retry aman mengembalikan hasil aksi yang sama, sedangkan key dengan payload berbeda ditolak. Paket bulanan yang sama untuk anak yang sama tidak dapat dibeli lagi selama periode layanannya bertumpang tindih; retry atas invoice bulanan yang masih menunggu dengan intent identik memakai invoice yang sama. Semantik invoice Parent tetap terpisah dari langganan SaaS tenant. Pemesanan layanan hanya menampilkan anak dari tenant yang memublikasikan capability Daycare; kegagalan memuat paket, sisa layanan, tagihan, atau riwayat menyediakan aksi coba lagi.
 
+Beranda Parent menampilkan slider gambar promosi global dari Platform Admin dan popup slider pengumuman tenant sebagai dua fitur terpisah. Promosi global juga terlihat pada Parent yang belum terhubung ke tenant; Platform Admin dapat melihat preview dan mengatur expiry opsional, sementara gambar yang gagal dimuat menampilkan fallback. Promosi dan pengumuman masing-masing dapat memiliki aksi opsional ke tautan HTTPS atau halaman aplikasi yang diizinkan. Siklus hidup dan batas akses ada di [business rules §10.2](docs/business-rules.md#102-operasi-harian-daycare-komunikasi-terarah-dan-tindak-lanjut-keselamatan).
+
+Katalog program perkembangan global mendukung pencarian dan filter gabungan berdasarkan tingkat belajar, domain, dan status aktif/arsip; hasil kosong menyediakan aksi hapus filter.
+
 Indikator koneksi membedakan perangkat yang benar-benar terputus dari server API yang tidak dapat dijangkau. Kegagalan request API saat perangkat masih terhubung ditampilkan sebagai `API_UNAVAILABLE`, bukan status offline.
 
 Event chat lintas tenant hanya dikirim kepada wali atau Staff yang masih memiliki membership aktif dengan role yang sesuai di tenant asal; isi thread tetap dimuat melalui REST yang memeriksa ulang otorisasi.
