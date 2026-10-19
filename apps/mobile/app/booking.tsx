@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { AppText, Badge, Banner, BottomSheet, Button, Card, Chip, ChipGroup, EmptyState, ErrorState, MenuItem, NavigationCard, SectionHeader, ShimmerList, colors, radius, spacing } from "@daycare/ui";
 import { statusTone } from "@/ui/statusTone";
+import { isNarrowPhoneLayout } from "@/ui/responsiveLayout";
 import { AppScreen } from "@/navigation/AppScreen";
 import { LegacyDaycareRouteGuard } from "@/navigation/LegacyDaycareRouteGuard";
 import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAccess";
@@ -27,7 +28,7 @@ export default function BookingScreen() {
 
 function BookingScreenContent() {
   const { width } = useWindowDimensions();
-  const useSingleColumnTiles = width < 600;
+  const useSingleColumnTiles = isNarrowPhoneLayout(width);
   const router = useRouter();
   const { profile } = useAuth();
   // A Parent's children can belong to different tenants; the child picked below decides which
