@@ -8,7 +8,7 @@
 | --- | --- |
 | Branch sumber | `fix/responsive-mobile-layouts` |
 | Target branch | `production` |
-| PR | Belum dibuat |
+| PR | [#91](https://github.com/nasiosheva/daycare-react-native-mono-repo/pull/91) — OPEN |
 | Work item / tujuan | Perbaikan layout kartu dan tombol agar teks tetap terbaca pada viewport ponsel sempit. |
 | Tanggal checklist | `2026-10-19` |
 
@@ -24,7 +24,7 @@
 | 6. Database dan API contract | `N/A` | Tidak ada perubahan database atau API. |
 | 7. UI/UX dan accessibility | `PASS` | UI regression mencakup 360 dp dan 900 dp; belum ada pemeriksaan visual manual di device/browser. |
 | 8. Performance dan reliability | `PASS` | Perubahan responsif berbasis viewport; tidak menambah side effect atau network work. |
-| 9. Verification dan release readiness | `PARTIAL` | Lokal frontend dan backend lulus; CI pada head PR belum berjalan. `run-logs/` terverifikasi kosong tepat sebelum pembuatan PR. |
+| 9. Verification dan release readiness | `PARTIAL` | Lokal frontend dan backend lulus; CI PR #91 masih berjalan (`Mobile unit tests`, run 39190150340). `run-logs/` terverifikasi kosong tepat sebelum pembuatan PR. |
 | 10. Keputusan akhir reviewer | `APPROVE` | Review code agen dan re-review bersih; tidak ada temuan terbuka. |
 
 Checklist branch lengkap: `docs/changes/2026-10-19/pre-commit-checklist-fix-responsive-mobile-layouts.md`
@@ -37,11 +37,11 @@ Temuan terbuka/blocker: tidak ada. Batas verifikasi: tidak ada validasi Android/
 | --- | --- | --- |
 | Test frontend | PASS — `pnpm verify`; `pnpm --filter @daycare/app exec jest --config jest.ui.config.cjs --runInBand` (17 suite, 74 test); `pnpm --filter @daycare/app test` (72 file, 284 test). | `pnpm verify` mencakup lint, typecheck, dan semua test TS. Muncul warning deprecation renderer React pada test yang sudah ada. |
 | Test backend | PASS — `./apps/api/gradlew -p apps/api test --no-daemon` (`BUILD SUCCESSFUL`). | Gradle melaporkan task up-to-date. |
-| CI head PR | PENDING | Diperiksa setelah PR dibuat; belum ada CI untuk head PR. |
+| CI head PR | PENDING | PR #91 run 39190150340: `Mobile unit tests` masih berjalan saat dicek. |
 | Coverage line/branch | 26% lines / 79.83% branches / 60.7% functions — `pnpm --filter @daycare/app test:coverage`. | Coverage keseluruhan app, bukan perubahan terisolasi; Jest UI regresi memakai runner terpisah. |
 | DB/migration | N/A | Tidak ada perubahan persistence/API. |
 | Browser/device/live service | Belum dilakukan | Tidak mengklaim bukti visual Android/iOS/browser; automated UI tests memeriksa 360 dp dan 900 dp. |
-| Blocker/follow-up | Tidak ada | CI menunggu PR. |
+| Blocker/follow-up | Tidak ada | Menunggu hasil CI PR #91; tidak ada blocker kode lokal. |
 
 ## Setelah merge
 

@@ -28,7 +28,7 @@ Status area mengikuti sepuluh bagian `docs/personal-docs/code-review-checklist.m
 | 6. Database dan API contract | `N/A (alasan)` | Bagian 6 tidak terdampak: tidak ada API, model, query, migration, atau kontrak data yang berubah. |
 | 7. UI/UX dan accessibility | `DONE` | Bagian 7: regresi diuji pada lebar 360 dp dan 900 dp, tombol banner tetap memakai component Button yang ada, dan layout sempit menjadi satu kolom. Container diuji dengan testID stabil; batas: tidak ada validasi visual di device/browser. |
 | 8. Performance dan reliability | `DONE` | Bagian 8: hanya branching berdasarkan lebar viewport; tidak menambah request, listener, timer, stateful effect, atau pekerjaan per item. Review seluruh screen tidak menemukan risiko reliability baru. |
-| 9. Verification dan release readiness | `DONE` | Bagian 9: `pnpm verify`, backend Gradle test, Jest UI, coverage, lint/typecheck dan `git diff --check` lulus. CI menunggu setelah push; run-logs akan diverifikasi kosong sebelum PR. |
+| 9. Verification dan release readiness | `DONE` | Bagian 9: `pnpm verify`, backend Gradle test, Jest UI, coverage, lint/typecheck dan `git diff --check` lulus. CI PR #91 berjalan; `run-logs/` terverifikasi kosong sebelum PR. |
 | 10. Keputusan akhir reviewer | `DONE` | Bagian 10: review tiga area tidak menemukan issue; selector operasional diperbaiki dari selector rapuh ke `testID`, test dijalankan ulang, dan re-review bersih. Temuan terbuka 0. |
 
 ## Temuan review dan perbaikannya
