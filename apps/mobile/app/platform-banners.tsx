@@ -1,6 +1,6 @@
 // Mories Deo Hutapea,S.E.,S.Kom
 import { useEffect, useState } from "react";
-import { Modal, Pressable, StyleSheet, View } from "react-native";
+import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -20,6 +20,7 @@ import { FallbackImage } from "@/media/FallbackImage";
 import { ParentPromotionSlider } from "@/home/ParentPromotionSlider";
 import { shouldOpenCreateForm } from "@/content-management/openCreateFromRouteParam";
 import { filterPlatformBanners } from "@/content-management/platformBannerFilters";
+import { isNarrowPhoneLayout } from "@/ui/responsiveLayout";
 
 type FormState = { id?: string; title: string; imageUrl: string; actionType: ParentActionType; actionTarget: string; expiresDate: string; expiresTime: string; audience: PlatformBannerAudience; targetOrganizationId: string };
 const bannerStatuses: readonly PlatformBannerStatus[] = ["DRAFT", "SCHEDULED", "PUBLISHED", "CLOSED"];
@@ -45,6 +46,8 @@ const hasValidExpiry = (form: FormState | null): boolean => {
 };
 
 export default function PlatformBannersScreen() {
+  const { width } = useWindowDimensions();
+  const stackActions = isNarrowPhoneLayout(width);
   const router = useRouter();
   const params = useLocalSearchParams<{ create?: string | string[] }>();
   const { api, profile } = useAuth();
@@ -148,8 +151,8 @@ export default function PlatformBannersScreen() {
       {canManage && <AppText variant="caption" tone="muted">{t(banner.audience === "PARENT_GLOBAL" ? "platformBanners.audienceParent" as TranslationKey : banner.audience === "STAFF_ADMIN_GLOBAL" ? "platformBanners.audienceAllStaffAdmins" as TranslationKey : "platformBanners.audienceTenantStaffAdmin" as TranslationKey)}{banner.targetOrganizationName ? ` · ${banner.targetOrganizationName}` : ""}</AppText>}
       <FallbackImage key={`${banner.id}:${banner.imageUrl}`} accessibilityLabel={banner.title} fallbackLabel={t("operations.imageUnavailable")} uri={banner.imageUrl} style={styles.bannerImage} />
       {canManage && banner.expiresAt && <AppText variant="caption" tone="muted">{t("platformBanners.expiresAt", { date: formatDateTime(banner.expiresAt) })}</AppText>}
-      {canManage && <View style={styles.actions}>
-        {banner.status === "DRAFT" && <><Button style={styles.action} variant="secondary" onPress={() => setForm(formFromBanner(banner))}>{t("common.edit")}</Button><Button style={styles.action} variant="secondary" onPress={() => { setScheduleTarget(banner); setScheduledDate(formatIsoDate(new Date())); setScheduledTime(""); }}>{t("operations.schedule")}</Button><Button style={styles.action} loading={publish.isPending} onPress={() => void publish.mutateAsync(banner.id).catch((error: unknown) => notify(t("platformBanners.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))}>{t("operations.publish")}</Button></>}
+      {canManage && <View testID="platform-banner-actions" style={[styles.actions, stackActions && styles.actionsNarrow]}>
+        {banner.status === "DRAFT" && <><Button style={[styles.action, stackActions && styles.actionNarrow]} variant="secondary" onPress={() => setForm(formFromBanner(banner))}>{t("common.edit")}</Button><Button style={[styles.action, stackActions && styles.actionNarrow]} variant="secondary" onPress={() => { setScheduleTarget(banner); setScheduledDate(formatIsoDate(new Date())); setScheduledTime(""); }}>{t("operations.schedule")}</Button><Button style={[styles.action, stackActions && styles.actionNarrow]} loading={publish.isPending} onPress={() => void publish.mutateAsync(banner.id).catch((error: unknown) => notify(t("platformBanners.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))}>{t("operations.publish")}</Button></>}
         {(banner.status === "PUBLISHED" || banner.status === "SCHEDULED") && <Button variant="secondary" loading={close.isPending} onPress={() => void close.mutateAsync(banner.id).catch((error: unknown) => notify(t("platformBanners.saveFailed"), error instanceof Error ? error.message : t("auth.tryAgain"), "danger"))}>{t("operations.close")}</Button>}
       </View>}
     </Card>)}
@@ -216,4 +219,4 @@ export default function PlatformBannersScreen() {
   </AppScreen>;
 }
 
-const styles = StyleSheet.create({ filters: { gap: spacing.md }, filterGroup: { gap: spacing.xs }, actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, action: { flexGrow: 1, flexBasis: "30%" }, field: { gap: spacing.sm }, tenantOption: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, tenantOptionSelected: { borderColor: colors.primary, backgroundColor: colors.infoSoft }, tenantOptionPressed: { opacity: 0.75 }, bannerImage: { width: "100%", height: 180, borderRadius: radius.md }, formImagePreview: { width: "100%", aspectRatio: 16 / 9, borderRadius: radius.md }, scheduleRow: { flexDirection: "row", gap: spacing.sm }, scheduleField: { flex: 1 }, previewBackdrop: { flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.md, backgroundColor: colors.overlay }, previewDialog: { width: "100%", maxWidth: 720, gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, previewHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }, previewTitle: { flex: 1 }, previewClose: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: colors.surfaceTint } });
+const styles = StyleSheet.create({ filters: { gap: spacing.md }, filterGroup: { gap: spacing.xs }, actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, actionsNarrow: { flexDirection: "column", flexWrap: "nowrap" }, action: { flexGrow: 1, flexBasis: "30%" }, actionNarrow: { width: "100%", flexBasis: "auto" }, field: { gap: spacing.sm }, tenantOption: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, tenantOptionSelected: { borderColor: colors.primary, backgroundColor: colors.infoSoft }, tenantOptionPressed: { opacity: 0.75 }, bannerImage: { width: "100%", height: 180, borderRadius: radius.md }, formImagePreview: { width: "100%", aspectRatio: 16 / 9, borderRadius: radius.md }, scheduleRow: { flexDirection: "row", gap: spacing.sm }, scheduleField: { flex: 1 }, previewBackdrop: { flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.md, backgroundColor: colors.overlay }, previewDialog: { width: "100%", maxWidth: 720, gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, previewHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }, previewTitle: { flex: 1 }, previewClose: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: colors.surfaceTint } });

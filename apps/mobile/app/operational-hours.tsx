@@ -1,4 +1,4 @@
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
@@ -7,6 +7,7 @@ import { AppText, EmptyState, ShimmerList, colors, radius, shadows, spacing } fr
 import { useAuth } from "@/auth/AuthProvider";
 import { useI18n } from "@/i18n/I18nProvider";
 import { AppScreen } from "@/navigation/AppScreen";
+import { isNarrowPhoneLayout } from "@/ui/responsiveLayout";
 
 const weekOrder: OperatingDay[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 
@@ -16,6 +17,8 @@ function todayInTimezone(timezone: string): OperatingDay {
 }
 
 export default function OperationalHoursScreen() {
+  const { width } = useWindowDimensions();
+  const isNarrowPhone = isNarrowPhoneLayout(width);
   const { api, profile, user } = useAuth();
   const { t, formatCurrency } = useI18n();
   const isParent = profile?.memberships.some((item) => item.role === "PARENT") ?? false;
@@ -40,10 +43,10 @@ export default function OperationalHoursScreen() {
           </View>
         </View>
 
-        <View style={styles.daysGrid}>
+        <View testID="parent-operating-hours-days-grid" style={styles.daysGrid}>
           {entry.hours.map((hour) => {
             const isToday = hour.dayOfWeek === today;
-            return <View key={hour.dayOfWeek} style={[styles.dayChip, hour.active ? styles.dayChipOpen : styles.dayChipClosed, isToday && styles.dayChipToday]}>
+            return <View key={hour.dayOfWeek} style={[styles.dayChip, isNarrowPhone && styles.dayChipNarrow, hour.active ? styles.dayChipOpen : styles.dayChipClosed, isToday && styles.dayChipToday]}>
               <View style={styles.dayChipHeader}>
                 <AppText variant="caption" style={hour.active ? styles.dayChipOpenText : styles.dayChipClosedText}>{t(`overtime.day.${hour.dayOfWeek}`)}</AppText>
                 {isToday && <View style={[styles.todayDot, hour.active ? styles.todayDotOnOpen : styles.todayDotOnClosed]} />}
@@ -80,6 +83,7 @@ const styles = StyleSheet.create({
   tenantRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   daysGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   dayChip: { flexBasis: "22%", flexGrow: 1, gap: spacing.xs / 2, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs, borderRadius: radius.md, borderWidth: 1.5, borderColor: "transparent" },
+  dayChipNarrow: { flexBasis: "47%" },
   dayChipOpen: { backgroundColor: colors.accentSoft },
   dayChipClosed: { backgroundColor: colors.disabled },
   dayChipToday: { borderColor: colors.primary },

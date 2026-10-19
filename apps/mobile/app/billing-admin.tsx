@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeRedirect as Redirect } from "@/navigation/SafeRedirect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,6 +12,7 @@ import { legacyDaycareRoutePolicies } from "@/navigation/legacyDaycareRouteAcces
 import { useI18n } from "@/i18n/I18nProvider";
 import { servicePlanTypeKey } from "@/i18n/translations";
 import { notify } from "@/notify/notify";
+import { isNarrowPhoneLayout } from "@/ui/responsiveLayout";
 import { DatePicker } from "@/date-picker/DatePicker";
 import type { ServicePlanDiscountKind, ServicePlanDiscountType, ServicePlanType, UnusedCreditPolicy } from "@daycare/core";
 import type { ServicePlanTemplate } from "@daycare/api-client";
@@ -68,6 +69,8 @@ export default function BillingAdminScreen() {
 }
 
 function BillingAdminScreenContent() {
+  const { width } = useWindowDimensions();
+  const useSingleColumnTiles = isNarrowPhoneLayout(width);
   const router = useRouter();
   const { api, profile, organizationId } = useAuth();
   const { t, formatCurrency, formatDate } = useI18n();
@@ -168,28 +171,28 @@ function BillingAdminScreenContent() {
   return <AppScreen showBottomNavigation={false} title={t("billing.title")} header={<BackButton accessibilityLabel={t("common.back")} onPress={() => router.back()} />}>
     {!canManage && <Banner tone="warning" title={t("staffOperations.readOnly")} />}
     <TabBar accessibilityLabel={t("branchFilter.allBranches")} selected={filterBranchId ?? ""} onSelect={(key) => setFilterBranchId(key || undefined)} items={[{ key: "", label: t("branchFilter.allBranches") }, ...(branches.data?.map((branch) => ({ key: branch.id, label: branch.name })) ?? [])]} />
-    <View style={styles.grid}>
-      <NavigationCard accessibilityLabel={t("billing.activePlans")} onPress={() => setListSheet("plans")} style={styles.tile}>
+    <View testID="billing-admin-summary-grid" style={[styles.grid, useSingleColumnTiles && styles.gridSingleColumn]}>
+      <NavigationCard accessibilityLabel={t("billing.activePlans")} onPress={() => setListSheet("plans")} style={[styles.tile, useSingleColumnTiles && styles.tileSingleColumn]}>
         <AppText variant="label">{t("billing.activePlans")}</AppText>
         <AppText tone={plans.data?.length ? "default" : "muted"}>{plans.data?.length ? t("billing.plansSummary", { count: plans.data.length }) : t("common.noData")}</AppText>
       </NavigationCard>
-      <NavigationCard accessibilityLabel={t("billing.templates")} onPress={() => setListSheet("templates")} style={styles.tile}>
+      <NavigationCard accessibilityLabel={t("billing.templates")} onPress={() => setListSheet("templates")} style={[styles.tile, useSingleColumnTiles && styles.tileSingleColumn]}>
         <AppText variant="label">{t("billing.templates")}</AppText>
         <AppText tone={templates.data?.length ? "default" : "muted"}>{templates.data?.length ? t("billing.templatesSummary", { count: templates.data.length }) : t("common.noData")}</AppText>
       </NavigationCard>
-      <NavigationCard accessibilityLabel={t("billing.branchCapacity")} onPress={() => setListSheet("capacity")} style={styles.tile}>
+      <NavigationCard accessibilityLabel={t("billing.branchCapacity")} onPress={() => setListSheet("capacity")} style={[styles.tile, useSingleColumnTiles && styles.tileSingleColumn]}>
         <AppText variant="label">{t("billing.branchCapacity")}</AppText>
         <AppText tone="muted">{branches.data?.filter((branch) => branch.active).length ? t("billing.branchesSummary", { count: branches.data.filter((branch) => branch.active).length }) : t("common.noData")}</AppText>
       </NavigationCard>
-      <NavigationCard accessibilityLabel={t("billing.discounts")} onPress={() => setListSheet("discounts")} style={styles.tile}>
+      <NavigationCard accessibilityLabel={t("billing.discounts")} onPress={() => setListSheet("discounts")} style={[styles.tile, useSingleColumnTiles && styles.tileSingleColumn]}>
         <AppText variant="label">{t("billing.discounts")}</AppText>
         <AppText tone="muted">{t("billing.discountsDescription")}</AppText>
       </NavigationCard>
-      <NavigationCard accessibilityLabel={t("billing.pendingInvoices")} onPress={() => setListSheet("invoices")} style={styles.tile}>
+      <NavigationCard accessibilityLabel={t("billing.pendingInvoices")} onPress={() => setListSheet("invoices")} style={[styles.tile, useSingleColumnTiles && styles.tileSingleColumn]}>
         <AppText variant="label">{t("billing.pendingInvoices")}</AppText>
         <AppText tone={pendingInvoices.length ? "danger" : "muted"}>{pendingInvoices.length ? t("billing.pendingInvoicesCount", { count: pendingInvoices.length }) : t("common.noData")}</AppText>
       </NavigationCard>
-      <NavigationCard accessibilityLabel={t("operations.expiryReminder")} onPress={openExpiryReminder} style={styles.tile}>
+      <NavigationCard accessibilityLabel={t("operations.expiryReminder")} onPress={openExpiryReminder} style={[styles.tile, useSingleColumnTiles && styles.tileSingleColumn]}>
         <AppText variant="label">{t("operations.expiryReminder")}</AppText>
         <AppText tone="muted">{expiryReminderSettings.data?.leadDays?.join(", ") || t("common.noData")}</AppText>
       </NavigationCard>
@@ -297,4 +300,4 @@ function PlanExtras({ type, creditCount, unusedCreditPolicy, dailyCapacity, t }:
 }
 
 
-const styles = StyleSheet.create({ input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.surface }, row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, tile: { flexGrow: 1, flexBasis: "47%" }, options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint } });
+const styles = StyleSheet.create({ input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.surface }, row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, tile: { flexGrow: 1, flexBasis: "47%" }, gridSingleColumn: { flexDirection: "column", flexWrap: "nowrap" }, tileSingleColumn: { width: "100%", flexBasis: "auto", flexGrow: 0 }, options: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTint } });
